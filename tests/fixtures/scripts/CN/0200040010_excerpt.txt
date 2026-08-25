@@ -1,0 +1,14 @@
+＄02-00-04-00-1-0
+[charaSet B 98001000 1 玛修]
+[scene 60300]
+[charaTalk B]
+[charaFace B 13]
+＠玛修
+早上好。[r]前辈。[line 3]
+[futureCommand value]
+[k]
+[branchPath choice-a]
+[charaFace B 7]
+＠玛修
+我们继续吧。
+[k]
