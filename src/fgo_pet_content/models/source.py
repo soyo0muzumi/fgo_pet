@@ -37,6 +37,6 @@ class SourceRef(BaseModel):
     container_type: str
     container_id: int | None = None
     container_name: str | None = None
-    content_hash: str
+    content_hash: str | None = None
     source_url: str | None = None
     data_version: str | None = None
