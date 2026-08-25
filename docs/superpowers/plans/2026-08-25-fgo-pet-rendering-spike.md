@@ -2,13 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Determine whether native WPF or SkiaSharp can render Mash's transparent portrait sharply and stably across Windows DPI scales and mixed-DPI monitors, then record a binding renderer decision for the production app.
+**Goal:** Select both a portrait renderer and a transparent-window composition mode that display Mash sharply and stably across Windows DPI scales and mixed-DPI monitors.
 
-**Architecture:** Build a disposable .NET 8 WPF probe with two renderer implementations behind one interface. The probe loads an external PNG supplied on the command line, displays an attached speech-bubble marker, records DPI/window diagnostics, and exports repeatable captures; automated tests cover image decoding, coordinate calculations, renderer selection, and diagnostics serialization, while a manual matrix covers real desktop compositor behavior.
+**Architecture:** Build a disposable .NET 8 WPF probe with two portrait renderers and two window-composition modes. The probe loads an external PNG supplied on the command line, displays an attached speech-bubble marker, records DPI/window diagnostics, and exports repeatable captures; automated tests cover image decoding, coordinate calculations, mode selection, and diagnostics serialization, while a manual matrix covers real desktop compositor behavior.
 
 **Tech Stack:** C# 12, .NET SDK 8.0.121, .NET 8 WPF, xUnit, SkiaSharp 3.116.1, SkiaSharp.Views.WPF 3.116.1, Windows 10/11 per-monitor DPI awareness v2.
 
 **Spec:** `docs/superpowers/specs/2026-08-25-fgo-pet-design.md`
+
+**Reference:** `docs/references/vpet-rendering-notes.md`, based on Apache-2.0 VPet commit `b6f7b003`
 
 ## Global Constraints
 
@@ -17,6 +19,7 @@
 - FGO art stays outside Git. The probe accepts `--asset <absolute-path>`; tests generate synthetic fixtures.
 - Test 100%, 125%, and 150% scale, including movement between monitors with different scales when such hardware is available.
 - Compare native WPF and SkiaSharp using the same source file, logical size, anchor calculations, and capture matrix.
+- Compare conventional `AllowsTransparency=True` composition with a VPet-inspired DWM/window-chrome mode using `AllowsTransparency=False`, `GlassFrameThickness=-1`, and controlled `WS_EX_LAYERED` styles.
 - Use per-monitor DPI awareness v2 and integer-aligned device pixels for the portrait bounds.
 - Do not modify files under `D:\fgo_unpack\fgo_assets` or `D:\SteamLibrary`.
 - Do not initialize or replace `D:\fgo_unpack\fgo_pet` during plan execution. First attach the directory to the intended GitHub checkout with explicit user approval.
@@ -31,6 +34,8 @@
 - `spikes/rendering/src/FgoPet.RenderingProbe/App.xaml` — WPF application resources.
 - `spikes/rendering/src/FgoPet.RenderingProbe/App.xaml.cs` — argument parsing and startup failure handling.
 - `spikes/rendering/src/FgoPet.RenderingProbe/ProbeOptions.cs` — immutable command-line options.
+- `spikes/rendering/src/FgoPet.RenderingProbe/Windowing/TransparencyMode.cs` — conventional WPF and DWM-layered mode selection.
+- `spikes/rendering/src/FgoPet.RenderingProbe/Windowing/LayeredWindowStyle.cs` — minimal HWND style hook inspired by VPet's public implementation.
 - `spikes/rendering/src/FgoPet.RenderingProbe/MainWindow.xaml` — transparent probe window, controls, portrait host, bubble marker.
 - `spikes/rendering/src/FgoPet.RenderingProbe/MainWindow.xaml.cs` — drag, renderer switch, scale switch, capture, and diagnostic recording.
 - `spikes/rendering/src/FgoPet.RenderingProbe/Rendering/IRenderSurface.cs` — common renderer contract.
@@ -61,13 +66,14 @@
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/App.xaml.cs`
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/ProbeOptions.cs`
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/Rendering/RenderBackend.cs`
+- Create: `spikes/rendering/src/FgoPet.RenderingProbe/Windowing/TransparencyMode.cs`
 - Create: `spikes/rendering/tests/FgoPet.RenderingProbe.Tests/FgoPet.RenderingProbe.Tests.csproj`
 - Create: `spikes/rendering/tests/FgoPet.RenderingProbe.Tests/ProbeOptionsTests.cs`
 
 **Interfaces:**
 - Produces: `ProbeOptions.Parse(string[] args) -> ProbeOptions`
-- Produces: `ProbeOptions(string AssetPath, RenderBackend Backend, double LogicalScale, string OutputDirectory)`
-- Produces: CLI arguments `--asset`, `--renderer wpf|skia`, `--scale`, and `--output`
+- Produces: `ProbeOptions(string AssetPath, RenderBackend Backend, TransparencyMode Transparency, double LogicalScale, string OutputDirectory)`
+- Produces: CLI arguments `--asset`, `--renderer wpf|skia`, `--transparency wpf|dwm`, `--scale`, and `--output`
 
 - [ ] **Step 1: Verify the execution prerequisites**
 
@@ -92,12 +98,14 @@ public void Parse_reads_explicit_values()
     var options = ProbeOptions.Parse([
         "--asset", @"C:\art\mash.png",
         "--renderer", "skia",
+        "--transparency", "dwm",
         "--scale", "1.25",
         "--output", @"C:\captures"
     ]);
 
     Assert.Equal(@"C:\art\mash.png", options.AssetPath);
     Assert.Equal(RenderBackend.Skia, options.Backend);
+    Assert.Equal(TransparencyMode.DwmLayered, options.Transparency);
     Assert.Equal(1.25, options.LogicalScale);
     Assert.Equal(@"C:\captures", options.OutputDirectory);
 }
@@ -139,6 +147,7 @@ Use an immutable record and parse with invariant culture:
 public sealed record ProbeOptions(
     string AssetPath,
     RenderBackend Backend,
+    TransparencyMode Transparency,
     double LogicalScale,
     string OutputDirectory)
 {
@@ -156,12 +165,13 @@ public sealed record ProbeOptions(
             throw new ArgumentException("--asset <absolute-png-path> is required.");
 
         var backend = RenderBackendParser.Parse(values.GetValueOrDefault("--renderer", "wpf"));
+        var transparency = TransparencyModeParser.Parse(values.GetValueOrDefault("--transparency", "dwm"));
         var scaleText = values.GetValueOrDefault("--scale", "1.0");
         if (!double.TryParse(scaleText, NumberStyles.Float, CultureInfo.InvariantCulture, out var scale) || scale <= 0)
             throw new ArgumentOutOfRangeException("--scale", "Scale must be positive.");
 
         var output = Path.GetFullPath(values.GetValueOrDefault("--output", "captures"));
-        return new(Path.GetFullPath(asset), backend, scale, output);
+        return new(Path.GetFullPath(asset), backend, transparency, scale, output);
     }
 }
 ```
@@ -180,6 +190,18 @@ public static class RenderBackendParser
         "wpf" => RenderBackend.Wpf,
         "skia" => RenderBackend.Skia,
         _ => throw new ArgumentException($"Unknown renderer: {value}", nameof(value))
+    };
+}
+
+public enum TransparencyMode { ConventionalWpf, DwmLayered }
+
+public static class TransparencyModeParser
+{
+    public static TransparencyMode Parse(string value) => value.ToLowerInvariant() switch
+    {
+        "wpf" => TransparencyMode.ConventionalWpf,
+        "dwm" => TransparencyMode.DwmLayered,
+        _ => throw new ArgumentException($"Unknown transparency mode: {value}", nameof(value))
     };
 }
 ```
@@ -465,6 +487,7 @@ git commit -m "spike: add SkiaSharp portrait renderer"
 
 **Files:**
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/app.manifest`
+- Create: `spikes/rendering/src/FgoPet.RenderingProbe/Windowing/LayeredWindowStyle.cs`
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/MainWindow.xaml`
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/MainWindow.xaml.cs`
 - Create: `spikes/rendering/src/FgoPet.RenderingProbe/Diagnostics/CaptureWriter.cs`
@@ -473,7 +496,7 @@ git commit -m "spike: add SkiaSharp portrait renderer"
 
 **Interfaces:**
 - Consumes: `ProbeOptions`, `IRenderSurface`, `WpfImageSurface`, `SkiaImageSurface`, `PixelAlignment`, `ProbeRecorder`
-- Produces: keyboard controls `F1` WPF, `F2` Skia, `1` 0.75×, `2` 1.0×, `3` 1.25×, `4` 1.5×, `C` capture, `Esc` exit
+- Produces: keyboard controls `F1` WPF renderer, `F2` Skia renderer, `1` 0.75×, `2` 1.0×, `3` 1.25×, `4` 1.5×, `C` capture, `Esc` exit
 - Produces: `<output>/samples.jsonl` and `<output>/captures/<timestamp>-<renderer>-<dpi>.png`
 
 - [ ] **Step 1: Declare per-monitor DPI awareness v2**
@@ -487,35 +510,43 @@ Set the project `ApplicationManifest` to `app.manifest` and include:
 </windowsSettings>
 ```
 
-- [ ] **Step 2: Build the transparent window layout**
+- [ ] **Step 2: Implement both transparent-window composition modes**
 
-Use `WindowStyle=None`, `AllowsTransparency=True`, `Background=Transparent`, `SizeToContent=WidthAndHeight`, `UseLayoutRounding=True`, and `SnapsToDevicePixels=True`. The root grid contains:
+Conventional mode creates the window with `AllowsTransparency=True`, `WindowStyle=None`, and `Background=Transparent`.
+
+DWM-layered mode creates the window with `AllowsTransparency=False`, `WindowStyle=None`, `Background=null`, and `WindowChrome.GlassFrameThickness=-1`. At `SourceInitialized`, `LayeredWindowStyle` installs an HWND hook for `WM_STYLECHANGING` and preserves `WS_EX_LAYERED` for `GWL_EXSTYLE`. The hook must be removed on close. Do not copy VPet's full Win32 helper; declare only `STYLESTRUCT`, `GWL_EXSTYLE`, `WS_EX_LAYERED`, and the required hook logic.
+
+Because WPF does not permit changing `AllowsTransparency` after the HWND is created, transparency mode is selected through `--transparency` and compared in separate probe processes.
+
+- [ ] **Step 3: Build the transparent window layout**
+
+Use `WindowStyle=None`, `SizeToContent=WidthAndHeight`, `UseLayoutRounding=True`, and `SnapsToDevicePixels=True`, with transparency properties supplied by the selected composition mode. The root grid contains:
 
 - a portrait host with fixed logical width 360 DIP;
 - a speech-bubble test marker anchored 24 DIP from the portrait's top-right visible bound;
 - a diagnostic overlay showing backend, monitor, DPI, logical size, device size, and process working set;
 - no shadow or blur effect, because either can contaminate edge comparison.
 
-- [ ] **Step 3: Implement drag, renderer switching, scaling, and DPI change handling**
+- [ ] **Step 4: Implement drag, renderer switching, scaling, and DPI change handling**
 
 Use `DragMove()` on left-button drag. Add an `HwndSource` hook and process `WM_DPICHANGED` (`0x02E0`); after the message, schedule one `DispatcherPriority.Loaded` callback to re-align portrait bounds, reposition the bubble marker, refresh the overlay, and append a `ProbeSample`. Switching backend must preserve the same asset, logical portrait size, window location, and scale.
 
-- [ ] **Step 4: Implement deterministic capture and diagnostics output**
+- [ ] **Step 5: Implement deterministic capture and diagnostics output**
 
 On `C`, wait for `DispatcherPriority.Render`, capture the portrait plus bubble, save PNG through `PngBitmapEncoder`, then append a sample containing the capture path. File names use UTC timestamp with filesystem-safe separators and invariant DPI values.
 
-- [ ] **Step 5: Build and run against the real Mash asset**
+- [ ] **Step 6: Build and run against the real Mash asset**
 
 Run:
 
 ```powershell
 dotnet build spikes/rendering/FgoPet.RenderingProbe.sln -c Release
-dotnet run --project spikes/rendering/src/FgoPet.RenderingProbe/FgoPet.RenderingProbe.csproj -c Release -- --asset "D:\fgo_unpack\fgo_assets\servant\800100\8001000_merged.png" --renderer wpf --scale 1.0 --output "D:\fgo_unpack\fgo_pet\spikes\rendering\artifacts"
+dotnet run --project spikes/rendering/src/FgoPet.RenderingProbe/FgoPet.RenderingProbe.csproj -c Release -- --asset "D:\fgo_unpack\fgo_assets\servant\800100\8001000_merged.png" --renderer wpf --transparency dwm --scale 1.0 --output "D:\fgo_unpack\fgo_pet\spikes\rendering\artifacts"
 ```
 
-Expected: a transparent Mash window opens; dragging moves portrait and bubble together; F1/F2 switch renderer without changing logical size; C writes a PNG and one valid JSON Lines record.
+Expected: a transparent Mash window opens; dragging moves portrait and bubble together; F1/F2 switch renderer without changing logical size; C writes a PNG and one valid JSON Lines record containing the renderer and transparency mode.
 
-- [ ] **Step 6: Commit the interactive probe**
+- [ ] **Step 7: Commit the interactive probe**
 
 ```powershell
 git add spikes/rendering
@@ -537,7 +568,7 @@ git commit -m "spike: add interactive mixed-DPI render probe"
 
 - [ ] **Step 1: Document the exact manual matrix**
 
-The README must instruct the reviewer to capture both renderers at portrait scales 0.75×, 1.0×, 1.25×, and 1.5× under Windows scales 100%, 125%, and 150%. For mixed-DPI setups, repeat after dragging the window from monitor A to B and back to A without restarting.
+The README must instruct the reviewer to capture all four renderer/composition combinations at portrait scales 0.75×, 1.0×, 1.25×, and 1.5× under Windows scales 100%, 125%, and 150%. For mixed-DPI setups, repeat after dragging the window from monitor A to B and back to A without restarting.
 
 For each cell, record:
 
@@ -575,11 +606,13 @@ Run the matrix using the real Mash asset. Keep raw captures under ignored `spike
 
 - [ ] **Step 5: Apply the explicit decision rule**
 
-Choose native WPF when it has no visible edge regression against SkiaSharp in any observed matrix cell and its bubble drift is at most one physical pixel. Choose SkiaSharp only when it produces visibly cleaner transparent edges in at least two scale cells without exceeding WPF working set by more than 30% and without cross-monitor clarity regression. If neither passes, reject WPF as the production shell and open a new technology-spike spec; do not tune the threshold after seeing results.
+Select the renderer first: choose native WPF when it has no visible edge regression against SkiaSharp in any observed cell and its bubble drift is at most one physical pixel. Choose SkiaSharp only when it is visibly cleaner in at least two scale cells without exceeding WPF working set by more than 30% or regressing after cross-monitor movement.
+
+Select the composition mode independently: choose DWM-layered when it preserves correct per-pixel transparency and does not regress edge quality while using less working set or lower idle GPU/CPU than conventional WPF transparency. Choose conventional WPF only when DWM-layered has visible artifacts, unreliable click behavior, or unstable mixed-DPI movement. If no renderer/composition pair passes, reject WPF as the production shell and open a new technology-spike spec; do not tune thresholds after seeing results.
 
 The decision document must state:
 
-- chosen backend or rejection;
+- chosen portrait renderer and transparency composition mode, or rejection;
 - observed matrix and unavailable rows;
 - evidence file names;
 - exact pixel-alignment and DPI rules production code must retain;
