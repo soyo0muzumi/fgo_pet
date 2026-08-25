@@ -1,0 +1,46 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Python asset tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local application data and secrets
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.key
+.env
+.env.*
+!.env.example
+
+# IDE and operating system
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Raw/extracted FGO assets stay outside Git
+fgo_assets/
+assets/raw/
+assets/workspace/
+
+# Rendering-spike output
+spikes/rendering/artifacts/*
+!spikes/rendering/artifacts/.gitkeep
+
+# Local packages, captures, exports, and backups
+packages/local/
+captures/
+exports/
+backups/
