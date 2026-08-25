@@ -12,6 +12,7 @@ from .models.source import Region
 
 SEARCH_URL = "https://api.atlasacademy.io/nice/{region}/script/search"
 SCRIPT_INFO_URL = "https://api.atlasacademy.io/nice/{region}/script/{script_id}"
+WAR_URL = "https://api.atlasacademy.io/nice/{region}/war/{war_id}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,17 @@ class AtlasClient:
             for item in response.json()
         ]
 
+    def fetch_war(self, region: Region, war_id: int) -> dict | None:
+        response = httpx.get(
+            WAR_URL.format(region=region.value, war_id=war_id),
+            timeout=self._timeout,
+            follow_redirects=True,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
     def load_cached_script(
         self, region: Region, script_id: str
     ) -> CachedScript | None:
@@ -71,10 +83,13 @@ class AtlasClient:
         info_response.raise_for_status()
         script_url = info_response.json()["script"]
 
+        return self.fetch_script_url(region, script_id, script_url)
+
+    def fetch_script_url(
+        self, region: Region, script_id: str, script_url: str
+    ) -> CachedScript:
         script_response = httpx.get(
-            script_url,
-            timeout=self._timeout,
-            follow_redirects=True,
+            script_url, timeout=self._timeout, follow_redirects=True
         )
         if script_response.status_code == 404:
             raise ScriptUnavailable(region, script_id, 404)

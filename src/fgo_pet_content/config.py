@@ -14,6 +14,7 @@ class ContentPaths:
     parsed_scripts: Path
     catalog: Path
     reports: Path
+    formatted_scripts: Path
     art_workspace: Path
 
     @classmethod
@@ -31,5 +32,6 @@ class ContentPaths:
             parsed_scripts=story_cache / "parsed",
             catalog=story_cache / "catalog",
             reports=story_cache / "reports",
+            formatted_scripts=story_cache / "formatted",
             art_workspace=data_root / "art_workspace",
         )

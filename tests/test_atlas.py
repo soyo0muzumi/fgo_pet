@@ -97,3 +97,32 @@ def test_cached_script_can_be_loaded_without_network(paths: ContentPaths) -> Non
     assert loaded is not None
     assert loaded.sha256 == expected.sha256
     assert loaded.raw_path == expected.raw_path
+
+
+@respx.mock
+def test_fetch_war_returns_atlas_structure(paths: ContentPaths) -> None:
+    respx.get("https://api.atlasacademy.io/nice/JP/war/107").mock(
+        return_value=httpx.Response(200, json={"id": 107, "spots": []})
+    )
+
+    payload = AtlasClient(paths).fetch_war(Region.JP, 107)
+
+    assert payload["id"] == 107
+
+
+@respx.mock
+def test_fetch_script_from_known_url_skips_info_request(
+    paths: ContentPaths,
+) -> None:
+    script_url = "https://static.atlasacademy.io/JP/Script/01/story.txt"
+    route = respx.get(script_url).mock(
+        return_value=httpx.Response(200, text="＠マシュ\nはい。\n[k]\n")
+    )
+
+    cached = AtlasClient(paths).fetch_script_url(
+        Region.JP, "0100070010", script_url
+    )
+
+    assert route.call_count == 1
+    assert cached.script_id == "0100070010"
+    assert cached.raw_path.exists()

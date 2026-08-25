@@ -11,6 +11,8 @@ from .cache import atomic_write
 from .catalog import SourceCatalog
 from .compiler import compile_persona, write_persona_bundle
 from .config import ContentPaths
+from .corpus import DEFAULT_STORY_ARCS, load_regional_scripts
+from .corpus_export import export_arc
 from .discovery import MashIdentity, ScriptCandidate, discover_candidates
 from .evidence import EvidenceExtractor, build_evidence_windows
 from .llm import OpenAICompatibleStructuredClient
@@ -169,6 +171,57 @@ def rank_story_chapters(
             failures.append({"script_id": candidate.script_id, "error": str(error)})
         _write_ranking_report(report_path, metrics, failures, output_limit)
     typer.echo(str(report_path))
+
+
+@story_app.command("export-corpus")
+def export_story_corpus(
+    data_root: Path = typer.Option(..., exists=False, file_okay=False),
+    arc: list[str] | None = typer.Option(
+        None, help="Arc slug to export; repeat for multiple arcs"
+    ),
+) -> None:
+    """Download and format all scripts in the approved story arcs."""
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    selected = [
+        item for item in DEFAULT_STORY_ARCS if not arc or item.slug in arc
+    ]
+    unknown = set(arc or ()) - {item.slug for item in DEFAULT_STORY_ARCS}
+    if unknown:
+        raise typer.BadParameter(
+            f"unknown arc slug(s): {', '.join(sorted(unknown))}"
+        )
+    atlas = AtlasClient(paths, timeout_seconds=60)
+    summaries = []
+    master_index = paths.formatted_scripts / "index.json"
+    for item in selected:
+        scripts = load_regional_scripts(atlas, item.war_id)
+        if not scripts:
+            summaries.append(
+                {
+                    **asdict(item),
+                    "status": "unavailable",
+                    "script_count": 0,
+                }
+            )
+        else:
+            result = export_arc(item, scripts, atlas, paths)
+            summaries.append(
+                {
+                    **asdict(item),
+                    "status": "completed" if not result.failed else "partial",
+                    "script_count": len(scripts),
+                    "completed": result.completed,
+                    "failed": result.failed,
+                    "index_path": str(result.index_path),
+                }
+            )
+        atomic_write(
+            master_index,
+            json.dumps(
+                {"arcs": summaries}, ensure_ascii=False, indent=2
+            ).encode("utf-8"),
+        )
+    typer.echo(str(master_index))
 
 
 def _write_ranking_report(
