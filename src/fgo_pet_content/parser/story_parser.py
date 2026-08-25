@@ -62,7 +62,7 @@ def parse_story(
         if command is not None:
             if command.name == "k" and speaker is not None:
                 utterance_order += 1
-                slot = state.current_talk_slot
+                slot = _resolve_speaker_slot(speaker, state)
                 cast_member = state.cast.get(slot) if slot is not None else None
                 state.current_scene().utterances.append(
                     Utterance(
@@ -138,3 +138,14 @@ def _preserve_unknown(
             raw=raw,
         )
     )
+
+
+def _resolve_speaker_slot(speaker: str, state: ParserState) -> str | None:
+    matching_slots = [
+        slot
+        for slot, cast_member in state.cast.items()
+        if cast_member.display_name == speaker
+    ]
+    if len(matching_slots) == 1:
+        return matching_slots[0]
+    return state.current_talk_slot

@@ -66,3 +66,23 @@ def test_script_without_scene_creates_implicit_scene(source: SourceRef) -> None:
     assert document.scenes[0].scene_index == 1
     assert document.scenes[0].background_id is None
     assert document.scenes[0].utterances[0].speaker == "旁白"
+
+
+def test_explicit_speaker_name_overrides_stale_talk_slot(source: SourceRef) -> None:
+    text = "\n".join(
+        [
+            "[charaSet A 6012001 1 桑松]",
+            "[charaSet B 98001000 1 玛修]",
+            "[charaTalk B]",
+            "＠桑松",
+            "你好。",
+            "[k]",
+        ]
+    )
+
+    document = parse_story(text, source, {"98001000": 800100})
+    utterance = document.scenes[0].utterances[0]
+
+    assert utterance.actor_slot == "A"
+    assert utterance.figure_id == "6012001"
+    assert utterance.servant_id is None
