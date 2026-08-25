@@ -61,6 +61,30 @@ def cache_script(
     )
 
 
+def load_latest_cached_script(
+    paths: ContentPaths, region: Region, script_id: str
+) -> CachedScript | None:
+    script_dir = paths.raw_scripts / region.value / script_id
+    metadata_files = sorted(
+        script_dir.glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for metadata_path in metadata_files:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        raw_path = metadata_path.with_suffix(".txt")
+        if raw_path.is_file():
+            return CachedScript(
+                region=region,
+                script_id=script_id,
+                sha256=metadata["sha256"],
+                raw_path=raw_path,
+                metadata_path=metadata_path,
+                source_url=metadata["source_url"],
+            )
+    return None
+
+
 def atomic_write(destination: Path, content: bytes) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:

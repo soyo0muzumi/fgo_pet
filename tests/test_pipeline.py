@@ -13,6 +13,11 @@ class FallbackAtlas:
         self.raw_path = raw_path
         self.calls: list[Region] = []
 
+    def load_cached_script(
+        self, region: Region, script_id: str
+    ) -> CachedScript | None:
+        return None
+
     def fetch_script(self, region: Region, script_id: str) -> CachedScript:
         self.calls.append(region)
         if region is Region.CN:
@@ -55,6 +60,35 @@ def test_cn_missing_uses_jp_and_marks_translation_status(tmp_path: Path) -> None
     assert artifact.document.source.content_hash == "sha256:jp"
     assert artifact.translation_status is TranslationStatus.JP_FALLBACK
     assert artifact.is_related
+
+
+def test_cached_cn_script_is_used_without_network(tmp_path: Path) -> None:
+    raw_path = tmp_path / "x.txt"
+    raw_path.write_text("＠玛修\n好的。\n[k]\n", encoding="utf-8")
+
+    class CachedAtlas(FallbackAtlas):
+        def load_cached_script(
+            self, region: Region, script_id: str
+        ) -> CachedScript | None:
+            if region is not Region.CN:
+                return None
+            return CachedScript(
+                region=region,
+                script_id=script_id,
+                sha256="sha256:cn",
+                raw_path=raw_path,
+                metadata_path=raw_path.with_suffix(".json"),
+                source_url="https://example.test/CN/x.txt",
+            )
+
+    atlas = CachedAtlas(raw_path)
+    artifact = StoryPipeline(
+        atlas, FakeCatalog(), MashIdentity.default()
+    ).fetch_and_parse(ScriptCandidate(script_id="x"))
+
+    assert atlas.calls == []
+    assert artifact.document.source.region is Region.CN
+    assert artifact.translation_status is TranslationStatus.OFFICIAL_CN
 
 
 def test_parsed_artifact_is_written_only_to_external_cache(tmp_path: Path) -> None:

@@ -28,7 +28,12 @@ class StoryPipeline:
 
     def fetch_and_parse(self, candidate: ScriptCandidate) -> ParsedArtifact:
         cached, translation_status = self._fetch_with_fallback(candidate.script_id)
-        source = self._resolve_source(candidate.script_id, cached.region).model_copy(
+        return self.parse_cached(cached, translation_status)
+
+    def parse_cached(
+        self, cached, translation_status: TranslationStatus
+    ) -> ParsedArtifact:
+        source = self._resolve_source(cached.script_id, cached.region).model_copy(
             update={
                 "region": cached.region,
                 "content_hash": cached.sha256,
@@ -48,6 +53,12 @@ class StoryPipeline:
         )
 
     def _fetch_with_fallback(self, script_id: str):
+        cached_cn = self._atlas.load_cached_script(Region.CN, script_id)
+        if cached_cn is not None:
+            return cached_cn, TranslationStatus.OFFICIAL_CN
+        cached_jp = self._atlas.load_cached_script(Region.JP, script_id)
+        if cached_jp is not None:
+            return cached_jp, TranslationStatus.JP_FALLBACK
         try:
             return (
                 self._atlas.fetch_script(Region.CN, script_id),

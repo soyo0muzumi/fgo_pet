@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from .cache import CachedScript, cache_script
+from .cache import CachedScript, cache_script, load_latest_cached_script
 from .config import ContentPaths
 from .models.source import Region
 
@@ -54,6 +54,11 @@ class AtlasClient:
             )
             for item in response.json()
         ]
+
+    def load_cached_script(
+        self, region: Region, script_id: str
+    ) -> CachedScript | None:
+        return load_latest_cached_script(self._paths, region, script_id)
 
     def fetch_script(self, region: Region, script_id: str) -> CachedScript:
         info_response = httpx.get(

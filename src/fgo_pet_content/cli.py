@@ -1,8 +1,10 @@
 import json
 from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 
 import typer
+import httpx
 
 from .atlas import AtlasClient
 from .cache import atomic_write
@@ -19,6 +21,7 @@ from .models.story import StoryDocument
 from .pipeline import StoryPipeline, write_parsed_artifact
 from .reporting import build_review_report
 from .review import review_card
+from .ranking import measure_chapter, rank_chapters
 
 
 app = typer.Typer(help="FGO Pet content pipeline")
@@ -133,6 +136,74 @@ def fetch_single_story_script(
         json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8"),
     )
     typer.echo(str(report_path))
+
+
+@story_app.command("rank")
+def rank_story_chapters(
+    data_root: Path = typer.Option(..., exists=False, file_okay=False),
+    master_root: Path = typer.Option(..., exists=True, file_okay=False),
+    fetch_limit: int = typer.Option(30, min=1, max=100),
+    output_limit: int = typer.Option(20, min=1, max=50),
+) -> None:
+    """Measure a bounded candidate pool and write a redacted shortlist."""
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    atlas = AtlasClient(paths)
+    identity = MashIdentity.default()
+    catalog = SourceCatalog.from_master_root(master_root, Region.JP)
+    pipeline = StoryPipeline(atlas, catalog, identity)
+    candidates = discover_candidates(identity, atlas)[:fetch_limit]
+    metrics = []
+    failures = []
+    report_path = paths.reports / "mash-chapter-candidates.json"
+    for candidate in candidates:
+        try:
+            artifact = pipeline.fetch_and_parse(candidate)
+            write_parsed_artifact(artifact, paths)
+            metrics.append(
+                measure_chapter(
+                    artifact.document,
+                    atlas_score=candidate.best_score,
+                )
+            )
+        except (httpx.HTTPError, ValueError) as error:
+            failures.append({"script_id": candidate.script_id, "error": str(error)})
+        _write_ranking_report(report_path, metrics, failures, output_limit)
+    typer.echo(str(report_path))
+
+
+def _write_ranking_report(
+    report_path: Path,
+    metrics: list,
+    failures: list[dict[str, str]],
+    output_limit: int,
+) -> None:
+    ranked = rank_chapters(metrics)[:output_limit]
+    report = {
+        "selection_policy": {
+            "target_count": "8-12",
+            "candidate_count": output_limit,
+            "category_quotas": {
+                "core_growth": "6-7",
+                "relationship": 2,
+                "daily": "1-2",
+                "special": 1,
+            },
+        },
+        "candidates": [
+            {
+                **asdict(item),
+                "review_category": None,
+                "review_decision": "pending",
+                "review_notes": None,
+            }
+            for item in ranked
+        ],
+        "failures": failures,
+    }
+    atomic_write(
+        report_path,
+        json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8"),
+    )
 
 
 @evidence_app.command("extract")

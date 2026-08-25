@@ -79,3 +79,21 @@ def test_missing_script_raises_typed_error(paths: ContentPaths) -> None:
 
     assert error.value.region is Region.CN
     assert error.value.script_id == "missing"
+
+
+@respx.mock
+def test_cached_script_can_be_loaded_without_network(paths: ContentPaths) -> None:
+    script_url = "https://static.atlasacademy.io/CN/Script/02/cached.txt"
+    respx.get("https://api.atlasacademy.io/nice/CN/script/cached").mock(
+        return_value=httpx.Response(200, json={"scriptId": "cached", "script": script_url})
+    )
+    respx.get(script_url).mock(return_value=httpx.Response(200, text="cached text"))
+    client = AtlasClient(paths)
+    expected = client.fetch_script(Region.CN, "cached")
+    respx.routes.clear()
+
+    loaded = client.load_cached_script(Region.CN, "cached")
+
+    assert loaded is not None
+    assert loaded.sha256 == expected.sha256
+    assert loaded.raw_path == expected.raw_path
