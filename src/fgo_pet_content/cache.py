@@ -36,7 +36,7 @@ def cache_script(
     script_dir.mkdir(parents=True, exist_ok=True)
 
     if not raw_path.exists():
-        _atomic_write(raw_path, content)
+        atomic_write(raw_path, content)
     if not metadata_path.exists():
         metadata = {
             "region": region.value,
@@ -46,7 +46,7 @@ def cache_script(
             "size_bytes": len(content),
             "fetched_at": datetime.now(UTC).isoformat(),
         }
-        _atomic_write(
+        atomic_write(
             metadata_path,
             json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
         )
@@ -61,7 +61,8 @@ def cache_script(
     )
 
 
-def _atomic_write(destination: Path, content: bytes) -> None:
+def atomic_write(destination: Path, content: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
         temporary.write(content)
         temporary.flush()
