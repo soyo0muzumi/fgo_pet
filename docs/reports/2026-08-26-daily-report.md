@@ -4,7 +4,7 @@
 
 ## 今日结论
 
-今日计划已完成，可以有边界地进入 Phase 0。内容管线现已从“候选证据生成”推进到“人工审核、approved-only 编译、固定 Prompt 测试和运行时分层”。
+今日原计划已完成，但后续评审新增三个前置项，因此暂不能进入 Phase 0。内容管线已从“候选证据生成”推进到“人工审核、approved-only 编译、固定 Prompt 测试和运行时分层”；角色资料卡、按需剧情检索和常服美术处理完成后再进入下一阶段。
 
 ## 今日完成
 
@@ -47,9 +47,9 @@
 
 ### 5. 运行时人格分层
 
-确定六层注入结构：稳定核心人格、说话风格、工作陪伴规则、已审核剧情知识、当前任务状态、短期对话记忆。最大预算约 3,400 tokens，普通非剧情对话约 2,500 tokens；禁止注入完整剧情。
+确定六层注入结构：稳定核心人格、说话风格、工作陪伴规则、已审核剧情知识、当前任务状态、短期对话记忆。后续评审将知识层进一步拆为常驻资料卡摘要与按需剧情检索；禁止注入完整剧情。
 
-规格：`docs/superpowers/specs/2026-08-26-runtime-persona-layering.md`
+规格：`docs/superpowers/specs/2026-08-26-runtime-persona-layering.md`、`docs/superpowers/specs/2026-08-26-knowledge-and-art-readiness-design.md`
 
 ## 验证
 
