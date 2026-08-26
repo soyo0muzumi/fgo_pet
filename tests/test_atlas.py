@@ -111,6 +111,42 @@ def test_fetch_war_returns_atlas_structure(paths: ContentPaths) -> None:
 
 
 @respx.mock
+def test_fetch_servant_requests_lore_and_reuses_cache(paths: ContentPaths) -> None:
+    route = respx.get(
+        "https://api.atlasacademy.io/nice/CN/servant/1",
+        params={"lore": "true"},
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 800100, "collectionNo": 1, "profile": {"costume": {}}},
+        )
+    )
+    client = AtlasClient(paths)
+
+    first = client.fetch_servant(Region.CN, 1, lore=True)
+    respx.routes.clear()
+    second = client.fetch_servant(Region.CN, 1, lore=True)
+
+    assert first == second
+    assert first is not None
+    assert first["id"] == 800100
+    assert route.call_count == 1
+    assert (paths.raw_scripts / "servants" / "CN" / "1-lore.json").exists()
+
+
+@respx.mock
+def test_fetch_servant_returns_none_when_region_is_unavailable(
+    paths: ContentPaths,
+) -> None:
+    respx.get(
+        "https://api.atlasacademy.io/nice/JP/servant/1",
+        params={"lore": "true"},
+    ).mock(return_value=httpx.Response(404, json={"detail": "Not Found"}))
+
+    assert AtlasClient(paths).fetch_servant(Region.JP, 1, lore=True) is None
+
+
+@respx.mock
 def test_fetch_script_from_known_url_skips_info_request(
     paths: ContentPaths,
 ) -> None:

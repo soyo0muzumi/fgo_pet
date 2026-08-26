@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 
 import httpx
 
-from .cache import CachedScript, cache_script, load_latest_cached_script
+from .cache import CachedScript, atomic_write, cache_script, load_latest_cached_script
 from .config import ContentPaths
 from .models.source import Region
 
@@ -13,6 +14,7 @@ from .models.source import Region
 SEARCH_URL = "https://api.atlasacademy.io/nice/{region}/script/search"
 SCRIPT_INFO_URL = "https://api.atlasacademy.io/nice/{region}/script/{script_id}"
 WAR_URL = "https://api.atlasacademy.io/nice/{region}/war/{war_id}"
+SERVANT_URL = "https://api.atlasacademy.io/nice/{region}/servant/{collection_no}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +68,38 @@ class AtlasClient:
             return None
         response.raise_for_status()
         return response.json()
+
+    def fetch_servant(
+        self, region: Region, collection_no: int, *, lore: bool = True
+    ) -> dict | None:
+        suffix = "-lore" if lore else ""
+        cache_path = (
+            self._paths.raw_scripts
+            / "servants"
+            / region.value
+            / f"{collection_no}{suffix}.json"
+        )
+        if cache_path.exists():
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+
+        response = httpx.get(
+            SERVANT_URL.format(
+                region=region.value,
+                collection_no=collection_no,
+            ),
+            params={"lore": str(lore).lower()},
+            timeout=self._timeout,
+            follow_redirects=True,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        payload = response.json()
+        atomic_write(
+            cache_path,
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+        return payload
 
     def load_cached_script(
         self, region: Region, script_id: str

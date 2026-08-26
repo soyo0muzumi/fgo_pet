@@ -16,6 +16,7 @@ from .corpus_export import export_arc
 from .discovery import MashIdentity, ScriptCandidate, discover_candidates
 from .evidence import EvidenceExtractor, build_evidence_windows
 from .llm import OpenAICompatibleStructuredClient
+from .knowledge import build_index_artifact, build_profile_artifact, knowledge_dir
 from .models.evidence import EvidenceCard
 from .models.source import Region
 from .models.source import ReviewStatus
@@ -24,15 +25,18 @@ from .pipeline import StoryPipeline, write_parsed_artifact
 from .reporting import build_review_report
 from .review import review_card
 from .ranking import measure_chapter, rank_chapters
+from .retrieval import search_story_index
 
 
 app = typer.Typer(help="FGO Pet content pipeline")
 story_app = typer.Typer(help="Discover and fetch FGO story scripts")
 evidence_app = typer.Typer(help="Extract and review persona evidence")
 persona_app = typer.Typer(help="Compile approved persona data")
+knowledge_app = typer.Typer(help="Build and query Mash knowledge artifacts")
 app.add_typer(story_app, name="story")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(persona_app, name="persona")
+app.add_typer(knowledge_app, name="knowledge")
 
 
 @app.callback()
@@ -324,6 +328,75 @@ def compile_persona_command(
         compile_persona(_load_cards(evidence_file)), output_dir
     )
     typer.echo(json.dumps({key: str(path) for key, path in outputs.items()}, indent=2))
+
+
+@knowledge_app.command("build-profile")
+def build_knowledge_profile(
+    data_root: Path = typer.Option(..., exists=False, file_okay=False),
+    servant: int = typer.Option(800100),
+    collection_no: int = typer.Option(1),
+) -> None:
+    """Build a compact lore profile with per-field language provenance."""
+    if servant != 800100 or collection_no != 1:
+        raise typer.BadParameter("only Mash (servant 800100, collection 1) is configured")
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    profile, destination = build_profile_artifact(
+        paths,
+        AtlasClient(paths),
+        servant_id=servant,
+        collection_no=collection_no,
+    )
+    typer.echo(
+        json.dumps(
+            {"path": str(destination), "fact_count": len(profile.facts)},
+            ensure_ascii=False,
+        )
+    )
+
+
+@knowledge_app.command("build-index")
+def build_knowledge_index(
+    data_root: Path = typer.Option(..., exists=False, file_okay=False),
+) -> None:
+    """Build the local FTS story-scene index."""
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    result, destination = build_index_artifact(paths)
+    typer.echo(
+        json.dumps(
+            {"path": str(destination), "scene_count": result.scene_count},
+            ensure_ascii=False,
+        )
+    )
+
+
+@knowledge_app.command("search")
+def search_knowledge(
+    data_root: Path = typer.Option(..., exists=False, file_okay=False),
+    query: str = typer.Option(...),
+    limit: int = typer.Option(8, min=1, max=20),
+) -> None:
+    """Search indexed scenes and print redacted, traceable results."""
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    hits = search_story_index(
+        knowledge_dir(paths) / "story.sqlite3", query, limit=limit
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "query": query,
+                "hits": [
+                    {
+                        "scene_id": hit.scene_id,
+                        "score": hit.score,
+                        "region": hit.source.region.value,
+                        "excerpt": hit.text[:8] + ("…" if len(hit.text) > 8 else ""),
+                    }
+                    for hit in hits
+                ],
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def _load_cards(path: Path) -> list[EvidenceCard]:
