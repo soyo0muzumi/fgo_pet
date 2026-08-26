@@ -9,7 +9,7 @@ import httpx
 from .atlas import AtlasClient
 from .cache import atomic_write
 from .catalog import SourceCatalog
-from .compiler import compile_persona, write_persona_bundle
+from .compiler import compile_persona, load_evidence_cards, write_persona_bundle
 from .config import ContentPaths
 from .corpus import DEFAULT_STORY_ARCS, load_regional_scripts
 from .corpus_export import export_arc
@@ -327,11 +327,7 @@ def compile_persona_command(
 
 
 def _load_cards(path: Path) -> list[EvidenceCard]:
-    return [
-        EvidenceCard.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    return load_evidence_cards(path)
 
 
 if __name__ == "__main__":

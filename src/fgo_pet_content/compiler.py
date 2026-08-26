@@ -10,6 +10,15 @@ from .models.evidence import EvidenceCard
 from .models.source import Authority, ReviewStatus
 
 
+REVIEW_ARTIFACT_FIELDS = {
+    "chapter",
+    "quote",
+    "original_quote",
+    "summary",
+    "context_note",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class SupportSummary:
     claim: str
@@ -23,6 +32,18 @@ class PersonaBundle:
     style_evidence: tuple[EvidenceCard, ...]
     knowledge_evidence: tuple[EvidenceCard, ...]
     support: tuple[SupportSummary, ...]
+
+
+def load_evidence_cards(path: Path) -> list[EvidenceCard]:
+    cards = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        for field in REVIEW_ARTIFACT_FIELDS:
+            payload.pop(field, None)
+        cards.append(EvidenceCard.model_validate(payload))
+    return cards
 
 
 def merge_support(cards: list[EvidenceCard]) -> list[SupportSummary]:
