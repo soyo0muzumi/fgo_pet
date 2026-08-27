@@ -1,0 +1,216 @@
+{
+  "schema_version": 3,
+  "appearance_id": "casual",
+  "assets": [
+    {
+      "type": "body",
+      "stable_id": "full_body",
+      "path": "runtime/full_body.png",
+      "sha256": "sha256:e38e71bbf86480b37b11ca3be761252a1f7f9fb3d67588983c1d1b651ee2d1f9"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c01",
+      "path": "runtime/expressions/r01c01.png",
+      "sha256": "sha256:aa6cab409b9515a68d926925c64d5ca05cf977a6cb669692b3c34b31385cdc56"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c02",
+      "path": "runtime/expressions/r01c02.png",
+      "sha256": "sha256:5ead7ab15d9335870a7bcfef9a0b9b46399990b44ca2267007ea79738709c5fe"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c03",
+      "path": "runtime/expressions/r01c03.png",
+      "sha256": "sha256:ced822cd69fe69ec541aa1fe082342b1735fe266f5cc38c8607015d3bc7e3b18"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c04",
+      "path": "runtime/expressions/r01c04.png",
+      "sha256": "sha256:88c947cd5d242f5919ec739f2697e6c94e0221325ab76b45658ab0ea2efd2374"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c01",
+      "path": "runtime/expressions/r02c01.png",
+      "sha256": "sha256:b0691ba4b77fabeab7c9fa9b555fda34ce0c18eea9a231cb070c086250af7bfa"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c02",
+      "path": "runtime/expressions/r02c02.png",
+      "sha256": "sha256:9bd0e926f9fb463a203bc6790f5ed58f29cba741ffdb07dd03db20498d2b3886"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c03",
+      "path": "runtime/expressions/r02c03.png",
+      "sha256": "sha256:d5861b2f1de7159416b191c1a1222d58c19dda267633a2a922b03d7b3eb5c6f8"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c04",
+      "path": "runtime/expressions/r02c04.png",
+      "sha256": "sha256:48d99b61cfcfa21bcf34ef38fad1fcc410422178bc3cd41951a2a84ec5cc26c6"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c01",
+      "path": "runtime/expressions/r03c01.png",
+      "sha256": "sha256:7a0f2d64187ee01ca24d05d7b4db205f4c373df4a7ecb1fca247dbd09eee29ae"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c02",
+      "path": "runtime/expressions/r03c02.png",
+      "sha256": "sha256:db8246b0e42bb55ccc3cd2419e2b009bfc85f94f9b06cee2b8f3e2985cfb3d53"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c03",
+      "path": "runtime/expressions/r03c03.png",
+      "sha256": "sha256:1921447a83481c20e09a5566e05314e5d9ee674608d233f09cbd216cf5cface2"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c04",
+      "path": "runtime/expressions/r03c04.png",
+      "sha256": "sha256:08fbc93b6b78c448a8655dbff690f1f8c7e2d9b91dd8eff7dfdd1f6777ef27ea"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c01",
+      "path": "runtime/expressions/r04c01.png",
+      "sha256": "sha256:891af3c4ba681878ee71fc9352aae2d1ecae301ede4ff837893579fd50a543b1"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c02",
+      "path": "runtime/expressions/r04c02.png",
+      "sha256": "sha256:93bd7bd1fb8c354c57d3146a1416ead9e002fad8679f08405cc7fb22a37d2695"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c03",
+      "path": "runtime/expressions/r04c03.png",
+      "sha256": "sha256:5168c6d467f8170718b2e7e7b4280f7732507ad3c22167d87f2fdba0f418a1c9"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c04",
+      "path": "runtime/expressions/r04c04.png",
+      "sha256": "sha256:4d551c111507dcdc3825361f1c15965fb4dd295aeb973772967f3cc0b179da4e"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c01",
+      "path": "runtime/expressions/r05c01.png",
+      "sha256": "sha256:3d138bb3b4e709e6df669cccd170a3a0fa9bbe656b058304448c6d8fd6ec7830"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c02",
+      "path": "runtime/expressions/r05c02.png",
+      "sha256": "sha256:fcb9f3ed10d03f4430920348531e563fa28ef0b8c0893f4b2f96dc0fde93b8bc"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c03",
+      "path": "runtime/expressions/r05c03.png",
+      "sha256": "sha256:7a8a92ef33aa6ef8f64b160a1f65efc97b9f9e812da67a7988084756c7e5ee3d"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c04",
+      "path": "runtime/expressions/r05c04.png",
+      "sha256": "sha256:df70afe4607146f1ebda5fd4987207cdd266552d19c78358b7ab10b1ed183fdc"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c01",
+      "path": "runtime/expressions/r06c01.png",
+      "sha256": "sha256:8e3c8b0a76b02e5f495df3fda4ac9a6df126a42d008f41bc7305f3b2368037f6"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c02",
+      "path": "runtime/expressions/r06c02.png",
+      "sha256": "sha256:4e5deeb8fa6c949bf3ac648422db49e60346661ce813cde0e1751cb99ab0886d"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c03",
+      "path": "runtime/expressions/r06c03.png",
+      "sha256": "sha256:e35c004ea38e808759b52cd580c1e52a5a432c695c64b155762915e7240305f2"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c04",
+      "path": "runtime/expressions/r06c04.png",
+      "sha256": "sha256:e59a293c6b1b51a4f15fba50fe2b8633014576c1536e738e1808abe0341ba860"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c01",
+      "path": "runtime/expressions/r07c01.png",
+      "sha256": "sha256:2a16aa09936f1c0401cc6fec47a93ac5578af30e0b19f333ac62e056c80e3be0"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c02",
+      "path": "runtime/expressions/r07c02.png",
+      "sha256": "sha256:645374c73d3f05662453b6dccc3dcd40af1eccbb35ba5be5326e4fcf3dbdb6c0"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c03",
+      "path": "runtime/expressions/r07c03.png",
+      "sha256": "sha256:689a98af63a09b0efe9afc94ef01bf9c7294170366fd4be217fb5d66ff60eff9"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c04",
+      "path": "runtime/expressions/r07c04.png",
+      "sha256": "sha256:4e75a1007aee88f1a0b152d95a82975fea26ce470e2771683d2eb95ea547d690"
+    }
+  ],
+  "composition": {
+    "body_id": "full_body",
+    "default_expression_id": "r01c01",
+    "overlay_offset": {
+      "x": 13,
+      "y": 0
+    },
+    "overlay_size": {
+      "width": 256,
+      "height": 240
+    },
+    "panel_anchor": {
+      "x": 151,
+      "y": 360
+    },
+    "default_scale": 0.5
+  },
+  "expression_semantics": {
+    "neutral": "r01c04",
+    "happy": "r01c01",
+    "excited": "r01c02",
+    "shy": "r07c01",
+    "concerned": "r06c04",
+    "sad": "r05c02",
+    "surprised": "r04c02",
+    "angry": "r02c01"
+  },
+  "fallback": {
+    "happy": "neutral",
+    "excited": "neutral",
+    "shy": "neutral",
+    "concerned": "neutral",
+    "sad": "neutral",
+    "surprised": "neutral",
+    "angry": "neutral"
+  }
+}

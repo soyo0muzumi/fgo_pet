@@ -17,4 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\packs\**" Link="fixtures\packs\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
