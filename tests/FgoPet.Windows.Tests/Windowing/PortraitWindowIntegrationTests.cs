@@ -2,11 +2,13 @@ using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FgoPet.App.Main;
+using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
@@ -23,6 +25,183 @@ namespace FgoPet.Windows.Tests.Windowing;
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [Fact]
+    public void PortraitWindow_mounts_panel_and_removes_it_from_layout_when_collapsed()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel);
+            try
+            {
+                Assert.False(window.IsAttachedPanelVisible);
+
+                panel.PortraitClick();
+                Assert.True(window.IsAttachedPanelVisible);
+
+                panel.PortraitClick();
+                Assert.False(window.IsAttachedPanelVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Portrait_click_and_escape_drive_the_attached_panel_state_machine()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel);
+            try
+            {
+                window.HandlePortraitClick();
+                Assert.Equal(Core.Panels.AttachedPanelState.Compact, panel.State);
+
+                panel.DialogueClick();
+                window.HandleEscape();
+                Assert.Equal(Core.Panels.AttachedPanelState.Compact, panel.State);
+
+                window.HandleEscape();
+                Assert.Equal(Core.Panels.AttachedPanelState.Collapsed, panel.State);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Attached_panel_uses_production_flip_and_work_area_height_cap()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 0, Top = 0 };
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 50, 300),
+                    0.5,
+                    new Dpi2(1, 1));
+
+                var placement = window.ArrangeAttachedPanel(
+                    geometry,
+                    new DeviceRect(0, 0, 1000, 80),
+                    new Dpi2(1, 1));
+
+                Assert.Equal(PanelSide.Right, placement.Side);
+                Assert.Equal(48, placement.Bounds.Height);
+                var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
+                Assert.Equal(48, host.MaxHeight);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Attached_panel_is_interactive_only_while_it_is_visible()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 0, Top = 0 };
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 50, 300),
+                    0.5,
+                    new Dpi2(1, 1));
+                var placement = window.ArrangeAttachedPanel(
+                    geometry,
+                    new DeviceRect(0, 0, 1000, 800),
+                    new Dpi2(1, 1));
+                var localPoint = new Point(
+                    placement.Bounds.X - (window.Left * 1) + 1,
+                    placement.Bounds.Y - (window.Top * 1) + 1);
+
+                Assert.True(window.IsAttachedPanelHit(localPoint));
+
+                panel.PortraitClick();
+                Assert.False(window.IsAttachedPanelHit(localPoint));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Window_idle_tick_collapses_expanded_content_to_compact()
+    {
+        StaRun(() =>
+        {
+            var time = new MutableTimeProvider();
+            var panel = new AttachedPanelViewModel(time);
+            var window = new PortraitWindow(panel);
+            try
+            {
+                panel.PortraitClick();
+                panel.DialogueClick();
+                panel.PointerLeft();
+                time.Now = time.Now.AddSeconds(31);
+
+                window.HandlePanelIdleTick();
+
+                Assert.Equal(Core.Panels.AttachedPanelState.Compact, panel.State);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Saving_with_an_open_panel_persists_the_portrait_bounds_not_the_host_bounds()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 300, Top = 100 };
+            var placement = new MemoryPlacementStore();
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                placement,
+                new FixedScreenService());
+            panel.PortraitClick();
+            var geometry = PortraitLayout.Calculate(
+                new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 250, 300),
+                0.5,
+                new Dpi2(1, 1));
+            window.ArrangeAttachedPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
+
+            window.Close();
+
+            Assert.NotNull(placement.Value);
+            Assert.Equal(300, placement.Value.OffsetX);
+            Assert.Equal(100, placement.Value.OffsetY);
+            Assert.Equal(150, placement.Value.WindowWidthDip);
+            Assert.Equal(300, placement.Value.WindowHeightDip);
+        });
+    }
+
     [Fact]
     public void PortraitWindow_presents_a_validated_snapshot_on_the_STA_thread()
     {
@@ -211,6 +390,12 @@ public sealed class PortraitWindowIntegrationTests
         public WindowPlacement? Value { get; set; }
         public WindowPlacement? Load() => Value;
         public void Save(WindowPlacement placement) => Value = placement;
+    }
+
+    private sealed class MutableTimeProvider : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = DateTimeOffset.Parse("2026-08-28T00:00:00Z");
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     private sealed class FixedScreenService : IScreenLayoutService

@@ -1,7 +1,7 @@
 # FGO Pet Phase 1 实施审核任务
 
 日期：2026-08-27（2026-08-28 内审补充）
-状态：代码内审与生产组合补充已完成；实机审核和附着面板生产接线仍阻塞发布
+状态：代码内审、生产组合与附着面板接线已完成；实机审核仍阻塞发布
 
 > 本文件把「代码接口审核」与「实机审核」写成可勾选的审核任务清单，并记录当前已完成的
 > 实施与测试证据。审核通过前不把 Phase 1 标记为可发布。
@@ -61,9 +61,12 @@ Phase 1 主计划（13 项任务）已在 `src/FgoPet.Core`、`src/FgoPet.Infras
 - [x] `TrayService` 通过 WPF `OnStartup` 的生产 DI 图首次解析，在 UI 线程创建。
 - [ ] 附件：`UseWindowsForms` 已通过 `<Using Remove>` 移除全局 Imports（避免 Application/Point
       歧义），`TrayService` 局部引入；需确认无其他 WPF/WinForms 命名冲突残留。
-- [ ] **新增发现（重要）**：`AttachedPanelViewModel` / `AttachedPanelView` 虽有组件测试，仍未挂入
-      `PortraitWindow`，Compact / Dialogue / Todo 也没有生产入口。因此面板相关 Phase 1 验收不能
-      仅凭现有测试转绿，必须在发布前新增一项生产接线任务并进行工作区占用实测。
+- [x] **附着面板生产接线已关闭**：`AttachedPanelViewModel` / `AttachedPanelView` 已挂入
+      `PortraitWindow`。画像点击打开 Compact，Dialogue / Todo 独立展开，Escape 逐级收起，
+      30 秒空闲退回 Compact；收起后从布局和命中区域移除。生产窗口使用 `AttachedPanelLayout`
+      完成左右翻转与工作区 60% 高度上限，面板区域可交互而透明空区继续穿透。
+- [x] 面板视觉延续 Phase 0：深海军蓝半透明底、青色/洋红强调色、Segoe UI 与
+      Microsoft YaHei UI 字体回退；仅以 WPF 样式重建，不复制 FGO 原作纹理，也不增加角色包资源依赖。
 
 ### A3 安全核对点（内审已完成，结论：可接受）
 
@@ -100,21 +103,20 @@ Phase 1 主计划（13 项任务）已在 `src/FgoPet.Core`、`src/FgoPet.Infras
 
 ## 4. 已完成证据（供审核对照）
 
-- 测试：Core 56 / Infra 64 / App 72 / Windows 8 = **200 通过、0 失败**。
+- 测试：Core 56 / Infra 64 / App 72 / Windows 16 = **208 通过、0 失败**。
 - Release 构建 `-warnaserror`：0 警告 / 0 错误。
 - `scripts/test-phase1.ps1` 门禁已跑：Build→单元→Windows 集成→无 SkiaSharp→手动矩阵提示。
 - `--smoke-test`：从正式应用入口执行，退出码 0，输出 no-pack / 不建窗口 / tray+库确认；
   应用壳使用延迟解析，smoke 不创建托盘或 WPF 窗口。
 - 单实例管道转发、窗口呈现、托盘创建销毁：Windows 集成测试已过。
-- 新增：生产容器解析、启动三路径、非等比 DPI、Win32 主屏枚举、coordinator 位置恢复测试已过。
+- 新增：生产容器解析、启动三路径、非等比 DPI、Win32 主屏枚举、coordinator 位置恢复、
+  面板生产挂载、状态可见性、左右翻转、60% 高度限制、透明命中与空闲收起测试已过。
 
 ---
 
 ## 5. 下一步决策候选
 
-1. **先接线附着 UI**：把 Compact / Dialogue / Todo 挂入 `PortraitWindow`，统一画像与面板
-   窗口边界、命中区域和锚点，再补生产集成测试；
-2. 进入 P1.4（Python `.fgopetpack` SDK），产出真实玛修包作为端到端和实机审核输入；
-3. 使用真实包执行 B 矩阵，补齐 200% / 150% / 混合 DPI 证据后再判定 Phase 1 可发布。
+1. 进入 P1.4（Python `.fgopetpack` SDK），产出真实玛修包作为端到端和实机审核输入；
+2. 使用真实包执行 B 矩阵，补齐 200% / 150% / 混合 DPI 证据后再判定 Phase 1 可发布。
 
-当前建议顺序为 1 → 2 → 3。生产组合缺口已关闭，但 Phase 1 仍不可标记为可发布。
+附着面板与生产组合缺口已关闭，但 Phase 1 仍不可标记为可发布。

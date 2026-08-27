@@ -11,5 +11,8 @@
         Topmost="True"
         ShowActivated="False"
         SizeToContent="WidthAndHeight">
-    <portraits:PortraitView x:Name="Portrait" />
+    <Canvas x:Name="HostCanvas">
+        <ContentControl x:Name="PanelHost" Visibility="Collapsed" />
+        <portraits:PortraitView x:Name="Portrait" />
+    </Canvas>
 </Window>

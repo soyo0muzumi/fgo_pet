@@ -1,23 +1,52 @@
 <UserControl x:Class="FgoPet.App.Panels.AttachedPanelView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Background="#E0102633">
-    <StackPanel Margin="8">
-        <TextBlock Text="对话" FontWeight="Bold" Foreground="#66E0FF" />
-        <ItemsControl ItemsSource="{Binding Dialogue}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="#FFF6E0" />
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <TextBlock Text="待办" FontWeight="Bold" Foreground="#FF66CC" Margin="0,8,0,0" />
-        <ItemsControl ItemsSource="{Binding Todo}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="#FFF6E0" MaxHeight="40" />
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-    </StackPanel>
+             MinWidth="220"
+             MaxWidth="340"
+             FontFamily="Segoe UI, Microsoft YaHei UI"
+             MouseEnter="OnPointerEntered"
+             MouseLeave="OnPointerLeft">
+    <Border Background="#E0102633" BorderBrush="#CC66E0FF" BorderThickness="1"
+            CornerRadius="10" Padding="10" SnapsToDevicePixels="True">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,8">
+                <TextBlock Text="FGO PET" Foreground="#66E0FF" FontWeight="SemiBold" />
+                <Button x:Name="CollapseButton" DockPanel.Dock="Right" Content="收起" Click="OnCollapseClick"
+                        Padding="8,2" Foreground="#FFF6E0" Background="#40203A4A"
+                        BorderBrush="#8066E0FF" />
+            </DockPanel>
+            <StackPanel x:Name="CompactActions" Orientation="Horizontal">
+                <Button Content="对话" Click="OnDialogueClick" MinWidth="84" Margin="0,0,6,0"
+                        Foreground="#66E0FF" Background="#40203A4A" BorderBrush="#8066E0FF" />
+                <Button Content="Todo" Click="OnTodoClick" MinWidth="84"
+                        Foreground="#FF66CC" Background="#40203A4A" BorderBrush="#80FF66CC" />
+            </StackPanel>
+            <StackPanel x:Name="DialogueContent" Visibility="Collapsed">
+                <TextBlock Text="对话" FontWeight="Bold" Foreground="#66E0FF" Margin="0,0,0,6" />
+                <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Dialogue}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" TextWrapping="WrapWithOverflow"
+                                           Foreground="#FFF6E0" Margin="0,0,0,5" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+            <StackPanel x:Name="TodoContent" Visibility="Collapsed">
+                <TextBlock Text="Todo" FontWeight="Bold" Foreground="#FF66CC" Margin="0,0,0,6" />
+                <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Todo}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" TextWrapping="WrapWithOverflow"
+                                           Foreground="#FFF6E0" MaxHeight="40" Margin="0,0,0,5" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
+using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.App.Servants;
 using FgoPet.App.Tray;
@@ -54,6 +55,7 @@ public static class ServiceRegistration
             new Dpi2(1, 1)))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<PortraitController>())
         .AddSingleton<ServantLibraryViewModel>()
+        .AddSingleton(provider => new AttachedPanelViewModel(provider.GetRequiredService<TimeProvider>()))
         .AddSingleton<ServantLibraryWindow>()
         .AddSingleton<PortraitWindow>()
         .AddSingleton<PortraitWindowCoordinator>()
