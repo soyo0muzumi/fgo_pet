@@ -7,7 +7,7 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict
 
 from ..profile import MashProfile
-from .index import search_story_index
+from .index import load_adjacent_story_hits, search_story_index
 from .models import StoryHit
 from .query import route_query
 
@@ -66,6 +66,9 @@ def compose_context(
             reranker_status = "applied"
         except Exception:
             reranker_status = "fallback"
+
+    if len(hits) == 1:
+        hits = [hits[0], *load_adjacent_story_hits(database, hits[0])]
 
     selected: list[StoryHit] = []
     seen: set[str] = set()

@@ -81,3 +81,58 @@ def test_fts_query_syntax_is_treated_as_plain_text(tmp_path: Path) -> None:
     build_story_index(database, [_document()])
 
     assert search_story_index(database, '" OR NOT (', limit=8) == []
+
+
+def test_chinese_topic_phrase_outranks_scattered_character_matches(
+    tmp_path: Path,
+) -> None:
+    document = _document()
+    document.scenes.insert(
+        0,
+        StoryScene(
+            scene_index=9,
+            utterances=[
+                Utterance(
+                    order=0,
+                    speaker="路人",
+                    text="黑云下的颜色很深，长枪旁放着一根管子。",
+                    raw_start_line=10,
+                    raw_end_line=11,
+                )
+            ],
+        ),
+    )
+    database = tmp_path / "story.sqlite3"
+    build_story_index(database, [document])
+
+    hits = search_story_index(database, "黑色枪管是什么？", limit=8)
+
+    assert hits[0].scene_id == "chapter-1:1"
+    assert all(hit.scene_id != "chapter-1:9" for hit in hits)
+
+
+def test_story_term_alias_matches_official_wording(tmp_path: Path) -> None:
+    document = _document()
+    document.scenes[1].utterances[0].text = "黑色铁炮管用于对抗特殊威胁。"
+    document.scenes.insert(
+        0,
+        StoryScene(
+            scene_index=9,
+            utterances=[
+                Utterance(
+                    order=0,
+                    speaker="路人",
+                    text="黑云、颜色、长枪和管子都在仓库里。",
+                    raw_start_line=10,
+                    raw_end_line=11,
+                )
+            ],
+        ),
+    )
+    database = tmp_path / "story.sqlite3"
+    build_story_index(database, [document])
+
+    hits = search_story_index(database, "黑色枪管是什么？", limit=8)
+
+    assert hits[0].scene_id == "chapter-1:1"
+    assert all(hit.scene_id != "chapter-1:9" for hit in hits)

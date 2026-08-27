@@ -63,6 +63,7 @@ def test_query_router_keeps_daily_and_profile_questions_out_of_story() -> None:
     assert route_query("早上好", profile).route == "profile"
     assert route_query("你喜欢什么？", profile).route == "profile"
     assert route_query("黑色枪管是什么？", profile).route == "story"
+    assert route_query("你在冬木说过这句话吗？", profile).route == "story"
 
 
 def test_plot_question_uses_two_to_four_bounded_windows(tmp_path: Path) -> None:
@@ -101,3 +102,40 @@ def test_missing_evidence_is_a_coverage_gap_not_character_ignorance(
     assert context.coverage_gap is True
     assert "资料覆盖不足" in context.unsupported_detail_policy
     assert "不清楚" not in context.unsupported_detail_policy
+
+
+def test_single_match_expands_to_adjacent_scene_windows(tmp_path: Path) -> None:
+    database = tmp_path / "neighbors.sqlite3"
+    source = SourceRef(
+        region=Region.CN,
+        script_id="neighbors",
+        container_type="war",
+        content_hash="sha256:neighbors",
+    )
+    texts = ("准备进入下一段。", "黑色铁炮管出现在眼前。", "众人继续前进。")
+    scenes = [
+        StoryScene(
+            scene_index=index,
+            utterances=[
+                Utterance(
+                    order=0,
+                    speaker="玛修",
+                    servant_id=800100,
+                    text=text,
+                    raw_start_line=index + 1,
+                    raw_end_line=index + 1,
+                )
+            ],
+        )
+        for index, text in enumerate(texts)
+    ]
+    build_story_index(database, [StoryDocument(source=source, scenes=scenes)])
+
+    context = compose_context("黑色枪管是什么？", _profile(), database)
+
+    assert [window.scene_id for window in context.story_windows] == [
+        "neighbors:1",
+        "neighbors:0",
+        "neighbors:2",
+    ]
+    assert context.coverage_gap is False

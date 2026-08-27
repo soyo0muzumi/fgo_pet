@@ -7,6 +7,9 @@ import typer
 import httpx
 
 from .atlas import AtlasClient
+from .art.export import export_art_bundle
+from .art.labels import load_expression_labels
+from .art.qa import validate_art_bundle
 from .cache import atomic_write
 from .catalog import SourceCatalog
 from .compiler import compile_persona, load_evidence_cards, write_persona_bundle
@@ -24,6 +27,7 @@ from .models.story import StoryDocument
 from .pipeline import StoryPipeline, write_parsed_artifact
 from .reporting import build_review_report
 from .review import review_card
+from .scenario_evaluation import evaluate_scenarios
 from .ranking import measure_chapter, rank_chapters
 from .retrieval import search_story_index
 
@@ -33,10 +37,12 @@ story_app = typer.Typer(help="Discover and fetch FGO story scripts")
 evidence_app = typer.Typer(help="Extract and review persona evidence")
 persona_app = typer.Typer(help="Compile approved persona data")
 knowledge_app = typer.Typer(help="Build and query Mash knowledge artifacts")
+art_app = typer.Typer(help="Process and validate local character art")
 app.add_typer(story_app, name="story")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(persona_app, name="persona")
 app.add_typer(knowledge_app, name="knowledge")
+app.add_typer(art_app, name="art")
 
 
 @app.callback()
@@ -397,6 +403,81 @@ def search_knowledge(
             ensure_ascii=False,
         )
     )
+
+
+@knowledge_app.command("evaluate-scenarios")
+def evaluate_knowledge_scenarios(
+    data_root: Path = typer.Option(..., exists=True, file_okay=False),
+    cases: Path = typer.Option(..., exists=True, dir_okay=False),
+) -> None:
+    """Evaluate fixed prompts against current routing and context budgets."""
+    paths = ContentPaths.from_root(data_root, Path.cwd())
+    output_dir = knowledge_dir(paths)
+    destination = output_dir / "scenario-report.json"
+    report = evaluate_scenarios(
+        cases,
+        output_dir / "profile.json",
+        output_dir / "story.sqlite3",
+        destination,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "path": str(destination),
+                "scenario_count": report["scenario_count"],
+                "coverage_gaps": sum(
+                    item["coverage_gap"] for item in report["results"]
+                ),
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+@art_app.command("process-mash-casual")
+def process_mash_casual_art(
+    source: Path = typer.Option(..., exists=True, dir_okay=False),
+    output: Path = typer.Option(..., file_okay=False),
+    labels: Path = typer.Option(
+        Path("content/servants/mash/casual-expression-labels.json"),
+        exists=True,
+        dir_okay=False,
+    ),
+    tolerance: int = typer.Option(32, min=0, max=128),
+    feather: int = typer.Option(2, min=0, max=8),
+) -> None:
+    """Export raw and transparent assets from Mash's casual sheet."""
+    manifest = export_art_bundle(
+        source,
+        output,
+        load_expression_labels(labels),
+        tolerance=tolerance,
+        feather=feather,
+    )
+    report = validate_art_bundle(output)
+    typer.echo(
+        json.dumps(
+            {
+                "outfit_id": manifest.outfit_id,
+                "asset_count": len(manifest.assets),
+                "status": report.status,
+            },
+            ensure_ascii=False,
+        )
+    )
+    if report.status != "PASS":
+        raise typer.Exit(1)
+
+
+@art_app.command("validate")
+def validate_mash_art(
+    bundle: Path = typer.Option(..., exists=True, file_okay=False),
+) -> None:
+    """Validate hashes, completeness, alpha bounds, and preview output."""
+    report = validate_art_bundle(bundle)
+    typer.echo(report.model_dump_json())
+    if report.status != "PASS":
+        raise typer.Exit(1)
 
 
 def _load_cards(path: Path) -> list[EvidenceCard]:

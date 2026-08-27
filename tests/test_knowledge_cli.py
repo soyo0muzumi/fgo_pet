@@ -94,10 +94,22 @@ def test_knowledge_commands_build_external_artifacts_and_search(tmp_path: Path) 
             "黑色枪管",
         ],
     )
+    evaluation_result = runner.invoke(
+        app,
+        [
+            "knowledge",
+            "evaluate-scenarios",
+            "--data-root",
+            str(data_root),
+            "--cases",
+            "tests/fixtures/mash_prompt_cases.json",
+        ],
+    )
 
     assert profile_result.exit_code == 0, profile_result.output
     assert index_result.exit_code == 0, index_result.output
     assert search_result.exit_code == 0, search_result.output
+    assert evaluation_result.exit_code == 0, evaluation_result.output
     output_dir = data_root / "story_cache" / "persona" / "mash"
     assert json.loads((output_dir / "profile.json").read_text(encoding="utf-8"))[
         "facts"
@@ -110,3 +122,8 @@ def test_knowledge_commands_build_external_artifacts_and_search(tmp_path: Path) 
     search_payload = json.loads(search_result.output)
     assert search_payload["hits"][0]["scene_id"] == "story:0"
     assert "黑色枪管准备完成。" not in search_result.output
+    scenario_report = json.loads(
+        (output_dir / "scenario-report.json").read_text(encoding="utf-8")
+    )
+    assert scenario_report["scenario_count"] == 11
+    assert all(item["estimated_tokens"] <= 900 for item in scenario_report["results"])

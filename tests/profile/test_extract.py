@@ -72,3 +72,29 @@ def test_build_profile_rejects_missing_profile_data() -> None:
             {"id": 800100, "collectionNo": 1, "name": "マシュ"},
             servant_id=800100,
         )
+
+
+def test_build_profile_uses_base_comment_not_unlocked_story_dump() -> None:
+    cn = {
+        "id": 800100,
+        "collectionNo": 1,
+        "name": "玛修",
+        "profile": {
+            "stats": {"strength": "C", "endurance": "A", "policy": "lawful"},
+            "comments": [
+                {"id": 1, "condType": "none", "comment": "迦勒底的亚从者。"},
+                {
+                    "id": 10,
+                    "condType": "questClear",
+                    "comment": "这是一段不应常驻提示词的后期剧情详情。",
+                },
+            ],
+        },
+    }
+
+    profile = build_profile(cn, None, servant_id=800100)
+
+    assert profile.facts["comments"].value == "迦勒底的亚从者。"
+    assert profile.facts["stats"].value == "筋力C；耐久A；阵营秩序"
+    assert "后期剧情" not in profile.summary
+    assert len(profile.summary) <= 400

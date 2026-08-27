@@ -14,8 +14,21 @@ _FACT_PATHS = (
     ("character", "profile.character"),
     ("likes", "profile.likes"),
     ("dislikes", "profile.dislikes"),
+    ("stats", "profile.stats"),
     ("comments", "profile.comments"),
 )
+
+_STAT_LABELS = (
+    ("strength", "筋力"),
+    ("endurance", "耐久"),
+    ("agility", "敏捷"),
+    ("magic", "魔力"),
+    ("luck", "幸运"),
+    ("np", "宝具"),
+    ("policy", "阵营"),
+    ("personality", "性格"),
+)
+_STAT_VALUES = {"lawful": "秩序", "good": "善", "neutral": "中立", "evil": "恶"}
 
 
 def _source_hash(payload: dict[str, Any]) -> str:
@@ -50,7 +63,28 @@ def _normalize(value: Any) -> str:
     return re.sub(r"\s+", " ", without_tags).strip()
 
 
-def _bounded_summary(name: str, facts: dict[str, ProfileFact], limit: int = 1200) -> str:
+def _normalize_fact(key: str, value: Any) -> str:
+    if key == "comments" and isinstance(value, list):
+        base = next(
+            (
+                item
+                for item in value
+                if isinstance(item, dict) and item.get("condType") == "none"
+            ),
+            value[0] if value else None,
+        )
+        return _normalize(base.get("comment") if isinstance(base, dict) else base)
+    if key == "stats" and isinstance(value, dict):
+        parts = []
+        for field, label in _STAT_LABELS:
+            raw = value.get(field)
+            if raw not in (None, "", "None"):
+                parts.append(f"{label}{_STAT_VALUES.get(str(raw), raw)}")
+        return "；".join(parts)
+    return _normalize(value)
+
+
+def _bounded_summary(name: str, facts: dict[str, ProfileFact], limit: int = 400) -> str:
     sentences = [f"{name}。"]
     for key, _ in _FACT_PATHS:
         if key in facts:
@@ -76,8 +110,8 @@ def build_profile(
 
     facts: dict[str, ProfileFact] = {}
     for key, path in _FACT_PATHS:
-        cn_value = _normalize(_read_path(cn, path))
-        jp_value = _normalize(_read_path(jp, path))
+        cn_value = _normalize_fact(key, _read_path(cn, path))
+        jp_value = _normalize_fact(key, _read_path(jp, path))
         if cn_value:
             facts[key] = ProfileFact(
                 value=cn_value,
