@@ -125,6 +125,24 @@ public sealed class PortraitControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyDpi_recomputes_all_geometry_without_changing_selection_or_scale()
+    {
+        var bundle = WriteBundle("dpi");
+        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "dpi", bundle.Root));
+        await _controller.ActivateAsync(new PortraitSelection("pkg", "dpi"), CancellationToken.None);
+        var before = _controller.CurrentState!;
+
+        _controller.ApplyDpi(new Dpi2(1.5, 2.0));
+
+        var after = _controller.CurrentState!;
+        Assert.Equal(before.Selection, after.Selection);
+        Assert.Equal(before.Scale, after.Scale);
+        Assert.NotEqual(before.Geometry.DeviceSize, after.Geometry.DeviceSize);
+        Assert.Equal(Math.Round(13 * before.Scale * 1.5), after.Geometry.OverlayDeviceRect.X);
+        Assert.Equal(Math.Round(360 * before.Scale * 2.0), after.Geometry.PanelAnchorDevice.Y);
+    }
+
+    [Fact]
     public async Task Loading_a_third_appearance_evicts_the_oldest_snapshot()
     {
         _repository.Get = selection => Task.FromResult<AppearanceLocation?>(

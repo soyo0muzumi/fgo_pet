@@ -27,7 +27,12 @@ public sealed class PacklessStartupTests
     {
         var lifetime = new FakeLifetime();
         var output = new StringWriter();
-        var startup = NewStartup(lifetime, output);
+        var shellCreated = false;
+        var startup = NewStartup(lifetime, output, () =>
+        {
+            shellCreated = true;
+            return new FakeAppShell();
+        });
 
         startup.Start(["--smoke-test"]);
 
@@ -37,23 +42,43 @@ public sealed class PacklessStartupTests
         Assert.Contains("portrait window NOT created", text);
         Assert.Contains("tray/servant-library startup confirmed", text);
         Assert.Contains("exiting 0", text);
+        Assert.False(shellCreated);
     }
 
     [Fact]
-    public void Packless_startup_does_not_shutdown_or_report_errors()
+    public async Task Packless_startup_starts_the_application_shell()
     {
         var lifetime = new FakeLifetime();
-        var startup = NewStartup(lifetime, new StringWriter());
+        var shell = new FakeAppShell();
+        var startup = NewStartup(lifetime, new StringWriter(), shell);
 
-        startup.Start([]);
+        await startup.StartAsync([]);
 
         Assert.Null(lifetime.ExitCode);
+        Assert.True(shell.Started);
+        Assert.Empty(shell.Arguments);
     }
 
-    private static AppStartup NewStartup(FakeLifetime lifetime, TextWriter output)
+    private static AppStartup NewStartup(FakeLifetime lifetime, TextWriter output, IAppShell? shell = null) =>
+        NewStartup(lifetime, output, () => shell ?? new FakeAppShell());
+
+    private static AppStartup NewStartup(FakeLifetime lifetime, TextWriter output, Func<IAppShell> shellFactory)
     {
         var logger = NullLogger<AppStartup>.Instance;
-        return new AppStartup(logger, lifetime, output);
+        return new AppStartup(logger, lifetime, shellFactory, output);
+    }
+
+    private sealed class FakeAppShell : IAppShell
+    {
+        public bool Started { get; private set; }
+        public IReadOnlyList<string> Arguments { get; private set; } = Array.Empty<string>();
+
+        public Task StartAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+        {
+            Started = true;
+            Arguments = arguments;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeLifetime : IAppLifetime

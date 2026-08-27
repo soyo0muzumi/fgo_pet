@@ -1,5 +1,8 @@
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Windows;
+using FgoPet.App.Bootstrap;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FgoPet.App.Tests.Framework;
@@ -53,6 +56,22 @@ public sealed class ArchitectureTests
         Assert.Equal(
             new[] { "FgoPet.Core", "FgoPet.Infrastructure" }.OrderBy(name => name, StringComparer.Ordinal),
             app.OrderBy(name => name, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Production_container_resolves_the_application_shell()
+    {
+        StaTest.Run(() =>
+        {
+            _ = Application.Current ?? new Application();
+            using var provider = new ServiceCollection().AddFgoPet([]).BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true,
+            });
+
+            Assert.IsType<DesktopAppShell>(provider.GetRequiredService<IAppShell>());
+        });
     }
 
     private static IEnumerable<string> ProjectFiles() => FindCsproj(RepoRoot());

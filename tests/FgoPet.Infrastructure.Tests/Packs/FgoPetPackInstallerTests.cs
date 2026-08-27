@@ -176,7 +176,7 @@ public sealed class FgoPetPackInstallerTests : IDisposable
     }
 
     [Fact]
-    public void Install_rejects_entry_count_excess()
+    public async Task Install_rejects_entry_count_excess()
     {
         var installer = WithPolicy(PackArchivePolicy.Production with { MaxEntries = 8 });
         var archive = Upload("many.fgopetpack");
@@ -189,25 +189,25 @@ public sealed class FgoPetPackInstallerTests : IDisposable
             }
         });
 
-        var result = installer.InstallAsync(archive, CancellationToken.None).GetAwaiter().GetResult();
+        var result = await installer.InstallAsync(archive, CancellationToken.None);
         Assert.False(result.Installed);
         Assert.Equal(PackErrorCode.PackageTooLarge, result.Failure!.Code);
     }
 
     [Fact]
-    public void Install_rejects_per_entry_size_excess()
+    public async Task Install_rejects_per_entry_size_excess()
     {
         var installer = WithPolicy(PackArchivePolicy.Production with { MaxEntryBytes = 8 });
         var archive = Upload("big.fgopetpack");
         PackArchiveBuilder.Raw(archive, zip => PackArchiveBuilder.AddContent(zip, "big.png", new byte[16]));
 
-        var result = installer.InstallAsync(archive, CancellationToken.None).GetAwaiter().GetResult();
+        var result = await installer.InstallAsync(archive, CancellationToken.None);
         Assert.False(result.Installed);
         Assert.Equal(PackErrorCode.PackageTooLarge, result.Failure!.Code);
     }
 
     [Fact]
-    public void Install_rejects_total_expanded_excess()
+    public async Task Install_rejects_total_expanded_excess()
     {
         var installer = WithPolicy(PackArchivePolicy.Production with { MaxExpandedBytes = 12 });
         var archive = Upload("fat.fgopetpack");
@@ -217,7 +217,7 @@ public sealed class FgoPetPackInstallerTests : IDisposable
             PackArchiveBuilder.AddContent(zip, "b.png", new byte[8]);
         });
 
-        var result = installer.InstallAsync(archive, CancellationToken.None).GetAwaiter().GetResult();
+        var result = await installer.InstallAsync(archive, CancellationToken.None);
         Assert.False(result.Installed);
         Assert.Equal(PackErrorCode.PackageTooLarge, result.Failure!.Code);
     }
@@ -348,15 +348,14 @@ public sealed class FgoPetPackInstallerTests : IDisposable
     }
 
     [Fact]
-    public void Install_cleans_staging_and_rethrows_cancellation()
+    public async Task Install_cleans_staging_and_rethrows_cancellation()
     {
         var archive = Upload("cancel.fgopetpack");
         PackArchiveBuilder.WriteFullPack(archive);
         using var source = new CancellationTokenSource();
         source.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() =>
-            _installer.InstallAsync(archive, source.Token).GetAwaiter().GetResult());
+        await Assert.ThrowsAsync<OperationCanceledException>(() => _installer.InstallAsync(archive, source.Token));
         AssertStagingEmpty();
     }
 

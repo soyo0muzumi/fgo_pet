@@ -9,8 +9,13 @@ using System.Text.Json.Nodes;
 using FgoPet.App.Main;
 using FgoPet.App.Portraits;
 using FgoPet.App.Tray;
+using FgoPet.App.Windowing;
 using FgoPet.Core.Geometry;
+using FgoPet.Core.Packs;
+using FgoPet.Core.Portraits;
+using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Packs;
+using FgoPet.Infrastructure.Windowing;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Windowing;
@@ -61,6 +66,52 @@ public sealed class PortraitWindowIntegrationTests
         {
             var tray = new TrayService();
             tray.Dispose();
+        });
+    }
+
+    [Fact]
+    public void WindowsScreenLayoutService_enumerates_a_primary_monitor_with_positive_dpi()
+    {
+        var service = new WindowsScreenLayoutService();
+
+        var monitors = service.GetMonitors();
+
+        var primary = Assert.Single(monitors.Where(monitor => monitor.IsPrimary));
+        Assert.True(primary.WorkArea.Width > 0);
+        Assert.True(primary.WorkArea.Height > 0);
+        var dpi = service.GetDpi(primary.Id);
+        Assert.True(dpi.X > 0);
+        Assert.True(dpi.Y > 0);
+    }
+
+    [Fact]
+    public void PortraitWindowCoordinator_restores_saved_placement()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow();
+            var placement = new MemoryPlacementStore
+            {
+                Value = new WindowPlacement("display", 100, 200, 2, 2, 150, 300),
+            };
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                placement,
+                new FixedScreenService());
+
+            coordinator.RestorePlacement();
+
+            Assert.Equal(200, window.Left);
+            Assert.Equal(400, window.Top);
+            Assert.Equal(300, window.Width);
+            Assert.Equal(600, window.Height);
+            window.Close();
         });
     }
 
@@ -152,5 +203,30 @@ public sealed class PortraitWindowIntegrationTests
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private sealed class MemoryPlacementStore : IWindowPlacementStore
+    {
+        public string Location => "memory";
+        public WindowPlacement? Value { get; set; }
+        public WindowPlacement? Load() => Value;
+        public void Save(WindowPlacement placement) => Value = placement;
+    }
+
+    private sealed class FixedScreenService : IScreenLayoutService
+    {
+        public IReadOnlyList<MonitorInfo> GetMonitors() =>
+            [new MonitorInfo("display", new DeviceRect(0, 0, 2000, 1200), true)];
+        public Dpi2 GetDpi(string monitorId) => new(1, 1);
+    }
+
+    private sealed class EmptyRepository : IArtPackageRepository
+    {
+        public Task<PackCatalog> ScanAsync(CancellationToken cancellationToken) => Task.FromResult(new PackCatalog([]));
+        public Task<IReadOnlyList<InstalledServant>> ListServantsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<InstalledServant>>([]);
+        public Task<AppearanceLocation?> GetAppearanceAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.FromResult<AppearanceLocation?>(null);
+        public Task<AppearanceLocation?> ResolveStartupSelectionAsync(PortraitSelection? requested, CancellationToken cancellationToken) => Task.FromResult<AppearanceLocation?>(null);
+        public Task<bool> RemoveAsync(string packageId, string packageVersion, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task MarkLastKnownGoodAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

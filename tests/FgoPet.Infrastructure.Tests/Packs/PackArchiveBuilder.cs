@@ -53,15 +53,17 @@ internal static class PackArchiveBuilder
     public static string PackManifestJson(
         string packageId = "official.mash",
         string packageVersion = "1.0.0",
-        string? minAppVersion = "1.0.0")
+        string? minAppVersion = "1.0.0",
+        string? servantId = null,
+        string? displayName = null)
     {
         var root = new JsonObject
         {
             ["schema_version"] = 1,
             ["package_id"] = packageId,
             ["package_version"] = packageVersion,
-            ["servant_id"] = "mash_kyrielight",
-            ["display_name"] = "玛修·基列莱特",
+            ["servant_id"] = servantId ?? "mash_kyrielight",
+            ["display_name"] = displayName ?? "玛修·基列莱特",
             ["publisher"] = "community",
             ["min_app_version"] = minAppVersion ?? string.Empty,
             ["preview_path"] = "previews/library.png",

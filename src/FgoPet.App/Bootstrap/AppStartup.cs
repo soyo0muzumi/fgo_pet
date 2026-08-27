@@ -19,17 +19,14 @@ public sealed class AppStartup
 {
     private readonly ILogger<AppStartup> _logger;
     private readonly IAppLifetime _lifetime;
+    private readonly Func<IAppShell> _shellFactory;
     private readonly TextWriter _output;
 
-    public AppStartup(ILogger<AppStartup> logger, IAppLifetime lifetime)
-        : this(logger, lifetime, Console.Out)
-    {
-    }
-
-    public AppStartup(ILogger<AppStartup> logger, IAppLifetime lifetime, TextWriter output)
+    public AppStartup(ILogger<AppStartup> logger, IAppLifetime lifetime, Func<IAppShell> shellFactory, TextWriter output)
     {
         _logger = logger;
         _lifetime = lifetime;
+        _shellFactory = shellFactory;
         _output = output;
     }
 
@@ -38,7 +35,9 @@ public sealed class AppStartup
             ? StartupMode.SmokeTest
             : StartupMode.Packless;
 
-    public void Start(string[] args)
+    public void Start(string[] args) => StartAsync(args).GetAwaiter().GetResult();
+
+    public async Task StartAsync(string[] args, CancellationToken cancellationToken = default)
     {
         var mode = Decide(args);
         if (mode == StartupMode.SmokeTest)
@@ -47,7 +46,7 @@ public sealed class AppStartup
         }
         else
         {
-            StartPackless();
+            await _shellFactory().StartAsync(args, cancellationToken);
         }
     }
 
@@ -61,9 +60,4 @@ public sealed class AppStartup
         _lifetime.Shutdown(0);
     }
 
-    private void StartPackless()
-    {
-        _logger.LogInformation("未安装任何有效角色包: 进入 packless 状态，不创建画像窗口。");
-        _logger.LogInformation("托盘常驻与从者库安装引导在 Task 10/11 接入。");
-    }
 }
