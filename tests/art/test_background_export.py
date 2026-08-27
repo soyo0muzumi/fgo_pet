@@ -7,6 +7,19 @@ from fgo_pet_content.art.background import remove_edge_background
 from fgo_pet_content.art.export import export_art_bundle
 
 
+def test_existing_alpha_is_preserved_exactly() -> None:
+    image = Image.new("RGBA", (12, 12), (38, 36, 44, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((2, 2, 9, 11), fill=(24, 24, 30, 255))
+    draw.ellipse((3, 1, 8, 6), fill=(220, 170, 190, 255))
+    image.putpixel((3, 1), (220, 170, 190, 96))
+    image.putpixel((0, 0), (38, 36, 44, 0))
+
+    cleaned = remove_edge_background(image, tolerance=32, feather=2)
+
+    assert cleaned.tobytes() == image.tobytes()
+
+
 def test_only_edge_connected_dark_pixels_are_removed() -> None:
     image = Image.new("RGBA", (12, 12), (30, 30, 35, 255))
     draw = ImageDraw.Draw(image)

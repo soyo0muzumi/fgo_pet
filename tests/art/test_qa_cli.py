@@ -40,6 +40,35 @@ def test_validator_detects_hash_tampering(tmp_path: Path) -> None:
     assert any(error.check_id == "asset.runtime_hash" for error in report.errors)
 
 
+def test_qa_rejects_runtime_alpha_below_raw(tmp_path: Path) -> None:
+    source = tmp_path / "source.png"
+    bundle = tmp_path / "bundle"
+    _sheet(source)
+    labels = load_expression_labels(
+        Path("content/servants/mash/casual-expression-labels.json")
+    )
+    manifest = export_art_bundle(source, bundle, labels, feather=0)
+    asset = next(item for item in manifest.assets if item.stable_id == "r01c01")
+    raw_path = bundle / asset.raw_path
+    runtime_path = bundle / asset.runtime_path
+    with Image.open(raw_path) as opened:
+        raw = opened.convert("RGBA")
+    raw.putpixel((0, 0), (*raw.getpixel((0, 0))[:3], 0))
+    raw.save(raw_path)
+    with Image.open(runtime_path) as opened:
+        damaged = opened.convert("RGBA")
+    assert damaged.getpixel((10, 8))[3] == 255
+    red, green, blue, _ = damaged.getpixel((10, 8))
+    damaged.putpixel((10, 8), (red, green, blue, 0))
+    damaged.save(runtime_path)
+
+    report = validate_art_bundle(bundle)
+
+    assert any(
+        error.check_id == "asset.runtime_alpha_loss" for error in report.errors
+    )
+
+
 def test_art_cli_processes_valid_bundle_and_writes_contact_sheet(
     tmp_path: Path,
 ) -> None:

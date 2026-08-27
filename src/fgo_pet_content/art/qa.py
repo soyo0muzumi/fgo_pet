@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ConfigDict
 
 from ..cache import atomic_write
+from .background import has_meaningful_transparency
 from .models import ArtManifest
 
 
@@ -75,6 +76,8 @@ def validate_art_bundle(bundle: Path) -> ArtQaReport:
             warnings=[],
         )
     for asset in manifest.assets:
+        raw_path = bundle / asset.raw_path
+        runtime_path = bundle / asset.runtime_path
         for kind, relative, expected in (
             ("raw", asset.raw_path, asset.raw_sha256),
             ("runtime", asset.runtime_path, asset.runtime_sha256),
@@ -94,6 +97,42 @@ def validate_art_bundle(bundle: Path) -> ArtQaReport:
                         check_id=f"asset.{kind}_hash",
                         asset_id=asset.stable_id,
                         detail="hash does not match manifest",
+                    )
+                )
+        if raw_path.exists() and runtime_path.exists():
+            try:
+                with Image.open(raw_path) as raw_opened:
+                    raw = raw_opened.convert("RGBA")
+                with Image.open(runtime_path) as runtime_opened:
+                    runtime = runtime_opened.convert("RGBA")
+                if raw.size != runtime.size:
+                    errors.append(
+                        ArtCheck(
+                            check_id="asset.runtime_dimensions",
+                            asset_id=asset.stable_id,
+                            detail=f"raw {raw.size} != runtime {runtime.size}",
+                        )
+                    )
+                elif has_meaningful_transparency(raw) and any(
+                    runtime_alpha < raw_alpha
+                    for raw_alpha, runtime_alpha in zip(
+                        raw.getchannel("A").tobytes(),
+                        runtime.getchannel("A").tobytes(),
+                    )
+                ):
+                    errors.append(
+                        ArtCheck(
+                            check_id="asset.runtime_alpha_loss",
+                            asset_id=asset.stable_id,
+                            detail="runtime alpha is lower than raw alpha",
+                        )
+                    )
+            except OSError as error:
+                errors.append(
+                    ArtCheck(
+                        check_id="asset.image_readable",
+                        asset_id=asset.stable_id,
+                        detail=str(error),
                     )
                 )
         if asset.foreground_bbox is None:

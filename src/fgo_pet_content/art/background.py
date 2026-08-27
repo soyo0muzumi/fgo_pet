@@ -7,10 +7,18 @@ from statistics import median
 from PIL import Image, ImageFilter
 
 
+def has_meaningful_transparency(image: Image.Image) -> bool:
+    alpha = image.convert("RGBA").getchannel("A")
+    minimum, maximum = alpha.getextrema()
+    return minimum < 255 and maximum > 0
+
+
 def remove_edge_background(
     image: Image.Image, *, tolerance: int = 32, feather: int = 2
 ) -> Image.Image:
     rgba = image.convert("RGBA")
+    if has_meaningful_transparency(rgba):
+        return rgba.copy()
     width, height = rgba.size
     pixels = rgba.load()
     border = [
