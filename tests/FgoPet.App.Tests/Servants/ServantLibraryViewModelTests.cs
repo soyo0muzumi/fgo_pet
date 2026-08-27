@@ -41,6 +41,19 @@ public sealed class ServantLibraryViewModelTests
     }
 
     [Fact]
+    public async Task The_command_instance_bound_before_loading_is_enabled_after_selection_loads()
+    {
+        var (vm, _, _, _, _) = CreateViewModel();
+        var boundCommand = vm.ActivateCommand;
+        Assert.False(boundCommand.CanExecute(null));
+
+        await vm.LoadAsync();
+
+        Assert.Same(boundCommand, vm.ActivateCommand);
+        Assert.True(boundCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Activating_a_selected_appearance_saves_settings()
     {
         var (vm, _, _, controller, settings) = CreateViewModel();

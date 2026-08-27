@@ -103,7 +103,7 @@ Phase 1 主计划（13 项任务）已在 `src/FgoPet.Core`、`src/FgoPet.Infras
 
 ## 4. 已完成证据（供审核对照）
 
-- 测试：Core 56 / Infra 64 / App 72 / Windows 16 = **208 通过、0 失败**。
+- 测试：Core 56 / Infra 64 / App 73 / Windows 16 = **209 通过、0 失败**。
 - Release 构建 `-warnaserror`：0 警告 / 0 错误。
 - `scripts/test-phase1.ps1` 门禁已跑：Build→单元→Windows 集成→无 SkiaSharp→手动矩阵提示。
 - `--smoke-test`：从正式应用入口执行，退出码 0，输出 no-pack / 不建窗口 / tray+库确认；

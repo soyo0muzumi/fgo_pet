@@ -52,19 +52,27 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _openFolder = openFolder ?? (path => Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true }));
+
+        RescanCommand = new AsyncRelayCommand(LoadAsync);
+        InstallCommand = new AsyncRelayCommand(() => InstallAsync(PackFilePath));
+        ActivateCommand = new AsyncRelayCommand(ActivateAsync, () => CurrentAppearance is not null);
+        UninstallCommand = new AsyncRelayCommand(
+            UninstallAsync,
+            () => SelectedServant is { IsEmbedded: false } && CurrentAppearance is not null);
+        OpenPackFolderCommand = new AsyncRelayCommand(
+            OpenPackFolderAsync,
+            () => SelectedServant is not null);
     }
 
-    public IRelayCommand RescanCommand => new AsyncRelayCommand(LoadAsync);
+    public IRelayCommand RescanCommand { get; }
 
-    public IAsyncRelayCommand InstallCommand => new AsyncRelayCommand(() => InstallAsync(PackFilePath));
+    public IAsyncRelayCommand InstallCommand { get; }
 
-    public IAsyncRelayCommand ActivateCommand => new AsyncRelayCommand(ActivateAsync, () => CurrentAppearance is not null);
+    public IAsyncRelayCommand ActivateCommand { get; }
 
-    public IAsyncRelayCommand UninstallCommand => new AsyncRelayCommand(
-        UninstallAsync,
-        () => SelectedServant is { IsEmbedded: false } && CurrentAppearance is not null);
+    public IAsyncRelayCommand UninstallCommand { get; }
 
-    public IAsyncRelayCommand OpenPackFolderCommand => new AsyncRelayCommand(OpenPackFolderAsync, () => SelectedServant is not null);
+    public IAsyncRelayCommand OpenPackFolderCommand { get; }
 
     public async Task LoadAsync()
     {
