@@ -33,16 +33,16 @@ def test_only_edge_connected_dark_pixels_are_removed() -> None:
 
 
 def _sheet(path: Path) -> None:
-    image = Image.new("RGBA", (120, 174), (255, 255, 255, 255))
+    image = Image.new("RGBA", (1024, 2443), (38, 36, 44, 0))
     draw = ImageDraw.Draw(image)
-    draw.rectangle((45, 2, 74, 17), fill=(40, 40, 45, 255))
-    draw.rectangle((52, 4, 67, 16), fill=(220, 170, 190, 255))
+    draw.rectangle((0, 0, 302, 602), fill=(40, 40, 45, 255))
+    draw.ellipse((70, 10, 230, 190), fill=(220, 170, 190, 255))
     for row in range(7):
-        top = 22 + row * 22
-        draw.rectangle((0, top, 119, top + 17), fill=(40, 40, 45, 255))
+        top = 623 + row * 260
         for column in range(4):
-            left = column * 30 + 8
-            draw.rectangle((left, top + 2, left + 12, top + 15), fill=(220, 170, 190, 255))
+            left = column * 256
+            draw.rectangle((left + 20, top, left + 235, top + 239), fill=(40, 40, 45, 255))
+            draw.ellipse((left + 48, top + 4, left + 208, top + 180), fill=(220, 170, 190, 255))
     image.save(path)
 
 
@@ -67,3 +67,13 @@ def test_export_preserves_source_and_writes_raw_and_runtime_assets(
     assert len(manifest.assets) == 29
     assert all(asset.raw_sha256 for asset in manifest.assets)
     assert all(asset.runtime_sha256 for asset in manifest.assets)
+    assert manifest.schema_version == 2
+    assert manifest.composition.body_id == "full_body"
+    assert manifest.composition.default_expression_id == "r01c01"
+    assert manifest.composition.overlay_offset.x == 24
+    assert manifest.composition.overlay_offset.y == 0
+    assert manifest.composition.overlay_size.width == 256
+    assert manifest.composition.overlay_size.height == 240
+    assert manifest.composition.panel_anchor.x == 151
+    assert manifest.composition.panel_anchor.y == 360
+    assert manifest.composition.default_scale == 0.60

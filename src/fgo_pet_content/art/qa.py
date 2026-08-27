@@ -39,7 +39,7 @@ def _font(size: int):
 
 def write_contact_sheet(bundle: Path, manifest: ArtManifest) -> Path:
     cell_width, cell_height = 240, 230
-    canvas = Image.new("RGBA", (cell_width * 4, cell_height * 8), (225, 225, 225, 255))
+    canvas = Image.new("RGBA", (cell_width * 4, cell_height * 9), (225, 225, 225, 255))
     draw = ImageDraw.Draw(canvas)
     font = _font(15)
     for index, asset in enumerate(manifest.assets):
@@ -56,6 +56,31 @@ def write_contact_sheet(bundle: Path, manifest: ArtManifest) -> Path:
             (x + (cell_width - thumbnail.width) // 2, y + 5),
         )
         draw.text((x + 6, y + 198), f"{asset.stable_id} {asset.semantic_label}", fill=(20, 20, 20), font=font)
+    assets_by_id = {asset.stable_id: asset for asset in manifest.assets}
+    body_asset = assets_by_id[manifest.composition.body_id]
+    with Image.open(bundle / body_asset.runtime_path) as opened:
+        body = opened.convert("RGBA")
+    for column, stable_id in enumerate(("r01c01", "r02c02", "r04c04", "r07c03")):
+        expression_asset = assets_by_id[stable_id]
+        with Image.open(bundle / expression_asset.runtime_path) as opened:
+            expression = opened.convert("RGBA")
+        composite = body.copy()
+        offset = manifest.composition.overlay_offset
+        composite.alpha_composite(expression, (offset.x, offset.y))
+        composite.thumbnail((210, 190), Image.Resampling.LANCZOS)
+        x, y = column * cell_width, cell_height * 8
+        checker = Image.new("RGBA", composite.size, (245, 245, 245, 255))
+        checker.alpha_composite(composite)
+        canvas.alpha_composite(
+            checker,
+            (x + (cell_width - composite.width) // 2, y + 5),
+        )
+        draw.text(
+            (x + 6, y + 198),
+            f"composite {stable_id} @ ({offset.x},{offset.y})",
+            fill=(20, 20, 20),
+            font=font,
+        )
     destination = bundle / "contact-sheet.png"
     canvas.save(destination)
     return destination
@@ -105,6 +130,20 @@ def validate_art_bundle(bundle: Path) -> ArtQaReport:
                     raw = raw_opened.convert("RGBA")
                 with Image.open(runtime_path) as runtime_opened:
                     runtime = runtime_opened.convert("RGBA")
+                if asset.stable_id != manifest.composition.body_id and runtime.size != (
+                    manifest.composition.overlay_size.width,
+                    manifest.composition.overlay_size.height,
+                ):
+                    errors.append(
+                        ArtCheck(
+                            check_id="asset.overlay_dimensions",
+                            asset_id=asset.stable_id,
+                            detail=(
+                                f"runtime {runtime.size} != overlay "
+                                f"{(manifest.composition.overlay_size.width, manifest.composition.overlay_size.height)}"
+                            ),
+                        )
+                    )
                 if raw.size != runtime.size:
                     errors.append(
                         ArtCheck(

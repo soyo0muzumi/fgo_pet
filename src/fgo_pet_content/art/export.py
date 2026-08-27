@@ -8,7 +8,16 @@ from PIL import Image
 
 from ..cache import atomic_write
 from .background import remove_edge_background
-from .models import Anchor, ArtAsset, ArtManifest, Rect, SourceImage
+from .models import (
+    Anchor,
+    ArtAsset,
+    ArtManifest,
+    Composition,
+    Point,
+    Rect,
+    Size,
+    SourceImage,
+)
 from .sheet import analyze_sheet
 
 
@@ -77,6 +86,7 @@ def export_art_bundle(
             )
         )
     manifest = ArtManifest(
+        schema_version=2,
         source=SourceImage(
             path=str(source_path),
             sha256=_hash(source_path),
@@ -85,6 +95,17 @@ def export_art_bundle(
             mode=source.mode,
         ),
         assets=assets,
+        composition=Composition(
+            body_id="full_body",
+            default_expression_id="r01c01",
+            overlay_offset=Point(x=24, y=0),
+            overlay_size=Size(
+                width=layout.expressions["r01c01"].width,
+                height=layout.expressions["r01c01"].height,
+            ),
+            panel_anchor=Point(x=151, y=360),
+            default_scale=0.60,
+        ),
     )
     atomic_write(
         output_dir / "manifest.json",
