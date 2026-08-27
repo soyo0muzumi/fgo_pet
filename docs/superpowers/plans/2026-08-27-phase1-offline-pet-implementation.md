@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver a Windows 11 .NET 8 WPF desktop-pet host that starts offline with Mash, installs code-free servant packs, survives DPI/display changes, and exposes bounded collapsible dialogue/Todo UI.
+**Goal:** Deliver a Windows 11 .NET 8 WPF desktop-pet host distributed separately from code-free servant packs, able to start with no pack, install Mash locally, survive DPI/display changes, and expose bounded collapsible dialogue/Todo UI.
 
 **Architecture:** A modular monolith keeps domain contracts in `FgoPet.Core`, file/package/settings implementations in `FgoPet.Infrastructure`, and all WPF bitmap/window/UI code in `FgoPet.App`. Servant switching uses validated immutable snapshots and two-phase activation; `.fgopetpack` archives are data-only and installed transactionally.
 
@@ -19,6 +19,7 @@
 - Every body, overlay, bottom-anchor, and panel-anchor edge comes from one source-pixel-to-device-pixel transform.
 - Packs contain data only. Reject DLL, EXE, script, XAML, HTML, shader, link, absolute-path, traversal, and undeclared content.
 - Phase 1 stores but never executes persona or prompt resources.
+- Program release artifacts contain no servant images, prompts, or persona files; app and servant packs are versioned and published separately.
 - Do not modify the disposable `spikes/rendering` project except when copying a test fixture verbatim is useful; production code lives under top-level `src/` and `tests/`.
 - Do not add Todo persistence, LLM, Codex, event-center, pomodoro, GitHub API, online catalog, signing, startup registration, or installer work.
 
@@ -260,7 +261,7 @@ git add src/FgoPet.Infrastructure/Packs src/FgoPet.App/Portraits tests/FgoPet.*
 git commit -m "feat: validate and load frozen portrait assets"
 ```
 
-### Task 5: Build the stable WPF portrait view and offline Mash startup
+### Task 5: Build the stable WPF portrait view and packless startup
 
 **Files:**
 - Create: `src/FgoPet.App/Portraits/PortraitView.xaml`
@@ -269,15 +270,14 @@ git commit -m "feat: validate and load frozen portrait assets"
 - Create: `src/FgoPet.App/Main/PortraitWindow.xaml`
 - Create: `src/FgoPet.App/Main/PortraitWindow.xaml.cs`
 - Create: `src/FgoPet.App/Bootstrap/AppStartup.cs`
-- Create: `src/FgoPet.App/Resources/Packs/official.mash/1.0.0/**`
 - Create: `tests/FgoPet.App.Tests/Portraits/PortraitViewTests.cs`
-- Create: `tests/FgoPet.App.Tests/Bootstrap/OfflineStartupTests.cs`
+- Create: `tests/FgoPet.App.Tests/Bootstrap/PacklessStartupTests.cs`
 
 **Interfaces:**
 - Produces: `PortraitView.Load(PortraitSnapshot, PortraitGeometry)` and `SetExpression(string assetId)`.
 - Consumes: Task 3 geometry and Task 4 `PortraitSnapshot`.
 
-- [ ] **Step 1: Write STA tests for stable body/canvas and offline startup**
+- [ ] **Step 1: Write STA tests for stable body/canvas and packless startup**
 
 ```csharp
 view.Load(snapshot, geometry);
@@ -291,25 +291,25 @@ Assert.Same(snapshot.Images["r01c02"], view.ExpressionSourceForTest);
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: `dotnet test tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj --filter "PortraitViewTests|OfflineStartupTests"`  
+Run: `dotnet test tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj --filter "PortraitViewTests|PacklessStartupTests"`  
 Expected: FAIL with missing view/startup.
 
-- [ ] **Step 3: Implement the two-Image Canvas and embed the converted Mash pack**
+- [ ] **Step 3: Implement the two-Image Canvas and packless startup state**
 
-Use `Stretch.Fill`, `SnapsToDevicePixels`, `UseLayoutRounding`, and `BitmapScalingMode.HighQuality`. Convert the real external bundle through the packaging fixture/process; do not commit raw Atlas source. If licensed runtime images are intentionally repository-external, make the build copy from the documented local generated-pack path and make the startup test use a generated fixture.
+Use `Stretch.Fill`, `SnapsToDevicePixels`, `UseLayoutRounding`, and `BitmapScalingMode.HighQuality`. With no installed pack, do not create the portrait window; keep the tray active and open the servant-library install state. Portrait tests use generated images only, and the production program project must contain no servant image, Prompt, or persona resource.
 
 - [ ] **Step 4: Verify offline startup and rendering tests**
 
-Run: `dotnet test tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj --filter "PortraitViewTests|OfflineStartupTests"`  
+Run: `dotnet test tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj --filter "PortraitViewTests|PacklessStartupTests"`  
 Expected: PASS.  
 Run: `dotnet run --project src/FgoPet.App/FgoPet.App.csproj -c Release -- --smoke-test`  
-Expected: process reports `official.mash/casual`, creates the window, then exits 0 without Python/LLM/Codex.
+Expected: process reports `no-pack`, creates no portrait window, confirms tray/library startup, then exits 0 without Python/LLM/Codex.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/FgoPet.App tests/FgoPet.App.Tests
-git commit -m "feat: start offline with layered Mash portrait"
+git commit -m "feat: support packless offline startup"
 ```
 
 ### Task 6: Install `.fgopetpack` archives transactionally
@@ -369,11 +369,11 @@ git commit -m "feat: install servant packs transactionally"
 
 **Interfaces:**
 - Produces: `ScanAsync`, `ListServantsAsync`, `GetAppearanceAsync`, `RemoveAsync`, `MarkLastKnownGoodAsync`, and `ResolveStartupSelectionAsync`.
-- Produces: recovery order current version -> prior valid same-package version -> last-known-good -> embedded Mash.
+- Produces: recovery order current version -> prior valid same-package version -> last-known-good installed pack -> packless library state.
 
 - [ ] **Step 1: Write repository/version/recovery tests**
 
-Assert deterministic SemVer ordering, duplicate package identity rejection, rescan addition/removal, current-package uninstall refusal, embedded-package uninstall refusal, corrupted index quarantine, and all four recovery stages.
+Assert deterministic SemVer ordering, duplicate package identity rejection, rescan addition/removal, current-package switch-before-uninstall behavior, final-package uninstall into packless state, corrupted index quarantine, and all four recovery stages.
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -473,7 +473,7 @@ git commit -m "feat: activate portraits with bounded snapshots"
 
 - [ ] **Step 1: Write failing default/migration/corruption/atomic-write tests**
 
-Defaults are embedded Mash, casual appearance, scale .5, topmost true, auto-collapse true. Corrupt JSON is renamed for diagnosis and replaced in memory with defaults. A simulated write interruption preserves the previous valid file.
+Defaults are no selected portrait, scale .5, topmost true, and auto-collapse true. Corrupt JSON is renamed for diagnosis and replaced in memory with defaults. A simulated write interruption preserves the previous valid file.
 
 - [ ] **Step 2: Run focused tests**
 
@@ -708,13 +708,13 @@ git commit -m "test: add phase 1 diagnostics and release gates"
 | Pack/product boundaries and UI states | Approved Phase 1 spec and user decisions in planning | High |
 | ZIP confinement, hashing, atomic staging | .NET standard-library behavior and security patterns; verified by hostile fixtures | High |
 | Window messages, tray, multi-monitor behavior | WPF/Win32 platform APIs plus required real-device matrix | Medium |
-| Real Mash runtime-art inclusion/legal distribution | Repository-external generated assets and project owner release policy | Medium; implementation must not commit raw source |
+| Real Mash runtime-art distribution | Separate P1.4 role-pack release and project owner release policy | Medium; never include it in the program artifact |
 | GitHub Release upload automation | Outside the main plan; P1.4 produces artifacts, manual upload is sufficient for Phase 1 | High |
 
 ## Open Questions
 
 - [ ] Decide the exact production archive limits (`MaxEntries`, per-file bytes, expanded bytes) during Task 6 by measuring the converted Mash pack, then lock conservative multiples in tests. This does not block Tasks 1-5.
-- [ ] Confirm whether distributable Mash runtime PNGs may be committed or must be injected during packaging. This blocks the final Task 5 release asset, but not its generated test fixture or application code.
+- [ ] Confirm whether distributable Mash runtime PNGs may be committed in a role-pack release workspace or must be injected only during packaging. This does not affect the program artifact.
 - [ ] Choose the concrete tray implementation compatible with .NET 8 WPF (`System.Windows.Forms.NotifyIcon` adapter or an approved lightweight package) during Task 10. Prefer the built-in adapter unless accessibility testing exposes a blocker.
 
 ## Implementation Checklist
@@ -723,7 +723,7 @@ git commit -m "test: add phase 1 diagnostics and release gates"
 - [ ] Task 2: Pack/art contracts and expression semantics
 - [ ] Task 3: Portrait, panel, and screen geometry
 - [ ] Task 4: Art validation and frozen WPF snapshots
-- [ ] Task 5: Stable portrait view and offline Mash startup
+- [ ] Task 5: Stable portrait view and packless startup
 - [ ] Task 6: Transactional `.fgopetpack` installer
 - [ ] Task 7: Repository, versions, and recovery
 - [ ] Task 8: Two-phase portrait activation and bounded cache
@@ -732,4 +732,3 @@ git commit -m "test: add phase 1 diagnostics and release gates"
 - [ ] Task 11: Independent servant library UI
 - [ ] Task 12: Collapsible attached UI and recent switcher
 - [ ] Task 13: Diagnostics, soak, and release gates
-

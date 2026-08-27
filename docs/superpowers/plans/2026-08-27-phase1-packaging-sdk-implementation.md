@@ -19,6 +19,7 @@
 - `.fgopetpack` contains only the allowlisted data types accepted by the .NET installer.
 - Build output must be deterministic for identical inputs and configuration.
 - GitHub Releases is the distribution target, but Phase 1 tooling prepares artifacts and release notes only; it does not call GitHub APIs.
+- Role-pack artifacts are built, versioned, and published separately from program artifacts; the program release never consumes or embeds this output.
 
 ---
 
@@ -301,4 +302,3 @@ git commit -m "test: lock servant pack cross-runtime compatibility"
 - [ ] Task 4: Deterministic code-free pack assembly
 - [ ] Task 5: CLI and Mash release project
 - [ ] Task 6: Cross-runtime contract and release verification
-
