@@ -19,4 +19,7 @@
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+  </ItemGroup>
 </Project>

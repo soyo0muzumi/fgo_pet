@@ -23,7 +23,7 @@ public partial class App : Application
 
         try
         {
-            provider.GetRequiredService<AppStartup>().Start();
+            provider.GetRequiredService<AppStartup>().Start(e.Args);
         }
         catch (Exception error)
         {

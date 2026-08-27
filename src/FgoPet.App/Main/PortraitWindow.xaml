@@ -1,0 +1,15 @@
+<Window x:Class="FgoPet.App.Main.PortraitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:portraits="clr-namespace:FgoPet.App.Portraits"
+        Title="FgoPet"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowActivated="False"
+        SizeToContent="WidthAndHeight">
+    <portraits:PortraitView x:Name="Portrait" />
+</Window>

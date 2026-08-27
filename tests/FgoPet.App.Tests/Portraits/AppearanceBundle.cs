@@ -49,16 +49,22 @@ internal static class AppearanceBundle
         int overlayX = 13,
         int overlayY = 0,
         int panelX = 151,
-        int panelY = 360)
+        int panelY = 360,
+        byte[]? expressionPng2 = null)
     {
         Directory.CreateDirectory(Path.Combine(root, "runtime", "expressions"));
         File.WriteAllBytes(Path.Combine(root, "runtime", "full_body.png"), bodyPng);
         File.WriteAllBytes(Path.Combine(root, "runtime", "expressions", "r01c01.png"), expressionPng);
+        if (expressionPng2 is not null)
+        {
+            File.WriteAllBytes(Path.Combine(root, "runtime", "expressions", "r01c02.png"), expressionPng2);
+        }
 
         var json = V3Json(
             bodyWidth, bodyHeight,
             overlayWidth, overlayHeight, overlayX, overlayY, panelX, panelY,
-            Sha256(bodyPng), Sha256(expressionPng));
+            Sha256(bodyPng), Sha256(expressionPng),
+            expressionPng2 is null ? null : Sha256(expressionPng2));
         var manifestPath = Path.Combine(root, "manifest.json");
         File.WriteAllText(manifestPath, json);
         return (root, manifestPath);
@@ -68,8 +74,36 @@ internal static class AppearanceBundle
         int bodyWidth, int bodyHeight,
         int overlayWidth, int overlayHeight, int overlayX, int overlayY,
         int panelX, int panelY,
-        string bodyHash, string expressionHash)
+        string bodyHash, string expressionHash, string? expression2Hash)
     {
+        var assets = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "body",
+                ["stable_id"] = "full_body",
+                ["path"] = "runtime/full_body.png",
+                ["sha256"] = bodyHash,
+            },
+            new JsonObject
+            {
+                ["type"] = "expression",
+                ["stable_id"] = "r01c01",
+                ["path"] = "runtime/expressions/r01c01.png",
+                ["sha256"] = expressionHash,
+            },
+        };
+        if (expression2Hash is not null)
+        {
+            assets.Add(new JsonObject
+            {
+                ["type"] = "expression",
+                ["stable_id"] = "r01c02",
+                ["path"] = "runtime/expressions/r01c02.png",
+                ["sha256"] = expression2Hash,
+            });
+        }
+
         var semantics = new JsonObject();
         foreach (var key in ExpressionSemanticKeys.Core)
         {
@@ -85,23 +119,7 @@ internal static class AppearanceBundle
         {
             ["schema_version"] = 3,
             ["appearance_id"] = "casual",
-            ["assets"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["type"] = "body",
-                    ["stable_id"] = "full_body",
-                    ["path"] = "runtime/full_body.png",
-                    ["sha256"] = bodyHash,
-                },
-                new JsonObject
-                {
-                    ["type"] = "expression",
-                    ["stable_id"] = "r01c01",
-                    ["path"] = "runtime/expressions/r01c01.png",
-                    ["sha256"] = expressionHash,
-                },
-            },
+            ["assets"] = assets,
             ["composition"] = new JsonObject
             {
                 ["body_id"] = "full_body",
