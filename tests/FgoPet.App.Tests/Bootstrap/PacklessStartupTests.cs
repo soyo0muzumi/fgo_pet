@@ -60,6 +60,18 @@ public sealed class PacklessStartupTests
     {
         public int? ExitCode { get; private set; }
 
+        public bool IsPetVisible { get; } = false;
+
         public void Shutdown(int exitCode) => ExitCode = exitCode;
+
+        public void RequestNormalExit() => ExitCode = 0;
+
+        public void ShowOrHidePet()
+        {
+        }
+
+        public void AttachPetWindow(System.Windows.Window window)
+        {
+        }
     }
 }

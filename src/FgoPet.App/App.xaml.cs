@@ -1,6 +1,7 @@
 using System.Windows;
 using FgoPet.App.Bootstrap;
 using Microsoft.Extensions.DependencyInjection;
+using Application = System.Windows.Application;
 
 namespace FgoPet.App;
 

@@ -18,16 +18,19 @@ internal static class AppearanceBundle
     public static string Sha256(byte[] content) =>
         "sha256:" + Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
-    public static byte[] CreatePng(int width, int height, byte alpha)
+    public static byte[] CreatePng(int width, int height, byte alpha, Func<int, int, byte>? alphaAt = null)
     {
         var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
         var pixels = new byte[width * height * 4];
         for (var index = 0; index < width * height; index++)
         {
+            var x = index % width;
+            var y = index / width;
+            var a = alphaAt is null ? alpha : alphaAt(x, y);
             pixels[(index * 4) + 0] = 40;
             pixels[(index * 4) + 1] = 90;
             pixels[(index * 4) + 2] = 160;
-            pixels[(index * 4) + 3] = alpha;
+            pixels[(index * 4) + 3] = a;
         }
         bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
 

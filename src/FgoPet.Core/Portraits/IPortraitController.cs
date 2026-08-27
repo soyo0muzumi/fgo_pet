@@ -1,3 +1,5 @@
+using FgoPet.Core.Geometry;
+
 namespace FgoPet.Core.Portraits;
 
 /// <summary>Drives two-phase portrait activation and expression/scale changes.</summary>
@@ -8,4 +10,6 @@ public interface IPortraitController
     void SetExpression(ExpressionSemantic semantic);
 
     void SetScale(double scale);
+
+    void ApplyDpi(Dpi2 dpi);
 }

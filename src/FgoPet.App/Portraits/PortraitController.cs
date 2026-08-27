@@ -19,7 +19,7 @@ public sealed class PortraitController : IPortraitController
     private readonly IArtPackageRepository _repository;
     private readonly IExpressionResolver _resolver;
     private readonly PortraitSnapshotCache _cache;
-    private readonly Dpi2 _dpi;
+    private Dpi2 _dpi;
     private long _operationVersion;
     private AppearanceManifestV3? _appearance;
     private double _scale = 0.50;
@@ -89,6 +89,14 @@ public sealed class PortraitController : IPortraitController
         _scale = scale;
         var geometry = PortraitLayout.Calculate(state.Snapshot.SourceGeometry, scale, _dpi);
         Publish(state with { Scale = scale, Geometry = geometry });
+    }
+
+    /// <summary>Recomputes geometry after a DPI or display change without altering the scale.</summary>
+    public void ApplyDpi(Dpi2 dpi)
+    {
+        var state = CurrentState ?? throw new InvalidOperationException("尚未激活任何画像。");
+        _dpi = dpi;
+        Publish(state with { Geometry = PortraitLayout.Calculate(state.Snapshot.SourceGeometry, _scale, dpi) });
     }
 
     private (PortraitState State, AppearanceManifestV3 Appearance) BuildState(
