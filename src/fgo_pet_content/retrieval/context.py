@@ -64,6 +64,7 @@ def compose_context(
         try:
             hits = reranker.rerank(query, hits)
             reranker_status = "applied"
+        # Rerankers are optional plugin boundaries; any failure must preserve FTS results.
         except Exception:
             reranker_status = "fallback"
 

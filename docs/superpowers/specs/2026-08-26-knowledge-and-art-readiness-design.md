@@ -2,9 +2,11 @@
 
 日期：2026 年 8 月 26 日
 
+状态：**VERIFIED（2026-08-27）**
+
 ## 背景与阶段门槛
 
-Phase 0 暂不启动。进入下一阶段前必须完成三个前置项：角色资料卡知识层、按需剧情检索层、默认常服美术处理管线。
+本规格定义的三个前置项——角色资料卡知识层、按需剧情检索层、默认常服美术处理管线——已完成并通过统一 readiness 门禁。Phase 0 的内容阻塞已解除；渲染/DPI 实验仍需在 Phase 0 内执行。
 
 现有 `D:\fgo_unpack\fgo_assets\servant\000001\nice.json` 与 `servant\800100\nice.json` 都是未启用 lore 的基础 payload，包含数值与资源索引，但没有 `profile`。仓库内 `fgo-game-data-api` 已支持 `lore=true`，并定义了 `NiceLore.comments`；因此资料卡任务必须先取得 lore-enhanced payload，不能误把当前 `nice.json` 当成完整资料卡。
 
@@ -36,11 +38,11 @@ Phase 0 暂不启动。进入下一阶段前必须完成三个前置项：角色
 
 ### 输出
 
-`character-profile.json`：
+`story_cache/persona/mash/profile.json`：
 
 - `identity`：稳定身份字段。
 - `facts[]`：原始资料条目、中文摘要、来源语言、解锁条件、权威等级。
-- `compact_summary`：常驻上下文摘要，目标 300–600 tokens。
+- `summary`：常驻上下文摘要；当前约 39 tokens，上限 400 中文字符。
 - `source_hash`：上游 payload 哈希，用于判断是否需要重建。
 
 资料卡是一般角色事实的第一来源，但不能覆盖剧情中明确的阶段差异。
@@ -126,14 +128,15 @@ Phase 0 暂不启动。进入下一阶段前必须完成三个前置项：角色
 
 `D:\fgo_unpack\fgo_assets\pet\mash\casual\`
 
-建议结构：
+已验证结构：
 
-- `source-manifest.json`
-- `body/full.png`
-- `expressions/raw/rXXcYY.png`
-- `expressions/transparent/rXXcYY.png`
-- `expression-manifest.json`
-- `qa/contact-sheet.png`
+- `manifest.json`
+- `raw/full_body.png`
+- `raw/expressions/rXXcYY.png`
+- `runtime/full_body.png`
+- `runtime/expressions/rXXcYY.png`
+- `qa-report.json`
+- `contact-sheet.png`
 
 ## 错误处理与可恢复性
 
@@ -170,10 +173,16 @@ Phase 0 暂不启动。进入下一阶段前必须完成三个前置项：角色
 
 ## 下一阶段准入条件
 
-只有以下全部满足，Phase 0 才从 `BLOCKED` 改为 `GO`：
+以下条件已经全部满足，Phase 0 内容状态由 `BLOCKED` 改为 `GO`：
 
 1. 资料卡 facts 与 compact summary 已生成并审核。
 2. 剧情检索对代表性问题能给出简答并按需展开。
 3. 900-token 上下文预算与 coverage gap 行为通过测试。
 4. 常服全身立绘和全部 28 个表情处理完成并通过 contact sheet 审核。
 5. 相关自动测试和人工视觉检查全部通过。
+
+验证证据：
+
+- 统一报告：`docs/reports/2026-08-26-mash-phase0-readiness.json`（状态 `PASS`）。
+- 知识报告：`docs/reports/2026-08-26-mash-knowledge-readiness.md`。
+- 美术报告：`docs/reports/2026-08-26-mash-art-readiness.md`。

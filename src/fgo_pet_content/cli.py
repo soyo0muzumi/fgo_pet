@@ -29,6 +29,7 @@ from .reporting import build_review_report
 from .review import review_card
 from .scenario_evaluation import evaluate_scenarios
 from .ranking import measure_chapter, rank_chapters
+from .readiness import ReadinessInputs, evaluate_readiness
 from .retrieval import search_story_index
 
 
@@ -38,11 +39,13 @@ evidence_app = typer.Typer(help="Extract and review persona evidence")
 persona_app = typer.Typer(help="Compile approved persona data")
 knowledge_app = typer.Typer(help="Build and query Mash knowledge artifacts")
 art_app = typer.Typer(help="Process and validate local character art")
+readiness_app = typer.Typer(help="Evaluate character implementation readiness")
 app.add_typer(story_app, name="story")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(persona_app, name="persona")
 app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(art_app, name="art")
+app.add_typer(readiness_app, name="readiness")
 
 
 @app.callback()
@@ -477,6 +480,29 @@ def validate_mash_art(
     report = validate_art_bundle(bundle)
     typer.echo(report.model_dump_json())
     if report.status != "PASS":
+        raise typer.Exit(1)
+
+
+@readiness_app.command("check-mash")
+def check_mash_readiness(
+    data_root: Path = typer.Option(..., exists=True, file_okay=False),
+    report: Path = typer.Option(..., dir_okay=False),
+    visual_qa: str = typer.Option("pending"),
+) -> None:
+    """Write a fail-closed Phase 0 readiness report for Mash."""
+    if visual_qa not in {"approved", "pending", "rejected"}:
+        raise typer.BadParameter("visual-qa must be approved, pending, or rejected")
+    result = evaluate_readiness(
+        ReadinessInputs(data_root=data_root, visual_qa=visual_qa)
+    )
+    atomic_write(report, result.model_dump_json(indent=2).encode("utf-8"))
+    typer.echo(
+        json.dumps(
+            {"status": result.status, "failed_checks": result.failed_checks},
+            ensure_ascii=False,
+        )
+    )
+    if result.status != "PASS":
         raise typer.Exit(1)
 
 
