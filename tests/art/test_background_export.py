@@ -70,10 +70,10 @@ def test_export_preserves_source_and_writes_raw_and_runtime_assets(
     assert manifest.schema_version == 2
     assert manifest.composition.body_id == "full_body"
     assert manifest.composition.default_expression_id == "r01c01"
-    assert manifest.composition.overlay_offset.x == 24
+    assert manifest.composition.overlay_offset.x == 13
     assert manifest.composition.overlay_offset.y == 0
     assert manifest.composition.overlay_size.width == 256
     assert manifest.composition.overlay_size.height == 240
     assert manifest.composition.panel_anchor.x == 151
     assert manifest.composition.panel_anchor.y == 360
-    assert manifest.composition.default_scale == 0.60
+    assert manifest.composition.default_scale == 0.50

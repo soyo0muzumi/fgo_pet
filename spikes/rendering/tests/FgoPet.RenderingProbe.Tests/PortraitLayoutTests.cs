@@ -19,9 +19,9 @@ public sealed class PortraitLayoutTests
         Assert.Equal(361.8, geometry.LogicalSize.Height, 6);
         Assert.Equal(deviceWidth, geometry.DeviceSize.Width);
         Assert.Equal(deviceHeight, geometry.DeviceSize.Height);
-        Assert.Equal(Math.Round(24 * 0.6 * dpiValue), geometry.OverlayDeviceRect.X);
+        Assert.Equal(Math.Round(13 * 0.6 * dpiValue), geometry.OverlayDeviceRect.X);
         Assert.Equal(
-            Math.Round(280 * 0.6 * dpiValue),
+            Math.Round(269 * 0.6 * dpiValue),
             geometry.OverlayDeviceRect.X + geometry.OverlayDeviceRect.Width);
         Assert.Equal(Math.Round(151 * 0.6 * dpiValue), geometry.PanelAnchorDevice.X);
         Assert.Equal(Math.Round(360 * 0.6 * dpiValue), geometry.PanelAnchorDevice.Y);
@@ -38,7 +38,7 @@ public sealed class PortraitLayoutTests
         };
         return new ArtBundle(
             Path.GetFullPath("manifest.json"),
-            new ArtComposition("full_body", "r01c01", new ArtPoint(24, 0), new ArtSize(256, 240), new ArtPoint(151, 360), 0.6),
+            new ArtComposition("full_body", "r01c01", new ArtPoint(13, 0), new ArtSize(256, 240), new ArtPoint(151, 360), 0.6),
             images);
     }
 

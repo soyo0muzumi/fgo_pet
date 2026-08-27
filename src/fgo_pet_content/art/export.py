@@ -98,13 +98,13 @@ def export_art_bundle(
         composition=Composition(
             body_id="full_body",
             default_expression_id="r01c01",
-            overlay_offset=Point(x=24, y=0),
+            overlay_offset=Point(x=13, y=0),
             overlay_size=Size(
                 width=layout.expressions["r01c01"].width,
                 height=layout.expressions["r01c01"].height,
             ),
             panel_anchor=Point(x=151, y=360),
-            default_scale=0.60,
+            default_scale=0.50,
         ),
     )
     atomic_write(

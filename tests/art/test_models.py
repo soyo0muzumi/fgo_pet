@@ -46,10 +46,10 @@ def _composition(**updates: object) -> Composition:
     values: dict[str, object] = {
         "body_id": "full_body",
         "default_expression_id": "r01c01",
-        "overlay_offset": Point(x=24, y=0),
+        "overlay_offset": Point(x=13, y=0),
         "overlay_size": Size(width=256, height=240),
         "panel_anchor": Point(x=151, y=360),
-        "default_scale": 0.60,
+        "default_scale": 0.50,
     }
     values.update(updates)
     return Composition(**values)
@@ -101,10 +101,10 @@ def test_manifest_requires_layered_portrait_composition() -> None:
     )
 
     assert manifest.composition.body_id == "full_body"
-    assert manifest.composition.overlay_offset == Point(x=24, y=0)
+    assert manifest.composition.overlay_offset == Point(x=13, y=0)
     assert manifest.composition.overlay_size == Size(width=256, height=240)
     assert manifest.composition.panel_anchor == Point(x=151, y=360)
-    assert manifest.composition.default_scale == 0.60
+    assert manifest.composition.default_scale == 0.50
 
 
 @pytest.mark.parametrize(

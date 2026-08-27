@@ -188,19 +188,19 @@ git commit -m "fix: preserve transparent Mash art"
 
 - [ ] **Step 1: Write failing schema tests**
 
-Assert schema v2 requires `body_id="full_body"`, an existing expression default, overlay size 256×240, non-negative in-bounds offset, a panel anchor inside the 303×603 body canvas, and `default_scale == 0.60`.
+Assert schema v2 requires `body_id="full_body"`, an existing expression default, overlay size 256×240, non-negative in-bounds offset, a panel anchor inside the 303×603 body canvas, and `default_scale == 0.50`.
 
 ```python
 composition = Composition(
     body_id="full_body",
     default_expression_id="r01c01",
-    overlay_offset=Point(x=24, y=0),
+    overlay_offset=Point(x=13, y=0),
     overlay_size=Size(width=256, height=240),
     panel_anchor=Point(x=151, y=360),
-    default_scale=0.60,
+    default_scale=0.50,
 )
 manifest = ArtManifest(schema_version=2, source=SOURCE, assets=_complete_assets(), composition=composition)
-assert manifest.composition.overlay_offset.x == 24
+assert manifest.composition.overlay_offset.x == 13
 ```
 
 Also assert unknown default IDs, offsets that exceed the body canvas, and scales outside `(0, 1]` raise `ValidationError`.
@@ -228,7 +228,7 @@ if composition.overlay_offset.y + composition.overlay_size.height > body.crop_re
     raise ValueError("expression overlay exceeds body height")
 ```
 
-Export the reviewed starting geometry `(24, 0)`, overlay size from `r01c01`, panel anchor `(151, 360)`, and scale `0.60`.
+Export the pixel-verified geometry `(13, 0)`, overlay size from `r01c01`, panel anchor `(151, 360)`, and final reviewed default scale `0.50`.
 
 - [ ] **Step 4: Add composite QA**
 
@@ -248,7 +248,7 @@ Expected: tests pass and the external manifest is schema v2 with explicit compos
 
 - [ ] **Step 6: Visually approve or adjust one shared offset**
 
-Inspect all 28 composites, focusing on hair, glasses, collar, shoulders, and jacket seams. If `(24, 0)` is wrong, change the single exported offset, regenerate, and repeat. Do not introduce per-expression offsets unless the source images prove they differ; if they do, stop and amend the design before changing the schema.
+Inspect all 28 composites, focusing on hair, glasses, collar, shoulders, and jacket seams. The shared `(13, 0)` offset must remain seamless at the final 60% window scale. Do not introduce per-expression offsets unless the source images prove they differ; if they do, stop and amend the design before changing the schema.
 
 - [ ] **Step 7: Commit the composition contract**
 
@@ -360,7 +360,7 @@ git commit -m "spike: scaffold layered rendering probe"
 
 - [ ] **Step 1: Write failing geometry tests**
 
-For a 303×603 body, 256×240 overlay at `(24, 0)`, assert 60% logical body size is 181.8×361.8 DIP before device alignment. At DPI 1.25 and 1.5, assert body edges, overlay edges, bottom anchor, and panel anchor derive from one shared transform and land on integer device pixels.
+For a 303×603 body, 256×240 overlay at `(13, 0)`, assert 60% logical body size is 181.8×361.8 DIP before device alignment. At DPI 1.25 and 1.5, assert body edges, overlay edges, bottom anchor, and panel anchor derive from one shared transform and land on integer device pixels.
 
 - [ ] **Step 2: Write failing WPF STA tests**
 
@@ -588,7 +588,7 @@ For the winning pair, test 50%, 60%, and 75%; run all 28 expressions; run 280 sw
 - chosen renderer and transparency mode, or rejection of WPF;
 - observed cells and unavailable mixed-monitor cells;
 - evidence filenames;
-- final overlay offset, body and overlay sizes, panel anchor, and default scale 0.60;
+- final overlay offset, body and overlay sizes, panel anchor, and default scale 0.50;
 - exact DPI alignment and resource-disposal rules Phase 1 must retain;
 - memory trend and visible limitations;
 - whether the approved design requires amendment.

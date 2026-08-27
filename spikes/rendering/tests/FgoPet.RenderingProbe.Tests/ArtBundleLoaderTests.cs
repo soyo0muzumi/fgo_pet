@@ -22,8 +22,8 @@ public sealed class ArtBundleLoaderTests : IDisposable
 
         Assert.Equal("full_body", bundle.Composition.BodyId);
         Assert.Equal("r01c01", bundle.Composition.DefaultExpressionId);
-        Assert.Equal(24, bundle.Composition.OverlayOffset.X);
-        Assert.Equal(0.6, bundle.Composition.DefaultScale);
+        Assert.Equal(13, bundle.Composition.OverlayOffset.X);
+        Assert.Equal(0.5, bundle.Composition.DefaultScale);
         Assert.True(bundle.Images.Values.All(image => image.IsFrozen));
     }
 
@@ -107,10 +107,10 @@ public sealed class ArtBundleLoaderTests : IDisposable
             {
                 body_id = "full_body",
                 default_expression_id = "r01c01",
-                overlay_offset = new { x = 24, y = 0 },
+                overlay_offset = new { x = 13, y = 0 },
                 overlay_size = new { width = 256, height = 240 },
                 panel_anchor = new { x = 151, y = 360 },
-                default_scale = 0.6,
+                default_scale = 0.5,
             },
         };
         var path = Path.Combine(_directory, "manifest.json");
