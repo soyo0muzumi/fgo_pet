@@ -12,8 +12,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-local_data/
-story_cache/
 
 # Local application data and secrets
 *.db
