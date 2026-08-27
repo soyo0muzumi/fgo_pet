@@ -1,0 +1,26 @@
+<Window x:Class="FgoPet.RenderingProbe.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FGO Pet Rendering Probe" SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize" ShowInTaskbar="True" Topmost="False"
+        KeyDown="OnKeyDown" DpiChanged="OnDpiChanged" MouseLeftButtonDown="OnMouseLeftButtonDown">
+  <Canvas x:Name="Root" Background="Transparent">
+    <ContentControl x:Name="PortraitHost" />
+    <Grid x:Name="TerminalPanel" Width="264" Height="96">
+      <Border Background="#E8172238" BorderBrush="#CC42DFF5" BorderThickness="1" />
+      <Grid Margin="12,9">
+        <Grid.RowDefinitions><RowDefinition Height="18"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid>
+          <TextBlock Text="CHALDEA // PERSONAL LINK" Foreground="#FF70E7F5" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="10" FontWeight="SemiBold" />
+          <Rectangle Height="2" VerticalAlignment="Bottom" Fill="#FFD242E8" />
+        </Grid>
+        <TextBlock x:Name="PanelText" Grid.Row="1" Margin="0,8,0,0" TextWrapping="Wrap"
+                   Foreground="#FFF0F5FF" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="13"
+                   Text="前辈，今天也请按自己的节奏来。" />
+      </Grid>
+    </Grid>
+    <Border x:Name="DiagnosticPanel" Background="#B0000000" Padding="6" Canvas.Left="4" Canvas.Top="4">
+      <TextBlock x:Name="DiagnosticText" Foreground="White" FontFamily="Consolas" FontSize="10" />
+    </Border>
+  </Canvas>
+</Window>

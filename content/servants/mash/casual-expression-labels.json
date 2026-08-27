@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "expressions": {
+    "r01c01": {"label": "微笑交谈", "notes": ""},
+    "r01c02": {"label": "激动呼喊", "notes": ""},
+    "r01c03": {"label": "温和注视", "notes": ""},
+    "r01c04": {"label": "平静正视", "notes": ""},
+    "r02c01": {"label": "愤怒喊话", "notes": ""},
+    "r02c02": {"label": "轻微惊讶", "notes": ""},
+    "r02c03": {"label": "安心微笑", "notes": ""},
+    "r02c04": {"label": "闭眼安然", "notes": ""},
+    "r03c01": {"label": "负伤呼喊", "notes": ""},
+    "r03c02": {"label": "负伤坚持", "notes": ""},
+    "r03c03": {"label": "负伤疲惫", "notes": ""},
+    "r03c04": {"label": "负伤严肃", "notes": ""},
+    "r04c01": {"label": "沉静倾听", "notes": ""},
+    "r04c02": {"label": "惊讶发问", "notes": ""},
+    "r04c03": {"label": "咬牙坚定", "notes": ""},
+    "r04c04": {"label": "羞涩微笑", "notes": ""},
+    "r05c01": {"label": "柔和侧视", "notes": ""},
+    "r05c02": {"label": "低落担忧", "notes": ""},
+    "r05c03": {"label": "含蓄微笑", "notes": ""},
+    "r05c04": {"label": "认真凝视", "notes": ""},
+    "r06c01": {"label": "大声疾呼", "notes": ""},
+    "r06c02": {"label": "闭眼浅笑", "notes": ""},
+    "r06c03": {"label": "闭眼温柔", "notes": ""},
+    "r06c04": {"label": "不安询问", "notes": ""},
+    "r07c01": {"label": "脸红迟疑", "notes": ""},
+    "r07c02": {"label": "闭眼喜悦", "notes": ""},
+    "r07c03": {"label": "开怀欢笑", "notes": ""},
+    "r07c04": {"label": "忧虑注视", "notes": ""}
+  }
+}
