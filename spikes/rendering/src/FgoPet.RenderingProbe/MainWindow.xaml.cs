@@ -58,6 +58,7 @@ public partial class MainWindow : Window
         var panelHeight = 160 * _scale;
         TerminalPanel.Width = panelWidth;
         TerminalPanel.Height = panelHeight;
+        TerminalPanel.Clip = PanelClip(panelWidth, panelHeight, 20 * _scale);
         var minimumX = Math.Min(0, geometry.PanelAnchor.X - panelWidth / 2);
         var shiftX = -minimumX;
         Canvas.SetLeft(PortraitHost, shiftX);
@@ -71,6 +72,11 @@ public partial class MainWindow : Window
 
     private void OnDpiChanged(object sender, DpiChangedEventArgs e) =>
         Dispatcher.InvokeAsync(ApplyLayout, DispatcherPriority.Loaded);
+
+    private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+    }
 
     private async void OnKeyDown(object sender, KeyEventArgs e)
     {
@@ -170,5 +176,21 @@ public partial class MainWindow : Window
             dpi.DpiScaleX,
             milliseconds,
             Process.GetCurrentProcess().WorkingSet64));
+    }
+
+    private static Geometry PanelClip(double width, double height, double corner)
+    {
+        var geometry = new StreamGeometry();
+        using var context = geometry.Open();
+        context.BeginFigure(new Point(corner, 0), true, true);
+        context.LineTo(new Point(width - corner, 0), true, false);
+        context.LineTo(new Point(width, corner), true, false);
+        context.LineTo(new Point(width, height - corner), true, false);
+        context.LineTo(new Point(width - corner, height), true, false);
+        context.LineTo(new Point(corner, height), true, false);
+        context.LineTo(new Point(0, height - corner), true, false);
+        context.LineTo(new Point(0, corner), true, false);
+        geometry.Freeze();
+        return geometry;
     }
 }

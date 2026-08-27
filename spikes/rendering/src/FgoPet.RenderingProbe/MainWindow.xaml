@@ -3,13 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="FGO Pet Rendering Probe" SizeToContent="WidthAndHeight"
         ResizeMode="NoResize" ShowInTaskbar="True" Topmost="False"
-        KeyDown="OnKeyDown" DpiChanged="OnDpiChanged">
+        KeyDown="OnKeyDown" DpiChanged="OnDpiChanged" MouseLeftButtonDown="OnMouseLeftButtonDown">
   <Canvas x:Name="Root" Background="Transparent">
     <ContentControl x:Name="PortraitHost" />
     <Grid x:Name="TerminalPanel" Width="264" Height="96">
-      <Grid.Clip>
-        <PathGeometry Figures="M 12,0 L 252,0 L 264,12 L 264,84 L 252,96 L 12,96 L 0,84 L 0,12 Z" />
-      </Grid.Clip>
       <Border Background="#E8172238" BorderBrush="#CC42DFF5" BorderThickness="1" />
       <Grid Margin="12,9">
         <Grid.RowDefinitions><RowDefinition Height="18"/><RowDefinition Height="*"/></Grid.RowDefinitions>
