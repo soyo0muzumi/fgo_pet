@@ -11,6 +11,7 @@ public sealed record InstalledPack(
     string ServantId,
     string DisplayName,
     string? PreviewPath,
+    string? Publisher,
     IReadOnlyList<AppearanceSlot> Appearances);
 
 public sealed record PackCatalog(IReadOnlyList<InstalledPack> Packs)

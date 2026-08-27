@@ -44,6 +44,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository
                     best.ServantId,
                     best.DisplayName,
                     best.PreviewPath,
+                    best.Publisher,
                     appearances);
             })
             .OrderBy(servant => servant.DisplayName, StringComparer.Ordinal)
@@ -176,6 +177,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository
                     manifest.ServantId,
                     manifest.DisplayName,
                     string.IsNullOrWhiteSpace(manifest.PreviewPath) ? null : manifest.PreviewPath,
+                    string.IsNullOrWhiteSpace(manifest.Publisher) ? null : manifest.Publisher,
                     slots));
             }
         }

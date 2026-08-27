@@ -25,6 +25,7 @@ public sealed record InstalledServant(
     string ServantId,
     string DisplayName,
     string? PreviewPath,
+    string? Publisher,
     IReadOnlyList<ServantAppearance> Appearances);
 
 public sealed record ServantAppearance(

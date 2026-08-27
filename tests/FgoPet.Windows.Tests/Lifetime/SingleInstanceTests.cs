@@ -30,10 +30,11 @@ public sealed class SingleInstanceTests
         var appId = $"win-single-fwd-{Guid.NewGuid():N}";
         var acquired = SingleInstanceCoordinator.TryCreatePrimary(appId, out var coordinator, out _);
         Assert.True(acquired);
-        using (coordinator!)
+        var primary = coordinator!;
+        using (primary)
         {
             var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            coordinator.ListenForActivation(path => received.TrySetResult(path));
+            primary.ListenForActivation(path => received.TrySetResult(path));
 
             var forwarded = SingleInstanceCoordinator.ForwardActivation(appId, "C:\\tmp\\mash.fgopetpack", TimeSpan.FromSeconds(10));
 
