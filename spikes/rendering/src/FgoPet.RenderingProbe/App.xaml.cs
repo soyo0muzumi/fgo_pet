@@ -11,7 +11,10 @@ public partial class App : Application
         try
         {
             var options = ProbeOptions.Parse(e.Args);
-            _ = ArtBundleLoader.Load(options.BundlePath);
+            var bundle = ArtBundleLoader.Load(options.BundlePath);
+            var window = new MainWindow(options, bundle);
+            MainWindow = window;
+            window.Show();
         }
         catch (Exception error)
         {
