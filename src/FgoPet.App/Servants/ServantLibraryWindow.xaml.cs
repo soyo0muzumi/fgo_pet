@@ -12,6 +12,7 @@ public partial class ServantLibraryWindow : Window
         InitializeComponent();
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         DataContext = viewModel;
+        Loaded += async (_, _) => await RefreshAsync();
     }
 
     internal Task RefreshAsync() => _viewModel.LoadAsync();

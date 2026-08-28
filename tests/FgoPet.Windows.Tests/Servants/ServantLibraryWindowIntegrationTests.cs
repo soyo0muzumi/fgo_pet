@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Windows.Threading;
 using FgoPet.App.Servants;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
@@ -29,10 +30,13 @@ public sealed class ServantLibraryWindowIntegrationTests
             {
                 Assert.Empty(viewModel.Servants);
 
-                await window.RefreshAsync();
+                window.Show();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
                 Assert.Single(viewModel.Servants);
                 Assert.Equal("preview.mash", viewModel.Servants[0].PackageId);
+                Assert.Single(window.ServantList.Items);
+                await Task.CompletedTask;
             }
             finally
             {

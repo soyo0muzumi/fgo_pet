@@ -14,7 +14,7 @@
             <ColumnDefinition Width="3*" />
         </Grid.ColumnDefinitions>
 
-        <ListBox Grid.Column="0"
+        <ListBox x:Name="ServantList" Grid.Column="0"
                  ItemsSource="{Binding Servants}"
                  SelectedItem="{Binding SelectedServant}"
                  Margin="8">
