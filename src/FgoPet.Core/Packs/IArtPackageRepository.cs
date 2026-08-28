@@ -19,6 +19,11 @@ public interface IArtPackageRepository
     Task MarkLastKnownGoodAsync(PortraitSelection selection, CancellationToken cancellationToken);
 }
 
+public interface IPackScanDiagnostics
+{
+    IReadOnlyList<string> LastScanIssues { get; }
+}
+
 /// <summary>A servant with its browsable appearances across installed package versions.</summary>
 public sealed record InstalledServant(
     string PackageId,

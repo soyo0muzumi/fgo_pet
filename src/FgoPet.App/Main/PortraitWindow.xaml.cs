@@ -127,8 +127,10 @@ public partial class PortraitWindow : Window
     private DeviceRect ArrangeStablePanelLayout(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
     {
         _geometry = geometry;
-        var portraitLeft = (int)Math.Round((Left + _portraitOffsetX) * dpi.X);
-        var portraitTop = (int)Math.Round((Top + _portraitOffsetY) * dpi.Y);
+        var windowLeft = double.IsFinite(Left) ? Left : 0;
+        var windowTop = double.IsFinite(Top) ? Top : 0;
+        var portraitLeft = (int)Math.Round((windowLeft + _portraitOffsetX) * dpi.X);
+        var portraitTop = (int)Math.Round((windowTop + _portraitOffsetY) * dpi.Y);
         var portraitBounds = new DeviceRect(
             portraitLeft,
             portraitTop,

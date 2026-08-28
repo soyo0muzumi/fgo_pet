@@ -36,6 +36,7 @@ public sealed class ServantLibraryWindowIntegrationTests
                 Assert.Single(viewModel.Servants);
                 Assert.Equal("preview.mash", viewModel.Servants[0].PackageId);
                 Assert.Single(window.ServantList.Items);
+                Assert.Contains("已发现 1 个从者", viewModel.ScanStatus);
                 await Task.CompletedTask;
             }
             finally

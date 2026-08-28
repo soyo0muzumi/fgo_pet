@@ -102,6 +102,35 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
+    public void Stable_panel_layout_handles_an_unshown_window_with_nan_position()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow();
+            try
+            {
+                Assert.True(double.IsNaN(window.Left));
+                Assert.True(double.IsNaN(window.Top));
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(303, 603, 13, 0, 256, 240, 151, 360),
+                    0.5,
+                    new Dpi2(2, 2));
+
+                window.PrepareStablePanelLayout(geometry, new DeviceRect(0, 0, 1920, 1040), new Dpi2(2, 2));
+
+                Assert.True(double.IsFinite(window.Left));
+                Assert.True(double.IsFinite(window.Top));
+                Assert.InRange(window.Width, 1, 1920);
+                Assert.InRange(window.Height, 1, 1040);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Portrait_click_and_escape_drive_the_attached_panel_state_machine()
     {
         StaRun(() =>

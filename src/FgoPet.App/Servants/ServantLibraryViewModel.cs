@@ -40,6 +40,9 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     [ObservableProperty]
     private string _packFilePath = string.Empty;
 
+    [ObservableProperty]
+    private string _scanStatus = "尚未扫描角色包。";
+
     public ServantLibraryViewModel(
         IArtPackageRepository repository,
         IPackInstaller installer,
@@ -92,6 +95,11 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
                         new ServantAppearanceItemViewModel(appearance.AppearanceId, appearance.PackageVersion, appearance.PreviewPath)).ToList()))
                 .ToList();
             Servants = cards;
+            ScanStatus = $"已发现 {cards.Count} 个从者";
+            if (cards.Count == 0 && _repository is IPackScanDiagnostics diagnostics && diagnostics.LastScanIssues.Count > 0)
+            {
+                ScanStatus += $" · {diagnostics.LastScanIssues[0]}";
+            }
 
             if (SelectedServant is not null)
             {
@@ -105,6 +113,13 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
             }
 
             CurrentAppearance = SelectedServant?.SelectedAppearance;
+        }
+        catch (Exception error)
+        {
+            Servants = Array.Empty<ServantCardViewModel>();
+            SelectedServant = null;
+            CurrentAppearance = null;
+            ScanStatus = $"扫描失败：{error.GetType().Name}";
         }
         finally
         {

@@ -9,10 +9,13 @@ namespace FgoPet.Infrastructure.Packs;
 /// resolves startup selections with the recovery order: current valid version, prior
 /// valid version of the same package, last-known-good pack, then any valid pack.
 /// </summary>
-public sealed class FileArtPackageRepository : IArtPackageRepository
+public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanDiagnostics
 {
     private readonly string _packagesRoot;
     private readonly IPackIndexStore _index;
+    private readonly List<string> _lastScanIssues = new();
+
+    public IReadOnlyList<string> LastScanIssues => _lastScanIssues;
 
     public FileArtPackageRepository(string packagesRoot, IPackIndexStore index)
     {
@@ -142,13 +145,25 @@ public sealed class FileArtPackageRepository : IArtPackageRepository
 
     private PackCatalog Scan(CancellationToken cancellationToken)
     {
+        _lastScanIssues.Clear();
         var packs = new List<InstalledPack>();
-        if (!Directory.Exists(_packagesRoot))
+        string[] packageDirectories;
+        try
         {
+            packageDirectories = Directory.EnumerateDirectories(_packagesRoot).ToArray();
+        }
+        catch (Exception error)
+        {
+            _lastScanIssues.Add($"无法枚举角色包根目录：{error.GetType().Name}: {error.Message}");
             return new PackCatalog(packs);
         }
 
-        foreach (var packageDir in Directory.EnumerateDirectories(_packagesRoot))
+        if (packageDirectories.Length == 0)
+        {
+            _lastScanIssues.Add("角色包根目录可访问，但其中没有包目录");
+        }
+
+        foreach (var packageDir in packageDirectories)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var packageId = Path.GetFileName(packageDir);
@@ -156,13 +171,19 @@ public sealed class FileArtPackageRepository : IArtPackageRepository
             {
                 if (!SemVersion.TryParse(Path.GetFileName(versionDir), out var version))
                 {
+                    _lastScanIssues.Add($"忽略版本目录 {Path.GetFileName(versionDir)}：版本号无效");
                     continue;
                 }
 
-                var manifest = TryReadPackageManifest(Path.Combine(versionDir, "package.json"));
-                if (manifest is null || manifest.PackageId != packageId)
+                var manifest = TryReadPackageManifest(Path.Combine(versionDir, "package.json"), out var error);
+                if (manifest is null)
                 {
-                    // Malformed or mismatched identity: the directory is not a valid installed pack.
+                    _lastScanIssues.Add($"忽略 {packageId}@{version}：{error}");
+                    continue;
+                }
+                if (manifest.PackageId != packageId)
+                {
+                    _lastScanIssues.Add($"忽略 {packageId}@{version}：package_id 与目录名不一致");
                     continue;
                 }
 
@@ -190,14 +211,17 @@ public sealed class FileArtPackageRepository : IArtPackageRepository
         return new PackCatalog(packs);
     }
 
-    private PackManifestV1? TryReadPackageManifest(string path)
+    private PackManifestV1? TryReadPackageManifest(string path, out string? error)
     {
         try
         {
-            return PackJson.DeserializeStrict<PackManifestV1>(File.ReadAllText(path));
+            var manifest = PackJson.DeserializeStrict<PackManifestV1>(File.ReadAllText(path));
+            error = null;
+            return manifest;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            error = $"{exception.GetType().Name}: {exception.Message}";
             return null;
         }
     }

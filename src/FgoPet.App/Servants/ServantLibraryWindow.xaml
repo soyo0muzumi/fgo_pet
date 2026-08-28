@@ -14,20 +14,28 @@
             <ColumnDefinition Width="3*" />
         </Grid.ColumnDefinitions>
 
-        <ListBox x:Name="ServantList" Grid.Column="0"
-                 ItemsSource="{Binding Servants}"
-                 SelectedItem="{Binding SelectedServant}"
-                 Margin="8">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Margin="4">
-                        <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" />
-                        <TextBlock Text="{Binding PackageId}" Foreground="Gray" />
-                        <TextBlock Text="{Binding SourceBadge}" Foreground="#C07030" />
-                    </StackPanel>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <ListBox x:Name="ServantList"
+                     ItemsSource="{Binding Servants}"
+                     SelectedItem="{Binding SelectedServant}"
+                     Margin="8">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="4">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" />
+                            <TextBlock Text="{Binding PackageId}" Foreground="Gray" />
+                            <TextBlock Text="{Binding SourceBadge}" Foreground="#C07030" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Grid.Row="1" Margin="8,0,8,8" Text="{Binding ScanStatus}"
+                       Foreground="#606060" TextWrapping="Wrap" />
+        </Grid>
 
         <StackPanel Grid.Column="1" Margin="12">
             <TextBlock Text="{Binding SelectedServant.DisplayName}" FontSize="20" FontWeight="Bold" />
