@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Panels;
@@ -15,6 +16,24 @@ public partial class AttachedPanelView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Unloaded += (_, _) => DetachModel();
+    }
+
+    internal void ApplyPhase0Clip(double width, double height, double corner)
+    {
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(new Point(corner, 0), true, true);
+            context.LineTo(new Point(width - corner, 0), true, false);
+            context.LineTo(new Point(width, corner), true, false);
+            context.LineTo(new Point(width, height - corner), true, false);
+            context.LineTo(new Point(width - corner, height), true, false);
+            context.LineTo(new Point(corner, height), true, false);
+            context.LineTo(new Point(0, height - corner), true, false);
+            context.LineTo(new Point(0, corner), true, false);
+        }
+        geometry.Freeze();
+        Clip = geometry;
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)

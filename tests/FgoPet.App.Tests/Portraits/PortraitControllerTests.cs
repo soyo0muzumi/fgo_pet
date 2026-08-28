@@ -143,6 +143,19 @@ public sealed class PortraitControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyDpi_before_first_activation_is_used_for_initial_geometry()
+    {
+        var bundle = WriteBundle("initial-dpi");
+        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "initial-dpi", bundle.Root));
+        _controller.ApplyDpi(new Dpi2(2.0, 2.0));
+
+        await _controller.ActivateAsync(new PortraitSelection("pkg", "initial-dpi"), CancellationToken.None);
+
+        Assert.Equal(303, _controller.CurrentState!.Geometry.DeviceSize.Width);
+        Assert.Equal(603, _controller.CurrentState.Geometry.DeviceSize.Height);
+    }
+
+    [Fact]
     public async Task Loading_a_third_appearance_evicts_the_oldest_snapshot()
     {
         _repository.Get = selection => Task.FromResult<AppearanceLocation?>(

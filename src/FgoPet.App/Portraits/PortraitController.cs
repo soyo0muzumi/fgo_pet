@@ -94,8 +94,12 @@ public sealed class PortraitController : IPortraitController
     /// <summary>Recomputes geometry after a DPI or display change without altering the scale.</summary>
     public void ApplyDpi(Dpi2 dpi)
     {
-        var state = CurrentState ?? throw new InvalidOperationException("尚未激活任何画像。");
         _dpi = dpi;
+        var state = CurrentState;
+        if (state is null)
+        {
+            return;
+        }
         Publish(state with { Geometry = PortraitLayout.Calculate(state.Snapshot.SourceGeometry, _scale, dpi) });
     }
 

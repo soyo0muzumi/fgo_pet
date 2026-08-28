@@ -17,6 +17,7 @@ namespace FgoPet.App.Main;
 public partial class PortraitWindow : Window
 {
     private readonly AttachedPanelViewModel _panel;
+    private readonly AttachedPanelView _panelView;
     private readonly DispatcherTimer _idleTimer;
     private PortraitGeometry? _geometry;
     private double _portraitOffsetX;
@@ -35,7 +36,8 @@ public partial class PortraitWindow : Window
             Interval = TimeSpan.FromSeconds(1),
         };
         _idleTimer.Tick += (_, _) => HandlePanelIdleTick();
-        PanelHost.Content = new AttachedPanelView { DataContext = panel };
+        _panelView = new AttachedPanelView { DataContext = panel };
+        PanelHost.Content = _panelView;
         panel.PropertyChanged += OnPanelPropertyChanged;
         Loaded += (_, _) => _idleTimer.Start();
         Closed += (_, _) =>
@@ -125,12 +127,18 @@ public partial class PortraitWindow : Window
             portraitTop + geometry.PanelAnchorDevice.Y);
 
         var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
+        var compactHeightDip = panelWidthDip * (160.0 / 440.0);
+        var panelHeightDip = _panel.State == AttachedPanelState.Compact
+            ? compactHeightDip
+            : Math.Min(280, workArea.Height * 0.6 / dpi.Y);
         PanelHost.Width = panelWidthDip;
-        PanelHost.MaxHeight = workArea.Height * 0.6 / dpi.Y;
-        PanelHost.Measure(new Size(panelWidthDip, PanelHost.MaxHeight));
+        PanelHost.Height = panelHeightDip;
+        PanelHost.MaxHeight = panelHeightDip;
+        _panelView.ApplyPhase0Clip(panelWidthDip, panelHeightDip, panelWidthDip / 22.0);
+        PanelHost.Measure(new Size(panelWidthDip, panelHeightDip));
         var desired = new DeviceSize(
             Math.Max(1, (int)Math.Ceiling(panelWidthDip * dpi.X)),
-            Math.Max(1, (int)Math.Ceiling(PanelHost.DesiredSize.Height * dpi.Y)));
+            Math.Max(1, (int)Math.Ceiling(panelHeightDip * dpi.Y)));
         var panelWidth = Math.Min(desired.Width, workArea.Width);
         var panelHeight = Math.Min(desired.Height, (int)Math.Floor(workArea.Height * 0.6));
         var panelBounds = new DeviceRect(

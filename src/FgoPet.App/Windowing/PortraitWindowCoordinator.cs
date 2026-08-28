@@ -118,6 +118,8 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
     private void AttachHook()
     {
+        var dpi = VisualTreeHelper.GetDpi(_window);
+        ApplyWindowDpi(new Dpi2(dpi.DpiScaleX, dpi.DpiScaleY));
         var handle = new WindowInteropHelper(_window).Handle;
         _source = HwndSource.FromHwnd(handle);
         _source?.AddHook(OnWindowMessage);
@@ -148,13 +150,21 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
             case WmDpiChanged:
                 var value = wParam.ToInt64();
-                _dpi = new Dpi2((short)(value & 0xFFFF) / 96.0, (short)((value >> 16) & 0xFFFF) / 96.0);
-                _controller.ApplyDpi(_dpi);
-                ArrangeAttachedPanel();
+                ApplyWindowDpi(new Dpi2((short)(value & 0xFFFF) / 96.0, (short)((value >> 16) & 0xFFFF) / 96.0));
                 break;
         }
 
         return IntPtr.Zero;
+    }
+
+    internal void ApplyWindowDpi(Dpi2 dpi)
+    {
+        _dpi = dpi;
+        _controller.ApplyDpi(_dpi);
+        if (_controller.CurrentState is not null)
+        {
+            ArrangeAttachedPanel();
+        }
     }
 
     private bool OnPointerDown(Point windowPoint)

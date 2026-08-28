@@ -50,6 +50,27 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
+    public void Attached_panel_is_rendered_above_the_portrait_like_phase_0()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow();
+            try
+            {
+                var canvas = Assert.IsType<Canvas>(window.FindName("HostCanvas"));
+                var portrait = Assert.IsAssignableFrom<UIElement>(window.FindName("Portrait"));
+                var panel = Assert.IsAssignableFrom<UIElement>(window.FindName("PanelHost"));
+
+                Assert.True(canvas.Children.IndexOf(panel) > canvas.Children.IndexOf(portrait));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Portrait_click_and_escape_drive_the_attached_panel_state_machine()
     {
         StaRun(() =>
@@ -98,9 +119,10 @@ public sealed class PortraitWindowIntegrationTests
                 var portrait = window.PortraitScreenBounds;
                 Assert.True(bounds.Top >= portrait.Y + geometry.PanelAnchor.Y);
                 Assert.True(bounds.Left < portrait.Right && bounds.Right > portrait.X);
-                Assert.True(bounds.Height <= 480);
+                Assert.Equal(220, bounds.Width);
+                Assert.Equal(80, bounds.Height);
                 var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
-                Assert.True(host.MaxHeight <= 480);
+                Assert.Equal(80, host.Height);
             }
             finally
             {
@@ -262,6 +284,42 @@ public sealed class PortraitWindowIntegrationTests
             coordinator.ClampPortraitToWorkArea();
 
             Assert.Equal(new LogicalRect(1850, 900, 150, 300), window.PortraitScreenBounds);
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Coordinator_uses_initial_monitor_dpi_when_clamping_left_and_right_edges()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow { Left = 950, Top = 100 };
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(2, 2));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                new MemoryPlacementStore(),
+                new FixedScreenService());
+            var geometry = PortraitLayout.Calculate(
+                new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360),
+                0.5,
+                new Dpi2(2, 2));
+            window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(2, 2));
+            coordinator.ApplyWindowDpi(new Dpi2(2, 2));
+
+            coordinator.ClampPortraitToWorkArea();
+
+            Assert.Equal(850, window.PortraitScreenBounds.X);
+            Assert.Equal(100, window.PortraitScreenBounds.Y);
+
+            window.MovePortraitToDevice(new DevicePoint(-200, 200), new Dpi2(2, 2));
+            coordinator.ClampPortraitToWorkArea();
+
+            Assert.Equal(0, window.PortraitScreenBounds.X);
             window.Close();
         });
     }

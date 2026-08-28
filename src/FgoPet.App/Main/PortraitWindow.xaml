@@ -12,7 +12,7 @@
         ShowActivated="False"
         SizeToContent="WidthAndHeight">
     <Canvas x:Name="HostCanvas">
-        <ContentControl x:Name="PanelHost" Visibility="Collapsed" />
         <portraits:PortraitView x:Name="Portrait" />
+        <ContentControl x:Name="PanelHost" Visibility="Collapsed" />
     </Canvas>
 </Window>
