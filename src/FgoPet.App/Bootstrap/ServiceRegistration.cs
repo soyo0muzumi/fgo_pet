@@ -1,5 +1,7 @@
 using System.IO;
 using System.Windows;
+using FgoPet.App.Focus;
+using FgoPet.App.Feedback;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
 using FgoPet.App.Panels;
@@ -7,14 +9,20 @@ using FgoPet.App.Portraits;
 using FgoPet.App.Servants;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
+using FgoPet.Core.Bond;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Windowing;
+using FgoPet.Infrastructure.Bond;
+using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.FileSystem;
+using FgoPet.Infrastructure.Focus;
 using FgoPet.Infrastructure.Packs;
+using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
+using FgoPet.Infrastructure.Timeline;
 using FgoPet.Infrastructure.Windowing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -54,8 +62,27 @@ public static class ServiceRegistration
             provider.GetRequiredService<PortraitSnapshotCache>(),
             new Dpi2(1, 1)))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<PortraitController>())
+        // Phase 2 runtime: one versioned database plus focus orchestration.
+        .AddSingleton(provider => new RuntimeDatabase(provider.GetRequiredService<AppPaths>().RuntimeDatabasePath))
+        .AddSingleton<FgoPet.App.Bootstrap.IRuntimeDatabaseMigrator>(provider =>
+            new SqliteRuntimeDatabaseMigrator(provider.GetRequiredService<RuntimeDatabase>()))
+        .AddSingleton<IPhase2Availability, Phase2Availability>()
+        .AddSingleton<IBondProgressionPolicy, DefaultBondProgressionPolicy>()
+        .AddSingleton<SqliteFocusRepository>()
+        .AddSingleton<SqliteEventStore>()
+        .AddSingleton<SqliteTimelineRepository>()
+        .AddSingleton<SqliteBondRepository>()
+        .AddSingleton<SqliteFocusCompletionUnit>()
+        .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
+        .AddSingleton<FocusSessionService>()
+        .AddSingleton<IFocusSessionService>(provider => provider.GetRequiredService<FocusSessionService>())
+        .AddSingleton<IFocusRestorer>(provider => new FocusServiceRestorer(provider.GetRequiredService<FocusSessionService>()))
+        .AddSingleton<EventFeedbackSelector>()
+        .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantLibraryViewModel>()
-        .AddSingleton(provider => new AttachedPanelViewModel(provider.GetRequiredService<TimeProvider>()))
+        .AddSingleton(provider => new AttachedPanelViewModel(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IFocusSessionService>()))
         .AddSingleton<ServantLibraryWindow>()
         .AddSingleton<PortraitWindow>()
         .AddSingleton<PortraitWindowCoordinator>()
