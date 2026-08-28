@@ -49,24 +49,74 @@ public partial class AttachedPanelView : UserControl
 
     private void OnModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AttachedPanelViewModel.State))
+        if (e.PropertyName is nameof(AttachedPanelViewModel.State)
+            or nameof(AttachedPanelViewModel.IsCompactTimerVisible)
+            or nameof(AttachedPanelViewModel.CanPause))
         {
             ApplyState();
         }
     }
 
+    /// <summary>
+    /// Visibility switching only: never queries SQLite, advances time, computes
+    /// levels, validates fields, or selects dialogue.
+    /// </summary>
     private void ApplyState()
     {
         var state = _model?.State ?? AttachedPanelState.Collapsed;
         CompactActions.Visibility = state == AttachedPanelState.Collapsed ? Visibility.Collapsed : Visibility.Visible;
-        CompactMessage.Visibility = state == AttachedPanelState.Compact ? Visibility.Visible : Visibility.Collapsed;
+
+        var timerVisible = _model?.IsCompactTimerVisible == true;
+        CompactMessage.Visibility = state == AttachedPanelState.Compact && !timerVisible
+            ? Visibility.Visible : Visibility.Collapsed;
+        CompactTimer.Visibility = state == AttachedPanelState.Compact && timerVisible
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        FocusContent.Visibility = state == AttachedPanelState.ExpandedFocus ? Visibility.Visible : Visibility.Collapsed;
+        TodayContent.Visibility = state == AttachedPanelState.ExpandedToday ? Visibility.Visible : Visibility.Collapsed;
         DialogueContent.Visibility = state == AttachedPanelState.ExpandedDialogue ? Visibility.Visible : Visibility.Collapsed;
         TodoContent.Visibility = state == AttachedPanelState.ExpandedTodo ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_model is not null)
+        {
+            PauseResumeButton.Content = _model.CanPause ? "暂停" : "继续";
+        }
     }
 
+    private void OnFocusClick(object sender, RoutedEventArgs e) => _model?.FocusClick();
+    private void OnTodayClick(object sender, RoutedEventArgs e) => _model?.TodayClick();
     private void OnDialogueClick(object sender, RoutedEventArgs e) => _model?.DialogueClick();
     private void OnTodoClick(object sender, RoutedEventArgs e) => _model?.TodoClick();
-    private void OnCollapseClick(object sender, RoutedEventArgs e) => _model?.Escape();
+    private void OnPreset25Click(object sender, RoutedEventArgs e) => _model?.SelectPreset(Panels.FocusPresetCatalog.Short);
+    private void OnPreset50Click(object sender, RoutedEventArgs e) => _model?.SelectPreset(Panels.FocusPresetCatalog.Long);
+    private void OnCustomPresetClick(object sender, RoutedEventArgs e)
+    {
+        if (_model is null)
+        {
+            return;
+        }
+
+        _model.SelectCustomPreset();
+        CustomPresetFields.Visibility = Visibility.Visible;
+    }
+    private void OnStartFocusClick(object sender, RoutedEventArgs e) => _model?.StartFocus();
+    private void OnPauseResumeClick(object sender, RoutedEventArgs e)
+    {
+        if (_model is null)
+        {
+            return;
+        }
+
+        if (_model.CanPause)
+        {
+            _model.PauseTimer();
+        }
+        else
+        {
+            _model.ResumeTimer();
+        }
+    }
+    private void OnStopTimerClick(object sender, RoutedEventArgs e) => _model?.StopTimer();
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
     private void OnPointerLeft(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerLeft();
 

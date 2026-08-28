@@ -142,11 +142,11 @@ public partial class PortraitWindow : Window
 
         var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
         var compactHeightDip = panelWidthDip * (160.0 / 440.0);
-        var panelHeightDip = _panel.State == AttachedPanelState.Compact
-            ? compactHeightDip
-            : _panel.State == AttachedPanelState.Collapsed
-                ? compactHeightDip
-                : Math.Min(280, workArea.Height * 0.6 / dpi.Y);
+        // Only Compact/Collapsed keep the compact height; all four expanded states
+        // share the reserved stretch height so opening a column never moves the portrait.
+        var panelHeightDip = AttachedPanelStateMachine.IsExpanded(_panel.State)
+            ? Math.Min(280, workArea.Height * 0.6 / dpi.Y)
+            : compactHeightDip;
         var reservedHeightDip = Math.Min(280, workArea.Height * 0.6 / dpi.Y);
         PanelHost.Width = panelWidthDip;
         PanelHost.Height = panelHeightDip;

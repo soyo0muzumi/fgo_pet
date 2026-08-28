@@ -43,18 +43,69 @@ public sealed class AttachedPanelViewIntegrationTests
     }
 
     [Fact]
-    public void Collapse_button_steps_compact_back_to_collapsed()
+    public void Header_has_four_phase2_columns_and_no_collapse_button()
+    {
+        StaRun(() =>
+        {
+            var view = new AttachedPanelView { DataContext = new AttachedPanelViewModel(TimeProvider.System) };
+            Assert.NotNull(view.FindName("FocusButton"));
+            Assert.NotNull(view.FindName("TodayButton"));
+            Assert.NotNull(view.FindName("TodoButton"));
+            Assert.NotNull(view.FindName("DialogueButton"));
+            Assert.Null(view.FindName("CollapseButton"));
+            Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusContent"));
+            Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodayContent"));
+            Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactTimer"));
+        });
+    }
+
+    [Fact]
+    public void Focus_and_today_states_toggle_only_their_own_content()
     {
         StaRun(() =>
         {
             var model = new AttachedPanelViewModel(TimeProvider.System);
             var view = new AttachedPanelView { DataContext = model };
-            var collapse = Assert.IsType<Button>(view.FindName("CollapseButton"));
+            var focus = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusContent"));
+            var today = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodayContent"));
+            var todo = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodoContent"));
+            var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
+            var message = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactMessage"));
+            var timer = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactTimer"));
+
             model.PortraitClick();
+            model.FocusClick();
+            Assert.Equal(Visibility.Visible, focus.Visibility);
+            Assert.Equal(Visibility.Collapsed, today.Visibility);
+            Assert.Equal(Visibility.Collapsed, todo.Visibility);
+            Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
+            Assert.Equal(Visibility.Collapsed, message.Visibility);
+            Assert.Equal(Visibility.Collapsed, timer.Visibility);
 
-            collapse.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            model.TodayClick();
+            Assert.Equal(Visibility.Collapsed, focus.Visibility);
+            Assert.Equal(Visibility.Visible, today.Visibility);
 
-            Assert.Equal(Core.Panels.AttachedPanelState.Collapsed, model.State);
+            model.Escape();
+            Assert.Equal(Visibility.Collapsed, focus.Visibility);
+            Assert.Equal(Visibility.Collapsed, today.Visibility);
+            Assert.Equal(Visibility.Visible, message.Visibility);
+        });
+    }
+
+    [Fact]
+    public void Timer_state_visibility_follows_the_view_model_not_the_panel_state()
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var view = new AttachedPanelView { DataContext = model };
+            var timer = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactTimer"));
+            var message = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactMessage"));
+
+            model.PortraitClick();
+            Assert.Equal(Visibility.Visible, message.Visibility);
+            Assert.Equal(Visibility.Collapsed, timer.Visibility);
         });
     }
 

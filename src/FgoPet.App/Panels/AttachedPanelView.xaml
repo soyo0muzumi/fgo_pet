@@ -13,6 +13,17 @@
             <Setter Property="FontSize" Value="10" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
+        <Style x:Key="FieldError" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FFD242E8" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FF9FB2D8" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
     </UserControl.Resources>
     <Grid ClipToBounds="True" SnapsToDevicePixels="True">
         <Border Background="#E8172238" BorderBrush="#CC42DFF5" BorderThickness="1" />
@@ -20,21 +31,117 @@
             <Grid.RowDefinitions><RowDefinition Height="18"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="PanelTitle" Text="CHALDEA LINK" Foreground="#FF70E7F5"
-                           FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                <StackPanel x:Name="CompactActions" Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="对话" Click="OnDialogueClick" Style="{StaticResource LinkButton}" />
-                    <Button Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}" Foreground="#FFD242E8" />
-                    <Button x:Name="CollapseButton" Content="收起" Click="OnCollapseClick" Style="{StaticResource LinkButton}" />
+                           FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <StackPanel x:Name="CompactActions" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="FocusButton" Content="专注" Click="OnFocusClick" Style="{StaticResource LinkButton}" />
+                    <Button x:Name="TodayButton" Content="今日" Click="OnTodayClick" Style="{StaticResource LinkButton}" />
+                    <Button x:Name="TodoButton" Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}" Foreground="#FFD242E8" />
+                    <Button x:Name="DialogueButton" Content="对话" Click="OnDialogueClick" Style="{StaticResource LinkButton}" />
                 </StackPanel>
                 <Rectangle Grid.ColumnSpan="2" Height="2" VerticalAlignment="Bottom" Fill="#FFD242E8" />
             </Grid>
-            <TextBlock x:Name="CompactMessage" Grid.Row="1" Margin="0,8,0,0"
+            <!-- Compact body: mutually exclusive character message / running timer -->
+            <Grid Grid.Row="1" Margin="0,8,0,0">
+                <TextBlock x:Name="CompactMessage"
                        Text="前辈，今天也请按自己的节奏来。" TextWrapping="Wrap"
                        Foreground="#FFF0F5FF" FontSize="13" />
+                <StackPanel x:Name="CompactTimer" Visibility="Collapsed">
+                    <TextBlock x:Name="CompactPhaseText" Text="{Binding PhaseText}"
+                               Foreground="#FF70E7F5" FontSize="11" />
+                    <TextBlock Text="{Binding RemainingText}"
+                               Foreground="#FFF0F5FF" FontSize="28" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button x:Name="PauseResumeButton" Content="暂停" Click="OnPauseResumeClick" Style="{StaticResource LinkButton}" FontSize="12" />
+                        <Button x:Name="StopTimerButton" Content="停止" Click="OnStopTimerClick" Style="{StaticResource LinkButton}" FontSize="12" Foreground="#FFD242E8" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+            <!-- Stretched bodies: mutually exclusive per header column -->
+            <ScrollViewer x:Name="FocusContent" Grid.Row="1" Margin="0,8,0,0"
+                          Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="专注" Foreground="#FF70E7F5" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <Button x:Name="Preset25Button" Content="25/5 × 4（100 分钟）" Click="OnPreset25Click"
+                            Style="{StaticResource LinkButton}" FontSize="12" HorizontalAlignment="Left" Margin="0,0,0,2" />
+                    <Button x:Name="Preset50Button" Content="50/10 × 2（120 分钟）" Click="OnPreset50Click"
+                            Style="{StaticResource LinkButton}" FontSize="12" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                    <Button x:Name="CustomPresetButton" Content="自定义" Click="OnCustomPresetClick"
+                            Style="{StaticResource LinkButton}" FontSize="12" HorizontalAlignment="Left" Margin="0,0,0,6" />
+                    <StackPanel x:Name="CustomPresetFields" Visibility="Collapsed">
+                        <Grid Margin="0,0,0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="42" /><ColumnDefinition Width="30" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="专注" Style="{StaticResource FieldLabel}" />
+                            <TextBox x:Name="CustomFocusMinutesBox" Grid.Column="1" Text="{Binding CustomFocusMinutesText, UpdateSourceTrigger=PropertyChanged}"
+                                     Foreground="#FFF0F5FF" Background="#1A42DFF5" BorderBrush="#5542DFF5" FontSize="12" />
+                            <TextBlock Grid.Column="2" Text="分" Style="{StaticResource FieldLabel}" />
+                        </Grid>
+                        <TextBlock Text="{Binding CustomFocusError}" Style="{StaticResource FieldError}" />
+                        <Grid Margin="0,2,0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="42" /><ColumnDefinition Width="30" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="休息" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding CustomBreakMinutesText, UpdateSourceTrigger=PropertyChanged}"
+                                     Foreground="#FFF0F5FF" Background="#1A42DFF5" BorderBrush="#5542DFF5" FontSize="12" />
+                            <TextBlock Grid.Column="2" Text="分" Style="{StaticResource FieldLabel}" />
+                        </Grid>
+                        <TextBlock Text="{Binding CustomBreakError}" Style="{StaticResource FieldError}" />
+                        <Grid Margin="0,2,0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="42" /><ColumnDefinition Width="30" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="循环" Style="{StaticResource FieldLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding CustomCyclesText, UpdateSourceTrigger=PropertyChanged}"
+                                     Foreground="#FFF0F5FF" Background="#1A42DFF5" BorderBrush="#5542DFF5" FontSize="12" />
+                            <TextBlock Grid.Column="2" Text="次" Style="{StaticResource FieldLabel}" />
+                        </Grid>
+                        <TextBlock Text="{Binding CustomCyclesError}" Style="{StaticResource FieldError}" />
+                    </StackPanel>
+                    <Button x:Name="StartFocusButton" Content="开始专注" Click="OnStartFocusClick"
+                            Style="{StaticResource LinkButton}" FontSize="14" FontWeight="SemiBold"
+                            HorizontalAlignment="Left" Margin="0,8,0,0" />
+                </StackPanel>
+            </ScrollViewer>
+            <ScrollViewer x:Name="TodayContent" Grid.Row="1" Margin="0,8,0,0"
+                          Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="今日" Foreground="#FF70E7F5" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="1" Text="{Binding TodayEffectiveText}" Foreground="#FFD242E8" FontSize="11" />
+                    </Grid>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="羁绊 Lv." Foreground="#FF9FB2D8" FontSize="11" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding BondLevelText}" Foreground="#FFF0F5FF" FontSize="11" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="{Binding BondRemainingText}" Foreground="#FF9FB2D8" FontSize="10" Margin="0,0,0,6" />
+                    <ItemsControl ItemsSource="{Binding Today}">
+                        <ItemsControl.ItemTemplate><DataTemplate>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding TimeText}" Foreground="#FF9FB2D8" FontSize="11" />
+                                <TextBlock Grid.Column="1" Text="{Binding SummaryText}" Foreground="#FFF0F5FF" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" Margin="4,0,4,0" />
+                                <TextBlock Grid.Column="2" Text="{Binding BondLevelText}" Foreground="#FFD242E8" FontSize="11" />
+                            </Grid>
+                        </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
             <ScrollViewer x:Name="DialogueContent" Grid.Row="1" Margin="0,8,0,0"
                           Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Dialogue}">
