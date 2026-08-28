@@ -9,20 +9,44 @@ namespace FgoPet.Core.Focus;
 public static class FocusStateMachine
 {
     public static FocusTransition Apply(FocusSession session, FocusCommand command, DateTimeOffset occurredAtUtc) =>
-        (session.Status, command) switch
+        Apply(session, command, occurredAtUtc, sessionIdFactory: null);
+
+    /// <param name="sessionIdFactory">
+    /// Supplies stable session IDs when a start occurs without an explicit ID; the
+    /// default derives the ID from the timestamp so tests stay deterministic.
+    /// </param>
+    public static FocusTransition Apply(
+        FocusSession session,
+        FocusCommand command,
+        DateTimeOffset occurredAtUtc,
+        Func<string>? sessionIdFactory)
+    {
+        _sessionIdFactory = sessionIdFactory;
+        try
         {
-            (FocusStatus.Idle, FocusCommand.Start start) => Start(session, start, occurredAtUtc),
-            (FocusStatus.Focusing, FocusCommand.Pause) => PauseFocus(session, occurredAtUtc),
-            (FocusStatus.PausedFocus, FocusCommand.Resume) => ResumeFocus(session, occurredAtUtc),
-            (FocusStatus.Breaking, FocusCommand.Pause) => PauseBreak(session, occurredAtUtc),
-            (FocusStatus.PausedBreak, FocusCommand.Resume) => ResumeBreak(session, occurredAtUtc),
-            (FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak,
-                FocusCommand.Stop) => Stop(session, occurredAtUtc),
-            (FocusStatus.Focusing or FocusStatus.Breaking, FocusCommand.Elapsed elapsed) =>
-                Advance(session, elapsed.Seconds, occurredAtUtc),
-            (FocusStatus.Completed, FocusCommand.Acknowledge) => FocusTransition.WithoutEvents(FocusSession.Idle),
-            _ => throw new InvalidOperationException($"Command {command.GetType().Name} is invalid for {session.Status}."),
-        };
+            return (session.Status, command) switch
+            {
+                (FocusStatus.Idle, FocusCommand.Start start) => Start(session, start, occurredAtUtc),
+                (FocusStatus.Focusing, FocusCommand.Pause) => PauseFocus(session, occurredAtUtc),
+                (FocusStatus.PausedFocus, FocusCommand.Resume) => ResumeFocus(session, occurredAtUtc),
+                (FocusStatus.Breaking, FocusCommand.Pause) => PauseBreak(session, occurredAtUtc),
+                (FocusStatus.PausedBreak, FocusCommand.Resume) => ResumeBreak(session, occurredAtUtc),
+                (FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak,
+                    FocusCommand.Stop) => Stop(session, occurredAtUtc),
+                (FocusStatus.Focusing or FocusStatus.Breaking, FocusCommand.Elapsed elapsed) =>
+                    Advance(session, elapsed.Seconds, occurredAtUtc),
+                (FocusStatus.Completed, FocusCommand.Acknowledge) => FocusTransition.WithoutEvents(FocusSession.Idle),
+                _ => throw new InvalidOperationException($"Command {command.GetType().Name} is invalid for {session.Status}."),
+            };
+        }
+        finally
+        {
+            _sessionIdFactory = null;
+        }
+    }
+
+    [ThreadStatic]
+    private static Func<string>? _sessionIdFactory;
 
     private static FocusTransition Start(FocusSession previous, FocusCommand.Start start, DateTimeOffset at)
     {
