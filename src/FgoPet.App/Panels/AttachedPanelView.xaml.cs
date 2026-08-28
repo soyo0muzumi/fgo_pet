@@ -51,7 +51,9 @@ public partial class AttachedPanelView : UserControl
     {
         if (e.PropertyName is nameof(AttachedPanelViewModel.State)
             or nameof(AttachedPanelViewModel.IsCompactTimerVisible)
-            or nameof(AttachedPanelViewModel.CanPause))
+            or nameof(AttachedPanelViewModel.CanPause)
+            or nameof(AttachedPanelViewModel.SelectedPresetId)
+            or nameof(AttachedPanelViewModel.IsEditingCustomPreset))
         {
             ApplyState();
         }
@@ -65,6 +67,12 @@ public partial class AttachedPanelView : UserControl
     {
         var state = _model?.State ?? AttachedPanelState.Collapsed;
         CompactActions.Visibility = state == AttachedPanelState.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+
+        // The active header column is highlighted magenta; the rest stay cyan.
+        FocusButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedFocus);
+        TodayButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedToday);
+        TodoButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedTodo);
+        DialogueButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedDialogue);
 
         var timerVisible = _model?.IsCompactTimerVisible == true;
         CompactMessage.Visibility = state == AttachedPanelState.Compact && !timerVisible
@@ -80,8 +88,23 @@ public partial class AttachedPanelView : UserControl
         if (_model is not null)
         {
             PauseResumeButton.Content = _model.CanPause ? "暂停" : "继续";
+            HighlightPresetButtons(_model.SelectedPresetId);
+            CustomPresetFields.Visibility = _model.SelectedPresetId == "custom"
+                ? Visibility.Visible : Visibility.Collapsed;
         }
     }
+
+    private void HighlightPresetButtons(string selectedPresetId)
+    {
+        Preset25Button.Foreground = AccentFor(selectedPresetId == "builtin.25x4");
+        Preset50Button.Foreground = AccentFor(selectedPresetId == "builtin.50x2");
+        CustomPresetButton.Foreground = AccentFor(selectedPresetId == "custom");
+    }
+
+    private static System.Windows.Media.Brush AccentFor(bool isActive) =>
+        isActive
+            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD2, 0x42, 0xE8))
+            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x70, 0xE7, 0xF5));
 
     private void OnFocusClick(object sender, RoutedEventArgs e) => _model?.FocusClick();
     private void OnTodayClick(object sender, RoutedEventArgs e) => _model?.TodayClick();

@@ -84,13 +84,16 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>()))
         .AddSingleton<ServantLibraryWindow>()
-        .AddSingleton<PortraitWindow>()
+        .AddSingleton(provider => new PortraitWindow(
+            provider.GetRequiredService<AttachedPanelViewModel>(),
+            provider.GetRequiredService<IFocusSessionService>()))
         .AddSingleton<PortraitWindowCoordinator>()
         .AddSingleton<TrayService>()
         .AddSingleton<DesktopAppUi>()
         .AddSingleton<IDesktopAppUi>(provider => provider.GetRequiredService<DesktopAppUi>())
         .AddSingleton<IAppShell, DesktopAppShell>()
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)
+        .AddSingleton<Func<ServantFocusConnector>>(provider => provider.GetRequiredService<ServantFocusConnector>)
         .AddSingleton<AppStartup>();
     }
 }

@@ -30,6 +30,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
+    private FocusStatus _lastObservedStatus = FocusStatus.Idle;
 
     public AttachedPanelViewModel(TimeProvider time) : this(time, focus: null)
     {
@@ -293,11 +294,21 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         var (session, available) = Current;
         var active = available && session.Status
             is FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak;
+        var justStarted = active && _lastObservedStatus is FocusStatus.Idle or FocusStatus.Completed;
+        _lastObservedStatus = session.Status;
 
         IsCompactTimerVisible = active;
         IsPaused = session.Status is FocusStatus.PausedFocus or FocusStatus.PausedBreak;
         RemainingText = FormatClock(session.RemainingSeconds);
         PhaseText = session.Phase == FocusPhase.Break ? "休息" : IsPaused ? "已暂停" : "专注中";
+
+        // Starting a session from any expanded column steps down to Compact so the
+        // countdown surface is immediately visible without expanding anything.
+        if (justStarted && AttachedPanelStateMachine.IsExpanded(State))
+        {
+            State = AttachedPanelState.Compact;
+        }
+
         OnPropertyChanged(nameof(CanStartFocus));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanResume));

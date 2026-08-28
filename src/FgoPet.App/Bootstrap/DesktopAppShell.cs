@@ -1,3 +1,4 @@
+using FgoPet.App.Servants;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -27,6 +28,7 @@ public sealed class DesktopAppShell : IAppShell
     private readonly IRuntimeDatabaseMigrator? _migrator;
     private readonly IFocusRestorer? _restorer;
     private readonly IPhase2Availability? _phase2;
+    private readonly Func<ServantFocusConnector>? _connectorFactory;
 
     public DesktopAppShell(
         IArtPackageRepository repository,
@@ -36,6 +38,7 @@ public sealed class DesktopAppShell : IAppShell
         IRuntimeDatabaseMigrator? migrator = null,
         IFocusRestorer? restorer = null,
         IPhase2Availability? phase2 = null,
+        Func<ServantFocusConnector>? connectorFactory = null,
         ILogger<DesktopAppShell>? logger = null)
     {
         _repository = repository;
@@ -45,6 +48,7 @@ public sealed class DesktopAppShell : IAppShell
         _migrator = migrator;
         _restorer = restorer;
         _phase2 = phase2;
+        _connectorFactory = connectorFactory;
         _logger = logger;
     }
 
@@ -78,7 +82,17 @@ public sealed class DesktopAppShell : IAppShell
             location.Identity.PackageId,
             location.AppearanceId,
             location.Identity.PackageVersion);
-        await _controller.ActivateAsync(resolved, cancellationToken);
+
+        // Activation goes through the connector so the stable servant ID is resolved
+        // from the resolved pack (needed by the focus start command and bond credit).
+        if (_connectorFactory is not null)
+        {
+            await _connectorFactory().ActivateAsync(resolved, cancellationToken);
+        }
+        else
+        {
+            await _controller.ActivateAsync(resolved, cancellationToken);
+        }
 
         // 4. Portrait last.
         _ui.ShowPortrait();

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using FgoPet.App.Focus;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.Core.Geometry;
@@ -18,6 +19,7 @@ public partial class PortraitWindow : Window
 {
     private readonly AttachedPanelViewModel _panel;
     private readonly AttachedPanelView _panelView;
+    private readonly IFocusSessionService? _focus;
     private readonly DispatcherTimer _idleTimer;
     private PortraitGeometry? _geometry;
     private double _portraitOffsetX;
@@ -28,9 +30,14 @@ public partial class PortraitWindow : Window
     {
     }
 
-    public PortraitWindow(AttachedPanelViewModel panel)
+    public PortraitWindow(AttachedPanelViewModel panel) : this(panel, focus: null)
+    {
+    }
+
+    public PortraitWindow(AttachedPanelViewModel panel, IFocusSessionService? focus)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
+        _focus = focus;
         InitializeComponent();
         _idleTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -73,7 +80,12 @@ public partial class PortraitWindow : Window
 
     internal void HandleEscape() => _panel.Escape();
 
-    internal void HandlePanelIdleTick() => _panel.Tick();
+    internal void HandlePanelIdleTick()
+    {
+        // The focus countdown consumes the same 1 s cadence as the idle collapse.
+        _focus?.Tick();
+        _panel.Tick();
+    }
 
     internal bool IsAttachedPanelHit(Point logicalPoint)
     {

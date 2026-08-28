@@ -183,6 +183,32 @@ public sealed class Phase2AttachedPanelViewModelTests
         Assert.Equal("servant-other", _vm.ActiveServantId);
     }
 
+    [Fact]
+    public void Starting_from_the_focus_column_steps_down_to_compact_and_shows_the_timer()
+    {
+        _vm.SetActiveServant("servant-mash");
+        _vm.PortraitClick();
+        _vm.FocusClick();
+        _vm.SelectPreset(FocusPresetCatalog.Short);
+        _vm.StartFocus();
+        _focus.RaiseChanged();
+
+        Assert.Equal(AttachedPanelState.Compact, _vm.State);
+        Assert.True(_vm.IsCompactTimerVisible);
+    }
+
+    [Fact]
+    public void Servant_resolution_is_required_before_start_is_enabled()
+    {
+        _vm.PortraitClick();
+        _vm.FocusClick();
+
+        Assert.False(_vm.CanStartFocus);
+
+        _vm.SetActiveServant("servant-mash");
+        Assert.True(_vm.CanStartFocus);
+    }
+
     private static FocusSession FocusingWithRemaining(int remaining) => FocusSession.Start(
         "session-1", "servant-mash", FocusPreset.Create(25, 5, 4),
         DateTimeOffset.Parse(Epoch)) with { RemainingSeconds = remaining };

@@ -24,6 +24,46 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,0,6,0" />
         </Style>
+        <!-- Standalone primary action: bordered pill, distinct from the link-button family. -->
+        <Style x:Key="PrimaryActionButton" TargetType="Button">
+            <Setter Property="Background" Value="#2642DFF5" />
+            <Setter Property="BorderBrush" Value="#CC42DFF5" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#FF70E7F5" />
+            <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#4042DFF5" />
+                                <Setter Property="Foreground" Value="#FF9FF0F8" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#5542DFF5" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#559FB2D8" />
+                                <Setter Property="BorderBrush" Value="#3342DFF5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <Grid ClipToBounds="True" SnapsToDevicePixels="True">
         <Border Background="#E8172238" BorderBrush="#CC42DFF5" BorderThickness="1" />
@@ -40,7 +80,7 @@
                 <StackPanel x:Name="CompactActions" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="FocusButton" Content="专注" Click="OnFocusClick" Style="{StaticResource LinkButton}" />
                     <Button x:Name="TodayButton" Content="今日" Click="OnTodayClick" Style="{StaticResource LinkButton}" />
-                    <Button x:Name="TodoButton" Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}" Foreground="#FFD242E8" />
+                    <Button x:Name="TodoButton" Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}" />
                     <Button x:Name="DialogueButton" Content="对话" Click="OnDialogueClick" Style="{StaticResource LinkButton}" />
                 </StackPanel>
                 <Rectangle Grid.ColumnSpan="2" Height="2" VerticalAlignment="Bottom" Fill="#FFD242E8" />
@@ -57,7 +97,7 @@
                                Foreground="#FFF0F5FF" FontSize="28" FontWeight="SemiBold" />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                         <Button x:Name="PauseResumeButton" Content="暂停" Click="OnPauseResumeClick" Style="{StaticResource LinkButton}" FontSize="12" />
-                        <Button x:Name="StopTimerButton" Content="停止" Click="OnStopTimerClick" Style="{StaticResource LinkButton}" FontSize="12" Foreground="#FFD242E8" />
+                        <Button x:Name="StopTimerButton" Content="停止" Click="OnStopTimerClick" Style="{StaticResource LinkButton}" FontSize="12" />
                     </StackPanel>
                 </StackPanel>
             </Grid>
@@ -105,8 +145,8 @@
                         <TextBlock Text="{Binding CustomCyclesError}" Style="{StaticResource FieldError}" />
                     </StackPanel>
                     <Button x:Name="StartFocusButton" Content="开始专注" Click="OnStartFocusClick"
-                            Style="{StaticResource LinkButton}" FontSize="14" FontWeight="SemiBold"
-                            HorizontalAlignment="Left" Margin="0,8,0,0" />
+                            IsEnabled="{Binding CanStartFocus}"
+                            Style="{StaticResource PrimaryActionButton}" />
                 </StackPanel>
             </ScrollViewer>
             <ScrollViewer x:Name="TodayContent" Grid.Row="1" Margin="0,8,0,0"
