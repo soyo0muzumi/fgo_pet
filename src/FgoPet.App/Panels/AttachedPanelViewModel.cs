@@ -1,12 +1,21 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FgoPet.App.Focus;
+using FgoPet.Core.Bond;
+using FgoPet.Core.Events;
+using FgoPet.Core.Focus;
 using FgoPet.Core.Panels;
+using FgoPet.Core.Timeline;
 
 namespace FgoPet.App.Panels;
 
 /// <summary>
-/// Bounded collapsible attached panel state and lists. Dialogue keeps at most 20 items
-/// and presents about 6; Todo shows 8 rows and scrolls the overflow. Startup is always
+/// Bounded collapsible attached panel state and lists, plus Phase 2 focus/today
+/// state. All time formatting happens here in App; the ViewModel consumes services,
+/// never repositories, and owns no geometry. Dialogue keeps at most 20 items and
+/// presents about 6; the Today list holds at most 12 rows. Startup is always
 /// <see cref="AttachedPanelState.Collapsed"/>.
 /// </summary>
 public sealed partial class AttachedPanelViewModel : ObservableObject
@@ -14,16 +23,27 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     public const int DialogueCapacity = 20;
     public const int DialogueVisible = 6;
     public const int TodoVisibleRows = 8;
+    public const int TodayCapacity = 12;
 
     private readonly TimeProvider _time;
+    private readonly IFocusSessionService? _focus;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
 
-    public AttachedPanelViewModel(TimeProvider time)
+    public AttachedPanelViewModel(TimeProvider time) : this(time, focus: null)
+    {
+    }
+
+    public AttachedPanelViewModel(TimeProvider time, IFocusSessionService? focus)
     {
         _time = time;
+        _focus = focus;
         _lastInteraction = time.GetUtcNow();
+        if (focus is not null)
+        {
+            focus.SnapshotChanged += (_, _) => OnFocusChanged();
+        }
     }
 
     [ObservableProperty]
@@ -32,9 +52,59 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     [ObservableProperty]
     private bool _autoCollapseEnabled = true;
 
+    [ObservableProperty]
+    private string _activeServantId = string.Empty;
+
+    // Compact timer surface
+    [ObservableProperty]
+    private bool _isCompactTimerVisible;
+
+    [ObservableProperty]
+    private string _remainingText = string.Empty;
+
+    [ObservableProperty]
+    private string _phaseText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isPaused;
+
+    // Focus column: preset selection and custom integer fields
+    [ObservableProperty]
+    private string _selectedPresetId = "builtin.25x4";
+
+    [ObservableProperty]
+    private string _customFocusMinutesText = "25";
+
+    [ObservableProperty]
+    private string _customBreakMinutesText = "5";
+
+    [ObservableProperty]
+    private string _customCyclesText = "4";
+
+    [ObservableProperty]
+    private string _customFocusError = string.Empty;
+
+    [ObservableProperty]
+    private string _customBreakError = string.Empty;
+
+    [ObservableProperty]
+    private string _customCyclesError = string.Empty;
+
+    // Today column
+    [ObservableProperty]
+    private string _bondLevelText = "-";
+
+    [ObservableProperty]
+    private string _bondRemainingText = "-";
+
+    [ObservableProperty]
+    private string _todayEffectiveText = "0";
+
     public ObservableCollection<DialogueItemViewModel> Dialogue { get; } = new();
 
     public ObservableCollection<TodoItemViewModel> Todo { get; } = new();
+
+    public ObservableCollection<TimelineItemViewModel> Today { get; } = new();
 
     public int VisibleDialogueCount => Math.Min(Dialogue.Count, DialogueVisible);
 
@@ -42,10 +112,44 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     public bool TodoOverflows => Todo.Count > TodoVisibleRows;
 
+    /// <summary>True while the custom preset fields are invalid; suppresses idle collapse.</summary>
+    public bool IsEditingCustomPreset =>
+        !string.IsNullOrEmpty(CustomFocusError)
+        || !string.IsNullOrEmpty(CustomBreakError)
+        || !string.IsNullOrEmpty(CustomCyclesError);
+
+    public bool CanStartFocus =>
+        !IsEditingCustomPreset
+        && Current.Session is { Status: FocusStatus.Idle or FocusStatus.Completed }
+        && !string.IsNullOrEmpty(ActiveServantId);
+
+    public bool CanPause => Current.Session.Status == FocusStatus.Focusing || Current.Session.Status == FocusStatus.Breaking;
+
+    public bool CanResume => Current.Session.Status == FocusStatus.PausedFocus || Current.Session.Status == FocusStatus.PausedBreak;
+
+    public bool CanStopTimer => Current.Session.Status
+        is FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak;
+
+    private (FocusSession Session, bool Available) Current => _focus is null
+        ? (FocusSession.Idle, false)
+        : (_focus.Current, true);
+
     public void PortraitClick()
     {
         Interact();
         State = AttachedPanelStateMachine.Transition(State, PanelAction.PortraitClick);
+    }
+
+    public void FocusClick()
+    {
+        Interact();
+        State = AttachedPanelStateMachine.Transition(State, PanelAction.FocusClick);
+    }
+
+    public void TodayClick()
+    {
+        Interact();
+        State = AttachedPanelStateMachine.Transition(State, PanelAction.TodayClick);
     }
 
     public void DialogueClick()
@@ -66,10 +170,81 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         State = AttachedPanelStateMachine.Transition(State, PanelAction.Escape);
     }
 
-    public void Collapse()
+    public void SelectPreset(FocusPreset preset)
     {
         Interact();
-        State = AttachedPanelStateMachine.Transition(State, PanelAction.Collapse);
+        SelectedPresetId = preset.FocusSeconds == FocusPresetCatalog.Short.FocusSeconds
+            && preset.Cycles == FocusPresetCatalog.Short.Cycles
+            ? "builtin.25x4"
+            : "builtin.50x2";
+        CustomFocusMinutesText = (preset.FocusSeconds / 60).ToString(CultureInfo.InvariantCulture);
+        CustomBreakMinutesText = (preset.BreakSeconds / 60).ToString(CultureInfo.InvariantCulture);
+        CustomCyclesText = preset.Cycles.ToString(CultureInfo.InvariantCulture);
+        ValidateCustomFields();
+    }
+
+    public void SelectCustomPreset()
+    {
+        Interact();
+        SelectedPresetId = "custom";
+        ValidateCustomFields();
+    }
+
+    public void StartFocus()
+    {
+        Interact();
+        var preset = ResolveSelectedPreset();
+        if (preset is null || !CanStartFocus || _focus is null)
+        {
+            return;
+        }
+
+        _focus.Start(preset, ActiveServantId);
+    }
+
+    public void PauseTimer() => _focus?.Pause();
+
+    public void ResumeTimer() => _focus?.Resume();
+
+    public void StopTimer() => _focus?.Stop();
+
+    public void SetActiveServant(string servantId)
+    {
+        ActiveServantId = servantId;
+        OnPropertyChanged(nameof(CanStartFocus));
+    }
+
+    /// <summary>Refreshes the Today projection; time formatting happens here.</summary>
+    public void RefreshToday(IReadOnlyList<TimelineEntry> entries)
+    {
+        Today.Clear();
+        foreach (var entry in entries.Take(TodayCapacity))
+        {
+            var timeText = entry.OccurredAtUtc.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture);
+            var summary = entry.Type switch
+            {
+                RuntimeEventType.FocusCompleted => $"完成 {FormatMinutes(entry.EffectiveSeconds)} 专注",
+                RuntimeEventType.FocusStarted => "开始专注",
+                RuntimeEventType.FocusStopped => "停止专注",
+                RuntimeEventType.CycleCompleted => "完成一轮循环",
+                RuntimeEventType.BondLevelUp => "羁绊提升",
+                _ => "记录",
+            };
+            Today.Add(new TimelineItemViewModel(timeText, summary, entry.BondLevel?.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        TodayEffectiveText = FormatMinutes(entries
+            .Where(entry => entry.Type == RuntimeEventType.FocusCompleted)
+            .Sum(entry => (long)entry.EffectiveSeconds));
+    }
+
+    /// <summary>Refreshes bond level text from the evaluated progress.</summary>
+    public void RefreshBond(BondProgress progress)
+    {
+        BondLevelText = progress.Level.ToString(CultureInfo.InvariantCulture);
+        BondRemainingText = progress.IsMaxLevel
+            ? "已满级"
+            : $"距下一级还需 {FormatMinutes(Math.Max(0, progress.NextThresholdSeconds - progress.LifetimeFocusSeconds))}";
     }
 
     public void AddDialogue(string text)
@@ -99,14 +274,123 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     /// <summary>Periodic tick that applies the 30-second idle collapse.</summary>
     public void Tick()
     {
-        State = AttachedPanelStateMachine.ApplyIdle(
+        var next = AttachedPanelStateMachine.ApplyIdle(
             State,
             _time,
             _lastInteraction,
             _idleTimeout,
             AutoCollapseEnabled,
-            !_pointerInside);
+            !_pointerInside,
+            IsEditingCustomPreset);
+        if (next != State)
+        {
+            State = next;
+        }
     }
+
+    private void OnFocusChanged()
+    {
+        var (session, available) = Current;
+        var active = available && session.Status
+            is FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak;
+
+        IsCompactTimerVisible = active;
+        IsPaused = session.Status is FocusStatus.PausedFocus or FocusStatus.PausedBreak;
+        RemainingText = FormatClock(session.RemainingSeconds);
+        PhaseText = session.Phase == FocusPhase.Break ? "休息" : IsPaused ? "已暂停" : "专注中";
+        OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanStopTimer));
+    }
+
+    private FocusPreset? ResolveSelectedPreset()
+    {
+        if (SelectedPresetId == "builtin.25x4")
+        {
+            return FocusPresetCatalog.Short;
+        }
+
+        if (SelectedPresetId == "builtin.50x2")
+        {
+            return FocusPresetCatalog.Long;
+        }
+
+        return TryParseCustom(out var preset) ? preset : null;
+    }
+
+    private bool TryParseCustom(out FocusPreset preset)
+    {
+        preset = FocusPresetCatalog.Short;
+        var focusOk = TryParseBounded(CustomFocusMinutesText, 5, 180, out var focusMinutes);
+        var breakOk = TryParseBounded(CustomBreakMinutesText, 1, 60, out var breakMinutes);
+        var cyclesOk = TryParseBounded(CustomCyclesText, 1, 12, out var cycles);
+        if (focusOk && breakOk && cyclesOk)
+        {
+            try
+            {
+                preset = FocusPreset.Create(focusMinutes, breakMinutes, cycles);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private void ValidateCustomFields()
+    {
+        CustomFocusError = TryParseBounded(CustomFocusMinutesText, 5, 180, out _)
+            ? string.Empty : "专注 5-180 分钟";
+        CustomBreakError = TryParseBounded(CustomBreakMinutesText, 1, 60, out _)
+            ? string.Empty : "休息 1-60 分钟";
+        CustomCyclesError = TryParseBounded(CustomCyclesText, 1, 12, out _)
+            ? string.Empty : "循环 1-12 次";
+        OnPropertyChanged(nameof(IsEditingCustomPreset));
+        OnPropertyChanged(nameof(CanStartFocus));
+    }
+
+    partial void OnCustomFocusMinutesTextChanged(string value)
+    {
+        if (SelectedPresetId == "custom")
+        {
+            ValidateCustomFields();
+        }
+    }
+
+    partial void OnCustomBreakMinutesTextChanged(string value)
+    {
+        if (SelectedPresetId == "custom")
+        {
+            ValidateCustomFields();
+        }
+    }
+
+    partial void OnCustomCyclesTextChanged(string value)
+    {
+        if (SelectedPresetId == "custom")
+        {
+            ValidateCustomFields();
+        }
+    }
+
+    private static bool TryParseBounded(string text, int min, int max, out int value)
+    {
+        value = 0;
+        return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+            && value >= min && value <= max;
+    }
+
+    private static string FormatClock(int totalSeconds) =>
+        $"{totalSeconds / 60:00}:{totalSeconds % 60:00}";
+
+    private static string FormatMinutes(long totalSeconds) =>
+        totalSeconds >= 3600
+            ? $"{totalSeconds / 3600.0:0.#} 小时"
+            : $"{totalSeconds / 60.0:0.#} 分钟";
 
     private void Interact() => _lastInteraction = _time.GetUtcNow();
 }

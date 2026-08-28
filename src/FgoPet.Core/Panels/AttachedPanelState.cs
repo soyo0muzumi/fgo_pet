@@ -4,6 +4,8 @@ public enum AttachedPanelState
 {
     Collapsed,
     Compact,
+    ExpandedFocus,
+    ExpandedToday,
     ExpandedDialogue,
     ExpandedTodo,
 }
@@ -11,8 +13,9 @@ public enum AttachedPanelState
 public enum PanelAction
 {
     PortraitClick,
+    FocusClick,
+    TodayClick,
     DialogueClick,
     TodoClick,
     Escape,
-    Collapse,
 }
