@@ -193,7 +193,11 @@ public sealed class Phase2AttachedPanelViewModelTests
 
         public event EventHandler? SnapshotChanged;
 
-        public event EventHandler? PersistenceFailed;
+        public event EventHandler? PersistenceFailed
+        {
+            add { }
+            remove { }
+        }
 
         public FocusPreset? StartedPreset { get; private set; }
 

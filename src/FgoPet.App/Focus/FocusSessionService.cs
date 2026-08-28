@@ -22,7 +22,6 @@ public sealed class FocusSessionService : IFocusSessionService
     private readonly SqliteFocusCompletionUnit _completion;
     private long _baselineTimestamp;
     private int _secondsSinceSnapshot;
-    private bool _persistenceBlocked;
 
     public FocusSessionService(TimeProvider time, IFocusSnapshotStore snapshots, SqliteFocusCompletionUnit completion)
     {
@@ -49,7 +48,6 @@ public sealed class FocusSessionService : IFocusSessionService
         Current = result.Session;
         _baselineTimestamp = _time.GetTimestamp();
         _secondsSinceSnapshot = 0;
-        _persistenceBlocked = false;
         ApplyTransition(result, isUserCommand: true);
     }
 
@@ -60,7 +58,6 @@ public sealed class FocusSessionService : IFocusSessionService
         var result = FocusStateMachine.Apply(Current, new FocusCommand.Resume(), _time.GetUtcNow());
         Current = result.Session;
         _baselineTimestamp = _time.GetTimestamp();
-        _persistenceBlocked = false;
         ApplyTransition(result, isUserCommand: true);
     }
 
@@ -121,7 +118,6 @@ public sealed class FocusSessionService : IFocusSessionService
             {
                 _completion.CompleteFocus(result.Session, runtimeEvent);
                 _secondsSinceSnapshot = 0;
-                _persistenceBlocked = false;
             }
             catch (Exception)
             {
@@ -144,7 +140,6 @@ public sealed class FocusSessionService : IFocusSessionService
         {
             _snapshots.SaveSnapshot(Current);
             _secondsSinceSnapshot = 0;
-            _persistenceBlocked = false;
         }
         catch (Exception)
         {
@@ -157,7 +152,6 @@ public sealed class FocusSessionService : IFocusSessionService
     private void PauseInMemoryAfterPersistenceFailure()
     {
         Current = Current.RestorePaused();
-        _persistenceBlocked = true;
         PersistenceFailed?.Invoke(this, EventArgs.Empty);
     }
 }
