@@ -1,0 +1,12 @@
+{
+  "focus_started": [
+    { "id": "focus_started_01", "text": "开始一段专注吧。", "weight": 80, "expression": "happy" },
+    { "id": "focus_started_02", "text": "计时开始，剩下的交给我。", "weight": 20 }
+  ],
+  "focus_completed": [
+    { "id": "focus_completed_01", "text": "辛苦了，休息一下吧。", "weight": 100, "expression": "excited" }
+  ],
+  "bond_level_up": [
+    { "id": "bond_up_01", "text": "羁绊又加深了。", "weight": 100, "expression": "shy" }
+  ]
+}

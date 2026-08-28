@@ -1,0 +1,5 @@
+{
+  "focus_started": [
+    { "id": "focus_started_01", "text": "开始一段专注吧。", "weight": 100, "expression": "determined" }
+  ]
+}

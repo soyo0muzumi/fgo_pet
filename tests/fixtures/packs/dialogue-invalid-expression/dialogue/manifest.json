@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "default_locale": "zh-CN",
+  "localizations": {
+    "zh-CN": "zh-CN.json"
+  }
+}
