@@ -69,6 +69,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         {
             _libraryViewModel.PackFilePath = offeredPackPath;
         }
+        _ = _library.RefreshAsync();
         _library.Show();
         _library.Activate();
     }
