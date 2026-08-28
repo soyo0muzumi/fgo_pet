@@ -19,7 +19,6 @@ public partial class PortraitWindow : Window
     private readonly AttachedPanelViewModel _panel;
     private readonly DispatcherTimer _idleTimer;
     private PortraitGeometry? _geometry;
-    private Dpi2 _dpi = new(1, 1);
     private double _portraitOffsetX;
     private double _portraitOffsetY;
 
@@ -88,6 +87,16 @@ public partial class PortraitWindow : Window
             && logicalPoint.Y >= top && logicalPoint.Y < top + height;
     }
 
+    internal Point ToPortraitLocal(Point windowPoint) => new(
+        windowPoint.X - _portraitOffsetX,
+        windowPoint.Y - _portraitOffsetY);
+
+    internal void MovePortraitToDevice(DevicePoint location, Dpi2 dpi)
+    {
+        Left = (location.X / dpi.X) - _portraitOffsetX;
+        Top = (location.Y / dpi.Y) - _portraitOffsetY;
+    }
+
     /// <summary>Loads a validated snapshot at the given window/portrait geometry.</summary>
     public void Present(PortraitSnapshot snapshot, PortraitGeometry geometry)
     {
@@ -101,10 +110,9 @@ public partial class PortraitWindow : Window
         }
     }
 
-    internal PanelPlacement ArrangeAttachedPanel(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
+    internal DeviceRect ArrangeOverlayPanel(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
     {
         _geometry = geometry;
-        _dpi = dpi;
         var portraitLeft = (int)Math.Round((Left + _portraitOffsetX) * dpi.X);
         var portraitTop = (int)Math.Round((Top + _portraitOffsetY) * dpi.Y);
         var portraitBounds = new DeviceRect(
@@ -116,28 +124,37 @@ public partial class PortraitWindow : Window
             portraitLeft + geometry.PanelAnchorDevice.X,
             portraitTop + geometry.PanelAnchorDevice.Y);
 
-        PanelHost.Measure(new Size(340, double.PositiveInfinity));
+        var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
+        PanelHost.Width = panelWidthDip;
+        PanelHost.MaxHeight = workArea.Height * 0.6 / dpi.Y;
+        PanelHost.Measure(new Size(panelWidthDip, PanelHost.MaxHeight));
         var desired = new DeviceSize(
-            Math.Max(1, (int)Math.Ceiling(PanelHost.DesiredSize.Width * dpi.X)),
+            Math.Max(1, (int)Math.Ceiling(panelWidthDip * dpi.X)),
             Math.Max(1, (int)Math.Ceiling(PanelHost.DesiredSize.Height * dpi.Y)));
-        var placement = AttachedPanelLayout.Place(anchor, desired, workArea, portraitBounds);
-        PanelHost.MaxHeight = placement.Bounds.Height / dpi.Y;
+        var panelWidth = Math.Min(desired.Width, workArea.Width);
+        var panelHeight = Math.Min(desired.Height, (int)Math.Floor(workArea.Height * 0.6));
+        var panelBounds = new DeviceRect(
+            Math.Clamp(anchor.X - (panelWidth / 2), workArea.Left, workArea.Right - panelWidth),
+            Math.Clamp(anchor.Y, workArea.Top, workArea.Bottom - panelHeight),
+            panelWidth,
+            panelHeight);
+        PanelHost.MaxHeight = panelBounds.Height / dpi.Y;
 
-        var hostLeft = Math.Min(portraitBounds.Left, placement.Bounds.Left);
-        var hostTop = Math.Min(portraitBounds.Top, placement.Bounds.Top);
-        var hostRight = Math.Max(portraitBounds.Right, placement.Bounds.Right);
-        var hostBottom = Math.Max(portraitBounds.Bottom, placement.Bounds.Bottom);
+        var hostLeft = Math.Min(portraitBounds.Left, panelBounds.Left);
+        var hostTop = Math.Min(portraitBounds.Top, panelBounds.Top);
+        var hostRight = Math.Max(portraitBounds.Right, panelBounds.Right);
+        var hostBottom = Math.Max(portraitBounds.Bottom, panelBounds.Bottom);
         _portraitOffsetX = (portraitBounds.Left - hostLeft) / dpi.X;
         _portraitOffsetY = (portraitBounds.Top - hostTop) / dpi.Y;
         Canvas.SetLeft(Portrait, _portraitOffsetX);
         Canvas.SetTop(Portrait, _portraitOffsetY);
-        Canvas.SetLeft(PanelHost, (placement.Bounds.Left - hostLeft) / dpi.X);
-        Canvas.SetTop(PanelHost, (placement.Bounds.Top - hostTop) / dpi.Y);
+        Canvas.SetLeft(PanelHost, (panelBounds.Left - hostLeft) / dpi.X);
+        Canvas.SetTop(PanelHost, (panelBounds.Top - hostTop) / dpi.Y);
         Left = hostLeft / dpi.X;
         Top = hostTop / dpi.Y;
         Width = HostCanvas.Width = (hostRight - hostLeft) / dpi.X;
         Height = HostCanvas.Height = (hostBottom - hostTop) / dpi.Y;
-        return placement;
+        return panelBounds;
     }
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)

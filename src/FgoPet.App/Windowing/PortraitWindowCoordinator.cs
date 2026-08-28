@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.ComponentModel;
+using System.Windows.Media;
 using FgoPet.App.Main;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
@@ -33,6 +35,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
     private HwndSource? _source;
     private Dpi2 _dpi = new(1.0, 1.0);
     private bool _dragging;
+    private bool _pressWasOnPortrait;
 
     public PortraitWindowCoordinator(
         PortraitWindow window,
@@ -51,6 +54,10 @@ public sealed class PortraitWindowCoordinator : IDisposable
         _window.Closing += (_, _) => SavePlacement();
         _window.PreviewMouseLeftButtonDown += (_, e) =>
         {
+            if (IsButton(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
             if (OnPointerDown(e.GetPosition(_window)))
             {
                 e.Handled = true;
@@ -129,14 +136,13 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
                 var lParamValue = lParam.ToInt64();
                 var screenPoint = new Point((short)(lParamValue & 0xFFFF), (short)((lParamValue >> 16) & 0xFFFF));
-                var client = _window.PointFromScreen(screenPoint);
-                var logical = new Point(client.X / _dpi.X, client.Y / _dpi.Y);
+                var logical = _window.PointFromScreen(screenPoint);
                 handled = true;
                 if (_window.IsAttachedPanelHit(logical))
                 {
                     return HtClient;
                 }
-                return AlphaHitTestService.IsHit(logical, state.Snapshot, state.ExpressionAssetId, state.Geometry)
+                return AlphaHitTestService.IsHit(_window.ToPortraitLocal(logical), state.Snapshot, state.ExpressionAssetId, state.Geometry)
                     ? HtClient
                     : HtTransparent;
 
@@ -151,24 +157,28 @@ public sealed class PortraitWindowCoordinator : IDisposable
         return IntPtr.Zero;
     }
 
-    private bool OnPointerDown(Point devicePoint)
+    private bool OnPointerDown(Point windowPoint)
     {
-        if (_dragging || !IsHit(devicePoint))
+        var portraitHit = IsPortraitHit(windowPoint);
+        var panelHit = _window.IsAttachedPanelHit(windowPoint);
+        if (_dragging || (!portraitHit && !panelHit))
         {
             return false;
         }
 
-        _gesture.Press(ToLogical(devicePoint), isSecondary: false);
+        _pressWasOnPortrait = portraitHit;
+        _gesture.Press(windowPoint, isSecondary: false);
         return true;
     }
 
-    private bool OnPointerMove(Point devicePoint)
+    private bool OnPointerMove(Point windowPoint)
     {
-        if (_gesture.Move(ToLogical(devicePoint)) == GestureEvent.DragStart && !_dragging)
+        if (_gesture.Move(windowPoint) == GestureEvent.DragStart && !_dragging)
         {
             _dragging = true;
             _window.DragMove();
             _dragging = false;
+            ClampPortraitToWorkArea();
             SavePlacement();
             return true;
         }
@@ -176,29 +186,72 @@ public sealed class PortraitWindowCoordinator : IDisposable
         return false;
     }
 
-    private bool OnPointerUp(Point devicePoint)
+    private bool OnPointerUp(Point windowPoint)
     {
-        var gesture = _gesture.Release(ToLogical(devicePoint));
-        if (gesture == GestureEvent.Click)
+        var gesture = _gesture.Release(windowPoint);
+        if (gesture == GestureEvent.Click && _pressWasOnPortrait)
         {
             _window.HandlePortraitClick();
         }
+        _pressWasOnPortrait = false;
         if (gesture == GestureEvent.DragEnd)
         {
+            ClampPortraitToWorkArea();
             SavePlacement();
         }
         return gesture != GestureEvent.None;
     }
 
-    private bool IsHit(Point devicePoint) =>
+    private bool IsPortraitHit(Point windowPoint) =>
         _controller.CurrentState is { } state
         && AlphaHitTestService.IsHit(
-            ToLogical(devicePoint),
+            _window.ToPortraitLocal(windowPoint),
             state.Snapshot,
             state.ExpressionAssetId,
             state.Geometry);
 
-    private Point ToLogical(Point devicePoint) => new(devicePoint.X / _dpi.X, devicePoint.Y / _dpi.Y);
+    internal void ClampPortraitToWorkArea()
+    {
+        var portrait = _window.PortraitScreenBounds;
+        var device = new DeviceRect(
+            (int)Math.Round(portrait.X * _dpi.X),
+            (int)Math.Round(portrait.Y * _dpi.Y),
+            Math.Max(1, (int)Math.Round(portrait.Width * _dpi.X)),
+            Math.Max(1, (int)Math.Round(portrait.Height * _dpi.Y)));
+        var monitor = SelectNearestMonitor(device, _screen.GetMonitors());
+        if (monitor is null)
+        {
+            return;
+        }
+
+        var clamped = ScreenLayout.ClampFullyVisible(device, monitor.WorkArea);
+        _window.MovePortraitToDevice(new DevicePoint(clamped.X, clamped.Y), _dpi);
+        ArrangeAttachedPanel();
+    }
+
+    private static MonitorInfo? SelectNearestMonitor(DeviceRect portrait, IReadOnlyList<MonitorInfo> monitors) =>
+        monitors.OrderBy(monitor => DistanceSquared(portrait, monitor.WorkArea)).FirstOrDefault();
+
+    private static long DistanceSquared(DeviceRect portrait, DeviceRect workArea)
+    {
+        var x = Math.Clamp(portrait.X + (portrait.Width / 2), workArea.Left, workArea.Right);
+        var y = Math.Clamp(portrait.Y + (portrait.Height / 2), workArea.Top, workArea.Bottom);
+        var dx = (long)portrait.X + (portrait.Width / 2) - x;
+        var dy = (long)portrait.Y + (portrait.Height / 2) - y;
+        return (dx * dx) + (dy * dy);
+    }
+
+    private static bool IsButton(DependencyObject? source)
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is ButtonBase)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private void ApplyCurrentState()
     {
@@ -243,7 +296,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
             ?? _screen.GetMonitors().FirstOrDefault();
         if (monitor is not null)
         {
-            _window.ArrangeAttachedPanel(state.Geometry, monitor.WorkArea, _dpi);
+            _window.ArrangeOverlayPanel(state.Geometry, monitor.WorkArea, _dpi);
         }
     }
 

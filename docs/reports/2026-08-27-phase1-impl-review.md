@@ -63,10 +63,13 @@ Phase 1 主计划（13 项任务）已在 `src/FgoPet.Core`、`src/FgoPet.Infras
       歧义），`TrayService` 局部引入；需确认无其他 WPF/WinForms 命名冲突残留。
 - [x] **附着面板生产接线已关闭**：`AttachedPanelViewModel` / `AttachedPanelView` 已挂入
       `PortraitWindow`。画像点击打开 Compact，Dialogue / Todo 独立展开，Escape 逐级收起，
-      30 秒空闲退回 Compact；收起后从布局和命中区域移除。生产窗口使用 `AttachedPanelLayout`
-      完成左右翻转与工作区 60% 高度上限，面板区域可交互而透明空区继续穿透。
+      30 秒空闲退回 Compact；收起后从布局和命中区域移除。实机反馈后恢复 Phase 0 已批准的
+      腰部以下覆盖式终端面板，并统一 WPF DIP / 画像局部坐标；面板区域可交互而透明空区继续穿透。
 - [x] 面板视觉延续 Phase 0：深海军蓝半透明底、青色/洋红强调色、Segoe UI 与
       Microsoft YaHei UI 字体回退；仅以 WPF 样式重建，不复制 FGO 原作纹理，也不增加角色包资源依赖。
+- [x] 拖动结束使用画像本体边界执行工作区全可见约束，人物越界后返回最近显示器边缘；
+      面板展开不参与保存边界。
+- [x] 托盘双击只负责恢复已隐藏桌宠；已显示时不隐藏，隐藏仍由右键菜单明确触发。
 
 ### A3 安全核对点（内审已完成，结论：可接受）
 
@@ -103,14 +106,15 @@ Phase 1 主计划（13 项任务）已在 `src/FgoPet.Core`、`src/FgoPet.Infras
 
 ## 4. 已完成证据（供审核对照）
 
-- 测试：Core 56 / Infra 64 / App 73 / Windows 16 = **209 通过、0 失败**。
+- 测试：Core 60 / Infra 64 / App 73 / Windows 19 = **216 通过、0 失败**。
 - Release 构建 `-warnaserror`：0 警告 / 0 错误。
 - `scripts/test-phase1.ps1` 门禁已跑：Build→单元→Windows 集成→无 SkiaSharp→手动矩阵提示。
 - `--smoke-test`：从正式应用入口执行，退出码 0，输出 no-pack / 不建窗口 / tray+库确认；
   应用壳使用延迟解析，smoke 不创建托盘或 WPF 窗口。
 - 单实例管道转发、窗口呈现、托盘创建销毁：Windows 集成测试已过。
 - 新增：生产容器解析、启动三路径、非等比 DPI、Win32 主屏枚举、coordinator 位置恢复、
-  面板生产挂载、状态可见性、左右翻转、60% 高度限制、透明命中与空闲收起测试已过。
+  面板生产挂载、Phase 0 覆盖布局、60% 高度限制、DPI 命中、画像/面板拖动坐标、越界约束、
+  托盘双击恢复与空闲收起测试已过。
 
 ---
 

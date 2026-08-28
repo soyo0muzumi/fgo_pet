@@ -27,15 +27,20 @@ public sealed class TrayService : IDisposable
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
         _icon.ContextMenuStrip = menu;
+        _icon.DoubleClick += (_, _) => HandleDoubleClick();
     }
 
     public event EventHandler? ShowHideRequested;
+
+    public event EventHandler? RestoreRequested;
 
     public event EventHandler? LibraryRequested;
 
     public event EventHandler? OpenPackFolderRequested;
 
     public event EventHandler? ExitRequested;
+
+    internal void HandleDoubleClick() => RestoreRequested?.Invoke(this, EventArgs.Empty);
 
     public void Dispose()
     {

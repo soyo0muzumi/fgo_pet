@@ -39,7 +39,8 @@ public partial class AttachedPanelView : UserControl
     private void ApplyState()
     {
         var state = _model?.State ?? AttachedPanelState.Collapsed;
-        CompactActions.Visibility = state == AttachedPanelState.Compact ? Visibility.Visible : Visibility.Collapsed;
+        CompactActions.Visibility = state == AttachedPanelState.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+        CompactMessage.Visibility = state == AttachedPanelState.Compact ? Visibility.Visible : Visibility.Collapsed;
         DialogueContent.Visibility = state == AttachedPanelState.ExpandedDialogue ? Visibility.Visible : Visibility.Collapsed;
         TodoContent.Visibility = state == AttachedPanelState.ExpandedTodo ? Visibility.Visible : Visibility.Collapsed;
     }

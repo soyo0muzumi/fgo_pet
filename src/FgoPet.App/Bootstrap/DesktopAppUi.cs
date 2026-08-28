@@ -49,6 +49,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         if (_initialized) return;
         _initialized = true;
         _tray.ShowHideRequested += (_, _) => _lifetime.ShowOrHidePet();
+        _tray.RestoreRequested += OnTrayRestoreRequested;
         _tray.LibraryRequested += (_, _) => ShowLibrary();
         _tray.OpenPackFolderRequested += (_, _) => OpenPackagesRoot();
         _tray.ExitRequested += (_, _) => Exit();
@@ -81,6 +82,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void Dispose()
     {
+        _tray.RestoreRequested -= OnTrayRestoreRequested;
         _controller.StateChanged -= OnPortraitStateChanged;
         _allowLibraryClose = true;
     }
@@ -116,6 +118,14 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
                 ShowPortrait();
             }
         });
+
+    private void OnTrayRestoreRequested(object? sender, EventArgs e)
+    {
+        if (!_lifetime.IsPetVisible)
+        {
+            _lifetime.ShowOrHidePet();
+        }
+    }
 
     private void Exit()
     {

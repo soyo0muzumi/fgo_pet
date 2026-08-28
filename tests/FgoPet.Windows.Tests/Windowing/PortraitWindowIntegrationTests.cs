@@ -76,7 +76,7 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
-    public void Attached_panel_uses_production_flip_and_work_area_height_cap()
+    public void Attached_panel_overlays_the_lower_portrait_and_respects_the_work_area_height_cap()
     {
         StaRun(() =>
         {
@@ -90,15 +90,17 @@ public sealed class PortraitWindowIntegrationTests
                     0.5,
                     new Dpi2(1, 1));
 
-                var placement = window.ArrangeAttachedPanel(
+                var bounds = window.ArrangeOverlayPanel(
                     geometry,
-                    new DeviceRect(0, 0, 1000, 80),
+                    new DeviceRect(0, 0, 1000, 800),
                     new Dpi2(1, 1));
 
-                Assert.Equal(PanelSide.Right, placement.Side);
-                Assert.Equal(48, placement.Bounds.Height);
+                var portrait = window.PortraitScreenBounds;
+                Assert.True(bounds.Top >= portrait.Y + geometry.PanelAnchor.Y);
+                Assert.True(bounds.Left < portrait.Right && bounds.Right > portrait.X);
+                Assert.True(bounds.Height <= 480);
                 var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
-                Assert.Equal(48, host.MaxHeight);
+                Assert.True(host.MaxHeight <= 480);
             }
             finally
             {
@@ -121,13 +123,13 @@ public sealed class PortraitWindowIntegrationTests
                     new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 50, 300),
                     0.5,
                     new Dpi2(1, 1));
-                var placement = window.ArrangeAttachedPanel(
+                var bounds = window.ArrangeOverlayPanel(
                     geometry,
                     new DeviceRect(0, 0, 1000, 800),
                     new Dpi2(1, 1));
                 var localPoint = new Point(
-                    placement.Bounds.X - (window.Left * 1) + 1,
-                    placement.Bounds.Y - (window.Top * 1) + 1);
+                    bounds.X - window.Left + 1,
+                    bounds.Y - window.Top + 1);
 
                 Assert.True(window.IsAttachedPanelHit(localPoint));
 
@@ -190,7 +192,7 @@ public sealed class PortraitWindowIntegrationTests
                 new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 250, 300),
                 0.5,
                 new Dpi2(1, 1));
-            window.ArrangeAttachedPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
+            window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
 
             window.Close();
 
@@ -199,6 +201,68 @@ public sealed class PortraitWindowIntegrationTests
             Assert.Equal(100, placement.Value.OffsetY);
             Assert.Equal(150, placement.Value.WindowWidthDip);
             Assert.Equal(300, placement.Value.WindowHeightDip);
+        });
+    }
+
+    [Fact]
+    public void Portrait_local_coordinates_subtract_canvas_offset_without_dividing_wpf_dips_again()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 100, Top = 80 };
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360),
+                    0.5,
+                    new Dpi2(2, 2));
+                window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(2, 2));
+                var portrait = window.PortraitScreenBounds;
+                var pointInWindow = new Point(
+                    portrait.X - window.Left + 10,
+                    portrait.Y - window.Top + 20);
+
+                var local = window.ToPortraitLocal(pointInWindow);
+
+                Assert.Equal(new Point(10, 20), local);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Coordinator_returns_the_portrait_fully_inside_the_work_area_after_drag()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 1900, Top = 1100 };
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                new MemoryPlacementStore(),
+                new FixedScreenService());
+            var geometry = PortraitLayout.Calculate(
+                new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360),
+                0.5,
+                new Dpi2(1, 1));
+            window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
+            window.MovePortraitToDevice(new DevicePoint(1900, 1100), new Dpi2(1, 1));
+
+            coordinator.ClampPortraitToWorkArea();
+
+            Assert.Equal(new LogicalRect(1850, 900, 150, 300), window.PortraitScreenBounds);
+            window.Close();
         });
     }
 
@@ -245,6 +309,24 @@ public sealed class PortraitWindowIntegrationTests
         {
             var tray = new TrayService();
             tray.Dispose();
+        });
+    }
+
+    [Fact]
+    public void Tray_double_click_requests_restore_without_reusing_the_show_hide_action()
+    {
+        StaRun(() =>
+        {
+            using var tray = new TrayService();
+            var restores = 0;
+            var toggles = 0;
+            tray.RestoreRequested += (_, _) => restores++;
+            tray.ShowHideRequested += (_, _) => toggles++;
+
+            tray.HandleDoubleClick();
+
+            Assert.Equal(1, restores);
+            Assert.Equal(0, toggles);
         });
     }
 

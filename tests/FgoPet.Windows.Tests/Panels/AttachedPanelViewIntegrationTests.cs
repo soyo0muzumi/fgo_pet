@@ -19,10 +19,15 @@ public sealed class AttachedPanelViewIntegrationTests
             var model = new AttachedPanelViewModel(TimeProvider.System);
             var view = new AttachedPanelView { DataContext = model };
             var compact = Assert.IsType<StackPanel>(view.FindName("CompactActions"));
+            var title = Assert.IsType<TextBlock>(view.FindName("PanelTitle"));
+            var message = Assert.IsType<TextBlock>(view.FindName("CompactMessage"));
             var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
             var todo = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodoContent"));
 
             model.PortraitClick();
+            Assert.Equal("CHALDEA // PERSONAL LINK", title.Text);
+            Assert.False(string.IsNullOrWhiteSpace(message.Text));
+            Assert.Equal(Visibility.Visible, message.Visibility);
             Assert.Equal(Visibility.Visible, compact.Visibility);
             Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
             Assert.Equal(Visibility.Collapsed, todo.Visibility);

@@ -50,6 +50,26 @@ public static class ScreenLayout
             window);
     }
 
+    public static DeviceRect ClampFullyVisible(DeviceRect portrait, DeviceRect workArea)
+    {
+        if (portrait.Width <= 0 || portrait.Height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(portrait));
+        }
+        if (workArea.Width <= 0 || workArea.Height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(workArea));
+        }
+
+        var width = Math.Min(portrait.Width, workArea.Width);
+        var height = Math.Min(portrait.Height, workArea.Height);
+        return new DeviceRect(
+            Math.Clamp(portrait.X, workArea.Left, workArea.Right - width),
+            Math.Clamp(portrait.Y, workArea.Top, workArea.Bottom - height),
+            width,
+            height);
+    }
+
     private static DeviceRect Clamp(DevicePoint desired, DeviceRect workArea, DeviceSize window)
     {
         var left = Math.Clamp(

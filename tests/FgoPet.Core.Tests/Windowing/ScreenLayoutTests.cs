@@ -87,4 +87,22 @@ public sealed class ScreenLayoutTests
         Assert.Throws<ArgumentException>(() =>
             ScreenLayout.Restore(new SavedPlacement(null, new DeviceRect(0, 0, 1, 1)), Array.Empty<MonitorInfo>(), new DeviceSize(100, 100)));
     }
+
+    [Theory]
+    [InlineData(-50, 100, 0, 100)]
+    [InlineData(1950, 100, 1700, 100)]
+    [InlineData(100, -50, 100, 0)]
+    [InlineData(100, 950, 100, 800)]
+    public void ClampFullyVisible_returns_an_offscreen_portrait_to_the_nearest_edge(
+        int x,
+        int y,
+        int expectedX,
+        int expectedY)
+    {
+        var result = ScreenLayout.ClampFullyVisible(
+            new DeviceRect(x, y, 300, 200),
+            new DeviceRect(0, 0, 2000, 1000));
+
+        Assert.Equal(new DeviceRect(expectedX, expectedY, 300, 200), result);
+    }
 }
