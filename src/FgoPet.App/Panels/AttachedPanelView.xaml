@@ -19,14 +19,18 @@
         <Grid Margin="12,9">
             <Grid.RowDefinitions><RowDefinition Height="18"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid>
-                <TextBlock x:Name="PanelTitle" Text="CHALDEA // PERSONAL LINK" Foreground="#FF70E7F5"
-                           FontSize="10" FontWeight="SemiBold" />
-                <StackPanel x:Name="CompactActions" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="PanelTitle" Text="CHALDEA LINK" Foreground="#FF70E7F5"
+                           FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <StackPanel x:Name="CompactActions" Grid.Column="1" Orientation="Horizontal">
                     <Button Content="对话" Click="OnDialogueClick" Style="{StaticResource LinkButton}" />
                     <Button Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}" Foreground="#FFD242E8" />
                     <Button x:Name="CollapseButton" Content="收起" Click="OnCollapseClick" Style="{StaticResource LinkButton}" />
                 </StackPanel>
-                <Rectangle Height="2" VerticalAlignment="Bottom" Fill="#FFD242E8" />
+                <Rectangle Grid.ColumnSpan="2" Height="2" VerticalAlignment="Bottom" Fill="#FFD242E8" />
             </Grid>
             <TextBlock x:Name="CompactMessage" Grid.Row="1" Margin="0,8,0,0"
                        Text="前辈，今天也请按自己的节奏来。" TextWrapping="Wrap"

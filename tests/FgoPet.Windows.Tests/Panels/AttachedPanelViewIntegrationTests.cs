@@ -25,7 +25,7 @@ public sealed class AttachedPanelViewIntegrationTests
             var todo = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodoContent"));
 
             model.PortraitClick();
-            Assert.Equal("CHALDEA // PERSONAL LINK", title.Text);
+            Assert.Equal("CHALDEA LINK", title.Text);
             Assert.False(string.IsNullOrWhiteSpace(message.Text));
             Assert.Equal(Visibility.Visible, message.Visibility);
             Assert.Equal(Visibility.Visible, compact.Visibility);
