@@ -14,6 +14,7 @@ using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
+using FgoPet.Core.Panels;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Packs;
@@ -189,6 +190,80 @@ public sealed class PortraitWindowIntegrationTests
                 window.Close();
             }
         });
+    }
+
+    [Fact]
+    public void The_running_timer_compact_body_gets_a_taller_budget_than_the_message_body()
+    {
+        StaRun(() =>
+        {
+            var focus = new FakeFocusService();
+            var panel = new AttachedPanelViewModel(TimeProvider.System, focus);
+            var window = new PortraitWindow(panel) { Left = 0, Top = 0 };
+            try
+            {
+                panel.PortraitClick();
+                panel.SetActiveServant("servant-mash");
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 50, 300),
+                    0.5,
+                    new Dpi2(1, 1));
+
+                var messageBounds = window.ArrangeOverlayPanel(
+                    geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
+                Assert.Equal(80, messageBounds.Height);
+
+                // Starting the session swaps the compact body to the timer; the host
+                // must grow so the countdown and buttons are not clipped.
+                focus.Start(FocusPresetCatalog.Short, "servant-mash");
+                focus.RaiseChanged();
+                var timerBounds = window.ArrangeOverlayPanel(
+                    geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
+
+                Assert.Equal(AttachedPanelState.Compact, panel.State);
+                Assert.True(panel.IsCompactTimerVisible);
+                Assert.True(timerBounds.Height > messageBounds.Height,
+                    $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
+                Assert.True(timerBounds.Height <= 130,
+                    $"timer body height {timerBounds.Height} must stay within the compact budget");
+
+                // Stopping restores the message budget exactly.
+                focus.Stop();
+                focus.RaiseChanged();
+                var restored = window.ArrangeOverlayPanel(
+                    geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
+                Assert.Equal(messageBounds.Height, restored.Height);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private sealed class FakeFocusService : FgoPet.App.Focus.IFocusSessionService
+    {
+        public Core.Focus.FocusSession Current { get; private set; } = Core.Focus.FocusSession.Idle;
+
+        public event EventHandler? SnapshotChanged;
+
+#pragma warning disable CS0067
+        public event EventHandler? PersistenceFailed;
+#pragma warning restore CS0067
+
+        public void Start(Core.Focus.FocusPreset preset, string servantId)
+        {
+            Current = Core.Focus.FocusSession.Start(
+                "fake-session", servantId, preset, DateTimeOffset.UtcNow);
+        }
+
+        public void Pause() { }
+        public void Resume() { }
+        public void Stop() => Current = Core.Focus.FocusSession.Idle;
+        public void Tick() { }
+        public void Restore() { }
+
+        public void RaiseChanged() => SnapshotChanged?.Invoke(this, EventArgs.Empty);
     }
 
     [Fact]

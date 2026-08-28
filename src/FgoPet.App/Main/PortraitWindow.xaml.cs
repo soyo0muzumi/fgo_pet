@@ -153,7 +153,14 @@ public partial class PortraitWindow : Window
             portraitTop + geometry.PanelAnchorDevice.Y);
 
         var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
-        var compactHeightDip = panelWidthDip * (160.0 / 440.0);
+        // The compact height budget follows the active compact body: the character
+        // message (160/440, two wrapped 13px lines) or the running timer surface
+        // (104/220, phase label + 28px countdown + button row).
+        var messageHeightDip = panelWidthDip * (160.0 / 440.0);
+        var timerHeightDip = panelWidthDip * (104.0 / 220.0);
+        var compactHeightDip = _panel.IsCompactTimerVisible
+            ? Math.Max(messageHeightDip, timerHeightDip)
+            : messageHeightDip;
         // Only Compact/Collapsed keep the compact height; all four expanded states
         // share the reserved stretch height so opening a column never moves the portrait.
         var panelHeightDip = AttachedPanelStateMachine.IsExpanded(_panel.State)

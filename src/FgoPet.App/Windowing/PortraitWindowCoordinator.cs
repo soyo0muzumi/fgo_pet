@@ -279,9 +279,13 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AttachedPanelViewModel.State)
-            && _window.AttachedPanel.State != AttachedPanelState.Collapsed)
+        var relayout = e.PropertyName == nameof(AttachedPanelViewModel.State)
+            || e.PropertyName == nameof(AttachedPanelViewModel.IsCompactTimerVisible);
+
+        if (relayout && _window.AttachedPanel.State != AttachedPanelState.Collapsed)
         {
+            // State switches and the compact message→timer body swap both change the
+            // panel height budget; re-arranging keeps portrait and panel anchored.
             ArrangeAttachedPanel();
         }
     }
