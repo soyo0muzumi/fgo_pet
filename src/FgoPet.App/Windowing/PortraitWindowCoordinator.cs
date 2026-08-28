@@ -291,8 +291,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
     private void ArrangeAttachedPanel()
     {
-        if (_controller.CurrentState is not { } state
-            || _window.AttachedPanel.State == AttachedPanelState.Collapsed)
+        if (_controller.CurrentState is not { } state)
         {
             return;
         }
@@ -306,7 +305,14 @@ public sealed class PortraitWindowCoordinator : IDisposable
             ?? _screen.GetMonitors().FirstOrDefault();
         if (monitor is not null)
         {
-            _window.ArrangeOverlayPanel(state.Geometry, monitor.WorkArea, _dpi);
+            if (_window.AttachedPanel.State == AttachedPanelState.Collapsed)
+            {
+                _window.PrepareStablePanelLayout(state.Geometry, monitor.WorkArea, _dpi);
+            }
+            else
+            {
+                _window.ArrangeOverlayPanel(state.Geometry, monitor.WorkArea, _dpi);
+            }
         }
     }
 

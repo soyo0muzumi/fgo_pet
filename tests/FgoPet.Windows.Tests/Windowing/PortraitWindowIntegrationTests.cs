@@ -71,6 +71,37 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
+    public void Opening_and_closing_the_panel_keeps_portrait_and_host_geometry_stable()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 300.25, Top = 100.25 };
+            try
+            {
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(303, 603, 13, 0, 256, 240, 151, 360),
+                    0.5,
+                    new Dpi2(2, 2));
+                window.PrepareStablePanelLayout(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(2, 2));
+                var portraitBefore = window.PortraitScreenBounds;
+                var hostBefore = new LogicalRect(window.Left, window.Top, window.Width, window.Height);
+
+                panel.PortraitClick();
+                window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(2, 2));
+                panel.PortraitClick();
+
+                Assert.Equal(portraitBefore, window.PortraitScreenBounds);
+                Assert.Equal(hostBefore, new LogicalRect(window.Left, window.Top, window.Width, window.Height));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Portrait_click_and_escape_drive_the_attached_panel_state_machine()
     {
         StaRun(() =>
