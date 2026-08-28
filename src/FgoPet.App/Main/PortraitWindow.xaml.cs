@@ -153,11 +153,10 @@ public partial class PortraitWindow : Window
             portraitTop + geometry.PanelAnchorDevice.Y);
 
         var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
-        // The compact height budget follows the active compact body: the character
-        // message (160/440, two wrapped 13px lines) or the running timer surface
-        // (104/220, phase label + 28px countdown + button row).
+        // Compact height budget: the running timer body needs more room than the
+        // message body, so the timer state uses a taller budget to avoid clipping.
         var messageHeightDip = panelWidthDip * (160.0 / 440.0);
-        var timerHeightDip = panelWidthDip * (104.0 / 220.0);
+        var timerHeightDip = panelWidthDip * (130.0 / 220.0);
         var compactHeightDip = _panel.IsCompactTimerVisible
             ? Math.Max(messageHeightDip, timerHeightDip)
             : messageHeightDip;

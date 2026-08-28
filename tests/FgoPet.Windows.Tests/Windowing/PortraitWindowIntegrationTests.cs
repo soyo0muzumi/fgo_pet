@@ -224,7 +224,7 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactTimerVisible);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                Assert.True(timerBounds.Height <= 130,
+                Assert.True(timerBounds.Height <= 140,
                     $"timer body height {timerBounds.Height} must stay within the compact budget");
 
                 // Stopping restores the message budget exactly.
