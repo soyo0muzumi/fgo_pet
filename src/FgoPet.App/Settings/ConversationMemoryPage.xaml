@@ -1,0 +1,122 @@
+<UserControl x:Class="FgoPet.App.Settings.ConversationMemoryPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml" />
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <StackPanel>
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
+                <TextBlock Text="记忆功能" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10"
+                           Text="启用后，模型可以在对话中产生候选记忆；只有经过你确认的记忆才会进入后续对话。"
+                           Style="{StaticResource SettingsStatusStyle}" />
+                <CheckBox x:Name="MemoryEnabledCheck"
+                          Content="启用记忆"
+                          IsChecked="{Binding MemoryEnabled, Mode=TwoWay}"
+                          automation:AutomationProperties.Name="启用记忆" />
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource SettingsCardStyle}" Margin="0,0,6,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="待审核候选" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                        <TextBlock Text="选择从者后显示候选记忆。" Style="{StaticResource SettingsStatusStyle}" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <TextBox x:Name="CandidateEditBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 Text="{Binding CandidateEditText, UpdateSourceTrigger=PropertyChanged}"
+                                 TextWrapping="Wrap" AcceptsReturn="True" MinHeight="52"
+                                 automation:AutomationProperties.Name="候选记忆编辑" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Style="{StaticResource SettingsSecondaryButtonStyle}" Content="编辑"
+                                    Command="{Binding EditCandidateCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsPrimaryButtonStyle}" Content="确认"
+                                    Command="{Binding ApproveCandidateCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="拒绝"
+                                    Command="{Binding RejectCandidateCommand}" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <ListBox x:Name="CandidatesList"
+                             MinHeight="160"
+                             ItemsSource="{Binding Candidates}"
+                             SelectedItem="{Binding SelectedCandidate}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="4" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SettingsCardStyle}" Margin="6,0,0,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="已确认记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                        <TextBlock Text="记忆按从者保存，外观切换不会移动记忆。" Style="{StaticResource SettingsStatusStyle}" />
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <TextBox x:Name="MemoryEditBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 Text="{Binding MemoryEditText, UpdateSourceTrigger=PropertyChanged}"
+                                 TextWrapping="Wrap" AcceptsReturn="True" MinHeight="52"
+                                 automation:AutomationProperties.Name="记忆编辑" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Style="{StaticResource SettingsSecondaryButtonStyle}" Content="保存编辑"
+                                    Command="{Binding EditMemoryCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="停用"
+                                    Command="{Binding DisableMemoryCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}" Content="删除"
+                                    Command="{Binding DeleteMemoryCommand}" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <ListBox x:Name="StoredMemoriesList"
+                             MinHeight="160"
+                             ItemsSource="{Binding StoredMemories}"
+                             SelectedItem="{Binding SelectedMemory}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding IsEnabled, StringFormat=启用：{0}}" Foreground="Gray" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
+                <WrapPanel>
+                    <Button x:Name="RefreshButton"
+                            Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Content="刷新"
+                            Command="{Binding RefreshCommand}" />
+                    <Button Margin="8,0,0,0"
+                            x:Name="DeleteAllButton"
+                            Style="{StaticResource SettingsDangerButtonStyle}"
+                            Content="删除全部用户数据"
+                            Click="OnDeleteAllClick" />
+                </WrapPanel>
+                <TextBlock Margin="0,10,0,0" Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

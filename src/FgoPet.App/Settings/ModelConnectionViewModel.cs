@@ -60,6 +60,8 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isKeySaved;
 
+    partial void OnIsKeySavedChanged(bool value) => OnPropertyChanged(nameof(KeyStateText));
+
     [ObservableProperty]
     private bool _isBusy;
 
@@ -81,6 +83,8 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         Providers.FirstOrDefault(provider => provider.ProviderId == SelectedProviderId)?.DisplayName ?? SelectedProviderId;
 
     public string ModelStatusText => string.IsNullOrWhiteSpace(ModelId) ? "未选择模型" : ModelId;
+
+    public string KeyStateText => IsKeySaved ? "已保存密钥（存储在 Windows Credential Manager）" : "尚未保存密钥。";
 
     public void SetApiKey(string value) => _pendingApiKey = value?.Trim() ?? string.Empty;
 

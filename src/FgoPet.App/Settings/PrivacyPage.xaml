@@ -1,0 +1,80 @@
+<UserControl x:Class="FgoPet.App.Settings.PrivacyPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml" />
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <StackPanel>
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
+                <TextBlock Text="导出用户数据" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10"
+                           Text="导出对话、摘要、候选、已确认记忆与安全的内容元数据。API Key、完整 Prompt、原始剧情与角色包资产不会包含在导出中。"
+                           Style="{StaticResource SettingsStatusStyle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ExportPathBox"
+                             Style="{StaticResource SettingsTextBoxStyle}"
+                             Text="{Binding ExportPath, UpdateSourceTrigger=PropertyChanged}"
+                             automation:AutomationProperties.Name="导出路径" />
+                    <Button Grid.Column="1" Margin="8,0,0,0"
+                            x:Name="ExportButton"
+                            Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Content="导出"
+                            Command="{Binding ExportCommand}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
+                <TextBlock Text="会话" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10"
+                           Text="删除会话会同时移除其中的消息、摘要和未审核候选；已确认记忆需要单独删除。"
+                           Style="{StaticResource SettingsStatusStyle}" />
+                <ListBox x:Name="ConversationsList"
+                         MinHeight="150"
+                         ItemsSource="{Binding Conversations}"
+                         SelectedItem="{Binding SelectedConversation}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="4">
+                                <TextBlock Text="{Binding ConversationId}" />
+                                <TextBlock Text="{Binding UpdatedAtUtc}" Foreground="Gray" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Margin="0,10,0,0" HorizontalAlignment="Left"
+                        x:Name="DeleteConversationButton"
+                        Style="{StaticResource SettingsDangerButtonStyle}"
+                        Content="删除选中会话"
+                        Command="{Binding DeleteConversationCommand}" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
+                <TextBlock Text="删除全部用户数据" Foreground="{DynamicResource DangerBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10"
+                           Text="删除全部对话、记忆、称呼设置和模型连接元数据。此操作不可撤销，且不影响 Phase 2 专注与羁绊历史。"
+                           Style="{StaticResource SettingsStatusStyle}" />
+                <Button HorizontalAlignment="Left"
+                        x:Name="DeleteAllButton"
+                        Style="{StaticResource SettingsDangerButtonStyle}"
+                        Content="删除全部用户数据"
+                        Click="OnDeleteAllClick" />
+                <TextBlock Margin="0,10,0,0" Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

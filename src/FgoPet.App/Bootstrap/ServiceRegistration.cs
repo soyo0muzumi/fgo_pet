@@ -104,7 +104,7 @@ public static class ServiceRegistration
         .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ModelConnectionViewModel>()
-        .AddSingleton<ModelConnectionWindow>()
+        .AddSingleton<ModelConnectionPage>()
         .AddSingleton<SettingsViewModel>()
         .AddSingleton<UserProfileViewModel>()
         .AddSingleton<UserProfilePage>()
@@ -122,6 +122,9 @@ public static class ServiceRegistration
                 provider.GetRequiredService<ServantLibraryViewModel>(),
                 provider.GetRequiredService<IAppSettingsStore>(),
                 provider.GetRequiredService<SettingsViewModel>())),
+            SettingsSection.ModelConnection => provider.GetRequiredService<ModelConnectionPage>(),
+            SettingsSection.ConversationMemory => provider.GetRequiredService<ConversationMemoryPage>(),
+            SettingsSection.Privacy => provider.GetRequiredService<PrivacyPage>(),
             SettingsSection.Theme => provider.GetRequiredService<ThemePage>(),
             // Later page migrations keep using the same in-shell resolver contract.
             _ => new Border(),
@@ -137,7 +140,8 @@ public static class ServiceRegistration
         .AddSingleton<UserDataExportService>()
         .AddSingleton<UserDataDeletionService>()
         .AddSingleton<MemoryViewModel>()
-        .AddSingleton<MemoryWindow>()
+        .AddSingleton<ConversationMemoryPage>()
+        .AddSingleton<PrivacyPage>()
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
         .AddSingleton<ConversationOrchestrator>()

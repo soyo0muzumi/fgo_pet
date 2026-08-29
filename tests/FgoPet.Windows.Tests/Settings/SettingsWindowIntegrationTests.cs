@@ -121,7 +121,7 @@ public sealed class SettingsWindowIntegrationTests
                 new FakeSettingsStore(AppSettings.Defaults),
                 _ => { });
             var ui = new DesktopAppUi(
-                null!, library, null!, window, viewModel,
+                null!, library, window, viewModel,
                 null!, null!, null!, null!, null!);
             try
             {

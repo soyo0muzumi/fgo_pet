@@ -16,7 +16,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 {
     private readonly TrayService _tray;
     private readonly ServantLibraryViewModel _libraryViewModel;
-    private readonly ModelConnectionWindow _modelConnection;
     private readonly SettingsWindow _settings;
     private readonly SettingsViewModel _settingsViewModel;
     private readonly PortraitWindow _portrait;
@@ -29,7 +28,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     public DesktopAppUi(
         TrayService tray,
         ServantLibraryViewModel libraryViewModel,
-        ModelConnectionWindow modelConnection,
         SettingsWindow settings,
         SettingsViewModel settingsViewModel,
         PortraitWindow portrait,
@@ -40,7 +38,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         _tray = tray;
         _libraryViewModel = libraryViewModel;
-        _modelConnection = modelConnection;
         _settings = settings;
         _settingsViewModel = settingsViewModel;
         _portrait = portrait;
@@ -75,8 +72,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void ShowModelConnection()
     {
-        _modelConnection.Show();
-        _modelConnection.Activate();
+        ShowSettings(SettingsSection.ModelConnection);
     }
 
     public void ShowSettings(SettingsSection? section = null)
