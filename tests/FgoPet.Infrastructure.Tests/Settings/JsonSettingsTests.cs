@@ -1,4 +1,5 @@
 using System.IO;
+using FgoPet.Core.Dialogue;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Settings;
@@ -37,6 +38,9 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Equal(0.50, settings.Scale);
         Assert.True(settings.Topmost);
         Assert.True(settings.AutoCollapseExpandedPanel);
+        Assert.Null(settings.ModelConnection);
+        Assert.True(settings.MemoryEnabled);
+        Assert.Empty(settings.ServantPreferences);
     }
 
     [Fact]
@@ -48,6 +52,16 @@ public sealed class JsonSettingsTests : IDisposable
             Topmost: false,
             AutoCollapseExpandedPanel: false);
 
+        saved = saved with
+        {
+            ModelConnection = new ModelConnectionSettings("deepseek", "https://api.deepseek.com/v1", "deepseek-chat"),
+            MemoryEnabled = false,
+            ServantPreferences = new Dictionary<string, ServantPreference>
+            {
+                ["800100"] = new ServantPreference(AddressMode.UserDefined, "御主"),
+            },
+        };
+
         _store.Save(saved);
 
         var loaded = _store.Load();
@@ -55,6 +69,23 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Equal(0.75, loaded.Scale);
         Assert.False(loaded.Topmost);
         Assert.False(loaded.AutoCollapseExpandedPanel);
+        Assert.Equal(saved.ModelConnection, loaded.ModelConnection);
+        Assert.False(loaded.MemoryEnabled);
+        Assert.Equal(saved.ServantPreferences, loaded.ServantPreferences);
+    }
+
+    [Fact]
+    public void Save_does_not_write_an_api_key_property()
+    {
+        _store.Save(AppSettings.Defaults with
+        {
+            ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+        });
+
+        var json = File.ReadAllText(_store.Location);
+
+        Assert.DoesNotContain("api_key", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

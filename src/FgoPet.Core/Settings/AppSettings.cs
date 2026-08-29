@@ -9,12 +9,14 @@ public sealed record AppSettings(
     bool Topmost,
     bool AutoCollapseExpandedPanel)
 {
+    private static readonly IReadOnlyDictionary<string, ServantPreference> EmptyServantPreferences =
+        new Dictionary<string, ServantPreference>(StringComparer.Ordinal);
+
     public ModelConnectionSettings? ModelConnection { get; init; }
 
     public bool MemoryEnabled { get; init; } = true;
 
-    public IReadOnlyDictionary<string, ServantPreference> ServantPreferences { get; init; } =
-        new Dictionary<string, ServantPreference>(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, ServantPreference> ServantPreferences { get; init; } = EmptyServantPreferences;
 
     public static AppSettings Defaults { get; } = new(
         Selection: null,

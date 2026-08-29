@@ -34,12 +34,14 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(1L, Scalar<long>(connection,
+        Assert.Equal(2L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
                      "focus_presets", "focus_sessions", "runtime_events",
                      "timeline_entries", "servant_bonds", "bond_ledger",
+                     "conversations", "chat_messages", "conversation_summaries",
+                     "memory_candidates", "memories", "content_bindings",
                  })
         {
             Assert.Equal(1L, Scalar<long>(connection,

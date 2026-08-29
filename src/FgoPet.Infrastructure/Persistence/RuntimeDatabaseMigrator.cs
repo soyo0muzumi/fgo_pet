@@ -79,6 +79,79 @@ public sealed class RuntimeDatabaseMigrator
               effective_seconds INTEGER NOT NULL,
               occurred_at_utc TEXT NOT NULL);
             """),
+        new(2, """
+            CREATE TABLE content_bindings(
+              binding_id TEXT PRIMARY KEY,
+              servant_id TEXT NOT NULL,
+              package_id TEXT NOT NULL,
+              package_version TEXT NOT NULL,
+              appearance_id TEXT NOT NULL,
+              persona_version TEXT NOT NULL,
+              knowledge_version TEXT NOT NULL,
+              persona_hash TEXT NOT NULL,
+              knowledge_hash TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL,
+              UNIQUE(servant_id, package_id, package_version, appearance_id, persona_version, knowledge_version,
+                     persona_hash, knowledge_hash));
+            CREATE INDEX ix_content_bindings_servant ON content_bindings(servant_id);
+            CREATE TABLE conversations(
+              conversation_id TEXT PRIMARY KEY,
+              servant_id TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('active','archived')),
+              current_binding_id TEXT NULL REFERENCES content_bindings(binding_id) ON DELETE SET NULL);
+            CREATE INDEX ix_conversations_servant_updated
+              ON conversations(servant_id, updated_at_utc DESC);
+            CREATE TABLE chat_messages(
+              message_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              servant_id TEXT NOT NULL,
+              sequence INTEGER NOT NULL CHECK(sequence > 0),
+              role TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
+              text TEXT NOT NULL CHECK(length(text) <= 12000),
+              status TEXT NOT NULL CHECK(status IN ('pending','completed','cancelled','failed')),
+              created_at_utc TEXT NOT NULL,
+              binding_id TEXT NULL REFERENCES content_bindings(binding_id) ON DELETE SET NULL,
+              UNIQUE(conversation_id, sequence));
+            CREATE INDEX ix_chat_messages_conversation_sequence
+              ON chat_messages(conversation_id, sequence);
+            CREATE INDEX ix_chat_messages_servant
+              ON chat_messages(servant_id, conversation_id);
+            CREATE TABLE conversation_summaries(
+              summary_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              servant_id TEXT NOT NULL,
+              summary_text TEXT NOT NULL CHECK(length(summary_text) <= 6000),
+              covered_through_sequence INTEGER NOT NULL CHECK(covered_through_sequence >= 0),
+              binding_id TEXT NULL REFERENCES content_bindings(binding_id) ON DELETE SET NULL,
+              created_at_utc TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_conversation_summaries_servant
+              ON conversation_summaries(servant_id, conversation_id);
+            CREATE TABLE memory_candidates(
+              candidate_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              source_message_id TEXT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
+              servant_id TEXT NOT NULL,
+              appearance_id TEXT NULL,
+              candidate_text TEXT NOT NULL CHECK(length(candidate_text) <= 2000),
+              status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),
+              created_at_utc TEXT NOT NULL,
+              reviewed_at_utc TEXT NULL);
+            CREATE INDEX ix_memory_candidates_servant_status
+              ON memory_candidates(servant_id, status, created_at_utc DESC);
+            CREATE TABLE memories(
+              memory_id TEXT PRIMARY KEY,
+              servant_id TEXT NOT NULL,
+              memory_text TEXT NOT NULL CHECK(length(memory_text) <= 2000),
+              is_enabled INTEGER NOT NULL CHECK(is_enabled IN (0,1)),
+              source_candidate_id TEXT NULL REFERENCES memory_candidates(candidate_id) ON DELETE SET NULL,
+              created_at_utc TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_memories_servant_enabled
+              ON memories(servant_id, is_enabled, updated_at_utc DESC);
+            """),
     };
 
     private readonly RuntimeDatabase _database;
