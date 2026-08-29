@@ -30,6 +30,19 @@ public sealed class JsonSettingsTests : IDisposable
         }
     }
 
+    public static TheoryData<string> MalformedPackageSettings => new()
+    {
+        { "{\"mash_kyrielight\":null}" },
+        { "{\"\":{\"show_status\":\"true\"}}" },
+        { "{\"invalid servant\":{\"show_status\":\"true\"}}" },
+        { $"{{\"{new string('s', 129)}\":{{\"show_status\":\"true\"}}}}" },
+        { "{\"mash_kyrielight\":{\"\":\"true\"}}" },
+        { "{\"mash_kyrielight\":{\"Invalid key\":\"true\"}}" },
+        { $"{{\"mash_kyrielight\":{{\"{new string('s', 65)}\":\"true\"}}}}" },
+        { "{\"mash_kyrielight\":{\"show_status\":null}}" },
+        { $"{{\"mash_kyrielight\":{{\"greeting\":\"{new string('x', 257)}\"}}}}" },
+    };
+
     [Fact]
     public void Load_returns_defaults_when_missing()
     {
@@ -148,6 +161,28 @@ public sealed class JsonSettingsTests : IDisposable
         var settings = _store.Load();
 
         Assert.Equal(AppSettings.Defaults, settings);
+        Assert.NotEmpty(Directory.GetFiles(_storage, "settings.json.corrupt.*"));
+    }
+
+    [Theory]
+    [MemberData(nameof(MalformedPackageSettings))]
+    public void Load_quarantines_malformed_package_settings_and_returns_defaults(string packageSettings)
+    {
+        var path = Path.Combine(_storage, "settings.json");
+        File.WriteAllText(path, $$"""
+            {
+              "schema_version": 2,
+              "scale": 0.75,
+              "topmost": false,
+              "auto_collapse": false,
+              "package_settings": {{packageSettings}}
+            }
+            """);
+
+        var settings = _store.Load();
+
+        Assert.Equal(AppSettings.Defaults, settings);
+        Assert.False(File.Exists(path));
         Assert.NotEmpty(Directory.GetFiles(_storage, "settings.json.corrupt.*"));
     }
 

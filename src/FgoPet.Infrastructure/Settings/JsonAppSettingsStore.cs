@@ -82,7 +82,10 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             UserProfile = UserProfileDto.FromModel(settings.UserProfile),
             PackageSettings = settings.PackageSettings.ToDictionary(
                 package => package.Key,
-                package => package.Value.ToDictionary(setting => setting.Key, setting => setting.Value, StringComparer.Ordinal),
+                package => (Dictionary<string, string?>?)package.Value.ToDictionary(
+                    setting => setting.Key,
+                    setting => (string?)setting.Value,
+                    StringComparer.Ordinal),
                 StringComparer.Ordinal),
         };
         AtomicJson.Write(_path, JsonSerializer.Serialize(dto));
@@ -121,7 +124,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
         public UserProfileDto? UserProfile { get; init; }
 
         [JsonPropertyName("package_settings")]
-        public Dictionary<string, Dictionary<string, string>>? PackageSettings { get; init; }
+        public Dictionary<string, Dictionary<string, string?>?>? PackageSettings { get; init; }
     }
 
     private sealed record UserProfileDto(
@@ -205,21 +208,60 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
     };
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ParsePackageSettings(
-        IReadOnlyDictionary<string, Dictionary<string, string>>? packageSettings)
+        IReadOnlyDictionary<string, Dictionary<string, string?>?>? packageSettings)
     {
         if (packageSettings is null || packageSettings.Count == 0)
         {
             return AppSettings.Defaults.PackageSettings;
         }
 
-        return packageSettings.ToDictionary(
-            package => package.Key,
-            package => (IReadOnlyDictionary<string, string>)package.Value.ToDictionary(
-                setting => setting.Key,
-                setting => setting.Value,
-                StringComparer.Ordinal),
-            StringComparer.Ordinal);
+        var parsed = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+        foreach (var package in packageSettings)
+        {
+            if (!IsSafeServantId(package.Key))
+            {
+                throw new JsonException("Invalid package settings servant key.");
+            }
+            if (package.Value is null)
+            {
+                throw new JsonException("Package settings must be an object.");
+            }
+
+            var settings = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var setting in package.Value)
+            {
+                if (!IsValidPackageSettingKey(setting.Key))
+                {
+                    throw new JsonException("Invalid package setting key.");
+                }
+                if (setting.Value is null || setting.Value.Length > 256)
+                {
+                    throw new JsonException("Invalid package setting value.");
+                }
+
+                settings[setting.Key] = setting.Value;
+            }
+
+            parsed[package.Key] = settings;
+        }
+
+        return parsed;
     }
+
+    private static bool IsSafeServantId(string? value) =>
+        value is { Length: > 0 and <= 128 }
+        && IsAsciiAlphaNumeric(value[0])
+        && value.All(character => IsAsciiAlphaNumeric(character) || character is '.' or '_' or '-');
+
+    private static bool IsValidPackageSettingKey(string? value) =>
+        value is { Length: > 0 and <= 64 }
+        && value[0] is >= 'a' and <= 'z' or >= '0' and <= '9'
+        && value.All(character => character is >= 'a' and <= 'z'
+                                  or >= '0' and <= '9'
+                                  or '.' or '_' or '-');
+
+    private static bool IsAsciiAlphaNumeric(char value) =>
+        value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9';
 
     private sealed record SelectionDto(
         [property: JsonPropertyName("package_id")] string? PackageId,
