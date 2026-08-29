@@ -18,8 +18,10 @@ The application will ship with two selectable themes:
 - **Modern Gray** — the default. Neutral gray surfaces, restrained Windows-style blue accents, and low decorative density.
 - **FGO Light** — optional. Navy navigation, muted gold accents, and restrained FGO-inspired details while retaining the same layout and control behavior.
 
-The theme scope covers `SettingsWindow`. The portrait window, attached dialogue
-panel, and other runtime surfaces are not part of this settings redesign.
+The theme scope covers `SettingsWindow`. The portrait window and other runtime
+surfaces remain outside the settings theme system. The attached dialogue panel
+receives a bounded visual refresh described below: it keeps the existing dark
+terminal palette and Compact geometry, and is not switched to FGO Light.
 
 ## Information architecture
 
@@ -130,6 +132,44 @@ state for the lifetime of the settings session. Destructive confirmations, nativ
 file pickers, and optional full-size image previews may use temporary modal surfaces,
 but they are not settings pages.
 
+## Runtime Compact dialogue surface
+
+The runtime dialogue surface remains a view inside the existing attached Compact
+panel, not a new chat window. Its outer frame, clipped corners, `CHALDEA LINK`
+header, `专注 / 今日 / TODO / 对话` columns, accent underline, footer instrument
+ornament, width/height budgets, hit-testing, drag behavior, and DPI metrics remain
+the Phase 2 contract.
+
+The message area uses a deliberately mixed presentation:
+
+- User messages are right-aligned in restrained Codex-like bubbles. The bubble is
+  compact, uses the panel surface color with a muted magenta edge, and does not
+  contain an avatar or a large decorative tail.
+- Servant/model messages are left-aligned terminal rows rather than bubbles. They
+  use a thin cyan vertical rule, a small `SERVANT` role label, and plain wrapped
+  text on the panel background.
+- The role label and time are secondary metadata in 8–9 px terminal typography;
+  message text remains readable at the panel's existing 12 px content size.
+- Provider and model status remain small inline labels in the dialogue header. They
+  must not become a large badge row or a second application toolbar.
+
+The surface has four presentation states:
+
+1. **Empty:** a small `CHANNEL READY`/等待输入 prompt with no large illustration.
+2. **Conversation:** user bubbles and servant terminal rows share one scrollable
+   transcript.
+3. **Streaming:** the servant terminal row shows a lightweight receiving cursor or
+   dots; no large animation is introduced.
+4. **Configuration required:** a compact warning row says the model connection is
+   missing and exposes `去设置`, which routes to `设置 > AI 模型与连接`. Existing
+   local and offline functions remain available.
+
+The composer stays at the bottom of the expanded panel. It retains the existing
+multi-line input, `新对话`, `停止`, and `发送` actions and their command behavior;
+only grouping, spacing, border treatment, and status presentation may change.
+The visual refresh must not change message streaming, cancellation, servant
+isolation, conversation persistence, or the attached-panel state machine.
+
 ### AI model and connection page
 
 The connection form is regrouped into:
@@ -214,8 +254,10 @@ usable offline; the dialogue surface provides a `去设置` action that navigate
 - Do not preserve a separate model-connection or servant-library tray item or
   portrait-menu item. Both menus expose the global `设置` entry instead.
 - Do not introduce a third-party WPF theme framework for this scope.
-- Do not restyle runtime portrait, dialogue, focus, or timeline surfaces as part of
-  this implementation. Memory and privacy controls are part of the settings shell
+- Do not restyle the runtime portrait, focus, or timeline surfaces as part of this
+  implementation. The runtime dialogue surface is the sole visual exception and
+  follows the bounded Compact design above; it does not consume the SettingsWindow
+  theme dictionaries. Memory and privacy controls are part of the settings shell
   and use its shared styles.
 
 ## Testing and acceptance
@@ -235,6 +277,9 @@ Automated coverage will verify:
 - Tray and portrait menus contain no direct `模型连接` item; the settings entry
   opens the settings shell, where the AI model page is selectable.
 - Selecting any settings title opens its details in the same `SettingsWindow`.
+- The runtime dialogue surface preserves the existing Compact shell and four
+  columns, renders user messages as compact right-side bubbles, renders model
+  replies as left-side terminal rows, and exposes the missing-model settings route.
 - Existing servant, package, address, and model tests continue to pass.
 
 Manual visual verification will open the settings shell and package detail route in
@@ -245,6 +290,11 @@ both themes and check:
 - Selected, focused, disabled, warning, error, and destructive states remain distinguishable.
 - Text and interactive controls maintain readable contrast.
 - Switching themes does not lose unsaved model form input or servant selection.
+- The runtime dialogue visual states remain readable within the existing Compact
+  height budget, and its user-bubble/model-terminal distinction remains clear in
+  empty, conversation, streaming, and configuration-required states.
+- FGO Light changes SettingsWindow only; the runtime Compact dialogue remains the
+  approved dark terminal surface.
 - A clean user profile can discover package installation and model configuration
   through separate actions without requiring either one to be configured.
 - Package details, model connection, memory, and privacy controls do not create

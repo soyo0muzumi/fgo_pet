@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FGO Pet · Phase 3 对话 UI 视觉稿</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09111f;
+      --bg-deep: #060b14;
+      --surface: #111d2e;
+      --surface-2: #18283b;
+      --surface-3: #20344b;
+      --line: #304c68;
+      --line-soft: rgba(125, 159, 190, .18);
+      --text: #eff6ff;
+      --muted: #a9bad0;
+      --faint: #6f849d;
+      --cyan: #73e8f6;
+      --cyan-soft: rgba(115, 232, 246, .12);
+      --magenta: #da83e7;
+      --magenta-soft: rgba(218, 131, 231, .12);
+      --gold: #c6a66f;
+      --danger: #ed9daf;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .34);
+      --radius: 12px;
+    }
+
+    body[data-theme="light"] {
+      color-scheme: light;
+      --bg: #eef1f5;
+      --bg-deep: #dfe4eb;
+      --surface: #ffffff;
+      --surface-2: #f3f5f8;
+      --surface-3: #e8edf3;
+      --line: #c9d2dc;
+      --line-soft: rgba(49, 70, 91, .16);
+      --text: #1e2935;
+      --muted: #5c6b7b;
+      --faint: #8795a4;
+      --cyan: #246b91;
+      --cyan-soft: rgba(36, 107, 145, .10);
+      --magenta: #8b4c9a;
+      --magenta-soft: rgba(139, 76, 154, .10);
+      --gold: #927034;
+      --danger: #b4485d;
+      --shadow: 0 24px 70px rgba(59, 76, 94, .18);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, var(--cyan-soft), transparent 34rem),
+        radial-gradient(circle at 90% 100%, var(--magenta-soft), transparent 38rem),
+        var(--bg-deep);
+      color: var(--text);
+      font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      transition: background .25s ease, color .25s ease;
+    }
+
+    button { font: inherit; }
+    .page { width: min(1400px, calc(100% - 40px)); margin: 0 auto; padding: 34px 0 46px; }
+    .eyebrow { color: var(--cyan); font: 700 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .18em; text-transform: uppercase; }
+    .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { margin-top: 6px; font-size: clamp(25px, 3.4vw, 40px); line-height: 1.1; letter-spacing: -.035em; }
+    .intro-copy { max-width: 720px; }
+    .intro-copy p { margin-top: 10px; color: var(--muted); max-width: 660px; }
+    .theme-switcher { display: flex; gap: 6px; padding: 5px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; box-shadow: var(--shadow); }
+    .theme-switcher button, .state-tabs button {
+      border: 0; color: var(--muted); background: transparent; cursor: pointer;
+      transition: color .18s ease, background .18s ease, transform .18s ease;
+    }
+    .theme-switcher button { border-radius: 999px; padding: 8px 12px; font-size: 12px; }
+    .theme-switcher button:hover, .theme-switcher button:focus-visible { color: var(--text); background: var(--surface-3); }
+    .theme-switcher button.active { color: var(--bg-deep); background: var(--cyan); }
+
+    .stage { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 18px; align-items: start; }
+    .board { min-width: 0; padding: 18px; border: 1px solid var(--line-soft); background: rgba(7, 14, 25, .28); box-shadow: var(--shadow); }
+    body[data-theme="light"] .board { background: rgba(255,255,255,.42); }
+    .state-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .state-tabs button { padding: 8px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); font-size: 12px; }
+    .state-tabs button:hover, .state-tabs button:focus-visible { color: var(--text); border-color: var(--cyan); }
+    .state-tabs button.active { color: var(--text); border-color: var(--cyan); background: var(--cyan-soft); box-shadow: inset 0 -2px 0 var(--cyan); }
+
+    .dialogue-window { position: relative; overflow: hidden; min-height: 470px; border: 1.5px solid var(--cyan); background: var(--surface); box-shadow: 0 0 0 1px rgba(115, 232, 246, .06), var(--shadow); }
+    .dialogue-window::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(135deg, rgba(115,232,246,.055), transparent 35%, rgba(218,131,231,.045)); }
+    .compact-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 39px; padding: 7px 12px 8px; border-bottom: 1px solid var(--line-soft); }
+    .compact-brand { color: var(--cyan); font: 700 10px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; white-space: nowrap; }
+    .compact-nav { display: flex; gap: 10px; color: var(--cyan); font-size: 10px; }
+    .compact-nav span { padding: 2px 1px; }
+    .compact-nav .active { color: var(--magenta); }
+    .compact-rule { position: absolute; right: 12px; bottom: -2px; left: 12px; height: 2px; background: rgba(56,81,108,.55); }
+    .compact-rule::before { content: ""; display: block; width: 52px; height: 2px; background: var(--magenta); }
+    .window-bar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 43px; padding: 8px 13px; border-bottom: 1px solid var(--line-soft); background: rgba(115,232,246,.045); }
+    .window-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .signal-mark { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--cyan); color: var(--cyan); font: 700 10px ui-monospace, Consolas, monospace; transform: skew(-10deg); }
+    .signal-mark span { transform: skew(10deg); }
+    .window-title strong { display: block; font-size: 11px; letter-spacing: .03em; }
+    .window-title small { display: block; margin-top: 1px; color: var(--muted); font: 8px ui-monospace, Consolas, monospace; letter-spacing: .12em; }
+    .connection-summary { display: flex; align-items: center; flex-wrap: wrap; justify-content: end; gap: 7px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); background: rgba(7,14,25,.18); font: 9px ui-monospace, Consolas, monospace; white-space: nowrap; }
+    .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+    .badge.online { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 46%, var(--line)); background: var(--cyan-soft); }
+    .badge.online::before { background: var(--cyan); box-shadow: 0 0 9px var(--cyan); }
+    .badge.warn { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 54%, var(--line)); background: color-mix(in srgb, var(--gold) 10%, transparent); }
+    .badge.warn::before { background: var(--gold); }
+    .badge.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 54%, var(--line)); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .badge.error::before { background: var(--danger); }
+
+    .message-area { position: relative; display: flex; flex-direction: column; min-height: 315px; padding: 14px 15px 8px; }
+    .system-note { align-self: center; margin: 0 auto 13px; color: var(--faint); font: 9px ui-monospace, Consolas, monospace; text-align: center; }
+    .system-note::before, .system-note::after { content: ""; display: inline-block; width: 34px; height: 1px; margin: 0 9px 3px; background: var(--line); }
+    .conversation { display: flex; flex-direction: column; gap: 10px; margin-top: auto; }
+    .turn { display: flex; gap: 7px; max-width: 92%; animation: rise .22s ease both; }
+    .turn.user { align-self: end; flex-direction: row-reverse; }
+    .bubble-wrap { min-width: 0; }
+    .turn-meta { display: flex; align-items: center; gap: 7px; margin: 0 0 3px 1px; color: var(--faint); font: 8px ui-monospace, Consolas, monospace; letter-spacing: .05em; }
+    .turn.assistant .turn-meta { color: var(--cyan); }
+    .turn.user .turn-meta { justify-content: end; margin: 0 2px 3px 0; color: var(--magenta); }
+    .bubble { padding: 6px 9px; border: 1px solid var(--line-soft); border-radius: 4px; color: var(--text); background: var(--surface-2); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .turn.assistant .bubble { padding: 5px 0 5px 9px; border: 0; border-left: 2px solid var(--cyan); border-radius: 0; background: transparent; }
+    .turn.user .bubble { border-color: color-mix(in srgb, var(--magenta) 38%, var(--line)); border-radius: 5px 2px 5px 5px; background: var(--magenta-soft); }
+    .typing { display: inline-flex; align-items: center; gap: 4px; min-width: 48px; }
+    .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); animation: pulse 1s infinite; }
+    .typing i:nth-child(2) { animation-delay: .15s; }
+    .typing i:nth-child(3) { animation-delay: .3s; }
+    .empty-state { display: grid; place-items: center; flex: 1; min-height: 240px; text-align: center; }
+    .empty-orbit { position: relative; display: grid; place-items: center; width: 47px; height: 47px; margin: 0 auto 10px; border: 1px solid var(--cyan); border-radius: 50%; color: var(--cyan); font: 700 11px ui-monospace, Consolas, monospace; box-shadow: 0 0 0 5px var(--cyan-soft); }
+    .empty-orbit::before, .empty-orbit::after { content: ""; position: absolute; border: 1px solid var(--magenta); border-radius: 50%; transform: rotate(28deg); }
+    .empty-orbit::before { inset: 5px -10px; }
+    .empty-orbit::after { inset: -10px 5px; transform: rotate(-28deg); }
+    .empty-state h2 { font-size: 14px; }
+    .empty-state p { max-width: 290px; margin: 5px auto 12px; color: var(--muted); font-size: 11px; }
+    .ghost-action, .primary-action { cursor: pointer; padding: 6px 10px; border-radius: 3px; font-size: 11px; transition: transform .18s ease, filter .18s ease; }
+    .ghost-action:hover, .primary-action:hover { transform: translateY(-1px); filter: brightness(1.08); }
+    .ghost-action { border: 1px solid var(--line); color: var(--muted); background: var(--surface-2); }
+    .primary-action { border: 1px solid var(--cyan); color: var(--bg-deep); background: var(--cyan); font-weight: 700; }
+    .error-card { max-width: 440px; margin: auto; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--danger) 52%, var(--line)); border-left: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+    .error-card h2 { color: var(--danger); font: 700 11px ui-monospace, Consolas, monospace; letter-spacing: .04em; }
+    .error-card p { margin: 5px 0 10px; color: var(--muted); font-size: 11px; }
+
+    .composer { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 9px 12px 10px; border-top: 1px solid var(--line-soft); background: rgba(24,40,59,.62); }
+    .input-shell { display: flex; align-items: end; min-height: 40px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface); }
+    .input-shell:focus-within { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-soft); }
+    .input-placeholder { color: var(--faint); font-size: 11px; }
+    .input-placeholder strong { color: var(--muted); font-weight: 500; }
+    .composer-actions { display: flex; align-items: end; gap: 7px; }
+    .composer-actions button { min-height: 29px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); background: var(--surface); font-size: 10px; cursor: pointer; }
+    .composer-actions button:hover, .composer-actions button:focus-visible { color: var(--text); border-color: var(--cyan); }
+    .composer-actions .send { color: var(--bg-deep); border-color: var(--cyan); background: var(--cyan); font-weight: 700; }
+    .footer-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--faint); font: 8px ui-monospace, Consolas, monospace; }
+    .instrument-footer { height: 15px; margin: 0 12px 5px; border-top: 1px solid rgba(115,232,246,.18); background: linear-gradient(90deg, transparent 0 18%, rgba(115,232,246,.34) 18% 18.5%, transparent 18.5% 42%, rgba(218,131,231,.42) 42% 42.5%, transparent 42.5% 58%, rgba(115,232,246,.34) 58% 58.5%, transparent 58.5%); clip-path: polygon(0 45%, 15% 45%, 17% 20%, 35% 20%, 37% 45%, 63% 45%, 65% 20%, 83% 20%, 85% 45%, 100% 45%, 100% 55%, 0 55%); }
+
+    .notes { padding: 19px; border: 1px solid var(--line-soft); background: var(--surface); box-shadow: var(--shadow); }
+    .notes h2 { font-size: 16px; }
+    .notes > p { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .note-block { padding: 15px 0; border-bottom: 1px solid var(--line-soft); }
+    .note-block:last-child { border-bottom: 0; padding-bottom: 0; }
+    .note-block h3 { color: var(--cyan); font-size: 12px; }
+    .note-block p, .note-block li { color: var(--muted); font-size: 12px; }
+    .note-block p { margin-top: 6px; }
+    .note-block ul { margin: 7px 0 0; padding-left: 17px; }
+    .swatches { display: flex; gap: 6px; margin-top: 9px; }
+    .swatches i { width: 24px; height: 16px; border: 1px solid var(--line); border-radius: 3px; }
+    .swatches .s1 { background: var(--bg); } .swatches .s2 { background: var(--surface-2); } .swatches .s3 { background: var(--cyan); } .swatches .s4 { background: var(--magenta); }
+    .scope { margin-top: 18px; padding: 12px 14px; border-left: 2px solid var(--gold); color: var(--muted); background: color-mix(in srgb, var(--gold) 8%, var(--surface)); font-size: 12px; }
+    .scope strong { color: var(--gold); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @keyframes rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+    @media (max-width: 960px) { .stage { grid-template-columns: 1fr; } .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; } .notes > p { grid-column: 1 / -1; } .scope { grid-column: 1 / -1; margin-top: 0; } }
+    @media (max-width: 620px) { .page { width: min(100% - 22px, 1400px); padding-top: 20px; } .intro { display: block; } .theme-switcher { width: max-content; margin-top: 16px; } .board { padding: 10px; } .dialogue-window { min-height: 450px; } .window-bar { align-items: start; flex-direction: column; } .connection-summary { justify-content: start; } .message-area { padding: 12px 11px 8px; } .turn { max-width: 94%; } .composer { grid-template-columns: 1fr; padding: 9px; } .composer-actions { justify-content: end; } .notes { display: block; } }
+  </style>
+</head>
+<body data-theme="dark">
+  <main class="page">
+    <section class="intro">
+      <div class="intro-copy">
+        <div class="eyebrow">FGO PET / PHASE 3 VISUAL REVIEW</div>
+        <h1>运行时对话面板</h1>
+        <p>内部对话 UI 视觉稿。用状态切换查看空状态、正常会话、流式回复和未配置模型路径；主题切换用于确认美术方向，不代表最终运行时颜色已锁定。</p>
+      </div>
+      <div class="theme-switcher" role="group" aria-label="切换视觉主题">
+        <button type="button" class="active" data-theme-button="dark">现代灰 · 深色</button>
+        <button type="button" data-theme-button="light">FGO Light</button>
+      </div>
+    </section>
+
+    <section class="stage">
+      <div class="board">
+        <div class="state-tabs" role="tablist" aria-label="对话状态">
+          <button type="button" class="active" role="tab" aria-selected="true" data-state="empty">空状态</button>
+          <button type="button" role="tab" aria-selected="false" data-state="conversation">正常对话</button>
+          <button type="button" role="tab" aria-selected="false" data-state="streaming">流式回复</button>
+          <button type="button" role="tab" aria-selected="false" data-state="configuration">未配置模型</button>
+        </div>
+
+        <article class="dialogue-window" aria-live="polite">
+          <header class="compact-header">
+            <strong class="compact-brand">CHALDEA LINK</strong>
+            <nav class="compact-nav" aria-label="Compact 面板栏目"><span>专注</span><span>今日</span><span>TODO</span><span class="active">对话</span></nav>
+            <div class="compact-rule" aria-hidden="true"></div>
+          </header>
+          <header class="window-bar">
+            <div class="window-title">
+              <div class="signal-mark" aria-hidden="true"><span>↯</span></div>
+              <div>
+                <strong>DIALOGUE / 对话</strong>
+                <small>CHALDEA LINK · SERVANT CHANNEL</small>
+              </div>
+            </div>
+            <div class="connection-summary">
+              <span class="badge online" id="provider-badge">OpenAI</span>
+              <span class="badge" id="model-badge">gpt-4o-mini</span>
+            </div>
+          </header>
+
+          <section class="message-area" id="message-area"></section>
+
+          <footer class="composer">
+            <div class="input-shell" id="input-shell" tabindex="0">
+              <div class="input-placeholder"><strong>输入要对从者说的话…</strong><br>Enter 发送 · Shift + Enter 换行</div>
+            </div>
+            <div class="composer-actions">
+              <button type="button">新对话</button>
+              <button type="button" id="stop-button">停止</button>
+              <button type="button" class="send" id="send-button">发送</button>
+            </div>
+            <div class="footer-meta"><span>servant_id: mash_kyrielight</span><span id="composer-status">READY · OFFLINE SAFE</span></div>
+          </footer>
+          <div class="instrument-footer" aria-hidden="true"></div>
+        </article>
+      </div>
+
+      <aside class="notes">
+        <h2>设计说明</h2>
+        <p>视觉层级与实现边界。</p>
+        <div class="note-block">
+          <h3>01 · 美术方向</h3>
+          <p>保留 Chaldea 终端感：深蓝底、青蓝主色、紫红强调、低透明边框、少量英文系统标识。</p>
+          <div class="swatches" aria-label="色板"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i></div>
+        </div>
+        <div class="note-block">
+          <h3>02 · 消息层级</h3>
+          <ul>
+            <li>从者消息左对齐，青蓝边缘</li>
+            <li>用户消息右对齐，紫红边缘</li>
+            <li>模型与供应商使用状态徽章</li>
+          </ul>
+        </div>
+        <div class="note-block">
+          <h3>03 · 输入区</h3>
+          <p>输入框与操作按钮形成一组，发送为唯一主按钮；停止只在流式状态出现高优先级。</p>
+        </div>
+        <div class="note-block">
+          <h3>04 · 状态策略</h3>
+          <p>空状态给出开始提示；配置错误给出明确的“去设置”；历史消息不因错误状态消失。</p>
+        </div>
+        <div class="scope"><strong>本次边界：</strong>只重做运行时呈现，不改变消息流、发送/停止/新对话命令、会话持久化、servant_id 隔离或窗口几何。</div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const states = {
+      empty: {
+        provider: 'OpenAI', model: 'gpt-4o-mini', providerClass: 'online', composer: 'READY · OFFLINE SAFE',
+        html: `<div class="empty-state"><div><div class="empty-orbit" aria-hidden="true">FGO</div><h2>等待你的第一句话</h2><p>从者频道已经准备好。输入一句话，开始一段只属于当前从者的对话。</p><button class="primary-action" type="button">开始对话</button></div></div>`
+      },
+      conversation: {
+        provider: 'OpenAI', model: 'gpt-4o-mini', providerClass: 'online', composer: 'READY · 2 TURNS',
+        html: `<div class="system-note">今天 · 与玛修的对话</div><div class="conversation"><div class="turn assistant"><div class="bubble-wrap"><div class="turn-meta"><span>MASH / SERVANT</span><span>09:41</span></div><div class="bubble">前辈，欢迎回来。今天想先处理哪一件事？</div></div></div><div class="turn user"><div class="bubble-wrap"><div class="turn-meta"><span>09:42</span><span>MASTER / 我</span></div><div class="bubble">先陪我整理一下今天的安排吧。</div></div></div></div>`
+      },
+      streaming: {
+        provider: 'DeepSeek', model: 'deepseek-chat', providerClass: 'online', composer: 'GENERATING · 1.2s',
+        html: `<div class="system-note">今天 · 正在生成回复</div><div class="conversation"><div class="turn user"><div class="bubble-wrap"><div class="turn-meta"><span>09:43</span><span>MASTER / 我</span></div><div class="bubble">如果今天只能完成一件事，你会建议我先做什么？</div></div></div><div class="turn assistant"><div class="bubble-wrap"><div class="turn-meta"><span>MASH / SERVANT</span><span>RECEIVING...</span></div><div class="bubble">我会建议先选择一件完成后能让你安心的事。比如…… <span class="typing" aria-label="生成中"><i></i><i></i><i></i></span></div></div></div></div>`
+      },
+      configuration: {
+        provider: '连接未配置', model: '需要设置', providerClass: 'error', composer: 'CONFIGURATION REQUIRED',
+        html: `<div class="error-card"><h2>尚未配置模型连接</h2><p>对话功能需要一个 OpenAI 格式的模型供应商。你的角色包和本地功能仍可离线使用。</p><button class="primary-action" type="button">去设置 · AI 模型与连接</button></div>`
+      }
+    };
+
+    const messageArea = document.querySelector('#message-area');
+    const providerBadge = document.querySelector('#provider-badge');
+    const modelBadge = document.querySelector('#model-badge');
+    const composerStatus = document.querySelector('#composer-status');
+    const stopButton = document.querySelector('#stop-button');
+    const sendButton = document.querySelector('#send-button');
+
+    function renderState(name) {
+      const state = states[name];
+      messageArea.innerHTML = state.html;
+      providerBadge.textContent = state.provider;
+      providerBadge.className = `badge ${state.providerClass}`;
+      modelBadge.textContent = state.model;
+      modelBadge.className = `badge ${name === 'configuration' ? 'error' : ''}`;
+      composerStatus.textContent = state.composer;
+      stopButton.style.display = name === 'streaming' ? 'inline-block' : 'none';
+      sendButton.disabled = name === 'configuration';
+      sendButton.style.opacity = name === 'configuration' ? '.45' : '1';
+      document.querySelectorAll('[data-state]').forEach(button => {
+        const selected = button.dataset.state === name;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-selected', String(selected));
+      });
+    }
+
+    document.querySelectorAll('[data-state]').forEach(button => {
+      button.addEventListener('click', () => renderState(button.dataset.state));
+    });
+    document.querySelectorAll('[data-theme-button]').forEach(button => {
+      button.addEventListener('click', () => {
+        const theme = button.dataset.themeButton;
+        document.body.dataset.theme = theme;
+        document.querySelectorAll('[data-theme-button]').forEach(item => item.classList.toggle('active', item === button));
+      });
+    });
+    renderState('empty');
+  </script>
+</body>
+</html>
