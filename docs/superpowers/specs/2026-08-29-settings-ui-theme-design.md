@@ -31,7 +31,7 @@ sidebar and a right content surface. The sidebar exposes these destinations:
 3. AI 模型与连接
 4. 对话与记忆
 5. 数据与隐私
-6. Theme / 主题
+6. 主题
 
 `ServantLibraryWindow` remains a separate servant-library surface with its own
 destinations:
@@ -47,6 +47,32 @@ by the selected servant and are saved by `servant_id`.
 The tray and portrait context menu expose `设置` and `从者库`, but do not expose
 `模型连接`. Selecting `设置` opens the global settings shell. The model page is the
 only user-facing entry for provider, credential, endpoint, and model configuration.
+
+### Navigation iconography
+
+Every settings and servant-library destination uses a consistent 16–18 px linear
+vector icon placed before its text label. Icons use semantic theme resources rather
+than hard-coded colors: muted in the idle state, accent-colored in the selected
+state, and visibly disabled when the destination is unavailable. The icon is
+supporting navigation information, not a replacement for the text label.
+
+| Destination | Icon concept |
+| --- | --- |
+| 用户资料 | person / profile |
+| 个性化 | sliders / adjust |
+| AI 模型与连接 | plug / connection |
+| 对话与记忆 | chat bubble |
+| 数据与隐私 | shield / lock |
+| Theme / 主题 | palette |
+| 从者与外观 | person with star |
+| 称呼设置 | speech bubble |
+| 角色包管理 | archive / package |
+
+The icon set is bundled or rendered from application-owned vector path resources so
+it does not depend on emoji rendering or an optional third-party font. Icons must
+retain a readable silhouette in both Modern Gray and FGO Light themes, at normal
+Windows display scaling, and with keyboard focus. Tooltips and automation names
+retain the full destination label for accessibility.
 
 ## Window layout
 
@@ -160,6 +186,8 @@ Automated coverage will verify:
 - Selecting a theme applies it and persists it.
 - The sidebar exposes `Theme / 主题` as a navigation destination.
 - The settings shell and servant-library surface resolve shared theme resources.
+- Every settings destination displays the correct bundled vector icon with distinct
+  idle, selected, focused, and disabled states.
 - Existing model connection controls and commands remain available on the AI model
   page.
 - Tray and portrait menus contain no direct `模型连接` item; the settings entry
