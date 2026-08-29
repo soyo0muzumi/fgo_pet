@@ -86,6 +86,8 @@ public sealed class UserDataDeletionService
             {
                 ModelConnection = null,
                 ServantPreferences = new Dictionary<string, ServantPreference>(StringComparer.Ordinal),
+                UserProfile = null,
+                PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal),
             });
         }
         return;

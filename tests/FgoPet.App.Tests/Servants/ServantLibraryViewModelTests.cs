@@ -68,6 +68,38 @@ public sealed class ServantLibraryViewModelTests
     }
 
     [Fact]
+    public async Task Activating_a_selected_appearance_preserves_every_other_settings_field()
+    {
+        var (vm, _, _, _, settings) = CreateViewModel();
+        settings.Current = AppSettings.Defaults with
+        {
+            Theme = AppTheme.FgoLight,
+            UserProfile = new UserProfile("xqj"),
+            ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+            MemoryEnabled = false,
+            ServantPreferences = new Dictionary<string, ServantPreference>
+            {
+                ["mash_kyrielight"] = new ServantPreference(AddressMode.UserDefined, "御主"),
+            },
+            PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["mash_kyrielight"] = new Dictionary<string, string> { ["show_status"] = "true" },
+            },
+        };
+        await vm.LoadAsync();
+
+        await vm.ActivateAsync();
+
+        var saved = Assert.Single(settings.Saved);
+        Assert.Equal(AppTheme.FgoLight, saved.Theme);
+        Assert.Equal("xqj", saved.UserProfile!.DisplayName);
+        Assert.Equal("gpt-4o-mini", saved.ModelConnection!.ModelId);
+        Assert.False(saved.MemoryEnabled);
+        Assert.Equal("御主", saved.ServantPreferences["mash_kyrielight"].AddressText);
+        Assert.Equal("true", saved.PackageSettings["mash_kyrielight"]["show_status"]);
+    }
+
+    [Fact]
     public async Task A_failed_activation_preserves_the_selection_and_shows_a_diagnostic()
     {
         var (vm, _, _, controller, settings) = CreateViewModel();
@@ -255,8 +287,14 @@ public sealed class ServantLibraryViewModelTests
 
         public List<AppSettings> Saved { get; } = new();
 
-        public AppSettings Load() => AppSettings.Defaults;
+        public AppSettings Current { get; set; } = AppSettings.Defaults;
 
-        public void Save(AppSettings settings) => Saved.Add(settings);
+        public AppSettings Load() => Current;
+
+        public void Save(AppSettings settings)
+        {
+            Current = settings;
+            Saved.Add(settings);
+        }
     }
 }

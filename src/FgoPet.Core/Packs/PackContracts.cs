@@ -190,6 +190,36 @@ public sealed record PackAppearanceRef
     public required string ManifestPath { get; init; }
 }
 
+/// <summary>Application-owned declarative field types permitted in package settings.</summary>
+public enum PackSettingType
+{
+    Toggle,
+    Choice,
+    Text,
+}
+
+/// <summary>One declarative package setting rendered only by application-owned controls.</summary>
+public sealed record PackSettingDefinition
+{
+    [JsonPropertyName("key")]
+    public required string Key { get; init; }
+
+    [JsonPropertyName("label")]
+    public required string Label { get; init; }
+
+    [JsonPropertyName("type")]
+    public required PackSettingType Type { get; init; }
+
+    [JsonPropertyName("default")]
+    public required string Default { get; init; }
+
+    [JsonPropertyName("options")]
+    public IReadOnlyList<string>? Options { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtraData { get; set; }
+}
+
 /// <summary>Pack manifest (pack schema v1): package identity, appearances, and preview.</summary>
 public sealed record PackManifestV1 : IStrictDeserializable
 {
@@ -219,6 +249,9 @@ public sealed record PackManifestV1 : IStrictDeserializable
 
     [JsonPropertyName("appearances")]
     public required IReadOnlyList<PackAppearanceRef> Appearances { get; init; }
+
+    [JsonPropertyName("settings")]
+    public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = Array.Empty<PackSettingDefinition>();
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtraData { get; set; }
@@ -259,5 +292,105 @@ public sealed record PackManifestV1 : IStrictDeserializable
         {
             throw new PackFailureException(new PackFailure(PackErrorCode.ManifestMalformed, $"重复的 appearance_id: {string.Join(", ", duplicates)}。"));
         }
+
+        ValidateSettings();
     }
+
+    private void ValidateSettings()
+    {
+        if (Settings is null || Settings.Count > 32)
+        {
+            throw Malformed("包最多可声明 32 个设置。");
+        }
+
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var setting in Settings)
+        {
+            if (setting is null)
+            {
+                throw Malformed("设置定义不能为空。");
+            }
+            if (setting.ExtraData is { Count: > 0 })
+            {
+                throw Malformed($"设置 '{setting.Key}' 存在未知属性。");
+            }
+            if (!IsValidSettingKey(setting.Key))
+            {
+                throw Malformed("设置 key 必须是 1–64 个小写 ASCII 字符，且只能包含字母、数字、点、下划线或连字符。");
+            }
+            if (setting.Label is null || setting.Label != setting.Label.Trim() || setting.Label.Length is < 1 or > 80)
+            {
+                throw Malformed($"设置 '{setting.Key}' 的 label 必须是 1–80 个非空白字符。");
+            }
+            if (!keys.Add(setting.Key))
+            {
+                throw Malformed($"重复的设置 key: {setting.Key}。");
+            }
+
+            switch (setting.Type)
+            {
+                case PackSettingType.Toggle:
+                    if (setting.Default is not "true" and not "false" || setting.Options is not null)
+                    {
+                        throw Malformed($"开关设置 '{setting.Key}' 必须使用 true 或 false 默认值，且不能包含 options。");
+                    }
+                    break;
+
+                case PackSettingType.Choice:
+                    ValidateChoice(setting);
+                    break;
+
+                case PackSettingType.Text:
+                    if (setting.Default is null || setting.Default.Length > 256 || setting.Options is not null)
+                    {
+                        throw Malformed($"文本设置 '{setting.Key}' 的默认值最长为 256 个字符，且不能包含 options。");
+                    }
+                    break;
+
+                default:
+                    throw Malformed($"不支持的设置类型 '{setting.Type}'。");
+            }
+        }
+    }
+
+    private static void ValidateChoice(PackSettingDefinition setting)
+    {
+        if (setting.Options is not { Count: >= 2 and <= 20 })
+        {
+            throw Malformed($"选择设置 '{setting.Key}' 必须包含 2–20 个选项。");
+        }
+        if (setting.Options.Any(option => string.IsNullOrWhiteSpace(option) || option.Length > 64))
+        {
+            throw Malformed($"选择设置 '{setting.Key}' 的选项必须是 1–64 个字符。");
+        }
+        if (setting.Options.Distinct(StringComparer.Ordinal).Count() != setting.Options.Count)
+        {
+            throw Malformed($"选择设置 '{setting.Key}' 的选项不能重复。");
+        }
+        if (!setting.Options.Contains(setting.Default, StringComparer.Ordinal))
+        {
+            throw Malformed($"选择设置 '{setting.Key}' 的默认值必须属于 options。");
+        }
+    }
+
+    private static bool IsValidSettingKey(string? key)
+    {
+        if (key is null || key != key.Trim() || key.Length is < 1 or > 64)
+        {
+            return false;
+        }
+
+        var first = key[0];
+        if (!((first >= 'a' && first <= 'z') || (first >= '0' && first <= '9')))
+        {
+            return false;
+        }
+
+        return key.All(character => character is >= 'a' and <= 'z'
+                                    or >= '0' and <= '9'
+                                    or '.' or '_' or '-');
+    }
+
+    private static PackFailureException Malformed(string message) =>
+        new(new PackFailure(PackErrorCode.ManifestMalformed, message));
 }

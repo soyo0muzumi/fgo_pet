@@ -50,6 +50,9 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
                 ModelConnection = dto.ModelConnection?.ToModel(),
                 MemoryEnabled = dto.MemoryEnabled ?? true,
                 ServantPreferences = ParseServantPreferences(dto.ServantPreferences),
+                Theme = ParseTheme(dto.Theme),
+                UserProfile = dto.UserProfile?.ToModel(),
+                PackageSettings = ParsePackageSettings(dto.PackageSettings),
             };
         }
         catch (JsonException)
@@ -74,6 +77,12 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             ServantPreferences = settings.ServantPreferences.ToDictionary(
                 pair => pair.Key,
                 pair => ServantPreferenceDto.FromModel(pair.Value),
+                StringComparer.Ordinal),
+            Theme = FormatTheme(settings.Theme),
+            UserProfile = UserProfileDto.FromModel(settings.UserProfile),
+            PackageSettings = settings.PackageSettings.ToDictionary(
+                package => package.Key,
+                package => package.Value.ToDictionary(setting => setting.Key, setting => setting.Value, StringComparer.Ordinal),
                 StringComparer.Ordinal),
         };
         AtomicJson.Write(_path, JsonSerializer.Serialize(dto));
@@ -104,6 +113,24 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
         [JsonPropertyName("servant_preferences")]
         public Dictionary<string, ServantPreferenceDto>? ServantPreferences { get; init; }
+
+        [JsonPropertyName("theme")]
+        public string? Theme { get; init; }
+
+        [JsonPropertyName("user_profile")]
+        public UserProfileDto? UserProfile { get; init; }
+
+        [JsonPropertyName("package_settings")]
+        public Dictionary<string, Dictionary<string, string>>? PackageSettings { get; init; }
+    }
+
+    private sealed record UserProfileDto(
+        [property: JsonPropertyName("display_name")] string? DisplayName)
+    {
+        public UserProfile ToModel() => new(DisplayName);
+
+        public static UserProfileDto? FromModel(UserProfile? profile) =>
+            profile is null ? null : new UserProfileDto(profile.DisplayName);
     }
 
     private sealed record ModelConnectionDto(
@@ -161,6 +188,37 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
         }
 
         return parsed;
+    }
+
+    private static AppTheme ParseTheme(string? theme) => theme switch
+    {
+        "fgo_light" => AppTheme.FgoLight,
+        "modern_gray" => AppTheme.ModernGray,
+        _ => AppTheme.ModernGray,
+    };
+
+    private static string FormatTheme(AppTheme theme) => theme switch
+    {
+        AppTheme.ModernGray => "modern_gray",
+        AppTheme.FgoLight => "fgo_light",
+        _ => "modern_gray",
+    };
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ParsePackageSettings(
+        IReadOnlyDictionary<string, Dictionary<string, string>>? packageSettings)
+    {
+        if (packageSettings is null || packageSettings.Count == 0)
+        {
+            return AppSettings.Defaults.PackageSettings;
+        }
+
+        return packageSettings.ToDictionary(
+            package => package.Key,
+            package => (IReadOnlyDictionary<string, string>)package.Value.ToDictionary(
+                setting => setting.Key,
+                setting => setting.Value,
+                StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     private sealed record SelectionDto(

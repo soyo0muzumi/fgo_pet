@@ -12,11 +12,20 @@ public sealed record AppSettings(
     private static readonly IReadOnlyDictionary<string, ServantPreference> EmptyServantPreferences =
         new Dictionary<string, ServantPreference>(StringComparer.Ordinal);
 
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> EmptyPackageSettings =
+        new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+
     public ModelConnectionSettings? ModelConnection { get; init; }
 
     public bool MemoryEnabled { get; init; } = true;
 
     public IReadOnlyDictionary<string, ServantPreference> ServantPreferences { get; init; } = EmptyServantPreferences;
+
+    public AppTheme Theme { get; init; } = AppTheme.ModernGray;
+
+    public UserProfile? UserProfile { get; init; }
+
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> PackageSettings { get; init; } = EmptyPackageSettings;
 
     public static AppSettings Defaults { get; } = new(
         Selection: null,

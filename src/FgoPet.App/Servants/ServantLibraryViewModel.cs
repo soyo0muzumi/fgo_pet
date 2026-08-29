@@ -202,12 +202,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
             return;
         }
 
-        var settings = _settings.Load();
-        _settings.Save(new AppSettings(
-            selection,
-            settings.Scale,
-            settings.Topmost,
-            settings.AutoCollapseExpandedPanel));
+        _settings.Save(_settings.Load() with { Selection = selection });
     }
 
     public async Task UninstallAsync()

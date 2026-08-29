@@ -41,6 +41,9 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Null(settings.ModelConnection);
         Assert.True(settings.MemoryEnabled);
         Assert.Empty(settings.ServantPreferences);
+        Assert.Equal(AppTheme.ModernGray, settings.Theme);
+        Assert.Null(settings.UserProfile);
+        Assert.Empty(settings.PackageSettings);
     }
 
     [Fact]
@@ -60,6 +63,12 @@ public sealed class JsonSettingsTests : IDisposable
             {
                 ["800100"] = new ServantPreference(AddressMode.UserDefined, "御主"),
             },
+            Theme = AppTheme.FgoLight,
+            UserProfile = new UserProfile("xqj"),
+            PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["mash_kyrielight"] = new Dictionary<string, string> { ["show_status"] = "true" },
+            },
         };
 
         _store.Save(saved);
@@ -72,6 +81,35 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Equal(saved.ModelConnection, loaded.ModelConnection);
         Assert.False(loaded.MemoryEnabled);
         Assert.Equal(saved.ServantPreferences, loaded.ServantPreferences);
+        Assert.Equal(AppTheme.FgoLight, loaded.Theme);
+        Assert.Equal("xqj", loaded.UserProfile!.DisplayName);
+        Assert.Equal("true", loaded.PackageSettings["mash_kyrielight"]["show_status"]);
+
+        var json = File.ReadAllText(_store.Location);
+        Assert.Contains("\"theme\":\"fgo_light\"", json);
+        Assert.Contains("\"user_profile\"", json);
+        Assert.Contains("\"display_name\":\"xqj\"", json);
+        Assert.Contains("\"package_settings\"", json);
+    }
+
+    [Fact]
+    public void Load_uses_modern_gray_for_an_unknown_theme_without_quarantining_settings()
+    {
+        File.WriteAllText(Path.Combine(_storage, "settings.json"), """
+            {
+              "schema_version": 2,
+              "selection": null,
+              "scale": 0.5,
+              "topmost": true,
+              "auto_collapse": true,
+              "theme": "unknown_theme"
+            }
+            """);
+
+        var loaded = _store.Load();
+
+        Assert.Equal(AppTheme.ModernGray, loaded.Theme);
+        Assert.Empty(Directory.GetFiles(_storage, "settings.json.corrupt.*"));
     }
 
     [Fact]

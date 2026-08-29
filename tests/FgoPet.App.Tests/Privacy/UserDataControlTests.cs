@@ -4,9 +4,11 @@ using System.Text;
 using FgoPet.App.Privacy;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
+using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Infrastructure.Secrets;
 using Xunit;
 
 namespace FgoPet.App.Tests.Privacy;
@@ -61,6 +63,42 @@ public sealed class UserDataControlTests : IDisposable
         Assert.Empty(memories.ListEnabledMemories("800100"));
     }
 
+    [Fact]
+    public async Task All_data_deletion_clears_profile_packages_and_model_metadata_but_preserves_phase2_history()
+    {
+        var database = CreateDatabase();
+        var conversations = new SqliteConversationRepository(database);
+        var memories = new SqliteMemoryRepository(database);
+        var settings = new FakeSettingsStore
+        {
+            Current = AppSettings.Defaults with
+            {
+                UserProfile = new UserProfile("xqj"),
+                PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
+                {
+                    ["mash_kyrielight"] = new Dictionary<string, string> { ["show_status"] = "true" },
+                },
+                ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+                ServantPreferences = new Dictionary<string, ServantPreference>
+                {
+                    ["mash_kyrielight"] = new ServantPreference(AddressMode.UserDefined, "御主"),
+                },
+            },
+        };
+        var credentials = new FakeCredentialStore();
+        InsertPhase2Bond(database);
+        var deletion = new UserDataDeletionService(database, conversations, memories, credentials, settings);
+
+        await deletion.DeleteAllAsync(CancellationToken.None);
+
+        Assert.Null(settings.Current.UserProfile);
+        Assert.Empty(settings.Current.PackageSettings);
+        Assert.Null(settings.Current.ModelConnection);
+        Assert.Empty(settings.Current.ServantPreferences);
+        Assert.Equal(["fgo-pet/provider/openai"], credentials.DeletedTargets);
+        Assert.Equal(1L, CountPhase2Bonds(database));
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -75,5 +113,50 @@ public sealed class UserDataControlTests : IDisposable
         var database = new RuntimeDatabase(_path);
         new RuntimeDatabaseMigrator(database).Migrate();
         return database;
+    }
+
+    private static void InsertPhase2Bond(RuntimeDatabase database)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO servant_bonds(servant_id, lifetime_focus_seconds, achieved_level, policy_version, updated_at_utc)
+            VALUES('mash_kyrielight', 1500, 1, 'bond-v1', '2026-08-29T00:00:00Z');
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    private static long CountPhase2Bonds(RuntimeDatabase database)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM servant_bonds";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private sealed class FakeSettingsStore : IAppSettingsStore
+    {
+        public string Location => "memory";
+
+        public AppSettings Current { get; set; } = AppSettings.Defaults;
+
+        public AppSettings Load() => Current;
+
+        public void Save(AppSettings settings) => Current = settings;
+    }
+
+    private sealed class FakeCredentialStore : ICredentialStore
+    {
+        public List<string> DeletedTargets { get; } = new();
+
+        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(false);
+
+        public Task DeleteAsync(string target, CancellationToken cancellationToken)
+        {
+            DeletedTargets.Add(target);
+            return Task.CompletedTask;
+        }
     }
 }
