@@ -5,13 +5,20 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using FgoPet.App.Bootstrap;
+using FgoPet.App.Dialogue;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Theming;
+using FgoPet.App.Tray;
 using FgoPet.Core.Geometry;
+using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Memory;
+using FgoPet.Infrastructure.Packs;
+using FgoPet.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -108,7 +115,29 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
-    public void Desktop_ui_routes_repeated_settings_requests_to_the_same_shell()
+    public void Tray_menu_exposes_settings_without_direct_model_or_library_entries()
+    {
+        StaRun(() =>
+        {
+            using var tray = new TrayService();
+            var requested = false;
+            tray.SettingsRequested += (_, _) => requested = true;
+
+            var texts = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                .Select(item => item.Text).ToArray();
+            Assert.Contains("设置", texts);
+            Assert.DoesNotContain(texts, text => text is "模型连接" or "从者库与设置");
+
+            var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                .Single(item => item.Text == "设置");
+            settingsItem.PerformClick();
+
+            Assert.True(requested);
+        });
+    }
+
+    [Fact]
+    public void Portrait_menu_exposes_settings_without_direct_model_or_library_entries()
     {
         StaRun(() =>
         {
@@ -120,30 +149,132 @@ public sealed class SettingsWindowIntegrationTests
                 new PortraitController(),
                 new FakeSettingsStore(AppSettings.Defaults),
                 _ => { });
+            using var tray = new TrayService();
             var ui = new DesktopAppUi(
-                null!, library, window, viewModel,
+                tray, library, window, viewModel,
                 null!, null!, null!, null!, null!);
             try
             {
-                ui.ShowLibrary("C:\\incoming\\mash.fgopetpack");
-                Assert.Equal(SettingsSection.RolePackages, viewModel.SelectedSection);
-                Assert.Equal("C:\\incoming\\mash.fgopetpack", library.PackFilePath);
+                var headers = ui.PortraitMenu.Items.OfType<MenuItem>()
+                    .Where(item => item.Header is string)
+                    .Select(item => (string)item.Header)
+                    .ToArray();
+                Assert.Contains("设置", headers);
+                Assert.DoesNotContain(headers, text => text is "模型连接" or "从者库与设置");
 
-                ui.ShowSettings(SettingsSection.Theme);
-                var firstHandle = new WindowInteropHelper(window).Handle;
-
-                ui.ShowSettings(SettingsSection.ModelConnection);
+                var settingsItem = ui.PortraitMenu.Items.OfType<MenuItem>()
+                    .Single(item => (string)item.Header == "设置");
+                settingsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
                 Assert.True(window.IsVisible);
-                Assert.Equal(SettingsSection.ModelConnection, viewModel.SelectedSection);
-                Assert.NotEqual(IntPtr.Zero, firstHandle);
-                Assert.Equal(firstHandle, new WindowInteropHelper(window).Handle);
+                Assert.Equal(SettingsSection.UserProfile, viewModel.SelectedSection);
             }
             finally
             {
                 window.Hide();
             }
         });
+    }
+
+    [Fact]
+    public void Tray_settings_request_opens_the_settings_shell()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel();
+            var window = new SettingsWindow(viewModel, (_, _) => new Border());
+            var library = new ServantLibraryViewModel(
+                new PackageRepository(),
+                new PackageInstaller(),
+                new PortraitController(),
+                new FakeSettingsStore(AppSettings.Defaults),
+                _ => { });
+            using var tray = new TrayService();
+            var ui = new DesktopAppUi(
+                tray, library, window, viewModel,
+                null!, null!, null!, null!, null!);
+            try
+            {
+                var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                    .Single(item => item.Text == "设置");
+                settingsItem.PerformClick();
+
+                Assert.True(window.IsVisible);
+                Assert.Equal(SettingsSection.UserProfile, viewModel.SelectedSection);
+            }
+            finally
+            {
+                window.Hide();
+            }
+        });
+    }
+
+    [Fact]
+    public void Dialogue_settings_request_opens_the_model_connection_section()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel();
+            var window = new SettingsWindow(viewModel, (_, _) => new Border());
+            var library = new ServantLibraryViewModel(
+                new PackageRepository(),
+                new PackageInstaller(),
+                new PortraitController(),
+                new FakeSettingsStore(AppSettings.Defaults),
+                _ => { });
+            var conversation = CreateConversationViewModel();
+            using var tray = new TrayService();
+            var ui = new DesktopAppUi(
+                tray, library, window, viewModel,
+                null!, null!, null!, null!, null!, conversation);
+            try
+            {
+                conversation.OpenSettingsCommand.Execute(null);
+
+                Assert.True(window.IsVisible);
+                Assert.Equal(SettingsSection.ModelConnection, viewModel.SelectedSection);
+            }
+            finally
+            {
+                window.Hide();
+            }
+        });
+    }
+
+    private static ConversationViewModel CreateConversationViewModel()
+    {
+        var settingsStore = new FakeSettingsStore(AppSettings.Defaults with
+        {
+            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
+        });
+        var orchestrator = new ConversationOrchestrator(
+            new ThrowingProviderResolver(),
+            new ThrowingContentResolver(),
+            new SqliteConversationRepository(new RuntimeDatabase(":memory:")),
+            new SqliteMemoryRepository(new RuntimeDatabase(":memory:")),
+            new PromptComposer(),
+            TimeProvider.System,
+            settingsStore);
+        return new ConversationViewModel(orchestrator, settingsStore);
+    }
+
+    private sealed class ThrowingProviderResolver : IChatProviderResolver
+    {
+        public IChatProvider Resolve() =>
+            throw new FgoPet.Infrastructure.Providers.ProviderRequestException(
+                FgoPet.Infrastructure.Providers.ProviderFailureCategory.Configuration, "未配置。");
+    }
+
+    private sealed class ThrowingContentResolver : IConversationContentResolver
+    {
+        public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
+            Task.FromResult(new ContentBinding(
+                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", null),
+                null,
+                Array.Empty<KnowledgeEntry>(),
+                Array.Empty<string>(),
+                string.Empty,
+                string.Empty));
     }
 
     [Fact]

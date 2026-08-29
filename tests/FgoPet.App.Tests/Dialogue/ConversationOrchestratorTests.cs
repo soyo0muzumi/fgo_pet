@@ -1,5 +1,6 @@
 using System.IO;
 using FgoPet.App.Dialogue;
+using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
@@ -128,6 +129,18 @@ public sealed class ConversationOrchestratorTests : IDisposable
             CreateMemoryRepository(),
             new PromptComposer(),
             TimeProvider.System);
+    }
+
+    [Fact]
+    public void Conversation_open_settings_requests_model_connection_section()
+    {
+        var viewModel = new ConversationViewModel(CreateOrchestrator(new FakeProvider([])), new FakeSettings());
+        SettingsSection? requested = null;
+        viewModel.SettingsRequested += section => requested = section;
+
+        viewModel.OpenSettingsCommand.Execute(null);
+
+        Assert.Equal(SettingsSection.ModelConnection, requested);
     }
 
     private SqliteConversationRepository CreateConversationRepository()

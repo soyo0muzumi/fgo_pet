@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Controls;
+using FgoPet.App.Dialogue;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
 using FgoPet.App.Portraits;
@@ -23,6 +24,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly IAppLifetime _lifetime;
     private readonly AppPaths _paths;
     private readonly PortraitController _controller;
+    private readonly ConversationViewModel? _conversation;
+    private readonly ContextMenu _portraitMenu;
     private bool _initialized;
 
     public DesktopAppUi(
@@ -34,7 +37,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         PortraitWindowCoordinator coordinator,
         IAppLifetime lifetime,
         AppPaths paths,
-        PortraitController controller)
+        PortraitController controller,
+        ConversationViewModel? conversation = null)
     {
         _tray = tray;
         _libraryViewModel = libraryViewModel;
@@ -45,19 +49,24 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _lifetime = lifetime;
         _paths = paths;
         _controller = controller;
+        _conversation = conversation;
+        _portraitMenu = CreatePortraitMenu();
+        _tray.ShowHideRequested += (_, _) => _lifetime.ShowOrHidePet();
+        _tray.RestoreRequested += OnTrayRestoreRequested;
+        _tray.SettingsRequested += (_, _) => ShowSettings();
+        _tray.OpenPackFolderRequested += (_, _) => OpenPackagesRoot();
+        _tray.ExitRequested += (_, _) => Exit();
+        if (_conversation is not null)
+        {
+            _conversation.SettingsRequested += section => ShowSettings(section);
+        }
     }
 
     public void InitializeTray()
     {
         if (_initialized) return;
         _initialized = true;
-        _tray.ShowHideRequested += (_, _) => _lifetime.ShowOrHidePet();
-        _tray.RestoreRequested += OnTrayRestoreRequested;
-        _tray.LibraryRequested += (_, _) => ShowLibrary();
-        _tray.ModelConnectionRequested += (_, _) => ShowModelConnection();
-        _tray.OpenPackFolderRequested += (_, _) => OpenPackagesRoot();
-        _tray.ExitRequested += (_, _) => Exit();
-        _portrait.ContextMenu = CreatePortraitMenu();
+        _portrait.ContextMenu = _portraitMenu;
         _controller.StateChanged += OnPortraitStateChanged;
     }
 
@@ -70,11 +79,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         ShowSettings(SettingsSection.RolePackages);
     }
 
-    public void ShowModelConnection()
-    {
-        ShowSettings(SettingsSection.ModelConnection);
-    }
-
     public void ShowSettings(SettingsSection? section = null)
     {
         if (section is not null)
@@ -85,6 +89,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _settings.Show();
         _settings.Activate();
     }
+
+    public ContextMenu PortraitMenu => _portraitMenu;
 
     public void ShowPortrait()
     {
@@ -102,8 +108,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private ContextMenu CreatePortraitMenu()
     {
         var menu = new ContextMenu();
-        menu.Items.Add(Item("从者库与设置", (_, _) => ShowLibrary()));
-        menu.Items.Add(Item("模型连接", (_, _) => ShowModelConnection()));
+        menu.Items.Add(Item("设置", (_, _) => ShowSettings()));
         menu.Items.Add(Item("隐藏", (_, _) => _lifetime.ShowOrHidePet()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("退出", (_, _) => Exit()));

@@ -155,7 +155,17 @@ public static class ServiceRegistration
             provider.GetRequiredService<IFocusSessionService>()))
         .AddSingleton<PortraitWindowCoordinator>()
         .AddSingleton<TrayService>()
-        .AddSingleton<DesktopAppUi>()
+        .AddSingleton(provider => new DesktopAppUi(
+            provider.GetRequiredService<TrayService>(),
+            provider.GetRequiredService<ServantLibraryViewModel>(),
+            provider.GetRequiredService<SettingsWindow>(),
+            provider.GetRequiredService<SettingsViewModel>(),
+            provider.GetRequiredService<PortraitWindow>(),
+            provider.GetRequiredService<PortraitWindowCoordinator>(),
+            provider.GetRequiredService<IAppLifetime>(),
+            provider.GetRequiredService<AppPaths>(),
+            provider.GetRequiredService<PortraitController>(),
+            provider.GetRequiredService<ConversationViewModel>()))
         .AddSingleton<IDesktopAppUi>(provider => provider.GetRequiredService<DesktopAppUi>())
         .AddSingleton<IAppShell, DesktopAppShell>()
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)
