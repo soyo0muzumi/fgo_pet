@@ -18,6 +18,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly ServantLibraryWindow _library;
     private readonly ServantLibraryViewModel _libraryViewModel;
     private readonly ModelConnectionWindow _modelConnection;
+    private readonly SettingsWindow _settings;
+    private readonly SettingsViewModel _settingsViewModel;
     private readonly PortraitWindow _portrait;
     private readonly PortraitWindowCoordinator _coordinator;
     private readonly IAppLifetime _lifetime;
@@ -31,6 +33,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         ServantLibraryWindow library,
         ServantLibraryViewModel libraryViewModel,
         ModelConnectionWindow modelConnection,
+        SettingsWindow settings,
+        SettingsViewModel settingsViewModel,
         PortraitWindow portrait,
         PortraitWindowCoordinator coordinator,
         IAppLifetime lifetime,
@@ -41,6 +45,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _library = library;
         _libraryViewModel = libraryViewModel;
         _modelConnection = modelConnection;
+        _settings = settings;
+        _settingsViewModel = settingsViewModel;
         _portrait = portrait;
         _coordinator = coordinator;
         _lifetime = lifetime;
@@ -82,6 +88,17 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         _modelConnection.Show();
         _modelConnection.Activate();
+    }
+
+    public void ShowSettings(SettingsSection? section = null)
+    {
+        if (section is not null)
+        {
+            _settingsViewModel.Select(section.Value);
+        }
+
+        _settings.Show();
+        _settings.Activate();
     }
 
     public void ShowPortrait()

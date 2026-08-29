@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Providers;
 using FgoPet.App.Focus;
@@ -102,6 +103,10 @@ public static class ServiceRegistration
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionWindow>()
+        .AddSingleton<SettingsViewModel>()
+        // Page migrations replace this neutral resolver without changing the shell contract.
+        .AddSingleton<SettingsPageContentResolver>(_ => (_, _) => new Border())
+        .AddSingleton<SettingsWindow>()
         // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
         .AddSingleton<ApprovedKnowledgeQuery>()
         .AddSingleton<PromptComposer>()
