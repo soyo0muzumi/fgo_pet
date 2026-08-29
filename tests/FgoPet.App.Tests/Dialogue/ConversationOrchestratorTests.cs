@@ -83,6 +83,22 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Equal("收到", viewModel.Turns[1].Text);
     }
 
+    [Fact]
+    public async Task Conversation_view_model_clears_visible_turns_when_servant_changes()
+    {
+        var viewModel = new ConversationViewModel(
+            CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)])),
+            new FakeSettings());
+        viewModel.SetActiveServant("800100");
+        viewModel.InputText = "你好";
+        await viewModel.SendCommand.ExecuteAsync(null);
+
+        viewModel.SetActiveServant("100001");
+
+        Assert.Empty(viewModel.Turns);
+        Assert.Equal("100001", viewModel.ActiveServantId);
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

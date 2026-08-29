@@ -176,7 +176,8 @@ public sealed record ConversationUpdate(
     string ConversationId,
     string? MessageId = null,
     string? TextDelta = null,
-    string? SafeError = null);
+    string? SafeError = null,
+    string? ServantId = null);
 
 public sealed record ChatRequest
 {

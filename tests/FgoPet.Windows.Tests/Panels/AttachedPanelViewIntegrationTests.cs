@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using FgoPet.App.Panels;
+using FgoPet.Core.Panels;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Panels;
@@ -90,6 +91,26 @@ public sealed class AttachedPanelViewIntegrationTests
             Assert.Equal(Visibility.Collapsed, focus.Visibility);
             Assert.Equal(Visibility.Collapsed, today.Visibility);
             Assert.Equal(Visibility.Visible, message.Visibility);
+        });
+    }
+
+    [Fact]
+    public void Focus_header_switches_from_expanded_dialogue_without_collapsing()
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var view = new AttachedPanelView { DataContext = model };
+            var focus = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusContent"));
+            var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
+
+            model.PortraitClick();
+            model.DialogueClick();
+            model.FocusClick();
+
+            Assert.Equal(AttachedPanelState.ExpandedFocus, model.State);
+            Assert.Equal(Visibility.Visible, focus.Visibility);
+            Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
         });
     }
 

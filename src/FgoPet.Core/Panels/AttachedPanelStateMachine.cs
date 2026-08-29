@@ -27,6 +27,7 @@ public static class AttachedPanelStateMachine
 
         (AttachedPanelState.ExpandedFocus, PanelAction.TodayClick) => AttachedPanelState.ExpandedToday,
         (AttachedPanelState.ExpandedToday, PanelAction.FocusClick) => AttachedPanelState.ExpandedFocus,
+        (AttachedPanelState.ExpandedDialogue or AttachedPanelState.ExpandedTodo, PanelAction.FocusClick) => AttachedPanelState.ExpandedFocus,
         (AttachedPanelState.ExpandedDialogue, PanelAction.TodayClick) => AttachedPanelState.ExpandedToday,
         (AttachedPanelState.ExpandedTodo, PanelAction.TodayClick) => AttachedPanelState.ExpandedToday,
         (AttachedPanelState.ExpandedFocus or AttachedPanelState.ExpandedToday

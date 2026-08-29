@@ -167,7 +167,8 @@ public sealed class ConversationOrchestrator
                 ConversationUpdateType.UserMessagePersisted,
                 conversationId,
                 userMessage.MessageId,
-                userMessage.Text));
+                userMessage.Text,
+                ServantId: servantId));
 
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             var prompt = _composer.Compose(new PromptContext(
@@ -192,7 +193,8 @@ public sealed class ConversationOrchestrator
                         ConversationUpdateType.AssistantDelta,
                         conversationId,
                         assistantId,
-                        chunk.TextDelta));
+                        chunk.TextDelta,
+                        ServantId: servantId));
                 }
 
                 if (chunk.IsComplete)
@@ -240,19 +242,24 @@ public sealed class ConversationOrchestrator
                 }
             }
 
-            Publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, assistant.MessageId, output.Text));
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.AssistantCompleted,
+                conversationId,
+                assistant.MessageId,
+                output.Text,
+                ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, assistant.MessageId);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested)
         {
-            Publish(new ConversationUpdate(ConversationUpdateType.Cancelled, conversationId));
+            Publish(new ConversationUpdate(ConversationUpdateType.Cancelled, conversationId, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Cancelled, conversationId);
         }
         catch (ProviderRequestException error)
         {
             var safeError = error.Message;
             TryAppendFailedMessage(conversationId, servantId, contentContext);
-            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError));
+            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
             var status = error.Category == ProviderFailureCategory.Configuration
                 ? ConversationSendStatus.ConfigurationRequired
                 : ConversationSendStatus.Failed;
@@ -262,14 +269,14 @@ public sealed class ConversationOrchestrator
         {
             const string safeError = "模型返回格式无法识别。";
             TryAppendFailedMessage(conversationId, servantId, contentContext);
-            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError));
+            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
         }
         catch (Exception)
         {
             const string safeError = "对话服务暂时不可用。";
             TryAppendFailedMessage(conversationId, servantId, contentContext);
-            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError));
+            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
         }
         finally

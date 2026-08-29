@@ -91,6 +91,16 @@ public sealed class Phase2AttachedPanelViewModelTests
     }
 
     [Fact]
+    public void FocusClick_from_expanded_dialogue_switches_to_focus()
+    {
+        _vm.PortraitClick();
+        _vm.DialogueClick();
+        _vm.FocusClick();
+
+        Assert.Equal(AttachedPanelState.ExpandedFocus, _vm.State);
+    }
+
+    [Fact]
     public void Invalid_custom_minutes_disable_start_and_suppress_idle_collapse()
     {
         _vm.PortraitClick();

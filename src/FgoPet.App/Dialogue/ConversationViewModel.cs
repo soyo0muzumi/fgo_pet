@@ -61,7 +61,17 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public void SetActiveServant(string servantId)
     {
-        ActiveServantId = servantId?.Trim() ?? string.Empty;
+        var normalizedServantId = servantId?.Trim() ?? string.Empty;
+        if (string.Equals(ActiveServantId, normalizedServantId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _orchestrator.CancelCurrent();
+        Turns.Clear();
+        _activeConversationId = string.Empty;
+        ErrorText = string.Empty;
+        ActiveServantId = normalizedServantId;
         OnPropertyChanged(nameof(CanSend));
     }
 
@@ -107,6 +117,12 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private void OnConversationUpdated(ConversationUpdate update)
     {
+        if (!string.IsNullOrWhiteSpace(update.ServantId)
+            && !string.Equals(update.ServantId, ActiveServantId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         if (update.Type == ConversationUpdateType.UserMessagePersisted)
         {
             if (!string.IsNullOrEmpty(_activeConversationId) && _activeConversationId != update.ConversationId)
