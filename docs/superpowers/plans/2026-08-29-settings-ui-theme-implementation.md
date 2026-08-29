@@ -20,6 +20,7 @@
 - `servant_id` is the stable owner for user address and memory data; appearance changes may change Persona/Knowledge but never move user-owned data.
 - API keys remain in Windows Credential Manager; provider metadata and global profile/personalization remain in JSON; conversation and memory records remain in SQLite.
 - Tray and portrait context menus expose `设置`, not direct `模型连接` or `从者库` destinations.
+- The runtime dialogue panel receives a visual redesign in this phase, but its existing message stream, send/stop/new-conversation behavior, state machine, four header columns, hit-testing, drag behavior, and DPI metrics remain unchanged.
 - Existing portrait, focus, timeline, hit-testing, bond, and dialogue behavior remains unchanged except for explicit missing-model navigation.
 - Release remains framework-dependent `win-x64` and requires the .NET 8 Desktop Runtime.
 - Preserve unrelated working-tree changes and stage only files named by the current task.
@@ -36,6 +37,9 @@
 - `src/FgoPet.App/Settings/SettingsWindow.xaml(.cs)`: the only configuration shell and embedded route host.
 - `src/FgoPet.App/Settings/SettingsViewModel.cs`: top-level navigation and package-detail route state.
 - `src/FgoPet.App/Settings/*Page.xaml(.cs)`: profile, personalization, package, model, memory/privacy, and theme page surfaces.
+- `src/FgoPet.App/Panels/AttachedPanelView.xaml(.cs)`: runtime dialogue panel visual surface, preserving the existing panel state and interaction contract.
+- `src/FgoPet.App/Dialogue/ConversationViewModel.cs`, `ConversationTurnViewModel.cs`: presentation state and configuration-action contract for the runtime dialogue surface.
+- `tests/FgoPet.Windows.Tests/Panels/DialoguePanelIntegrationTests.cs`: runtime dialogue visual-surface and named-control coverage.
 - `src/FgoPet.App/Bootstrap/DesktopAppUi.cs`, `DesktopAppShell.cs`, `Tray/TrayService.cs`: settings-only configuration entry points and clean-start route.
 - Existing `ModelConnectionWindow`, `ServantLibraryWindow`, and `MemoryWindow` are migrated into page controls and removed as top-level settings windows after their behavior is covered by embedded tests.
 
@@ -196,7 +200,25 @@ public void Save_then_load_roundtrips_profile_theme_and_package_settings()
 - [ ] **Step 4: Preserve destructive confirmation and offline behavior; verify one shell survives model → memory → privacy navigation without resetting package selection.**
 - [ ] **Step 5: Run App/Windows tests and commit with `git add src/FgoPet.App/Settings src/FgoPet.App/Memory tests/FgoPet.App.Tests/Settings tests/FgoPet.Windows.Tests/Settings tests/FgoPet.Windows.Tests/Memory; git commit -m "feat: embed model memory and privacy settings"`.**
 
-### Task 7: Remove direct menu entries and connect missing-model navigation
+### Task 7: Redesign the runtime dialogue panel UI
+
+**Files:**
+- Modify: `src/FgoPet.App/Panels/AttachedPanelView.xaml`
+- Modify: `src/FgoPet.App/Panels/AttachedPanelView.xaml.cs`
+- Modify: `src/FgoPet.App/Dialogue/ConversationViewModel.cs`
+- Modify: `src/FgoPet.App/Dialogue/ConversationTurnViewModel.cs`
+- Test: `tests/FgoPet.Windows.Tests/Panels/DialoguePanelIntegrationTests.cs`
+- Test: `tests/FgoPet.App.Tests/Dialogue/ConversationOrchestratorTests.cs`
+
+**Interfaces:** Preserve `DialogueContent`, `DialogueInputBox`, `SendDialogueButton`, `StopDialogueButton`, and `NewConversationButton`. Add named presentation surfaces for the empty state, provider/model status badges, message list, composer, and missing-model `DialogueSettingsButton`. The view model exposes enough presentation state for an empty/configuration-required view and raises the existing settings route without directly owning a settings window.
+
+- [ ] **Step 1: Write failing integration/view-model tests for the new named surfaces, empty state, provider/model badges, configuration-required state, settings action, and user/assistant message presentation. Keep the existing collapsed-state and four-header assertions.**
+- [ ] **Step 2: Run `dotnet test tests/FgoPet.Windows.Tests/FgoPet.Windows.Tests.csproj -c Release --no-restore --filter FullyQualifiedName~DialoguePanelIntegrationTests` and the focused App dialogue tests; verify RED because the presentation contract and controls do not exist.**
+- [ ] **Step 3: Add presentation-only view-model properties/action wiring and redesign the XAML with a clear header/status strip, empty state, distinct user/assistant message bubbles, scrollable message history, and a grouped composer/action area. Keep API-key/model configuration behind the settings route.**
+- [ ] **Step 4: Verify send, stop, new conversation, missing-model navigation, servant isolation, panel state transitions, four header columns, pointer hit-testing, drag behavior, and DPI metrics. Do not change the stream/orchestrator/repository contract.**
+- [ ] **Step 5: Run focused App/Windows tests and commit with `git add src/FgoPet.App/Panels/AttachedPanelView.xaml src/FgoPet.App/Panels/AttachedPanelView.xaml.cs src/FgoPet.App/Dialogue/ConversationViewModel.cs src/FgoPet.App/Dialogue/ConversationTurnViewModel.cs tests/FgoPet.Windows.Tests/Panels/DialoguePanelIntegrationTests.cs tests/FgoPet.App.Tests/Dialogue/ConversationOrchestratorTests.cs; git commit -m "feat: redesign runtime dialogue panel"`.**
+
+### Task 8: Remove direct menu entries and connect missing-model navigation
 
 **Files:**
 - Modify: `src/FgoPet.App/Tray/TrayService.cs`
@@ -216,7 +238,7 @@ public void Save_then_load_roundtrips_profile_theme_and_package_settings()
 - [ ] **Step 3: Remove direct callbacks, route configuration through the singleton settings shell, and retain `打开角色包目录` only if treated as a filesystem shortcut rather than a settings page.**
 - [ ] **Step 4: Run focused tests and commit with `git add src/FgoPet.App/Tray src/FgoPet.App/Bootstrap src/FgoPet.App/Panels src/FgoPet.App/Dialogue tests/FgoPet.App.Tests/Bootstrap tests/FgoPet.App.Tests/Dialogue tests/FgoPet.Windows.Tests/Settings; git commit -m "feat: route configuration through embedded settings"`.**
 
-### Task 8: Full verification, manual matrix, documentation, and Release
+### Task 9: Full verification, manual matrix, documentation, and Release
 
 **Files:**
 - Modify: `README.md`
@@ -227,6 +249,6 @@ public void Save_then_load_roundtrips_profile_theme_and_package_settings()
 - [ ] **Step 1: Add a serial acceptance script covering profile/personalization persistence, package install/detail/preview, appearance/address, provider/model status, offline behavior, memory/privacy, icons/themes, menu exclusions, and secret/path redaction.**
 - [ ] **Step 2: Run the four project Release test commands serially:** `dotnet test tests/FgoPet.Core.Tests/FgoPet.Core.Tests.csproj -c Release --no-restore`; `dotnet test tests/FgoPet.Infrastructure.Tests/FgoPet.Infrastructure.Tests.csproj -c Release --no-restore`; `dotnet test tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj -c Release --no-restore`; `dotnet test tests/FgoPet.Windows.Tests/FgoPet.Windows.Tests.csproj -c Release --no-restore`. Expected: all pass.
 - [ ] **Step 3: Run `dotnet build FgoPet.sln -c Release --no-restore`; inspect XAML/resource errors and verify no runtime surface regressions.**
-- [ ] **Step 4: Manually verify with a clean Windows profile at 100%, 150%, and 200% scaling: startup `设置 > 角色包`, `.fgopetpack` install, `打开角色包`, preview, appearance/address, all embedded sections, icon focus/disabled states, model offline path, and no extra top-level settings windows.**
+- [ ] **Step 4: Manually verify with a clean Windows profile at 100%, 150%, and 200% scaling: startup `设置 > 角色包`, `.fgopetpack` install, `打开角色包`, preview, appearance/address, all embedded sections, icon focus/disabled states, redesigned runtime dialogue empty/configured/streaming/error states, model offline path, and no extra top-level settings windows.**
 - [ ] **Step 5: Publish with `dotnet publish src/FgoPet.App/FgoPet.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/release/FgoPet-win-x64`; verify `FgoPet.App.exe`, `.runtimeconfig.json`, and `.deps.json`.**
 - [ ] **Step 6: Record automated/manual results and the Release path/runtime prerequisite in the handoff report; commit only planned documentation/script files. Do not push unless separately requested.**
