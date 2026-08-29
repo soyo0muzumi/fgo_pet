@@ -53,7 +53,9 @@ public static class ServiceRegistration
         .AddSingleton(paths)
         .AddSingleton<IAppLifetime>(_ => new AppLifetimeService(Application.Current!))
         .AddSingleton<IAppSettingsStore>(_ => new JsonAppSettingsStore(paths.StorageRoot))
-        .AddSingleton<ThemeService>()
+        .AddSingleton<ThemeService>(provider => new ThemeService(
+            provider.GetRequiredService<IAppSettingsStore>(),
+            Application.Current?.Resources ?? new ResourceDictionary()))
         .AddSingleton<IWindowPlacementStore>(_ => new JsonWindowPlacementStore(paths.StorageRoot))
         .AddSingleton<IScreenLayoutService, WindowsScreenLayoutService>()
         .AddSingleton<IPackIndexStore>(_ => new JsonPackIndexStore(paths.StorageRoot))
@@ -104,8 +106,19 @@ public static class ServiceRegistration
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionWindow>()
         .AddSingleton<SettingsViewModel>()
-        // Page migrations replace this neutral resolver without changing the shell contract.
-        .AddSingleton<SettingsPageContentResolver>(_ => (_, _) => new Border())
+        .AddSingleton<UserProfileViewModel>()
+        .AddSingleton<UserProfilePage>()
+        .AddSingleton<PersonalizationViewModel>()
+        .AddSingleton<PersonalizationPage>()
+        .AddSingleton<ThemePage>()
+        .AddSingleton<SettingsPageContentResolver>(provider => (section, _) => section switch
+        {
+            SettingsSection.UserProfile => provider.GetRequiredService<UserProfilePage>(),
+            SettingsSection.Personalization => provider.GetRequiredService<PersonalizationPage>(),
+            SettingsSection.Theme => provider.GetRequiredService<ThemePage>(),
+            // Later page migrations keep using the same in-shell resolver contract.
+            _ => new Border(),
+        })
         .AddSingleton<SettingsWindow>()
         // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
         .AddSingleton<ApprovedKnowledgeQuery>()

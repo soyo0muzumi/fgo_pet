@@ -1,0 +1,87 @@
+<UserControl x:Class="FgoPet.App.Settings.PersonalizationPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             Focusable="True">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml" />
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="4,4,14,18">
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="桌宠显示" />
+                    <TextBlock Margin="0,0,0,10"
+                               Foreground="{DynamicResource TextBrush}"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="桌宠缩放" />
+                    <ComboBox x:Name="ScaleComboBox"
+                              Width="180"
+                              HorizontalAlignment="Left"
+                              Style="{StaticResource SettingsComboBoxStyle}"
+                              ItemsSource="{Binding ScaleOptions}"
+                              ItemStringFormat="{}{0:P0}"
+                              SelectedItem="{Binding Scale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              ToolTip="仅支持 50%、60% 和 75%"
+                              automation:AutomationProperties.Name="桌宠缩放比例" />
+                    <TextBlock Margin="0,8,0,0"
+                               Style="{StaticResource SettingsStatusStyle}"
+                               Text="支持的缩放值与现有画像渲染管线保持一致。" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="窗口行为" />
+                    <CheckBox x:Name="TopmostCheckBox"
+                              Margin="0,2,0,12"
+                              Foreground="{DynamicResource TextBrush}"
+                              Content="桌宠窗口始终置顶"
+                              IsChecked="{Binding Topmost, Mode=TwoWay}"
+                              ToolTip="在其他窗口前显示桌宠"
+                              automation:AutomationProperties.Name="桌宠窗口始终置顶" />
+                    <CheckBox x:Name="AutoCollapseCheckBox"
+                              Foreground="{DynamicResource TextBrush}"
+                              Content="展开面板无操作时自动收起"
+                              IsChecked="{Binding AutoCollapseExpandedPanel, Mode=TwoWay}"
+                              ToolTip="沿用运行时面板的自动收起行为"
+                              automation:AutomationProperties.Name="展开面板无操作时自动收起" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="恢复设置" />
+                    <TextBlock Style="{StaticResource SettingsStatusStyle}"
+                               Margin="0,0,0,12"
+                               Text="恢复会将缩放设为 50%，开启置顶和自动收起。主题选择由主题页面独立管理，不会被这里改动。" />
+                    <Button x:Name="ResetButton"
+                            Width="140"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Command="{Binding ResetCommand}"
+                            Content="恢复默认"
+                            automation:AutomationProperties.Name="恢复默认个性化设置" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource SettingsStatusStyle}"
+                       Text="{Binding StatusText}"
+                       automation:AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Margin="0,4,0,0"
+                       Style="{StaticResource SettingsStatusStyle}"
+                       Foreground="{DynamicResource DangerBrush}"
+                       Text="{Binding ErrorText}"
+                       TextWrapping="Wrap"
+                       automation:AutomationProperties.LiveSetting="Assertive" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

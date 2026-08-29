@@ -5,6 +5,8 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using FgoPet.App.Bootstrap;
 using FgoPet.App.Settings;
+using FgoPet.App.Theming;
+using FgoPet.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -129,6 +131,56 @@ public sealed class SettingsWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void Service_registration_resolves_profile_personalization_and_theme_pages_in_the_same_shell()
+    {
+        StaRun(() =>
+        {
+            using var provider = ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var window = provider.GetRequiredService<SettingsWindow>();
+            var viewModel = provider.GetRequiredService<SettingsViewModel>();
+            try
+            {
+                Assert.IsType<UserProfilePage>(window.SettingsContent.Content);
+
+                viewModel.Select(SettingsSection.Personalization);
+                Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
+
+                viewModel.Select(SettingsSection.Theme);
+                Assert.IsType<ThemePage>(window.SettingsContent.Content);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Theme_page_reflects_immediate_selection_even_before_it_is_hosted()
+    {
+        StaRun(() =>
+        {
+            var resources = new ResourceDictionary();
+            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var themeService = new ThemeService(store, resources, ThemeService.CreateTestDictionary);
+            themeService.Initialize();
+            var page = new ThemePage(themeService);
+
+            Assert.True(page.ModernGrayChoice.IsChecked);
+            Assert.False(page.FgoLightChoice.IsChecked);
+            Assert.True(page.ModernGrayChoice.Focusable);
+            Assert.True(page.FgoLightChoice.Focusable);
+
+            page.SelectTheme(AppTheme.FgoLight);
+
+            Assert.Equal(AppTheme.FgoLight, themeService.CurrentTheme);
+            Assert.False(page.ModernGrayChoice.IsChecked);
+            Assert.True(page.FgoLightChoice.IsChecked);
+            Assert.Equal(AppTheme.FgoLight, store.Load().Theme);
+        });
+    }
+
     private static void StaRun(Action action)
     {
         Exception? failure = null;
@@ -141,5 +193,16 @@ public sealed class SettingsWindowIntegrationTests
         thread.Start();
         thread.Join();
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
+    {
+        private AppSettings _settings = initial;
+
+        public string Location => "memory";
+
+        public AppSettings Load() => _settings;
+
+        public void Save(AppSettings settings) => _settings = settings;
     }
 }
