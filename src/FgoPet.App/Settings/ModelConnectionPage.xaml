@@ -29,6 +29,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <PasswordBox x:Name="ApiKeyBox"
+                                 Style="{StaticResource SettingsPasswordBoxStyle}"
                                  ToolTip="密钥只保存到 Windows Credential Manager，不会写入设置文件。"
                                  automation:AutomationProperties.Name="API Key" />
                     <Button Grid.Column="1" Margin="8,0,0,0"
@@ -64,11 +65,19 @@
                 </Grid>
 
                 <TextBlock Margin="0,14,0,0" Text="模型列表" Style="{StaticResource SettingsCaptionStyle}" />
-                <ListBox x:Name="ModelList"
-                         Height="120"
-                         ItemsSource="{Binding AvailableModels}"
-                         DisplayMemberPath="DisplayName"
-                         automation:AutomationProperties.Name="可用模型列表" />
+                <Grid MinHeight="96">
+                    <ListBox x:Name="ModelList"
+                             MinHeight="96" MaxHeight="180"
+                             Style="{StaticResource SettingsListBoxStyle}"
+                             ItemsSource="{Binding AvailableModels}"
+                             DisplayMemberPath="DisplayName"
+                             automation:AutomationProperties.Name="可用模型列表" />
+                    <StackPanel x:Name="ModelListEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock Text="尚未获取模型" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="保存密钥后选择“刷新模型”。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" />
+                        <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=ModelList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                    </StackPanel>
+                </Grid>
             </StackPanel>
         </Border>
 

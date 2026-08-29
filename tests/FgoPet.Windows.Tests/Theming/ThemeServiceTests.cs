@@ -201,6 +201,45 @@ public sealed class ThemeServiceTests
         });
     }
 
+    [Fact]
+    public void Shared_form_controls_replace_native_white_surfaces_and_scrollbars()
+    {
+        StaRun(() =>
+        {
+            var controls = LoadDictionary("SettingsControls.xaml");
+
+            foreach (var key in new[]
+                     {
+                         "SettingsPasswordBoxStyle",
+                         "SettingsListBoxStyle",
+                         "SettingsScrollBarStyle",
+                     })
+            {
+                Assert.IsType<Style>(controls[key]);
+            }
+
+            var listStyle = Assert.IsType<Style>(controls["SettingsListBoxStyle"]);
+            Assert.Equal("InputBackgroundBrush", DynamicResourceKey(FindSetter(listStyle, Control.BackgroundProperty).Value));
+
+            var comboStyle = Assert.IsType<Style>(controls["SettingsComboBoxStyle"]);
+            Assert.IsType<ControlTemplate>(FindSetter(comboStyle, Control.TemplateProperty).Value);
+        });
+    }
+
+    [Fact]
+    public void Theme_choice_is_a_card_with_checked_state_instead_of_a_stretched_native_radio()
+    {
+        StaRun(() =>
+        {
+            var controls = LoadDictionary("SettingsControls.xaml");
+            var style = Assert.IsType<Style>(controls["SettingsThemeChoiceStyle"]);
+            var template = Assert.IsType<ControlTemplate>(FindSetter(style, Control.TemplateProperty).Value);
+            var selected = FindTrigger(template, ToggleButton.IsCheckedProperty, true);
+
+            Assert.Equal("AccentBrush", DynamicResourceKey(FindTriggerSetter(selected, Border.BorderBrushProperty).Value));
+        });
+    }
+
     private static readonly string[] RequiredStyleBrushKeys =
     [
         "AccentBrush",
@@ -232,7 +271,10 @@ public sealed class ThemeServiceTests
         "SettingsSecondaryButtonStyle",
         "SettingsDangerButtonStyle",
         "SettingsTextBoxStyle",
+        "SettingsPasswordBoxStyle",
         "SettingsComboBoxStyle",
+        "SettingsListBoxStyle",
+        "SettingsScrollBarStyle",
         "SettingsPageHeaderStyle",
         "SettingsCaptionStyle",
         "SettingsStatusStyle",

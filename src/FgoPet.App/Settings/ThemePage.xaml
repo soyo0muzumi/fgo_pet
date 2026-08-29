@@ -42,7 +42,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Border Background="{DynamicResource SidebarBrush}"
+                        <Border Background="#FF171D25"
                                 CornerRadius="5"
                                 Padding="10">
                             <Grid>
@@ -50,11 +50,11 @@
                                     <ColumnDefinition Width="3*" />
                                     <ColumnDefinition Width="2*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Background="{DynamicResource SurfaceBrush}"
+                                <Border Background="#FF252C37"
                                         CornerRadius="3"
                                         Margin="0,0,8,0" />
                                 <Border Grid.Column="1"
-                                        Background="{DynamicResource AccentBrush}"
+                                        Background="#FF6EB7E8"
                                         CornerRadius="3" />
                             </Grid>
                         </Border>
@@ -88,7 +88,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Border Background="{DynamicResource SidebarBrush}"
+                        <Border Background="#FF172A43"
                                 CornerRadius="5"
                                 Padding="10">
                             <Grid>
@@ -96,11 +96,11 @@
                                     <ColumnDefinition Width="3*" />
                                     <ColumnDefinition Width="2*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Background="{DynamicResource SurfaceBrush}"
+                                <Border Background="#FFFFFFFF"
                                         CornerRadius="3"
                                         Margin="0,0,8,0" />
                                 <Border Grid.Column="1"
-                                        Background="{DynamicResource AccentBrush}"
+                                        Background="#FFAA823C"
                                         CornerRadius="3" />
                             </Grid>
                         </Border>

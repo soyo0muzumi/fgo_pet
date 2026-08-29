@@ -156,7 +156,41 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="9,7" />
         <Setter Property="MinHeight" Value="34" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoftBrush}" />
     </Style>
+    <Style x:Key="SettingsPasswordBoxStyle" TargetType="{x:Type PasswordBox}">
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="9,7" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <ControlTemplate x:Key="SettingsComboBoxTemplate" TargetType="{x:Type ComboBox}">
+        <Grid>
+            <Border x:Name="ComboChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" />
+            <Grid Margin="{TemplateBinding Padding}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
+                <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+                <Path Grid.Column="1" Width="8" Height="5" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{DynamicResource MutedTextBrush}" Data="M 0,0 L 8,0 L 4,5 Z" />
+            </Grid>
+            <ToggleButton Background="Transparent" BorderThickness="0" Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="Transparent" /></ControlTemplate></ToggleButton.Template>
+            </ToggleButton>
+            <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                <Border Margin="0,3,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="260" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="4" Padding="3">
+                    <ScrollViewer><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" /></ScrollViewer>
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="ComboChrome" Property="BorderBrush" Value="{DynamicResource FocusBrush}" /></Trigger>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ComboChrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ComboChrome" Property="Background" Value="{DynamicResource InputDisabledBrush}"/><Setter Property="Opacity" Value="0.55"/></Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
     <Style x:Key="SettingsComboBoxStyle" TargetType="{x:Type ComboBox}">
         <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -164,7 +198,45 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="9,7" />
         <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Template" Value="{StaticResource SettingsComboBoxTemplate}" />
     </Style>
+    <Style x:Key="SettingsListBoxStyle" TargetType="{x:Type ListBox}">
+        <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+    <Style TargetType="{x:Type ListBoxItem}">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Padding" Value="7,6" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Trigger>
+            <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Trigger>
+        </Style.Triggers>
+    </Style>
+    <Style x:Key="SettingsScrollBarStyle" TargetType="{x:Type ScrollBar}">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ScrollBar}">
+                    <Grid Background="{TemplateBinding Background}">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" /></Track.DecreaseRepeatButton>
+                            <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="ThumbChrome" Margin="2" Background="{DynamicResource BorderStrongBrush}" CornerRadius="3"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ThumbChrome" Property="Background" Value="{DynamicResource AccentBrush}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                            <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" /></Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource SettingsScrollBarStyle}" />
 
     <Style x:Key="SettingsPageHeaderStyle" TargetType="{x:Type TextBlock}">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -207,6 +279,25 @@
         <Setter Property="Padding" Value="14" />
         <Setter Property="Margin" Value="0,0,12,0" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource SettingsThemeChoiceFocusVisualStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RadioButton}">
+                    <Border x:Name="ThemeCardChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                            <Border x:Name="SelectionMark" Width="20" Height="20" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="10" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1">
+                                <Ellipse x:Name="SelectionDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ThemeCardChrome" Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/></Trigger>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="ThemeCardChrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="ThemeCardChrome" Property="BorderThickness" Value="2"/><Setter TargetName="SelectionDot" Property="Visibility" Value="Visible"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ThemeCardChrome" Property="Opacity" Value="0.55"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

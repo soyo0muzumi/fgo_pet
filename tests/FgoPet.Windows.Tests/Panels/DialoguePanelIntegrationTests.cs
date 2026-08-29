@@ -59,6 +59,10 @@ public sealed class DialoguePanelIntegrationTests
             Assert.NotNull(view.FindName("DialogueComposer"));
             Assert.NotNull(view.FindName("DialogueSettingsButton"));
             Assert.NotNull(view.FindName("NewConversationButton"));
+            Assert.NotNull(view.FindName("DialogueViewport"));
+
+            var input = Assert.IsType<System.Windows.Controls.TextBox>(view.FindName("DialogueInputBox"));
+            Assert.NotEqual(System.Windows.Media.Brushes.White, input.Background);
         });
     }
 
@@ -142,7 +146,7 @@ public sealed class DialoguePanelIntegrationTests
     {
         public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
             Task.FromResult(new ContentBinding(
-                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", null),
+                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty),
                 null,
                 Array.Empty<KnowledgeEntry>(),
                 Array.Empty<string>(),

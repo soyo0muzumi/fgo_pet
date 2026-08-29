@@ -7,6 +7,14 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class UserProfileViewModelTests
 {
     [Fact]
+    public void Initial_status_is_empty_until_an_action_produces_feedback()
+    {
+        var viewModel = new UserProfileViewModel(new FakeSettingsStore());
+
+        Assert.Empty(viewModel.StatusText);
+    }
+
+    [Fact]
     public void Saving_display_name_changes_only_global_profile_data()
     {
         var preference = new ServantPreference(AddressMode.UserDefined, "御主");

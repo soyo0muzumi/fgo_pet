@@ -269,7 +269,7 @@ public sealed class SettingsWindowIntegrationTests
     {
         public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
             Task.FromResult(new ContentBinding(
-                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", null),
+                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty),
                 null,
                 Array.Empty<KnowledgeEntry>(),
                 Array.Empty<string>(),

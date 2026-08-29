@@ -37,6 +37,7 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             Assert.NotNull(page.BaseUrlBox);
             Assert.NotNull(page.ModelTextBox);
             Assert.NotNull(page.ModelList);
+            Assert.NotNull(page.ModelListEmptyState);
             Assert.NotNull(page.RefreshModelsButton);
             Assert.NotNull(page.TestConnectionButton);
             Assert.NotNull(page.SaveButton);
@@ -56,6 +57,8 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
 
             Assert.NotNull(page.CandidatesList);
             Assert.NotNull(page.StoredMemoriesList);
+            Assert.NotNull(page.CandidatesEmptyState);
+            Assert.NotNull(page.StoredMemoriesEmptyState);
             Assert.NotNull(page.MemoryEnabledCheck);
             Assert.NotNull(page.CandidateEditBox);
             Assert.NotNull(page.MemoryEditBox);
@@ -73,6 +76,7 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             var page = new PrivacyPage(viewModel);
 
             Assert.NotNull(page.ConversationsList);
+            Assert.NotNull(page.ConversationsEmptyState);
             Assert.NotNull(page.ExportPathBox);
             Assert.NotNull(page.ExportButton);
             Assert.NotNull(page.DeleteConversationButton);

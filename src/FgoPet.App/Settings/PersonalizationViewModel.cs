@@ -17,7 +17,7 @@ public sealed class PersonalizationViewModel : ObservableObject
     private bool _topmost;
     private bool _autoCollapseExpandedPanel;
     private bool _suppressPersistence;
-    private string _statusText = "可选设置";
+    private string _statusText = string.Empty;
     private string _errorText = string.Empty;
 
     public PersonalizationViewModel(IAppSettingsStore settings)

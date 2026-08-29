@@ -7,6 +7,14 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class PersonalizationViewModelTests
 {
     [Fact]
+    public void Initial_status_is_empty_until_an_action_produces_feedback()
+    {
+        var viewModel = new PersonalizationViewModel(new FakeSettingsStore());
+
+        Assert.Empty(viewModel.StatusText);
+    }
+
+    [Fact]
     public void Loads_supported_scale_values_and_persisted_personalization()
     {
         var store = new FakeSettingsStore

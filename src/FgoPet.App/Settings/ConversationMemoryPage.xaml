@@ -51,16 +51,18 @@
                                     Command="{Binding RejectCandidateCommand}" />
                         </WrapPanel>
                     </StackPanel>
+                    <Grid MinHeight="150">
                     <ListBox x:Name="CandidatesList"
-                             MinHeight="160"
-                             ItemsSource="{Binding Candidates}"
-                             SelectedItem="{Binding SelectedCandidate}">
+                             MinHeight="150" MaxHeight="240" Style="{StaticResource SettingsListBoxStyle}"
+                             ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="4" />
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <StackPanel x:Name="CandidatesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="暂无待审核记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/><TextBlock Text="候选记忆会在这里等待确认。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=CandidatesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
+                    </Grid>
                 </DockPanel>
             </Border>
 
@@ -85,19 +87,21 @@
                                     Command="{Binding DeleteMemoryCommand}" />
                         </WrapPanel>
                     </StackPanel>
+                    <Grid MinHeight="150">
                     <ListBox x:Name="StoredMemoriesList"
-                             MinHeight="160"
-                             ItemsSource="{Binding StoredMemories}"
-                             SelectedItem="{Binding SelectedMemory}">
+                             MinHeight="150" MaxHeight="240" Style="{StaticResource SettingsListBoxStyle}"
+                             ItemsSource="{Binding StoredMemories}" SelectedItem="{Binding SelectedMemory}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="4">
                                     <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding IsEnabled, StringFormat=启用：{0}}" Foreground="Gray" />
+                                    <TextBlock Text="{Binding IsEnabled, StringFormat=启用：{0}}" Foreground="{DynamicResource MutedTextBrush}" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <StackPanel x:Name="StoredMemoriesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="暂无已确认记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/><TextBlock Text="确认后的从者记忆会显示在这里。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=StoredMemoriesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
+                    </Grid>
                 </DockPanel>
             </Border>
         </Grid>

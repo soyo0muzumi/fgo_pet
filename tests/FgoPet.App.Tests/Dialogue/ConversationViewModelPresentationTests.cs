@@ -125,7 +125,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     {
         public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
             Task.FromResult(new ContentBinding(
-                new ContentContextKey("800100", "official.mash", "1.0.0", "casual", "1", null),
+                new ContentContextKey("800100", "official.mash", "1.0.0", "casual", "1", string.Empty),
                 null,
                 Array.Empty<KnowledgeEntry>(),
                 Array.Empty<string>(),

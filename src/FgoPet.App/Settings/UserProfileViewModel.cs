@@ -13,7 +13,7 @@ public sealed class UserProfileViewModel : ObservableObject
     private const int MaximumDisplayNameLength = 80;
     private readonly IAppSettingsStore _settings;
     private string _displayName;
-    private string _statusText = "可选设置";
+    private string _statusText = string.Empty;
     private string _errorText = string.Empty;
 
     public UserProfileViewModel(IAppSettingsStore settings)

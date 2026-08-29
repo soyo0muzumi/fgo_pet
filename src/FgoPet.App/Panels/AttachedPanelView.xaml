@@ -6,6 +6,7 @@
     <Style x:Key="StepButton" TargetType="Button"><Setter Property="Width" Value="31"/><Setter Property="Background" Value="#FF142A3C"/><Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="17"/><Setter Property="Cursor" Value="Hand"/></Style>
     <Style x:Key="StepTextBox" TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="1,0"/><Setter Property="BorderBrush" Value="#FF314C63"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="TextAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
     <Style x:Key="PrimaryActionButton" TargetType="Button"><Setter Property="Background" Value="#2642DFF5"/><Setter Property="BorderBrush" Value="#CC42DFF5"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Padding" Value="13,8"/><Setter Property="Cursor" Value="Hand"/></Style>
+    <Style x:Key="DialogueInputStyle" TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="#FF101C2E"/><Setter Property="BorderBrush" Value="#FF38516C"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CaretBrush" Value="{StaticResource Cyan}"/><Setter Property="SelectionBrush" Value="#6642DFF5"/><Setter Property="Padding" Value="9,7"/><Style.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Cyan}"/></Trigger></Style.Triggers></Style>
     <Style x:Key="FieldError" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Mag}"/><Setter Property="FontSize" Value="9"/></Style>
   </UserControl.Resources>
   <Grid ClipToBounds="True" SnapsToDevicePixels="True">
@@ -36,8 +37,10 @@
         </StackPanel></ScrollViewer>
         <ScrollViewer x:Name="TodayContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel><Grid Margin="0,0,0,8"><TextBlock Text="TODAY / 今日记录" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/><TextBlock Text="{Binding TodayEffectiveText}" Foreground="{StaticResource Mag}" FontSize="11" HorizontalAlignment="Right"/></Grid><TextBlock Foreground="{StaticResource Text}" FontSize="12"><Run Text="羁绊 Lv. "/><Run Text="{Binding BondLevelText}"/></TextBlock><TextBlock Text="{Binding BondRemainingText}" Foreground="{StaticResource Muted}" FontSize="9" Margin="0,2,0,8"/><ItemsControl ItemsSource="{Binding Today}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,0,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding TimeText}" Foreground="{StaticResource Muted}"/><TextBlock Grid.Column="1" Text="{Binding SummaryText}" Foreground="{StaticResource Text}" Margin="5,0"/><TextBlock Grid.Column="2" Text="{Binding BondLevelText}" Foreground="{StaticResource Mag}"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></ScrollViewer>
         <ScrollViewer x:Name="TodoContent" Visibility="Collapsed"><StackPanel><TextBlock Text="TODO LINK / 接口待命" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/><TextBlock Text="等待后续 Agent 接入" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,8,0,0"/><ItemsControl ItemsSource="{Binding Todo}"/></StackPanel></ScrollViewer>
-        <ScrollViewer x:Name="DialogueContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="DialogueContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Background="#F817243B">
           <StackPanel>
+            <Border x:Name="DialogueViewport" Background="#F817243B" CornerRadius="3" Padding="5">
+            <StackPanel>
             <Grid Margin="0,0,0,7">
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="DIALOGUE / 对话" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold" />
@@ -84,7 +87,7 @@
             <TextBlock x:Name="DialogueErrorText" Text="{Binding Conversation.ErrorText}" Foreground="{StaticResource Mag}" TextWrapping="Wrap" Margin="0,0,0,5" />
 
             <StackPanel x:Name="DialogueComposer" Margin="0,4,0,0">
-              <TextBox x:Name="DialogueInputBox" Text="{Binding Conversation.InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="12000" MinHeight="48" VerticalScrollBarVisibility="Auto" />
+              <TextBox x:Name="DialogueInputBox" Style="{StaticResource DialogueInputStyle}" Text="{Binding Conversation.InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="12000" MinHeight="48" VerticalScrollBarVisibility="Auto" />
               <Grid Margin="0,6,0,0">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                   <Button x:Name="NewConversationButton" Content="新对话" Click="OnNewConversationClick" Style="{StaticResource LinkButton}" />
@@ -95,6 +98,8 @@
                 </StackPanel>
               </Grid>
             </StackPanel>
+            </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </Grid>
