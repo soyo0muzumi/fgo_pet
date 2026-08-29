@@ -25,6 +25,22 @@ public sealed class KnowledgeManifestReaderTests
         Assert.Null(KnowledgeManifestReader.ReadOptional(root, "800100", "casual"));
     }
 
+    [Fact]
+    public void Resolver_changes_knowledge_scope_when_appearance_changes()
+    {
+        var root = Fixture("knowledge-mixed-approval");
+        var casual = ContentBindingResolver.Resolve(root, "800100", "casual");
+        var formal = ContentBindingResolver.Resolve(root, "800100", "formal");
+
+        Assert.Equal("casual", casual.Context.AppearanceId);
+        Assert.Equal("formal", formal.Context.AppearanceId);
+        Assert.Contains(casual.Knowledge, entry => entry.Id == "casual-story");
+        Assert.DoesNotContain(casual.Knowledge, entry => entry.Id == "other-appearance");
+        Assert.Contains(formal.Knowledge, entry => entry.Id == "other-appearance");
+        Assert.DoesNotContain(formal.Knowledge, entry => entry.Id == "casual-story");
+        Assert.Equal(casual.Context.KnowledgeVersion, formal.Context.KnowledgeVersion);
+    }
+
     private static string Fixture(string name) =>
         Path.Combine(AppContext.BaseDirectory, "fixtures", "packs", name);
 }

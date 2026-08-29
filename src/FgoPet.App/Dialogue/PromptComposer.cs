@@ -10,8 +10,13 @@ public sealed class PromptComposer
     private const string ProductBoundaries = "产品能力边界：只进行对话和本地桌宠反馈；无法访问网络、文件或账号系统，除非应用明确提供对应能力。";
 
     private readonly PromptBudget _budget;
+    private readonly ApprovedKnowledgeQuery _knowledgeQuery;
 
-    public PromptComposer(PromptBudget? budget = null) => _budget = budget ?? new PromptBudget();
+    public PromptComposer(PromptBudget? budget = null, ApprovedKnowledgeQuery? knowledgeQuery = null)
+    {
+        _budget = budget ?? new PromptBudget();
+        _knowledgeQuery = knowledgeQuery ?? new ApprovedKnowledgeQuery();
+    }
 
     public ComposedPrompt Compose(PromptContext context)
     {
@@ -48,10 +53,10 @@ public sealed class PromptComposer
                 ref truncated);
         }
 
-        foreach (var entry in context.Knowledge
-                     .Where(entry => entry.IsApproved
-                         && entry.ServantId == context.ContentContext.ServantId
-                         && (entry.AppearanceId is null || entry.AppearanceId == context.ContentContext.AppearanceId)))
+        foreach (var entry in _knowledgeQuery.Select(
+                     context.ContentContext,
+                     context.Knowledge,
+                     context.UserMessage))
         {
             if (entry.Kind == KnowledgeKind.Story)
             {

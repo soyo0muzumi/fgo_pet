@@ -101,6 +101,7 @@ public static class ServiceRegistration
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionWindow>()
         // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
+        .AddSingleton<ApprovedKnowledgeQuery>()
         .AddSingleton<PromptComposer>()
         .AddSingleton<SqliteConversationRepository>()
         .AddSingleton<SqliteMemoryRepository>()
