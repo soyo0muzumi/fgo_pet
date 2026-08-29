@@ -1,0 +1,165 @@
+<UserControl x:Class="FgoPet.App.Settings.RolePackageDetailPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml" />
+                <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <StackPanel>
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="132" Height="164"
+                        Background="{DynamicResource SurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6">
+                    <Image x:Name="PackagePreview" Source="{Binding PreviewSource}" Stretch="UniformToFill" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Margin="0,7,0,0" Text="{Binding PackageId}" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource MutedTextBrush}">
+                        <Run Text="版本 " /><Run Text="{Binding PackageVersion, Mode=OneWay}" />
+                        <Run Text="  ·  " /><Run Text="{Binding SourceBadge, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" Text="{Binding CompatibilityText}" Style="{StaticResource SettingsStatusStyle}" />
+                    <TextBlock Margin="0,8,0,0" Text="当前角色包" Foreground="{DynamicResource AccentBrush}"
+                               Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource SettingsCardStyle}" Padding="8">
+            <UniformGrid Columns="3">
+                <Button x:Name="AppearanceSectionButton" Margin="3"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Click="OnAppearanceSectionClick" automation:AutomationProperties.Name="从者与外观">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
+                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Data="{StaticResource IconAppearanceGeometry}" />
+                        <TextBlock Text="从者与外观" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="AddressSectionButton" Margin="3"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Click="OnAddressSectionClick" automation:AutomationProperties.Name="称呼设置">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
+                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Data="{StaticResource IconAddressGeometry}" />
+                        <TextBlock Text="称呼设置" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="PackageInfoSectionButton" Margin="3"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Click="OnPackageInfoSectionClick" automation:AutomationProperties.Name="角色包信息">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
+                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Data="{StaticResource IconPackageInfoGeometry}" />
+                        <TextBlock Text="角色包信息" />
+                    </StackPanel>
+                </Button>
+            </UniformGrid>
+        </Border>
+
+        <Border x:Name="AppearanceSection" Style="{StaticResource SettingsCardStyle}"
+                Visibility="{Binding IsAppearanceSection, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="外观" Style="{StaticResource SettingsCaptionStyle}" />
+                <ComboBox x:Name="AppearanceSelector"
+                          Style="{StaticResource SettingsComboBoxStyle}"
+                          ItemsSource="{Binding Appearances}"
+                          SelectedItem="{Binding SelectedAppearance}"
+                          DisplayMemberPath="Display" />
+                <WrapPanel Margin="0,12,0,0">
+                    <Button Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Content="设为当前从者"
+                            Command="{Binding ActivateCommand}" />
+                    <Button Margin="8,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Content="打开角色包目录" Command="{Binding OpenPackFolderCommand}" />
+                    <Button Margin="8,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}"
+                            Content="卸载此版本" Command="{Binding UninstallCommand}" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="AddressSection" Style="{StaticResource SettingsCardStyle}"
+                Visibility="{Binding IsAddressSection, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="称呼设置" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10" Text="称呼按 servant_id 保存，不使用全局资料显示名。"
+                           Style="{StaticResource SettingsStatusStyle}" />
+                <RadioButton Content="使用角色包默认称呼" IsChecked="{Binding UsePackageDefaultAddress}" />
+                <RadioButton Margin="0,7,0,0" Content="使用自定义称呼" IsChecked="{Binding UseCustomAddress}" />
+                <TextBox Margin="0,8,0,0" MaxLength="256"
+                         Style="{StaticResource SettingsTextBoxStyle}"
+                         Text="{Binding CustomAddress, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding UseCustomAddress}" />
+                <Button Margin="0,10,0,0" HorizontalAlignment="Left"
+                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                        Content="保存称呼" Command="{Binding SaveAddressCommand}" />
+                <TextBlock Margin="0,8,0,0" Text="{Binding AddressStatus}" Style="{StaticResource SettingsStatusStyle}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel x:Name="PackageInfoSection"
+                    Visibility="{Binding IsPackageInfoSection, Converter={StaticResource BoolToVisibility}}">
+            <Border Padding="12" Margin="0,0,0,12"
+                    Background="{DynamicResource WarningSoftBrush}"
+                    BorderBrush="{DynamicResource WarningBrush}"
+                    BorderThickness="1" CornerRadius="5"
+                    Visibility="{Binding IsMigrationNoticeVisible, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding MigrationNotice}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+            </Border>
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="角色包声明设置" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                    <TextBlock Margin="0,4,0,10" Text="仅显示应用批准的开关、选择和文本字段。" Style="{StaticResource SettingsStatusStyle}" />
+                    <ItemsControl x:Name="PackageSettingsItems" ItemsSource="{Binding PackageSettings}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,0,12">
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource SettingsCaptionStyle}" />
+                                    <CheckBox Content="启用" IsChecked="{Binding ToggleValue}"
+                                              Visibility="{Binding IsToggle, Converter={StaticResource BoolToVisibility}}" />
+                                    <ComboBox Style="{StaticResource SettingsComboBoxStyle}"
+                                              ItemsSource="{Binding Options}" SelectedItem="{Binding Value}"
+                                              Visibility="{Binding IsChoice, Converter={StaticResource BoolToVisibility}}" />
+                                    <TextBox MaxLength="256" Style="{StaticResource SettingsTextBoxStyle}"
+                                             Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                             Visibility="{Binding IsText, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button HorizontalAlignment="Left" Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Content="保存角色包设置" Command="{Binding SavePackageSettingsCommand}" />
+                    <TextBlock Margin="0,8,0,0" Text="{Binding PackageSettingsStatus}" Style="{StaticResource SettingsStatusStyle}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <Border Padding="12" Margin="0,0,0,12"
+                Background="{DynamicResource WarningSoftBrush}"
+                BorderBrush="{DynamicResource WarningBrush}"
+                BorderThickness="1" CornerRadius="5"
+                Visibility="{Binding IsDiagnosticVisible, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="{Binding Diagnostic.Heading}" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

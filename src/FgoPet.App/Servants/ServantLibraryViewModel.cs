@@ -8,8 +8,8 @@ using FgoPet.Core.Settings;
 namespace FgoPet.App.Servants;
 
 /// <summary>
-/// Drives the independent servant library: browsing, appearance selection, install,
-/// activation, uninstall, rescan, diagnostics, and opening the pack folder.
+/// Drives embedded role-package browsing, appearance selection, install, activation,
+/// uninstall, rescan, diagnostics, and opening the pack folder.
 /// </summary>
 public sealed partial class ServantLibraryViewModel : ObservableObject
 {
@@ -22,6 +22,12 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
 
     [ObservableProperty]
     private IReadOnlyList<ServantCardViewModel> _servants = Array.Empty<ServantCardViewModel>();
+
+    [ObservableProperty]
+    private IReadOnlyList<ServantCardViewModel> _filteredServants = Array.Empty<ServantCardViewModel>();
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
 
     [ObservableProperty]
     private ServantCardViewModel? _selectedServant;
@@ -101,6 +107,11 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         try
         {
             var servants = await _repository.ListServantsAsync(CancellationToken.None);
+            var activeSelection = _settings.Load().Selection;
+            var previousPackageId = SelectedServant?.PackageId;
+            (string AppearanceId, string PackageVersion)? previousAppearance = CurrentAppearance is null
+                ? null
+                : (CurrentAppearance.AppearanceId, CurrentAppearance.PackageVersion);
             var cards = servants
                 .Select(servant => new ServantCardViewModel(
                     servant.PackageId,
@@ -108,25 +119,34 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
                     servant.DisplayName,
                     SourceBadge(servant),
                     isEmbedded: string.Equals(servant.Publisher, "embedded", StringComparison.OrdinalIgnoreCase),
+                    string.IsNullOrWhiteSpace(servant.PackageVersion)
+                        ? servant.Appearances.FirstOrDefault()?.PackageVersion ?? string.Empty
+                        : servant.PackageVersion,
+                    servant.PreviewPath,
+                    servant.MinAppVersion,
+                    servant.Settings,
                     servant.Appearances.Select(appearance =>
                         new ServantAppearanceItemViewModel(appearance.AppearanceId, appearance.PackageVersion, appearance.PreviewPath)).ToList()))
                 .ToList();
             Servants = cards;
+            UpdateActiveFlags(activeSelection);
+            ApplySearch();
             ScanStatus = $"已发现 {cards.Count} 个从者";
             if (cards.Count == 0 && _repository is IPackScanDiagnostics diagnostics && diagnostics.LastScanIssues.Count > 0)
             {
-                ScanStatus += $" · {diagnostics.LastScanIssues[0]}";
+                ScanStatus += $" · {diagnostics.LastScanIssues.Count} 个角色包扫描问题";
             }
 
-            if (SelectedServant is not null)
+            SelectedServant = cards.FirstOrDefault(card => card.PackageId == previousPackageId)
+                ?? cards.FirstOrDefault();
+
+            var restoredServant = SelectedServant;
+            if (restoredServant is not null && previousAppearance is not null)
             {
-                var refreshed = cards.FirstOrDefault(card => card.PackageId == SelectedServant.PackageId)
-                    ?? cards.FirstOrDefault();
-                SelectedServant = refreshed;
-            }
-            else
-            {
-                SelectedServant = cards.FirstOrDefault();
+                restoredServant.SelectedAppearance = restoredServant.Appearances.FirstOrDefault(item =>
+                    item.AppearanceId == previousAppearance.Value.AppearanceId &&
+                    item.PackageVersion == previousAppearance.Value.PackageVersion)
+                    ?? restoredServant.SelectedAppearance;
             }
 
             CurrentAppearance = SelectedServant?.SelectedAppearance;
@@ -135,6 +155,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         catch (Exception error)
         {
             Servants = Array.Empty<ServantCardViewModel>();
+            FilteredServants = Array.Empty<ServantCardViewModel>();
             SelectedServant = null;
             CurrentAppearance = null;
             LoadAddressPreference(null);
@@ -203,6 +224,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         }
 
         _settings.Save(_settings.Load() with { Selection = selection });
+        UpdateActiveFlags(selection);
     }
 
     public async Task UninstallAsync()
@@ -263,8 +285,39 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
 
     partial void OnCurrentAppearanceChanged(ServantAppearanceItemViewModel? value)
     {
+        if (SelectedServant is not null && SelectedServant.SelectedAppearance != value)
+        {
+            SelectedServant.SelectedAppearance = value;
+        }
         ActivateCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSearchTextChanged(string value) => ApplySearch();
+
+    private void ApplySearch()
+    {
+        var query = SearchText.Trim();
+        FilteredServants = query.Length == 0
+            ? Servants
+            : Servants.Where(card =>
+                card.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                card.PackageId.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
+
+    private void UpdateActiveFlags(PortraitSelection? selection)
+    {
+        foreach (var card in Servants)
+        {
+            card.IsActive = selection is not null && card.PackageId == selection.PackageId;
+            foreach (var appearance in card.Appearances)
+            {
+                appearance.IsCurrent = selection is not null &&
+                    card.PackageId == selection.PackageId &&
+                    appearance.AppearanceId == selection.AppearanceId &&
+                    (selection.PackageVersion is null || appearance.PackageVersion == selection.PackageVersion);
+            }
+        }
     }
 
     private static string SourceBadge(InstalledServant servant) =>

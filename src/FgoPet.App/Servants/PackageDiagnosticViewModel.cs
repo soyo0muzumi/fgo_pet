@@ -1,4 +1,6 @@
+using System.IO;
 using FgoPet.Core.Packs;
+using FgoPet.Infrastructure.Diagnostics;
 
 namespace FgoPet.App.Servants;
 
@@ -23,9 +25,30 @@ public sealed class PackageDiagnosticViewModel
 
     private static string Compose(PackFailure failure)
     {
-        var relative = failure.RelativePath;
-        return string.IsNullOrWhiteSpace(relative)
+        var relative = SafeRelativePath(failure.RelativePath);
+        return relative is null
             ? $"{failure.Code}"
             : $"{failure.Code} {relative}";
+    }
+
+    private static string? SafeRelativePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 256 || path.Any(char.IsControl))
+        {
+            return null;
+        }
+
+        var normalized = path.Replace('\\', '/');
+        if (normalized.StartsWith('/') ||
+            Path.IsPathFullyQualified(path) ||
+            normalized.Split('/').Any(segment => segment == ".."))
+        {
+            return null;
+        }
+
+        var redacted = ResourceDiagnostics.Redact(normalized);
+        return redacted.Contains(ResourceDiagnostics.RedactionToken, StringComparison.Ordinal)
+            ? null
+            : redacted;
     }
 }

@@ -31,7 +31,14 @@ public sealed record InstalledServant(
     string DisplayName,
     string? PreviewPath,
     string? Publisher,
-    IReadOnlyList<ServantAppearance> Appearances);
+    IReadOnlyList<ServantAppearance> Appearances)
+{
+    public string PackageVersion { get; init; } = string.Empty;
+
+    public string? MinAppVersion { get; init; }
+
+    public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = [];
+}
 
 public sealed record ServantAppearance(
     string AppearanceId,

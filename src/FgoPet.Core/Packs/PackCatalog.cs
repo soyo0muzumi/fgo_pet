@@ -12,7 +12,12 @@ public sealed record InstalledPack(
     string DisplayName,
     string? PreviewPath,
     string? Publisher,
-    IReadOnlyList<AppearanceSlot> Appearances);
+    IReadOnlyList<AppearanceSlot> Appearances)
+{
+    public string? MinAppVersion { get; init; }
+
+    public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = [];
+}
 
 public sealed record PackCatalog(IReadOnlyList<InstalledPack> Packs)
 {

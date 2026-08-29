@@ -30,7 +30,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
     {
         var catalog = Scan(cancellationToken);
         var servants = catalog.Packs
-            .GroupBy(pack => pack.ServantId, StringComparer.Ordinal)
+            .GroupBy(pack => (pack.PackageId, pack.ServantId))
             .Select(group =>
             {
                 var best = group.OrderByDescending(pack => pack.Version).First();
@@ -48,7 +48,12 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                     best.DisplayName,
                     best.PreviewPath,
                     best.Publisher,
-                    appearances);
+                    appearances)
+                {
+                    PackageVersion = best.PackageVersion,
+                    MinAppVersion = best.MinAppVersion,
+                    Settings = best.Settings,
+                };
             })
             .OrderBy(servant => servant.DisplayName, StringComparer.Ordinal)
             .ToList();
@@ -154,7 +159,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
         }
         catch (Exception error)
         {
-            _lastScanIssues.Add($"无法枚举角色包根目录：{error.GetType().Name}: {error.Message}");
+            _lastScanIssues.Add($"无法枚举角色包根目录：{error.GetType().Name}");
             return new PackCatalog(packs);
         }
 
@@ -190,6 +195,12 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                 var slots = manifest.Appearances
                     .Select(appearance => new AppearanceSlot(appearance.AppearanceId, appearance.ManifestPath))
                     .ToArray();
+                var previewPath = ResolvePackFile(versionDir, manifest.PreviewPath);
+                if (previewPath is null)
+                {
+                    _lastScanIssues.Add($"忽略 {packageId}@{version}：预览资源无效");
+                    continue;
+                }
                 packs.Add(new InstalledPack(
                     packageId,
                     version.ToString(),
@@ -197,9 +208,13 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                     versionDir,
                     manifest.ServantId,
                     manifest.DisplayName,
-                    string.IsNullOrWhiteSpace(manifest.PreviewPath) ? null : manifest.PreviewPath,
+                    previewPath,
                     string.IsNullOrWhiteSpace(manifest.Publisher) ? null : manifest.Publisher,
-                    slots));
+                    slots)
+                {
+                    MinAppVersion = string.IsNullOrWhiteSpace(manifest.MinAppVersion) ? null : manifest.MinAppVersion,
+                    Settings = manifest.Settings,
+                });
             }
         }
 
@@ -221,7 +236,36 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
         }
         catch (Exception exception)
         {
-            error = $"{exception.GetType().Name}: {exception.Message}";
+            error = exception is PackFailureException failure
+                ? failure.Failure.Code.ToString()
+                : exception.GetType().Name;
+            return null;
+        }
+    }
+
+    private static string? ResolvePackFile(string packRoot, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || relativePath.Any(char.IsControl))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (Path.IsPathFullyQualified(relativePath))
+            {
+                return null;
+            }
+
+            var fullRoot = Path.GetFullPath(packRoot);
+            var fullPath = Path.GetFullPath(Path.Combine(fullRoot, relativePath));
+            var prefix = fullRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath)
+                ? fullPath
+                : null;
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
+        {
             return null;
         }
     }

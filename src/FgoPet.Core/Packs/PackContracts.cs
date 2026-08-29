@@ -218,6 +218,15 @@ public sealed record PackSettingDefinition
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtraData { get; set; }
+
+    /// <summary>Checks a persisted value against the already validated manifest definition.</summary>
+    public bool IsValidStoredValue(string? value) => Type switch
+    {
+        PackSettingType.Toggle => value is "true" or "false",
+        PackSettingType.Choice => value is not null && Options?.Contains(value, StringComparer.Ordinal) == true,
+        PackSettingType.Text => value is not null && value.Length <= 256,
+        _ => false,
+    };
 }
 
 /// <summary>Pack manifest (pack schema v1): package identity, appearances, and preview.</summary>

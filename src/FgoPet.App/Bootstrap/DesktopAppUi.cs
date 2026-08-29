@@ -15,7 +15,6 @@ namespace FgoPet.App.Bootstrap;
 public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 {
     private readonly TrayService _tray;
-    private readonly ServantLibraryWindow _library;
     private readonly ServantLibraryViewModel _libraryViewModel;
     private readonly ModelConnectionWindow _modelConnection;
     private readonly SettingsWindow _settings;
@@ -26,11 +25,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly AppPaths _paths;
     private readonly PortraitController _controller;
     private bool _initialized;
-    private bool _allowLibraryClose;
 
     public DesktopAppUi(
         TrayService tray,
-        ServantLibraryWindow library,
         ServantLibraryViewModel libraryViewModel,
         ModelConnectionWindow modelConnection,
         SettingsWindow settings,
@@ -42,7 +39,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         PortraitController controller)
     {
         _tray = tray;
-        _library = library;
         _libraryViewModel = libraryViewModel;
         _modelConnection = modelConnection;
         _settings = settings;
@@ -66,12 +62,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _tray.ExitRequested += (_, _) => Exit();
         _portrait.ContextMenu = CreatePortraitMenu();
         _controller.StateChanged += OnPortraitStateChanged;
-        _library.Closing += (_, e) =>
-        {
-            if (_allowLibraryClose) return;
-            e.Cancel = true;
-            _library.Hide();
-        };
     }
 
     public void ShowLibrary(string? offeredPackPath = null)
@@ -80,8 +70,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         {
             _libraryViewModel.PackFilePath = offeredPackPath;
         }
-        _library.Show();
-        _library.Activate();
+        ShowSettings(SettingsSection.RolePackages);
     }
 
     public void ShowModelConnection()
@@ -112,7 +101,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         _tray.RestoreRequested -= OnTrayRestoreRequested;
         _controller.StateChanged -= OnPortraitStateChanged;
-        _allowLibraryClose = true;
     }
 
     private ContextMenu CreatePortraitMenu()
@@ -158,7 +146,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     private void Exit()
     {
-        _allowLibraryClose = true;
         _lifetime.RequestNormalExit();
     }
 }

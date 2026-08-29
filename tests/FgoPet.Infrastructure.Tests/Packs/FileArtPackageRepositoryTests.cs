@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json.Nodes;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Infrastructure.Packs;
@@ -237,5 +238,74 @@ public sealed class FileArtPackageRepositoryTests : IDisposable
         Assert.Equal(2, servants.Count);
         var mash = Assert.Single(servants, servant => servant.ServantId == "mash_kyrielight");
         Assert.Single(mash.Appearances);
+    }
+
+    [Fact]
+    public async Task ListServants_exposes_safe_preview_latest_metadata_and_validated_settings()
+    {
+        var packageJson = JsonNode.Parse(PackArchiveBuilder.PackManifestJson(
+            "official.mash",
+            "1.2.0",
+            minAppVersion: "1.1.0"))!.AsObject();
+        packageJson["settings"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["key"] = "voice",
+                ["label"] = "语音",
+                ["type"] = "choice",
+                ["default"] = "jp",
+                ["options"] = new JsonArray("jp", "cn"),
+            },
+        };
+        var packRoot = AddInstalledPack(
+            "official.mash",
+            "1.2.0",
+            packageJson: packageJson.ToJsonString());
+
+        var servant = Assert.Single(await _repository.ListServantsAsync(CancellationToken.None));
+
+        Assert.Equal("1.2.0", servant.PackageVersion);
+        Assert.Equal("1.1.0", servant.MinAppVersion);
+        Assert.Equal(Path.Combine(packRoot, "previews", "library.png"), servant.PreviewPath);
+        var setting = Assert.Single(servant.Settings);
+        Assert.Equal("voice", setting.Key);
+        Assert.Equal(PackSettingType.Choice, setting.Type);
+        Assert.Equal(["jp", "cn"], setting.Options);
+    }
+
+    [Fact]
+    public async Task Scan_diagnostics_do_not_expose_the_repository_root_or_exception_details()
+    {
+        Directory.CreateDirectory(_storage);
+        var invalidRoot = Path.Combine(_storage, "packages-is-a-file");
+        File.WriteAllText(invalidRoot, "not a directory");
+        var repository = new FileArtPackageRepository(invalidRoot, new JsonPackIndexStore(_storage));
+
+        var catalog = await repository.ScanAsync(CancellationToken.None);
+
+        Assert.Empty(catalog.Packs);
+        var issue = Assert.Single(repository.LastScanIssues);
+        Assert.Contains("无法枚举角色包根目录", issue, StringComparison.Ordinal);
+        Assert.DoesNotContain(invalidRoot, issue, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(_storage, issue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ListServants_ignores_a_tampered_preview_path_that_cannot_be_resolved()
+    {
+        var packageJson = JsonNode.Parse(PackArchiveBuilder.PackManifestJson(
+            "official.mash",
+            "1.2.0"))!.AsObject();
+        packageJson["preview_path"] = "previews/\0library.png";
+        AddInstalledPack(
+            "official.mash",
+            "1.2.0",
+            packageJson: packageJson.ToJsonString());
+
+        var servants = await _repository.ListServantsAsync(CancellationToken.None);
+
+        Assert.Empty(servants);
+        Assert.Contains(_repository.LastScanIssues, issue => issue.Contains("预览资源无效", StringComparison.Ordinal));
     }
 }

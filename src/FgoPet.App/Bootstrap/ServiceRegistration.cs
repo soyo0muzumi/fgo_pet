@@ -111,10 +111,17 @@ public static class ServiceRegistration
         .AddSingleton<PersonalizationViewModel>()
         .AddSingleton<PersonalizationPage>()
         .AddSingleton<ThemePage>()
-        .AddSingleton<SettingsPageContentResolver>(provider => (section, _) => section switch
+        .AddSingleton<RolePackagesPage>()
+        .AddSingleton<SettingsPageContentResolver>(provider => (section, route) => section switch
         {
             SettingsSection.UserProfile => provider.GetRequiredService<UserProfilePage>(),
             SettingsSection.Personalization => provider.GetRequiredService<PersonalizationPage>(),
+            SettingsSection.RolePackages when route is null => provider.GetRequiredService<RolePackagesPage>(),
+            SettingsSection.RolePackages => new RolePackageDetailPage(new RolePackageDetailViewModel(
+                route!,
+                provider.GetRequiredService<ServantLibraryViewModel>(),
+                provider.GetRequiredService<IAppSettingsStore>(),
+                provider.GetRequiredService<SettingsViewModel>())),
             SettingsSection.Theme => provider.GetRequiredService<ThemePage>(),
             // Later page migrations keep using the same in-shell resolver contract.
             _ => new Border(),
@@ -139,9 +146,6 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),
             provider.GetRequiredService<ConversationViewModel>()))
-        .AddSingleton<ServantLibraryWindow>(provider => new ServantLibraryWindow(
-            provider.GetRequiredService<ServantLibraryViewModel>(),
-            provider.GetRequiredService<MemoryWindow>()))
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))

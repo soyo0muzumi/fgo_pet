@@ -189,6 +189,19 @@ public sealed class ServantLibraryViewModelTests
 
         var relative = new PackageDiagnosticViewModel(new PackFailure(PackErrorCode.AssetHashMismatch, "哈希不符", "runtime/full_body.png"));
         Assert.Equal("AssetHashMismatch runtime/full_body.png", relative.Text);
+
+        var absoluteLocation = new PackageDiagnosticViewModel(new PackFailure(PackErrorCode.AssetMissing, "缺失", absolute));
+        Assert.Equal("AssetMissing", absoluteLocation.Text);
+        Assert.DoesNotContain(absolute, absoluteLocation.Text);
+
+        var escapingLocation = new PackageDiagnosticViewModel(new PackFailure(PackErrorCode.AssetMissing, "缺失", "../secret.bin"));
+        Assert.Equal("AssetMissing", escapingLocation.Text);
+
+        var credentialLocation = new PackageDiagnosticViewModel(new PackFailure(
+            PackErrorCode.AssetMissing,
+            "缺失",
+            "runtime/image.png?token=abc123"));
+        Assert.Equal("AssetMissing", credentialLocation.Text);
     }
 
     private static (ServantLibraryViewModel Vm, FakeArtRepository Repository, FakeInstaller Installer, FakePortraitController Controller, FakeSettingsStore Settings) CreateViewModel(
