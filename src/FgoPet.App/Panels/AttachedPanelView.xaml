@@ -38,27 +38,62 @@
         <ScrollViewer x:Name="TodoContent" Visibility="Collapsed"><StackPanel><TextBlock Text="TODO LINK / 接口待命" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/><TextBlock Text="等待后续 Agent 接入" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,8,0,0"/><ItemsControl ItemsSource="{Binding Todo}"/></StackPanel></ScrollViewer>
         <ScrollViewer x:Name="DialogueContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
           <StackPanel>
-            <Grid Margin="0,0,0,5">
-              <TextBlock Text="DIALOGUE / 对话" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold" />
-              <TextBlock Text="{Binding Conversation.ProviderStatusText}" Foreground="{StaticResource Muted}" FontSize="9" HorizontalAlignment="Right" />
+            <Grid Margin="0,0,0,7">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="DIALOGUE / 对话" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold" />
+                <TextBlock Text="CHALDEA LINK · SERVANT CHANNEL" Foreground="#FF6F87A6" FontSize="7" Margin="7,1,0,0" VerticalAlignment="Center"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Border x:Name="DialogueProviderBadge" Background="#2642DFF5" BorderBrush="#8842DFF5" BorderThickness="1" CornerRadius="2" Padding="5,1">
+                  <TextBlock Text="{Binding Conversation.ProviderStatusText}" Foreground="{StaticResource Cyan}" FontSize="8" FontFamily="Consolas"/>
+                </Border>
+                <Border x:Name="DialogueModelBadge" Margin="4,0,0,0" Background="#330B1424" BorderBrush="#FF38516C" BorderThickness="1" CornerRadius="2" Padding="5,1">
+                  <TextBlock Text="{Binding Conversation.ModelStatusText}" Foreground="{StaticResource Muted}" FontSize="8" FontFamily="Consolas"/>
+                </Border>
+              </StackPanel>
             </Grid>
-            <TextBlock Text="{Binding Conversation.ModelStatusText}" Foreground="{StaticResource Muted}" FontSize="9" Margin="0,0,0,6" />
-            <ItemsControl ItemsSource="{Binding Conversation.Turns}">
+
+            <StackPanel x:Name="DialogueEmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,26,0,10">
+              <TextBlock Text="等待你的第一句话" Foreground="{StaticResource Text}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="从者频道已就绪。输入一句话开始对话。" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,5,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border x:Name="DialogueConfigurationCard" Background="#3314243B" BorderBrush="#88EF9DAF" BorderThickness="1" CornerRadius="2" Margin="0,0,0,7" Visibility="Collapsed">
+              <Border BorderBrush="#EF9DAF" BorderThickness="2,0,0,0" Padding="9,8">
+                <StackPanel>
+                  <TextBlock Text="尚未配置模型连接" Foreground="#FFEF9DAF" FontSize="11" FontWeight="Bold"/>
+                  <TextBlock Text="对话需要 OpenAI 格式的模型供应商。角色包与本地功能仍可离线使用。" Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                  <Button x:Name="DialogueSettingsButton" Content="去设置 · AI 模型与连接" Click="OnDialogueSettingsClick" Style="{StaticResource PrimaryActionButton}" HorizontalAlignment="Left" Padding="9,5"/>
+                </StackPanel>
+              </Border>
+            </Border>
+
+            <ItemsControl x:Name="DialogueMessageList" ItemsSource="{Binding Conversation.Turns}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <StackPanel Margin="0,0,0,6">
-                    <TextBlock Text="{Binding RoleLabel}" Foreground="{StaticResource Mag}" FontSize="9" />
-                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{StaticResource Text}" FontSize="12" />
+                  <StackPanel Margin="0,0,0,7" HorizontalAlignment="{Binding Alignment}">
+                    <TextBlock Text="{Binding RoleLabel}" Foreground="{Binding RoleBrush}" FontSize="8" FontFamily="Consolas" />
+                    <Border BorderThickness="{Binding BubbleBorderThickness}" BorderBrush="{Binding BubbleBorderBrush}" CornerRadius="4" Padding="7,5" Background="{Binding BubbleBackground}" Margin="0,2,0,0">
+                      <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{StaticResource Text}" FontSize="12" />
+                    </Border>
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock Text="{Binding Conversation.ErrorText}" Foreground="{StaticResource Mag}" TextWrapping="Wrap" Margin="0,0,0,5" />
-            <TextBox x:Name="DialogueInputBox" Text="{Binding Conversation.InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="12000" MinHeight="48" VerticalScrollBarVisibility="Auto" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
-              <Button x:Name="NewConversationButton" Content="新对话" Click="OnNewConversationClick" Style="{StaticResource LinkButton}" />
-              <Button x:Name="StopDialogueButton" Content="停止" Click="OnStopDialogueClick" IsEnabled="{Binding Conversation.CanStop}" Style="{StaticResource LinkButton}" />
-              <Button x:Name="SendDialogueButton" Content="发送" Click="OnSendDialogueClick" IsEnabled="{Binding Conversation.CanSend}" Style="{StaticResource PrimaryActionButton}" />
+
+            <TextBlock x:Name="DialogueErrorText" Text="{Binding Conversation.ErrorText}" Foreground="{StaticResource Mag}" TextWrapping="Wrap" Margin="0,0,0,5" />
+
+            <StackPanel x:Name="DialogueComposer" Margin="0,4,0,0">
+              <TextBox x:Name="DialogueInputBox" Text="{Binding Conversation.InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="12000" MinHeight="48" VerticalScrollBarVisibility="Auto" />
+              <Grid Margin="0,6,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                  <Button x:Name="NewConversationButton" Content="新对话" Click="OnNewConversationClick" Style="{StaticResource LinkButton}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                  <Button x:Name="StopDialogueButton" Content="停止" Click="OnStopDialogueClick" IsEnabled="{Binding Conversation.CanStop}" Style="{StaticResource LinkButton}" />
+                  <Button x:Name="SendDialogueButton" Content="发送" Click="OnSendDialogueClick" IsEnabled="{Binding Conversation.CanSend}" Style="{StaticResource PrimaryActionButton}" Padding="12,5" Margin="7,0,0,0"/>
+                </StackPanel>
+              </Grid>
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

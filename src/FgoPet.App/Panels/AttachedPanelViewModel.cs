@@ -117,7 +117,20 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     public ObservableCollection<DialogueItemViewModel> Dialogue { get; } = new();
 
-    public ConversationViewModel? Conversation { get; }
+    private ConversationViewModel? _conversation;
+
+    public ConversationViewModel? Conversation
+    {
+        get => _conversation;
+        set
+        {
+            if (!ReferenceEquals(_conversation, value))
+            {
+                _conversation = value;
+                OnPropertyChanged(nameof(Conversation));
+            }
+        }
+    }
 
     public ObservableCollection<TodoItemViewModel> Todo { get; } = new();
 

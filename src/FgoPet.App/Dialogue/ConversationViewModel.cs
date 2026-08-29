@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.Core.Dialogue;
+using FgoPet.App.Settings;
 using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Dialogue;
@@ -11,6 +12,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly ConversationOrchestrator _orchestrator;
     private readonly IAppSettingsStore _settings;
     private string _activeConversationId = string.Empty;
+    private bool _configurationRequired;
 
     public ConversationViewModel(ConversationOrchestrator orchestrator, IAppSettingsStore settings)
     {
@@ -20,10 +22,15 @@ public sealed partial class ConversationViewModel : ObservableObject
         var model = _settings.Load().ModelConnection;
         ProviderStatusText = model?.ProviderId ?? "未配置供应商";
         ModelStatusText = model?.ModelId ?? "未配置模型";
+        _configurationRequired = model is null;
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         StopCommand = new RelayCommand(Stop, () => IsStreaming);
         NewConversationCommand = new RelayCommand(NewConversation);
+        OpenSettingsCommand = new RelayCommand(OpenSettings);
     }
+
+    /// <summary>Raised when the user asks to configure the model; the host owns the settings route.</summary>
+    public event Action<SettingsSection>? SettingsRequested;
 
     public ObservableCollection<ConversationTurnViewModel> Turns { get; } = new();
 
@@ -58,6 +65,26 @@ public sealed partial class ConversationViewModel : ObservableObject
     public IAsyncRelayCommand SendCommand { get; }
     public IRelayCommand StopCommand { get; }
     public IRelayCommand NewConversationCommand { get; }
+    public IRelayCommand OpenSettingsCommand { get; }
+
+    // Presentation-only state: the empty, configured, and configuration-required views.
+    public bool IsConversationEmpty => Turns.Count == 0;
+
+    public bool IsEmptyStateVisible => IsConversationEmpty && !_configurationRequired;
+
+    public bool IsConfigurationRequired => _configurationRequired;
+
+    public bool IsConfigurationStateVisible => _configurationRequired && IsConversationEmpty;
+
+    public void NotifyConfigurationRequired()
+    {
+        _configurationRequired = true;
+        OnPropertyChanged(nameof(IsConfigurationRequired));
+        OnPropertyChanged(nameof(IsConfigurationStateVisible));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
+    }
+
+    private void OpenSettings() => SettingsRequested?.Invoke(SettingsSection.ModelConnection);
 
     public void SetActiveServant(string servantId)
     {
@@ -72,8 +99,22 @@ public sealed partial class ConversationViewModel : ObservableObject
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
+        _configurationRequired = false;
+        RefreshModelStatus();
+        OnPropertyChanged(nameof(IsConversationEmpty));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(IsConfigurationRequired));
+        OnPropertyChanged(nameof(IsConfigurationStateVisible));
         OnPropertyChanged(nameof(CanSend));
     }
+
+    private void RefreshModelStatus()
+    {
+        var model = _settings.Load().ModelConnection;
+        ProviderStatusText = model?.ProviderId ?? "未配置供应商";
+        ModelStatusText = model?.ModelId ?? "未配置模型";
+    }
+
 
     private async Task SendAsync()
     {
@@ -92,6 +133,17 @@ public sealed partial class ConversationViewModel : ObservableObject
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
+                if (result.Status == ConversationSendStatus.ConfigurationRequired)
+                {
+                    NotifyConfigurationRequired();
+                }
+            }
+            else
+            {
+                _configurationRequired = false;
+                OnPropertyChanged(nameof(IsConfigurationRequired));
+                OnPropertyChanged(nameof(IsConfigurationStateVisible));
+                OnPropertyChanged(nameof(IsEmptyStateVisible));
             }
         }
         finally
@@ -113,6 +165,11 @@ public sealed partial class ConversationViewModel : ObservableObject
         Turns.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
+        _configurationRequired = false;
+        OnPropertyChanged(nameof(IsConversationEmpty));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(IsConfigurationRequired));
+        OnPropertyChanged(nameof(IsConfigurationStateVisible));
     }
 
     private void OnConversationUpdated(ConversationUpdate update)
@@ -190,6 +247,10 @@ public sealed partial class ConversationViewModel : ObservableObject
         {
             Turns.RemoveAt(0);
         }
+
+        OnPropertyChanged(nameof(IsConversationEmpty));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(IsConfigurationStateVisible));
     }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();

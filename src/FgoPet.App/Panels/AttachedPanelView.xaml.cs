@@ -1,7 +1,9 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using FgoPet.App.Dialogue;
 using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Panels;
@@ -10,6 +12,7 @@ namespace FgoPet.App.Panels;
 public partial class AttachedPanelView : UserControl
 {
     private AttachedPanelViewModel? _model;
+    private ConversationViewModel? _conversation;
 
     public AttachedPanelView()
     {
@@ -43,8 +46,54 @@ public partial class AttachedPanelView : UserControl
         if (_model is not null)
         {
             _model.PropertyChanged += OnModelPropertyChanged;
+            AttachConversation(_model.Conversation);
         }
         ApplyState();
+    }
+
+    private void AttachConversation(ConversationViewModel? conversation)
+    {
+        if (_conversation is not null)
+        {
+            _conversation.PropertyChanged -= OnConversationPropertyChanged;
+            _conversation.Turns.CollectionChanged -= OnConversationTurnsChanged;
+        }
+
+        _conversation = conversation;
+        if (_conversation is not null)
+        {
+            _conversation.PropertyChanged += OnConversationPropertyChanged;
+            _conversation.Turns.CollectionChanged += OnConversationTurnsChanged;
+        }
+
+        RefreshDialogueSurfaces();
+    }
+
+    private void OnConversationTurnsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        RefreshDialogueSurfaces();
+
+    private void OnConversationPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ConversationViewModel.IsEmptyStateVisible)
+            or nameof(ConversationViewModel.IsConfigurationStateVisible))
+        {
+            RefreshDialogueSurfaces();
+        }
+    }
+
+    /// <summary>Switches empty / configuration / message surfaces; never touches state or data.</summary>
+    private void RefreshDialogueSurfaces()
+    {
+        var conversation = _model?.Conversation;
+        var hasTurns = conversation is { } c && c.Turns.Count > 0;
+        var configurationRequired = conversation?.IsConfigurationRequired == true;
+
+        DialogueEmptyState.Visibility = !hasTurns && !configurationRequired
+            ? Visibility.Visible : Visibility.Collapsed;
+        DialogueConfigurationCard.Visibility = !hasTurns && configurationRequired
+            ? Visibility.Visible : Visibility.Collapsed;
+        DialogueMessageList.Visibility = hasTurns ? Visibility.Visible : Visibility.Collapsed;
+        DialogueSettingsButton.Visibility = configurationRequired ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -56,6 +105,11 @@ public partial class AttachedPanelView : UserControl
             or nameof(AttachedPanelViewModel.IsEditingCustomPreset))
         {
             ApplyState();
+        }
+
+        if (_model is not null && e.PropertyName is nameof(AttachedPanelViewModel.Conversation))
+        {
+            AttachConversation(_model.Conversation);
         }
     }
 
@@ -155,11 +209,19 @@ public partial class AttachedPanelView : UserControl
     private void OnSendDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.SendCommand.Execute(null);
     private void OnStopDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.StopCommand.Execute(null);
     private void OnNewConversationClick(object sender, RoutedEventArgs e) => _model?.Conversation?.NewConversationCommand.Execute(null);
+    private void OnDialogueSettingsClick(object sender, RoutedEventArgs e) => _model?.Conversation?.OpenSettingsCommand.Execute(null);
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
     private void OnPointerLeft(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerLeft();
 
     private void DetachModel()
     {
+        if (_conversation is not null)
+        {
+            _conversation.PropertyChanged -= OnConversationPropertyChanged;
+            _conversation.Turns.CollectionChanged -= OnConversationTurnsChanged;
+            _conversation = null;
+        }
+
         if (_model is not null)
         {
             _model.PropertyChanged -= OnModelPropertyChanged;

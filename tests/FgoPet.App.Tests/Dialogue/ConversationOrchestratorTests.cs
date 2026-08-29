@@ -79,7 +79,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
         Assert.False(viewModel.IsStreaming);
         Assert.Equal(2, viewModel.Turns.Count);
-        Assert.Equal("我", viewModel.Turns[0].RoleLabel);
+        Assert.Equal("MASTER / 我", viewModel.Turns[0].RoleLabel);
         Assert.Equal("收到", viewModel.Turns[1].Text);
     }
 
