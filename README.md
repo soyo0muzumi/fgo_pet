@@ -17,11 +17,12 @@ Phase 2 is implementation-complete and user-accepted on the primary Release envi
 - **Per-servant bond.** Bond belongs to the servant captured at focus-stage start; servant changes mid-stage do not move the credit. The built-in curve is cumulative 1/3/6/10/15/21/28/36/45 effective hours for levels 2–10, capped at `Lv.10`; achieved levels never decrease.
 - **Package dialogue (optional).** Characterized feedback comes only from an installed pack's `dialogue/` resources; packs without them fall back to neutral status text. Malformed dialogue never errors visibly.
 - **Runtime store.** Focus sessions, events, timeline, and bond data live in one versioned SQLite database (`runtime.db` under the app's per-user storage root, next to the JSON settings and window placement files). Completion of a focus stage commits session, event, timeline, and bond atomically and idempotently.
+- **Phase 3 settings shell and dialogue (implementation-complete, manual matrix pending).** All configuration lives in one embedded settings window (个人资料 / 个性化 / 角色包 / AI 模型与连接 / 对话与记忆 / 数据与隐私 / 主题); the tray and portrait menus expose 设置 only. API keys stay in Windows Credential Manager, provider metadata in JSON, conversation and memory records in SQLite. The runtime dialogue panel gained provider/model badges, empty and configuration-required states, and role-styled bubbles; a missing model configuration routes to 设置 > AI 模型与连接 while the pet and focus features still run offline. Verification matrix: `docs/testing/phase3-settings-matrix.md`.
 - **Still unavailable:** TODO integration, LLM/Prompt/memory features, and Codex/Agent bridges remain future work.
 
 The independent P1.4 packaging SDK (Python) is a separate plan that shares the same pack contract fixtures (`tests/fixtures/packs/`).
 
-Plans and specs live under `docs/superpowers/`. The renderer choice is recorded in `docs/decisions/0001-windows-portrait-renderer.md`. The real-device verification matrices are `docs/testing/phase1-windows-matrix.md` and `docs/testing/phase2-windows-matrix.md`.
+Plans and specs live under `docs/superpowers/`. The renderer choice is recorded in `docs/decisions/0001-windows-portrait-renderer.md`. The real-device verification matrices are `docs/testing/phase1-windows-matrix.md`, `docs/testing/phase2-windows-matrix.md`, and `docs/testing/phase3-settings-matrix.md`.
 
 ## Build and test
 
@@ -32,6 +33,7 @@ dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release        # unit/STA + Windows integration (interactive desktop)
 pwsh -File scripts/test-phase1.ps1       # full Phase 1 gate
 pwsh -File scripts/test-phase2.ps1       # full Phase 2 gate (includes Phase 1)
+pwsh -File scripts/test-phase3-settings.ps1  # Phase 3 settings gate (four Release suites)
 ```
 
 Startup smoke test (no pack needed; verifies the packless state and exits 0):
