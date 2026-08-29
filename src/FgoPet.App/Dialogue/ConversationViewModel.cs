@@ -1,0 +1,186 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FgoPet.Core.Dialogue;
+using FgoPet.Core.Settings;
+
+namespace FgoPet.App.Dialogue;
+
+public sealed partial class ConversationViewModel : ObservableObject
+{
+    private readonly ConversationOrchestrator _orchestrator;
+    private readonly IAppSettingsStore _settings;
+    private string _activeConversationId = string.Empty;
+
+    public ConversationViewModel(ConversationOrchestrator orchestrator, IAppSettingsStore settings)
+    {
+        _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _orchestrator.Updated += OnConversationUpdated;
+        var model = _settings.Load().ModelConnection;
+        ProviderStatusText = model?.ProviderId ?? "未配置供应商";
+        ModelStatusText = model?.ModelId ?? "未配置模型";
+        SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
+        StopCommand = new RelayCommand(Stop, () => IsStreaming);
+        NewConversationCommand = new RelayCommand(NewConversation);
+    }
+
+    public ObservableCollection<ConversationTurnViewModel> Turns { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    private string _activeServantId = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    private string _inputText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanStop))]
+    private bool _isStreaming;
+
+    [ObservableProperty]
+    private string _providerStatusText;
+
+    [ObservableProperty]
+    private string _modelStatusText;
+
+    [ObservableProperty]
+    private string _errorText = string.Empty;
+
+    public bool CanSend => !IsStreaming
+        && !string.IsNullOrWhiteSpace(ActiveServantId)
+        && !string.IsNullOrWhiteSpace(InputText);
+
+    public bool CanStop => IsStreaming;
+
+    public IAsyncRelayCommand SendCommand { get; }
+    public IRelayCommand StopCommand { get; }
+    public IRelayCommand NewConversationCommand { get; }
+
+    public void SetActiveServant(string servantId)
+    {
+        ActiveServantId = servantId?.Trim() ?? string.Empty;
+        OnPropertyChanged(nameof(CanSend));
+    }
+
+    private async Task SendAsync()
+    {
+        var text = InputText.Trim();
+        if (!CanSend || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        InputText = string.Empty;
+        ErrorText = string.Empty;
+        IsStreaming = true;
+        try
+        {
+            var result = await _orchestrator.SendAsync(ActiveServantId, text, CancellationToken.None);
+            if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
+            {
+                ErrorText = result.SafeError ?? "对话暂时不可用。";
+            }
+        }
+        finally
+        {
+            IsStreaming = false;
+        }
+    }
+
+    private void Stop() => _orchestrator.CancelCurrent();
+
+    private void NewConversation()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveServantId))
+        {
+            return;
+        }
+
+        _orchestrator.StartNewConversation(ActiveServantId);
+        Turns.Clear();
+        _activeConversationId = string.Empty;
+        ErrorText = string.Empty;
+    }
+
+    private void OnConversationUpdated(ConversationUpdate update)
+    {
+        if (update.Type == ConversationUpdateType.UserMessagePersisted)
+        {
+            if (!string.IsNullOrEmpty(_activeConversationId) && _activeConversationId != update.ConversationId)
+            {
+                return;
+            }
+
+            _activeConversationId = update.ConversationId;
+            Turns.Add(new ConversationTurnViewModel(
+                update.MessageId ?? "user",
+                ChatMessageRole.User,
+                update.TextDelta ?? string.Empty));
+            TrimTurns();
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_activeConversationId) || update.ConversationId != _activeConversationId)
+        {
+            return;
+        }
+
+        switch (update.Type)
+        {
+            case ConversationUpdateType.AssistantDelta:
+                var turn = Turns.FirstOrDefault(item => item.MessageId == update.MessageId);
+                if (turn is null)
+                {
+                    turn = new ConversationTurnViewModel(update.MessageId ?? "assistant", ChatMessageRole.Assistant, string.Empty, true);
+                    Turns.Add(turn);
+                }
+
+                turn.Append(update.TextDelta ?? string.Empty);
+                break;
+            case ConversationUpdateType.AssistantCompleted:
+                var completedTurn = Turns.FirstOrDefault(item => item.MessageId == update.MessageId);
+                if (completedTurn is not null)
+                {
+                    completedTurn.IsStreaming = false;
+                }
+                break;
+            case ConversationUpdateType.Cancelled:
+                RemoveStreamingTurns();
+                ErrorText = "已取消。";
+                break;
+            case ConversationUpdateType.Failed:
+                RemoveStreamingTurns();
+                ErrorText = update.SafeError ?? "对话暂时不可用。";
+                break;
+        }
+
+        TrimTurns();
+    }
+
+    private void RemoveStreamingTurns()
+    {
+        foreach (var turn in Turns.Where(turn => turn.IsStreaming).ToArray())
+        {
+            Turns.Remove(turn);
+        }
+    }
+
+    private void TrimTurns()
+    {
+        while (Turns.Count > 20)
+        {
+            Turns.RemoveAt(0);
+        }
+    }
+
+    partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+    partial void OnActiveServantIdChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+    partial void OnIsStreamingChanged(bool value)
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
+    }
+}

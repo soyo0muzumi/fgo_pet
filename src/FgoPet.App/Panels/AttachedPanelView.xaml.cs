@@ -84,6 +84,12 @@ public partial class AttachedPanelView : UserControl
         TodayContent.Visibility = state == AttachedPanelState.ExpandedToday ? Visibility.Visible : Visibility.Collapsed;
         DialogueContent.Visibility = state == AttachedPanelState.ExpandedDialogue ? Visibility.Visible : Visibility.Collapsed;
         TodoContent.Visibility = state == AttachedPanelState.ExpandedTodo ? Visibility.Visible : Visibility.Collapsed;
+        FocusFooterOrnament.Visibility = state == AttachedPanelState.ExpandedFocus
+            ? Visibility.Visible : Visibility.Collapsed;
+        GeneralFooterOrnament.Visibility = state is AttachedPanelState.ExpandedToday
+            or AttachedPanelState.ExpandedTodo
+            or AttachedPanelState.ExpandedDialogue
+            ? Visibility.Visible : Visibility.Collapsed;
 
         if (_model is not null)
         {
@@ -122,6 +128,12 @@ public partial class AttachedPanelView : UserControl
         _model.SelectCustomPreset();
         CustomPresetFields.Visibility = Visibility.Visible;
     }
+    private void OnCustomFocusMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomFocus(-1);
+    private void OnCustomFocusPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomFocus(1);
+    private void OnCustomBreakMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomBreak(-1);
+    private void OnCustomBreakPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomBreak(1);
+    private void OnCustomCyclesMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomCycles(-1);
+    private void OnCustomCyclesPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomCycles(1);
     private void OnStartFocusClick(object sender, RoutedEventArgs e) => _model?.StartFocus();
     private void OnPauseResumeClick(object sender, RoutedEventArgs e)
     {
@@ -140,6 +152,9 @@ public partial class AttachedPanelView : UserControl
         }
     }
     private void OnStopTimerClick(object sender, RoutedEventArgs e) => _model?.StopTimer();
+    private void OnSendDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.SendCommand.Execute(null);
+    private void OnStopDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.StopCommand.Execute(null);
+    private void OnNewConversationClick(object sender, RoutedEventArgs e) => _model?.Conversation?.NewConversationCommand.Execute(null);
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
     private void OnPointerLeft(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerLeft();
 

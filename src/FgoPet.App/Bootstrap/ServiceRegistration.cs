@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.IO;
 using System.Windows;
+using FgoPet.App.Dialogue;
 using FgoPet.App.Providers;
 using FgoPet.App.Focus;
 using FgoPet.App.Feedback;
@@ -22,6 +23,8 @@ using FgoPet.Infrastructure.Bond;
 using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.FileSystem;
 using FgoPet.Infrastructure.Focus;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
@@ -94,9 +97,18 @@ public static class ServiceRegistration
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionWindow>()
+        // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
+        .AddSingleton<PromptComposer>()
+        .AddSingleton<SqliteConversationRepository>()
+        .AddSingleton<SqliteMemoryRepository>()
+        .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
+        .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
+        .AddSingleton<ConversationOrchestrator>()
+        .AddSingleton<ConversationViewModel>()
         .AddSingleton(provider => new AttachedPanelViewModel(
             provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<IFocusSessionService>()))
+            provider.GetRequiredService<IFocusSessionService>(),
+            provider.GetRequiredService<ConversationViewModel>()))
         .AddSingleton<ServantLibraryWindow>()
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FgoPet.App.Dialogue;
 using FgoPet.App.Focus;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Events;
@@ -32,14 +33,18 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
     private FocusStatus _lastObservedStatus = FocusStatus.Idle;
 
-    public AttachedPanelViewModel(TimeProvider time) : this(time, focus: null)
+    public AttachedPanelViewModel(TimeProvider time) : this(time, focus: null, conversation: null)
     {
     }
 
-    public AttachedPanelViewModel(TimeProvider time, IFocusSessionService? focus)
+    public AttachedPanelViewModel(
+        TimeProvider time,
+        IFocusSessionService? focus,
+        ConversationViewModel? conversation = null)
     {
         _time = time;
         _focus = focus;
+        Conversation = conversation;
         _lastInteraction = time.GetUtcNow();
         if (focus is not null)
         {
@@ -68,6 +73,15 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isPaused;
+
+    [ObservableProperty]
+    private string _cycleText = string.Empty;
+
+    [ObservableProperty]
+    private string _timerMetaText = string.Empty;
+
+    [ObservableProperty]
+    private double _progressPercent;
 
     // Focus column: preset selection and custom integer fields
     [ObservableProperty]
@@ -103,6 +117,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     public ObservableCollection<DialogueItemViewModel> Dialogue { get; } = new();
 
+    public ConversationViewModel? Conversation { get; }
+
     public ObservableCollection<TodoItemViewModel> Todo { get; } = new();
 
     public ObservableCollection<TimelineItemViewModel> Today { get; } = new();
@@ -130,6 +146,10 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     public bool CanStopTimer => Current.Session.Status
         is FocusStatus.Focusing or FocusStatus.Breaking or FocusStatus.PausedFocus or FocusStatus.PausedBreak;
+
+    public string CustomTotalText => TryParseCustom(out var preset)
+        ? TimeSpan.FromSeconds(preset.TotalSeconds).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture)
+        : "--:--:--";
 
     private (FocusSession Session, bool Available) Current => _focus is null
         ? (FocusSession.Idle, false)
@@ -191,6 +211,15 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         ValidateCustomFields();
     }
 
+    public void AdjustCustomFocus(int direction) =>
+        CustomFocusMinutesText = AdjustBounded(CustomFocusMinutesText, direction, step: 5, min: 5, max: 180);
+
+    public void AdjustCustomBreak(int direction) =>
+        CustomBreakMinutesText = AdjustBounded(CustomBreakMinutesText, direction, step: 5, min: 1, max: 60);
+
+    public void AdjustCustomCycles(int direction) =>
+        CustomCyclesText = AdjustBounded(CustomCyclesText, direction, step: 1, min: 1, max: 12);
+
     public void StartFocus()
     {
         Interact();
@@ -212,6 +241,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     public void SetActiveServant(string servantId)
     {
         ActiveServantId = servantId;
+        Conversation?.SetActiveServant(servantId);
         OnPropertyChanged(nameof(CanStartFocus));
     }
 
@@ -301,6 +331,15 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         IsPaused = session.Status is FocusStatus.PausedFocus or FocusStatus.PausedBreak;
         RemainingText = FormatClock(session.RemainingSeconds);
         PhaseText = session.Phase == FocusPhase.Break ? "休息" : IsPaused ? "已暂停" : "专注中";
+        CycleText = session.TotalCycles > 0 ? $"第 {session.CurrentCycle} / {session.TotalCycles} 轮" : string.Empty;
+        var phaseSeconds = session.Phase == FocusPhase.Break ? session.BreakSeconds : session.FocusSeconds;
+        var completedSeconds = Math.Max(session.PhaseElapsedSeconds, phaseSeconds - session.RemainingSeconds);
+        ProgressPercent = phaseSeconds > 0
+            ? Math.Clamp(completedSeconds * 100.0 / phaseSeconds, 0, 100)
+            : 0;
+        TimerMetaText = phaseSeconds > 0
+            ? $"本轮 {FormatClock(phaseSeconds)} · 已完成 {ProgressPercent:0}%"
+            : string.Empty;
 
         // Starting a session from any expanded column steps down to Compact so the
         // countdown surface is immediately visible without expanding anything.
@@ -362,6 +401,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
             ? string.Empty : "循环 1-12 次";
         OnPropertyChanged(nameof(IsEditingCustomPreset));
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(CustomTotalText));
     }
 
     partial void OnCustomFocusMinutesTextChanged(string value)
@@ -393,6 +433,15 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         value = 0;
         return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
             && value >= min && value <= max;
+    }
+
+    private static string AdjustBounded(string text, int direction, int step, int min, int max)
+    {
+        var current = int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : min;
+        var adjusted = Math.Clamp(current + Math.Sign(direction) * step, min, max);
+        return adjusted.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string FormatClock(int totalSeconds) =>
