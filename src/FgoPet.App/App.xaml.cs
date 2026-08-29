@@ -27,6 +27,7 @@ public partial class App : Application
         try
         {
             _provider = ServiceRegistration.AddFgoPet(new ServiceCollection(), e.Args).BuildServiceProvider();
+            _provider.GetRequiredService<Theming.ThemeService>().Initialize();
         }
         catch (Exception error)
         {

@@ -14,6 +14,7 @@ using FgoPet.App.Privacy;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
+using FgoPet.App.Theming;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Geometry;
@@ -51,6 +52,7 @@ public static class ServiceRegistration
         .AddSingleton(paths)
         .AddSingleton<IAppLifetime>(_ => new AppLifetimeService(Application.Current!))
         .AddSingleton<IAppSettingsStore>(_ => new JsonAppSettingsStore(paths.StorageRoot))
+        .AddSingleton<ThemeService>()
         .AddSingleton<IWindowPlacementStore>(_ => new JsonWindowPlacementStore(paths.StorageRoot))
         .AddSingleton<IScreenLayoutService, WindowsScreenLayoutService>()
         .AddSingleton<IPackIndexStore>(_ => new JsonPackIndexStore(paths.StorageRoot))
