@@ -42,7 +42,7 @@ The address page groups package-default and custom-address modes, the custom tex
 
 The package page groups the local package path, install action, pack-folder shortcut, rescan action, and diagnostics. Diagnostics retain their conditional visibility and use theme-aware warning resources.
 
-The model page provides an entry to open or activate the independent model connection window rather than duplicating its editable form and state. `DesktopAppUi` supplies this navigation action so the settings view model does not own another window.
+The model page provides an entry to open or activate the independent model connection window rather than duplicating its editable form and state. The application composition root supplies this navigation action so the settings view model does not own another window.
 
 The memory-and-data page provides an entry to the existing memory window and clearly labels destructive data operations as a separate concern.
 
