@@ -84,6 +84,20 @@ public sealed class UserProfileViewModelTests
         Assert.Equal(string.Empty, viewModel.DisplayName);
     }
 
+    [Theory]
+    [InlineData("\n新名称")]
+    [InlineData("新名称\r")]
+    public void Display_name_rejects_line_breaks_before_trimming(string rawDisplayName)
+    {
+        var store = new FakeSettingsStore();
+        var viewModel = new UserProfileViewModel(store) { DisplayName = rawDisplayName };
+
+        viewModel.SaveCommand.Execute(null);
+
+        Assert.Null(store.Saved);
+        Assert.Contains("换行", viewModel.ErrorText, StringComparison.Ordinal);
+    }
+
     private sealed class FakeSettingsStore : IAppSettingsStore
     {
         public string Location => "memory";

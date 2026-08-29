@@ -36,7 +36,13 @@ public partial class ThemePage : UserControl, INotifyPropertyChanged
 
     public ThemeService ThemeService => _themeService;
 
-    public void SelectTheme(AppTheme theme) => _themeService.Select(theme);
+    public void SelectTheme(AppTheme theme)
+    {
+        _themeService.Select(theme);
+        // Select can fail without raising ThemeChanged; resync the controls and
+        // status so a checked radio card never represents an unapplied theme.
+        RefreshSelection();
+    }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {

@@ -87,6 +87,11 @@ public sealed class UserProfileViewModel : ObservableObject
 
     private static string? NormalizeDisplayName(string value)
     {
+        if (value.Contains('\r') || value.Contains('\n'))
+        {
+            throw new ArgumentException("显示名称不能包含换行符。", nameof(value));
+        }
+
         var normalized = value.Trim();
         if (normalized.Length == 0)
         {
@@ -98,11 +103,6 @@ public sealed class UserProfileViewModel : ObservableObject
             throw new ArgumentException(
                 $"显示名称不能超过 {MaximumDisplayNameLength} 个字符。",
                 nameof(value));
-        }
-
-        if (normalized.Contains('\r') || normalized.Contains('\n'))
-        {
-            throw new ArgumentException("显示名称不能包含换行符。", nameof(value));
         }
 
         return normalized;

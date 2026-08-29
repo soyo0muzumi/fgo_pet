@@ -181,6 +181,65 @@ public sealed class SettingsWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void Theme_page_resyncs_selection_and_status_when_theme_resource_loading_fails()
+    {
+        StaRun(() =>
+        {
+            var resources = new ResourceDictionary();
+            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var themeService = new ThemeService(
+                store,
+                resources,
+                theme => theme == AppTheme.FgoLight
+                    ? throw new InvalidOperationException("simulated resource failure")
+                    : ThemeService.CreateTestDictionary(theme));
+            themeService.Initialize();
+            var page = new ThemePage(themeService);
+
+            page.FgoLightChoice.IsChecked = true;
+
+            Assert.Equal(AppTheme.ModernGray, themeService.CurrentTheme);
+            Assert.True(page.ModernGrayChoice.IsChecked);
+            Assert.False(page.FgoLightChoice.IsChecked);
+            Assert.Contains("加载失败", page.StatusText, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void Actual_navigation_selection_updates_view_model_content_and_same_window_route()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel();
+            var profileContent = new Border { Name = "Profile" };
+            var themeContent = new Border { Name = "Theme" };
+            SettingsPageContentResolver resolver = (section, _) => section switch
+            {
+                SettingsSection.UserProfile => profileContent,
+                SettingsSection.Theme => themeContent,
+                _ => new Border { Name = section.ToString() },
+            };
+            var window = new SettingsWindow(viewModel, resolver);
+            try
+            {
+                window.Show();
+                var handle = new WindowInteropHelper(window).Handle;
+                Assert.NotEqual(IntPtr.Zero, handle);
+
+                window.SettingsNavigation.SelectedValue = SettingsSection.Theme;
+
+                Assert.Equal(SettingsSection.Theme, viewModel.SelectedSection);
+                Assert.Same(themeContent, window.SettingsContent.Content);
+                Assert.Equal(handle, new WindowInteropHelper(window).Handle);
+            }
+            finally
+            {
+                window.Hide();
+            }
+        });
+    }
+
     private static void StaRun(Action action)
     {
         Exception? failure = null;
