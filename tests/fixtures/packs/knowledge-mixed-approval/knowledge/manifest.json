@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "knowledge_version": "3.0.0",
+  "topics": {
+    "path": "topics.jsonl",
+    "sha256": "DE960BDC61CF888B9992BDB089495AE1DF2E3BDFAE711898CB50B4418A6D05F8"
+  }
+}

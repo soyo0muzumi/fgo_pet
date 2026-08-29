@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "servant_id": "800100",
+  "package_id": "test-persona",
+  "package_version": "1.0.0",
+  "persona_version": "2.1.0",
+  "core": {
+    "path": "core.json",
+    "sha256": "0D04828CD65546C69299F7DB9995B5A6F2D1660824579298A355CB1BD1A9D905"
+  },
+  "appearances": {
+    "casual": {
+      "path": "appearances/casual.json",
+      "sha256": "02C3E9794634F26CE31BAFAA4361555488AE3101B7BBE210E35A8485723A6252"
+    }
+  }
+}

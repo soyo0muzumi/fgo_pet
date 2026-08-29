@@ -1,0 +1,5 @@
+{"id":"profile","servant_id":"800100","topic":"身份","summary":"这是 approved 的身份资料。","approval":"approved","kind":"profile","rank":1}
+{"id":"pending-note","servant_id":"800100","topic":"草稿","summary":"待审核资料。","approval":"pending","kind":"profile","rank":2}
+{"id":"rejected-note","servant_id":"800100","topic":"旧资料","summary":"已拒绝资料。","approval":"rejected","kind":"profile","rank":3}
+{"id":"casual-story","servant_id":"800100","topic":"剧情","summary":"这是 approved 的剧情资料。","approval":"approved","kind":"story","appearance_id":"casual","rank":4}
+{"id":"other-appearance","servant_id":"800100","topic":"其他外观","summary":"不应匹配当前外观。","approval":"approved","kind":"story","appearance_id":"formal","rank":5}

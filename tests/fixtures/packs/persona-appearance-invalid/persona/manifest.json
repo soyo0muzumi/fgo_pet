@@ -1,0 +1,12 @@
+{
+  "schema_version": 99,
+  "servant_id": "800100",
+  "package_id": "invalid",
+  "package_version": "1.0.0",
+  "persona_version": "1.0.0",
+  "core": {
+    "path": "core.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "appearances": {}
+}
