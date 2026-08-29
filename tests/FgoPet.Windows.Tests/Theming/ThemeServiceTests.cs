@@ -1,7 +1,11 @@
 using System.IO;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Media;
 using FgoPet.App.Theming;
 using FgoPet.Core.Settings;
@@ -153,6 +157,50 @@ public sealed class ThemeServiceTests
         });
     }
 
+    [Fact]
+    public void Danger_button_template_keeps_hover_and_pressed_interactions_danger_coded()
+    {
+        StaRun(() =>
+        {
+            var controls = LoadDictionary("SettingsControls.xaml");
+            var dangerStyle = Assert.IsType<Style>(controls["SettingsDangerButtonStyle"]);
+            var dangerTemplate = Assert.IsType<ControlTemplate>(FindSetter(dangerStyle, Control.TemplateProperty).Value);
+
+            Assert.NotSame(controls["SettingsButtonTemplate"], dangerTemplate);
+
+            var hover = FindTrigger(dangerTemplate, UIElement.IsMouseOverProperty, true);
+            Assert.Equal("DangerSoftBrush", DynamicResourceKey(FindTriggerSetter(hover, Border.BackgroundProperty).Value));
+            Assert.Equal("DangerHoverBrush", DynamicResourceKey(FindTriggerSetter(hover, Border.BorderBrushProperty).Value));
+
+            var pressed = FindTrigger(dangerTemplate, ButtonBase.IsPressedProperty, true);
+            Assert.Equal("DangerBrush", DynamicResourceKey(FindTriggerSetter(pressed, Border.BackgroundProperty).Value));
+            Assert.Equal("DangerHoverBrush", DynamicResourceKey(FindTriggerSetter(pressed, Border.BorderBrushProperty).Value));
+            Assert.Equal("TextOnAccentBrush", DynamicResourceKey(FindTriggerSetter(pressed, TextElement.ForegroundProperty).Value));
+        });
+    }
+
+    [Fact]
+    public void Theme_choice_style_exposes_a_visible_keyboard_focus_contract()
+    {
+        StaRun(() =>
+        {
+            var controls = LoadDictionary("SettingsControls.xaml");
+            var themeChoice = Assert.IsType<Style>(controls["SettingsThemeChoiceStyle"]);
+            var focusStyle = Assert.IsType<Style>(FindSetter(themeChoice, Control.FocusVisualStyleProperty).Value);
+            var focusTemplate = Assert.IsType<ControlTemplate>(FindSetter(focusStyle, Control.TemplateProperty).Value);
+            var focusControl = new Control
+            {
+                Template = focusTemplate,
+            };
+            focusControl.Resources.MergedDictionaries.Add(LoadDictionary("ModernGray.xaml"));
+            Assert.True(focusControl.ApplyTemplate());
+            var focusBorder = Assert.IsType<Border>(VisualTreeHelper.GetChild(focusControl, 0));
+
+            Assert.Equal("#FF9AD5F4", ((SolidColorBrush)focusBorder.BorderBrush).Color.ToString());
+            Assert.Equal(new Thickness(2), focusBorder.BorderThickness);
+        });
+    }
+
     private static readonly string[] RequiredStyleBrushKeys =
     [
         "AccentBrush",
@@ -210,6 +258,28 @@ public sealed class ThemeServiceTests
         {
             Source = new Uri($"/FgoPet.App;component/Themes/{fileName}", UriKind.Relative),
         };
+
+    private static Setter FindSetter(Style style, DependencyProperty property) =>
+        Assert.Single(style.Setters.OfType<Setter>().Where(setter => setter.Property == property));
+
+    private static Trigger FindTrigger(ControlTemplate template, DependencyProperty property, object value) =>
+        Assert.Single(template.Triggers.OfType<Trigger>()
+            .Where(trigger => trigger.Property == property && Equals(trigger.Value, value)));
+
+    private static Setter FindTriggerSetter(Trigger trigger, DependencyProperty property) =>
+        Assert.Single(trigger.Setters.OfType<Setter>().Where(setter => setter.Property == property));
+
+    private static string DynamicResourceKey(object? value)
+    {
+        Assert.NotNull(value);
+        var resourceKeyProperty = value!.GetType().GetProperty(
+            "ResourceKey",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(resourceKeyProperty);
+        var resourceKey = resourceKeyProperty!.GetValue(value)?.ToString();
+        Assert.NotNull(resourceKey);
+        return resourceKey!;
+    }
 
     private static ResourceDictionary AssertPreviousThemeThenThrow(ResourceDictionary resources)
     {
