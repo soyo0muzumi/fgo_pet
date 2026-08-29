@@ -23,8 +23,10 @@ panel, and other runtime surfaces are not part of this settings redesign.
 
 ## Information architecture
 
-`SettingsWindow` becomes the primary global settings shell. It uses a persistent left
-sidebar and a right content surface. The sidebar exposes these destinations:
+`SettingsWindow` is the single settings shell for all configuration surfaces. It
+uses a persistent left sidebar and a right content surface. Clicking a sidebar title
+replaces the right content with that destination's detail page; it does not open a
+new top-level settings window. The sidebar exposes these destinations:
 
 1. 用户资料
 2. 个性化
@@ -35,9 +37,10 @@ sidebar and a right content surface. The sidebar exposes these destinations:
 7. 主题
 
 The `角色包` destination contains the installed package list and the package detail
-route. It replaces the separate servant-library window. The package list handles
-installation, scanning, and package-level diagnostics. Selecting `打开角色包`
-enters the detail route for one package and its servant.
+route. It replaces the separate servant-library and package-detail windows. The
+package list handles installation, scanning, and package-level diagnostics.
+Selecting `打开角色包` enters the detail route for one package and its servant in
+the same settings shell.
 
 The package detail route contains `从者与外观`, `称呼设置`, preview,
 activation, version/source metadata, and package-defined declarative settings.
@@ -107,11 +110,25 @@ The model page contains the provider, credential, endpoint, model selection, tes
 save, clear-key, and offline actions. It does not contain role-package selectors,
 appearance selectors, user profile fields, or servant address controls.
 
-The conversation-and-memory page provides an entry to the existing memory window and
-clearly labels destructive data operations as a separate concern. The data-and-
-privacy page owns export, credential clearing, and all-data deletion actions.
+The conversation-and-memory page contains conversation and memory controls directly
+and clearly labels destructive data operations as a separate concern. The data-and-
+privacy page owns export, credential clearing, and all-data deletion actions. Neither
+page opens a separate memory or data-management window.
 
 The theme page presents Modern Gray and FGO Light as two preview cards. Selecting a card applies and saves the theme immediately; there is no separate save button.
+
+### Embedded navigation and detail routes
+
+All settings pages are hosted by the same `SettingsWindow` content region. The
+active sidebar item has a selected icon/title state, while the content region shows
+the page title, description, and controls. The package detail route adds a breadcrumb
+or back action such as `设置 / 角色包 / Mash Kyrielight`; its internal sections use
+an inline tab row or sub-navigation rather than another window.
+
+Changing pages preserves the current package selection and unsaved non-secret form
+state for the lifetime of the settings session. Destructive confirmations, native
+file pickers, and optional full-size image previews may use temporary modal surfaces,
+but they are not settings pages.
 
 ### AI model and connection page
 
@@ -167,7 +184,7 @@ When the user selects a theme card:
 
 1. The theme page sends the selected identifier to the theme service.
 2. The service validates and swaps the active resource dictionary on the UI thread.
-3. Open settings windows update immediately through dynamic resources.
+3. Open settings surfaces update immediately through dynamic resources.
 4. The validated identifier is persisted to the existing settings store.
 
 Theme changes do not recreate view models, reset form input, close windows, or alter the active servant.
@@ -182,18 +199,24 @@ usable offline; the dialogue surface provides a `去设置` action that navigate
 
 - Missing or unknown theme settings fall back to Modern Gray.
 - A theme resource load failure keeps the last successfully loaded theme; if no theme has loaded, the application uses a minimal Modern Gray fallback.
-- Theme persistence failure must not crash or close the settings windows. The UI remains on the applied theme for the current process and the theme page shows a concise save-failure status message.
+- Theme persistence failure must not crash or close `SettingsWindow`. The UI remains
+  on the applied theme for the current process and the theme page shows a concise
+  save-failure status message.
 - Existing model connection, package diagnostic, and settings quarantine behavior remains unchanged.
 - Destructive actions retain confirmation and warning treatment and are never styled as primary actions.
 
 ## Compatibility constraints
 
 - Keep existing view-model commands and business operations unchanged unless a small navigation adapter is necessary.
-- Preserve named controls used by `ModelConnectionWindowIntegrationTests`, including `ProviderComboBox`, `ApiKeyBox`, and `ModelTextBox`.
+- Preserve named controls used by existing model-connection integration coverage,
+  including `ProviderComboBox`, `ApiKeyBox`, and `ModelTextBox`, when the form is
+  hosted on the embedded AI model page.
 - Do not preserve a separate model-connection or servant-library tray item or
   portrait-menu item. Both menus expose the global `设置` entry instead.
 - Do not introduce a third-party WPF theme framework for this scope.
-- Do not restyle runtime portrait, dialogue, focus, timeline, or memory windows as part of this implementation.
+- Do not restyle runtime portrait, dialogue, focus, or timeline surfaces as part of
+  this implementation. Memory and privacy controls are part of the settings shell
+  and use its shared styles.
 
 ## Testing and acceptance
 
@@ -207,10 +230,11 @@ Automated coverage will verify:
 - The settings shell and package detail routes resolve shared theme resources.
 - Every settings destination displays the correct bundled vector icon with distinct
   idle, selected, focused, and disabled states.
-- Existing model connection controls and commands remain available on the AI model
-  page.
+- Existing model connection controls and commands remain available on the embedded
+  AI model page.
 - Tray and portrait menus contain no direct `模型连接` item; the settings entry
-  opens the AI model page.
+  opens the settings shell, where the AI model page is selectable.
+- Selecting any settings title opens its details in the same `SettingsWindow`.
 - Existing servant, package, address, and model tests continue to pass.
 
 Manual visual verification will open the settings shell and package detail route in
@@ -223,5 +247,7 @@ both themes and check:
 - Switching themes does not lose unsaved model form input or servant selection.
 - A clean user profile can discover package installation and model configuration
   through separate actions without requiring either one to be configured.
+- Package details, model connection, memory, and privacy controls do not create
+  additional top-level settings windows.
 
 The first implementation targets a coherent, stable visual baseline. Fine-grained color, spacing, and ornamental adjustments may be refined later without changing the resource or navigation architecture.
