@@ -5,6 +5,7 @@ using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
 using FgoPet.App.Portraits;
 using FgoPet.App.Servants;
+using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
 
@@ -16,6 +17,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly TrayService _tray;
     private readonly ServantLibraryWindow _library;
     private readonly ServantLibraryViewModel _libraryViewModel;
+    private readonly ModelConnectionWindow _modelConnection;
     private readonly PortraitWindow _portrait;
     private readonly PortraitWindowCoordinator _coordinator;
     private readonly IAppLifetime _lifetime;
@@ -28,6 +30,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         TrayService tray,
         ServantLibraryWindow library,
         ServantLibraryViewModel libraryViewModel,
+        ModelConnectionWindow modelConnection,
         PortraitWindow portrait,
         PortraitWindowCoordinator coordinator,
         IAppLifetime lifetime,
@@ -37,6 +40,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _tray = tray;
         _library = library;
         _libraryViewModel = libraryViewModel;
+        _modelConnection = modelConnection;
         _portrait = portrait;
         _coordinator = coordinator;
         _lifetime = lifetime;
@@ -51,6 +55,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _tray.ShowHideRequested += (_, _) => _lifetime.ShowOrHidePet();
         _tray.RestoreRequested += OnTrayRestoreRequested;
         _tray.LibraryRequested += (_, _) => ShowLibrary();
+        _tray.ModelConnectionRequested += (_, _) => ShowModelConnection();
         _tray.OpenPackFolderRequested += (_, _) => OpenPackagesRoot();
         _tray.ExitRequested += (_, _) => Exit();
         _portrait.ContextMenu = CreatePortraitMenu();
@@ -73,6 +78,12 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _library.Activate();
     }
 
+    public void ShowModelConnection()
+    {
+        _modelConnection.Show();
+        _modelConnection.Activate();
+    }
+
     public void ShowPortrait()
     {
         _lifetime.AttachPetWindow(_portrait);
@@ -91,6 +102,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         var menu = new ContextMenu();
         menu.Items.Add(Item("从者库与设置", (_, _) => ShowLibrary()));
+        menu.Items.Add(Item("模型连接", (_, _) => ShowModelConnection()));
         menu.Items.Add(Item("隐藏", (_, _) => _lifetime.ShowOrHidePet()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("退出", (_, _) => Exit()));

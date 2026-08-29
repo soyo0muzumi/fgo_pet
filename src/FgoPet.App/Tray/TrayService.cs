@@ -23,6 +23,7 @@ public sealed class TrayService : IDisposable
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("显示/隐藏", null, (_, _) => ShowHideRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("从者库与设置", null, (_, _) => LibraryRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add("模型连接", null, (_, _) => ModelConnectionRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("打开角色包目录", null, (_, _) => OpenPackFolderRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
@@ -35,6 +36,8 @@ public sealed class TrayService : IDisposable
     public event EventHandler? RestoreRequested;
 
     public event EventHandler? LibraryRequested;
+
+    public event EventHandler? ModelConnectionRequested;
 
     public event EventHandler? OpenPackFolderRequested;
 

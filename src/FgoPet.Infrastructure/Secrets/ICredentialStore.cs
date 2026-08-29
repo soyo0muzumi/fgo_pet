@@ -8,3 +8,9 @@ public interface ICredentialStore
 
     Task DeleteAsync(string target, CancellationToken cancellationToken);
 }
+
+/// <summary>Internal provider-facing read capability, never injected into UI view models.</summary>
+public interface ICredentialReader
+{
+    Task<string?> ReadAsync(string target, CancellationToken cancellationToken);
+}

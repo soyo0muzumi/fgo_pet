@@ -5,7 +5,7 @@ using System.Text;
 namespace FgoPet.Infrastructure.Secrets;
 
 /// <summary>Windows Credential Manager adapter. It never exposes a read-secret API.</summary>
-public sealed class WindowsCredentialStore : ICredentialStore
+public sealed class WindowsCredentialStore : ICredentialStore, ICredentialReader
 {
     private const uint GenericCredentialType = 1;
     private const uint ErrorNotFound = 1168;
@@ -65,6 +65,41 @@ public sealed class WindowsCredentialStore : ICredentialStore
         try
         {
             return Task.FromResult(true);
+        }
+        finally
+        {
+            CredFree(credentialPtr);
+        }
+    }
+
+    public Task<string?> ReadAsync(string target, CancellationToken cancellationToken)
+    {
+        ValidateTarget(target);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureWindows();
+
+        if (!CredRead(target, GenericCredentialType, 0, out var credentialPtr))
+        {
+            var error = (uint)Marshal.GetLastWin32Error();
+            if (error == ErrorNotFound)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
+            throw new Win32Exception((int)error, "Credential Manager could not read the credential.");
+        }
+
+        try
+        {
+            var credential = Marshal.PtrToStructure<NativeCredential>(credentialPtr);
+            if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
+            var bytes = new byte[credential.CredentialBlobSize];
+            Marshal.Copy(credential.CredentialBlob, bytes, 0, bytes.Length);
+            return Task.FromResult<string?>(Encoding.Unicode.GetString(bytes));
         }
         finally
         {

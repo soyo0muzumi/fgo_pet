@@ -1,5 +1,7 @@
+using System.Net.Http;
 using System.IO;
 using System.Windows;
+using FgoPet.App.Providers;
 using FgoPet.App.Focus;
 using FgoPet.App.Feedback;
 using FgoPet.App.Lifetime;
@@ -7,6 +9,7 @@ using FgoPet.App.Main;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.App.Servants;
+using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
@@ -21,6 +24,8 @@ using FgoPet.Infrastructure.FileSystem;
 using FgoPet.Infrastructure.Focus;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Infrastructure.Providers;
+using FgoPet.Infrastructure.Secrets;
 using FgoPet.Infrastructure.Settings;
 using FgoPet.Infrastructure.Timeline;
 using FgoPet.Infrastructure.Windowing;
@@ -80,6 +85,15 @@ public static class ServiceRegistration
         .AddSingleton<EventFeedbackSelector>()
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantLibraryViewModel>()
+        // Phase 3 model connection: metadata in JSON, key in Credential Manager.
+        .AddSingleton<ProviderCatalog>()
+        .AddSingleton<HttpClient>()
+        .AddSingleton<WindowsCredentialStore>()
+        .AddSingleton<ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
+        .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
+        .AddSingleton<ChatProviderFactory>()
+        .AddSingleton<ModelConnectionViewModel>()
+        .AddSingleton<ModelConnectionWindow>()
         .AddSingleton(provider => new AttachedPanelViewModel(
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>()))
