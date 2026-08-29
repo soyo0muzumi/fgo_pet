@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -54,7 +53,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         _window.Closing += (_, _) => SavePlacement();
         _window.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (IsButton(e.OriginalSource as DependencyObject))
+            if (InteractiveSurface.Contains(e.OriginalSource as DependencyObject))
             {
                 return;
             }
@@ -251,18 +250,6 @@ public sealed class PortraitWindowCoordinator : IDisposable
         return (dx * dx) + (dy * dy);
     }
 
-    private static bool IsButton(DependencyObject? source)
-    {
-        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
-        {
-            if (current is ButtonBase)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private void ApplyCurrentState()
     {
         var state = _controller.CurrentState;
@@ -280,7 +267,8 @@ public sealed class PortraitWindowCoordinator : IDisposable
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         var relayout = e.PropertyName == nameof(AttachedPanelViewModel.State)
-            || e.PropertyName == nameof(AttachedPanelViewModel.IsCompactTimerVisible);
+            || e.PropertyName == nameof(AttachedPanelViewModel.IsCompactTimerVisible)
+            || e.PropertyName == nameof(AttachedPanelViewModel.SelectedPresetId);
 
         if (relayout && _window.AttachedPanel.State != AttachedPanelState.Collapsed)
         {

@@ -33,6 +33,37 @@ public sealed class Phase2AttachedPanelViewModelTests
         Assert.Equal(AttachedPanelState.Compact, _vm.State);
         Assert.True(_vm.IsCompactTimerVisible);
         Assert.Equal("24:18", _vm.RemainingText);
+        Assert.Equal("第 1 / 4 轮", _vm.CycleText);
+        Assert.Equal("本轮 25:00 · 已完成 3%", _vm.TimerMetaText);
+        Assert.Equal(2.8, _vm.ProgressPercent, 1);
+    }
+
+    [Fact]
+    public void Custom_summary_excludes_the_break_after_the_last_cycle()
+    {
+        _vm.SelectCustomPreset();
+        _vm.CustomFocusMinutesText = "35";
+        _vm.CustomBreakMinutesText = "10";
+        _vm.CustomCyclesText = "3";
+
+        Assert.Equal("02:05:00", _vm.CustomTotalText);
+    }
+
+    [Fact]
+    public void Custom_step_controls_use_approved_steps_and_clamp_to_bounds()
+    {
+        _vm.SelectCustomPreset();
+        _vm.CustomFocusMinutesText = "178";
+        _vm.CustomBreakMinutesText = "1";
+        _vm.CustomCyclesText = "12";
+
+        _vm.AdjustCustomFocus(1);
+        _vm.AdjustCustomBreak(-1);
+        _vm.AdjustCustomCycles(1);
+
+        Assert.Equal("180", _vm.CustomFocusMinutesText);
+        Assert.Equal("1", _vm.CustomBreakMinutesText);
+        Assert.Equal("12", _vm.CustomCyclesText);
     }
 
     [Fact]

@@ -180,10 +180,10 @@ public sealed class PortraitWindowIntegrationTests
                 var portrait = window.PortraitScreenBounds;
                 Assert.True(bounds.Top >= portrait.Y + geometry.PanelAnchor.Y);
                 Assert.True(bounds.Left < portrait.Right && bounds.Right > portrait.X);
-                Assert.Equal(220, bounds.Width);
-                Assert.Equal(80, bounds.Height);
+                Assert.Equal(300, bounds.Width);
+                Assert.Equal(150, bounds.Height);
                 var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
-                Assert.Equal(80, host.Height);
+                Assert.Equal(150, host.Height);
             }
             finally
             {
@@ -211,7 +211,7 @@ public sealed class PortraitWindowIntegrationTests
 
                 var messageBounds = window.ArrangeOverlayPanel(
                     geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
-                Assert.Equal(80, messageBounds.Height);
+                Assert.Equal(150, messageBounds.Height);
 
                 // Starting the session swaps the compact body to the timer; the host
                 // must grow so the countdown and buttons are not clipped.
@@ -224,7 +224,7 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactTimerVisible);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                Assert.True(timerBounds.Height <= 140,
+                Assert.True(timerBounds.Height <= 170,
                     $"timer body height {timerBounds.Height} must stay within the compact budget");
 
                 // Stopping restores the message budget exactly.

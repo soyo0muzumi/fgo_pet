@@ -44,3 +44,15 @@ Setups: **150%** (single monitor 150% DPI), **200%** (single monitor 200% DPI),
 
 Acceptance: every required cell is `pass` with evidence before Phase 2 is marked
 releasable. Until then release status stays **deferred**.
+
+## 2026-08-28 Release candidate
+
+- Candidate path: `artifacts/release/FgoPet-win-x64/FgoPet.App.exe`
+- Automated Release gate: 341 passed, 0 failed; build 0 warnings, 0 errors.
+- Added manual emphasis: custom TextBox keyboard input, all six `− / ＋` buttons,
+  timer progress/round text, footer ornaments, and ensuring these controls never
+  start window dragging.
+- Primary Release acceptance: **passed by user on 2026-08-28**.
+- Phase status: `accepted`.
+- Public multi-DPI release status remains `deferred` until the full 150% / 200% /
+  mixed-monitor evidence cells above are completed.

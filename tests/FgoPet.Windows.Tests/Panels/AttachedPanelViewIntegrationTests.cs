@@ -21,13 +21,12 @@ public sealed class AttachedPanelViewIntegrationTests
             var view = new AttachedPanelView { DataContext = model };
             var compact = Assert.IsType<StackPanel>(view.FindName("CompactActions"));
             var title = Assert.IsType<TextBlock>(view.FindName("PanelTitle"));
-            var message = Assert.IsType<TextBlock>(view.FindName("CompactMessage"));
+            var message = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactMessage"));
             var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
             var todo = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodoContent"));
 
             model.PortraitClick();
             Assert.Equal("CHALDEA LINK", title.Text);
-            Assert.False(string.IsNullOrWhiteSpace(message.Text));
             Assert.Equal(Visibility.Visible, message.Visibility);
             Assert.Equal(Visibility.Visible, compact.Visibility);
             Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
@@ -57,6 +56,13 @@ public sealed class AttachedPanelViewIntegrationTests
             Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusContent"));
             Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodayContent"));
             Assert.IsAssignableFrom<FrameworkElement>(view.FindName("CompactTimer"));
+            Assert.NotNull(view.FindName("PresetGrid"));
+            Assert.NotNull(view.FindName("CustomFocusMinusButton"));
+            Assert.NotNull(view.FindName("CustomFocusPlusButton"));
+            Assert.NotNull(view.FindName("CustomBreakMinutesBox"));
+            Assert.NotNull(view.FindName("CustomCyclesBox"));
+            Assert.NotNull(view.FindName("TimerProgress"));
+            Assert.NotNull(view.FindName("CompactCycleText"));
         });
     }
 
@@ -127,6 +133,30 @@ public sealed class AttachedPanelViewIntegrationTests
             model.PortraitClick();
             Assert.Equal(Visibility.Visible, message.Visibility);
             Assert.Equal(Visibility.Collapsed, timer.Visibility);
+        });
+    }
+
+    [Fact]
+    public void Expanded_sections_show_their_assigned_footer_ornament()
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var view = new AttachedPanelView { DataContext = model };
+            var focusOrnament = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusFooterOrnament"));
+            var generalOrnament = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("GeneralFooterOrnament"));
+
+            model.PortraitClick();
+            Assert.Equal(Visibility.Collapsed, focusOrnament.Visibility);
+            Assert.Equal(Visibility.Collapsed, generalOrnament.Visibility);
+
+            model.FocusClick();
+            Assert.Equal(Visibility.Visible, focusOrnament.Visibility);
+            Assert.Equal(Visibility.Collapsed, generalOrnament.Visibility);
+
+            model.TodayClick();
+            Assert.Equal(Visibility.Collapsed, focusOrnament.Visibility);
+            Assert.Equal(Visibility.Visible, generalOrnament.Visibility);
         });
     }
 

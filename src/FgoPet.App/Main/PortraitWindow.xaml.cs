@@ -152,20 +152,15 @@ public partial class PortraitWindow : Window
             portraitLeft + geometry.PanelAnchorDevice.X,
             portraitTop + geometry.PanelAnchorDevice.Y);
 
-        var panelWidthDip = Math.Clamp(geometry.LogicalSize.Width * (440.0 / 303.0), 220, 340);
-        // Compact height budget: the running timer body needs more room than the
-        // message body, so the timer state uses a taller budget to avoid clipping.
-        var messageHeightDip = panelWidthDip * (160.0 / 440.0);
-        var timerHeightDip = panelWidthDip * (130.0 / 220.0);
-        var compactHeightDip = _panel.IsCompactTimerVisible
-            ? Math.Max(messageHeightDip, timerHeightDip)
-            : messageHeightDip;
-        // Only Compact/Collapsed keep the compact height; all four expanded states
-        // share the reserved stretch height so opening a column never moves the portrait.
-        var panelHeightDip = AttachedPanelStateMachine.IsExpanded(_panel.State)
-            ? Math.Min(280, workArea.Height * 0.6 / dpi.Y)
-            : compactHeightDip;
-        var reservedHeightDip = Math.Min(280, workArea.Height * 0.6 / dpi.Y);
+        var workAreaHeightDip = workArea.Height / dpi.Y;
+        var panelWidthDip = AttachedPanelVisualMetrics.CalculateWidth(geometry.LogicalSize.Width);
+        var panelHeightDip = AttachedPanelVisualMetrics.CalculateHeight(
+            _panel.State,
+            _panel.IsCompactTimerVisible,
+            _panel.SelectedPresetId == "custom",
+            workAreaHeightDip);
+        // Reserve the largest expanded footprint so switching sections never moves the portrait.
+        var reservedHeightDip = AttachedPanelVisualMetrics.CalculateReservedHeight(workAreaHeightDip);
         PanelHost.Width = panelWidthDip;
         PanelHost.Height = panelHeightDip;
         PanelHost.MaxHeight = panelHeightDip;
@@ -211,7 +206,9 @@ public partial class PortraitWindow : Window
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AttachedPanelViewModel.State))
+        if (e.PropertyName is nameof(AttachedPanelViewModel.State)
+            or nameof(AttachedPanelViewModel.IsCompactTimerVisible)
+            or nameof(AttachedPanelViewModel.SelectedPresetId))
         {
             ApplyPanelState();
         }
