@@ -51,6 +51,18 @@
             <Button Margin="0,8,0,0" Content="打开角色包目录" Command="{Binding OpenPackFolderCommand}" />
             <Button Margin="0,8,0,0" Content="重新扫描" Command="{Binding RescanCommand}" />
 
+            <TextBlock Margin="0,16,0,4" Text="用户称呼" FontWeight="Bold" />
+            <RadioButton Content="使用角色包默认称呼"
+                         IsChecked="{Binding UsePackageDefaultAddress, Mode=TwoWay}" />
+            <RadioButton Content="自定义称呼"
+                         IsChecked="{Binding UseCustomAddress, Mode=TwoWay}" />
+            <TextBox Margin="0,4,0,0"
+                     Text="{Binding CustomAddress, UpdateSourceTrigger=PropertyChanged}"
+                     IsEnabled="{Binding UseCustomAddress}" />
+            <Button Margin="0,6,0,0" Content="保存称呼" Command="{Binding SaveAddressCommand}" />
+            <TextBlock Margin="0,4,0,0" Text="{Binding AddressStatus}" Foreground="#606060" />
+            <Button Margin="0,12,0,0" Content="记忆与数据管理" Click="OnMemoryClick" />
+
             <TextBlock Margin="0,16,0,4" Text="安装本地 .fgopetpack" FontWeight="Bold" />
             <TextBox Text="{Binding PackFilePath, UpdateSourceTrigger=PropertyChanged}" />
             <Button Margin="0,8,0,0" Content="安装" Command="{Binding InstallCommand}" />

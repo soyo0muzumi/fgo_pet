@@ -7,8 +7,10 @@ using FgoPet.App.Focus;
 using FgoPet.App.Feedback;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
+using FgoPet.App.Memory;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
+using FgoPet.App.Privacy;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
@@ -87,6 +89,7 @@ public static class ServiceRegistration
         .AddSingleton<IFocusRestorer>(provider => new FocusServiceRestorer(provider.GetRequiredService<FocusSessionService>()))
         .AddSingleton<EventFeedbackSelector>()
         .AddSingleton<ServantFocusConnector>()
+        .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
@@ -101,6 +104,12 @@ public static class ServiceRegistration
         .AddSingleton<PromptComposer>()
         .AddSingleton<SqliteConversationRepository>()
         .AddSingleton<SqliteMemoryRepository>()
+        .AddSingleton<ConversationSummaryService>()
+        .AddSingleton<MemoryCandidateService>()
+        .AddSingleton<UserDataExportService>()
+        .AddSingleton<UserDataDeletionService>()
+        .AddSingleton<MemoryViewModel>()
+        .AddSingleton<MemoryWindow>()
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
         .AddSingleton<ConversationOrchestrator>()
@@ -109,7 +118,9 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),
             provider.GetRequiredService<ConversationViewModel>()))
-        .AddSingleton<ServantLibraryWindow>()
+        .AddSingleton<ServantLibraryWindow>(provider => new ServantLibraryWindow(
+            provider.GetRequiredService<ServantLibraryViewModel>(),
+            provider.GetRequiredService<MemoryWindow>()))
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))

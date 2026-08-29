@@ -152,6 +152,17 @@ public sealed class RuntimeDatabaseMigrator
             CREATE INDEX ix_memories_servant_enabled
               ON memories(servant_id, is_enabled, updated_at_utc DESC);
             """),
+        new(3, """
+            ALTER TABLE conversation_summaries
+              ADD COLUMN covered_through_message_id TEXT NOT NULL DEFAULT '';
+            UPDATE conversation_summaries
+            SET covered_through_message_id = COALESCE(
+              (SELECT message_id FROM chat_messages
+               WHERE chat_messages.conversation_id=conversation_summaries.conversation_id
+                 AND chat_messages.sequence=conversation_summaries.covered_through_sequence
+               LIMIT 1),
+              'legacy-summary');
+            """),
     };
 
     private readonly RuntimeDatabase _database;

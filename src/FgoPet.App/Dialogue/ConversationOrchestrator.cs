@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using FgoPet.App.Memory;
 using FgoPet.App.Providers;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
@@ -88,6 +89,8 @@ public sealed class ConversationOrchestrator
     private readonly SqliteMemoryRepository _memories;
     private readonly PromptComposer _composer;
     private readonly TimeProvider _time;
+    private readonly IAppSettingsStore? _settings;
+    private readonly ConversationSummaryService? _summaries;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
@@ -98,7 +101,9 @@ public sealed class ConversationOrchestrator
         SqliteConversationRepository conversations,
         SqliteMemoryRepository memories,
         PromptComposer composer,
-        TimeProvider time)
+        TimeProvider time,
+        IAppSettingsStore? settings = null,
+        ConversationSummaryService? summaries = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -106,6 +111,8 @@ public sealed class ConversationOrchestrator
         _memories = memories ?? throw new ArgumentNullException(nameof(memories));
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _settings = settings;
+        _summaries = summaries;
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -167,7 +174,7 @@ public sealed class ConversationOrchestrator
                 binding.Context,
                 persona,
                 binding.Knowledge,
-                _memories.ListEnabledMemories(servantId),
+                IsMemoryEnabled() ? _memories.ListEnabledMemories(servantId) : Array.Empty<StoredMemory>(),
                 string.Empty,
                 existing.Select(message => new PromptMessage(message.Role, message.Text)).ToArray(),
                 userText));
@@ -209,7 +216,7 @@ public sealed class ConversationOrchestrator
                 contentContext,
                 _conversations.LoadMessages(conversationId, servantId).Count + 1);
             _conversations.Append(assistant);
-            if (output.MemoryCandidate is not null)
+            if (output.MemoryCandidate is not null && IsMemoryEnabled())
             {
                 _memories.AddCandidate(new MemoryCandidate(
                     "candidate-" + Guid.NewGuid().ToString("N"),
@@ -219,6 +226,18 @@ public sealed class ConversationOrchestrator
                     _time.GetUtcNow(),
                     assistant.MessageId,
                     contentContext.AppearanceId));
+            }
+
+            if (_summaries is not null && IsMemoryEnabled())
+            {
+                try
+                {
+                    await _summaries.MaybeSummarizeAsync(conversationId, servantId, requestCancellation.Token);
+                }
+                catch (Exception)
+                {
+                    // Summary maintenance must not turn a completed dialogue into a failed turn.
+                }
             }
 
             Publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, assistant.MessageId, output.Text));
@@ -335,6 +354,8 @@ public sealed class ConversationOrchestrator
             // UI observers are not allowed to break persistence or cancellation.
         }
     }
+
+    private bool IsMemoryEnabled() => _settings?.Load().MemoryEnabled ?? true;
 
     private static PersonaBundle FallbackPersona(ContentContextKey context) =>
         new(context.ServantId, context.PackageId, context.PackageVersion, context.PersonaVersion, "保持自然、简洁地回应用户。", []);

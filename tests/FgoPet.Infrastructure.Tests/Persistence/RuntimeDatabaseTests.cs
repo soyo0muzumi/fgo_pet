@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(2L, Scalar<long>(connection,
+        Assert.Equal(3L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {

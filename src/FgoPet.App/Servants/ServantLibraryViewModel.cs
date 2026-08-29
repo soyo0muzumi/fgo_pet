@@ -17,6 +17,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     private readonly IPackInstaller _installer;
     private readonly IPortraitController _controller;
     private readonly IAppSettingsStore _settings;
+    private readonly ServantPreferenceService _preferences;
     private readonly Action<string> _openFolder;
 
     [ObservableProperty]
@@ -43,6 +44,18 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     [ObservableProperty]
     private string _scanStatus = "尚未扫描角色包。";
 
+    [ObservableProperty]
+    private bool _usePackageDefaultAddress = true;
+
+    [ObservableProperty]
+    private bool _useCustomAddress;
+
+    [ObservableProperty]
+    private string _customAddress = string.Empty;
+
+    [ObservableProperty]
+    private string _addressStatus = string.Empty;
+
     public ServantLibraryViewModel(
         IArtPackageRepository repository,
         IPackInstaller installer,
@@ -54,6 +67,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         _installer = installer ?? throw new ArgumentNullException(nameof(installer));
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _preferences = new ServantPreferenceService(_settings);
         _openFolder = openFolder ?? (path => Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true }));
 
         RescanCommand = new AsyncRelayCommand(LoadAsync);
@@ -65,6 +79,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         OpenPackFolderCommand = new AsyncRelayCommand(
             OpenPackFolderAsync,
             () => SelectedServant is not null);
+        SaveAddressCommand = new AsyncRelayCommand(SaveAddressAsync, () => SelectedServant is not null);
     }
 
     public IRelayCommand RescanCommand { get; }
@@ -76,6 +91,8 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     public IAsyncRelayCommand UninstallCommand { get; }
 
     public IAsyncRelayCommand OpenPackFolderCommand { get; }
+
+    public IAsyncRelayCommand SaveAddressCommand { get; }
 
     public async Task LoadAsync()
     {
@@ -113,12 +130,14 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
             }
 
             CurrentAppearance = SelectedServant?.SelectedAppearance;
+            LoadAddressPreference(SelectedServant?.ServantId);
         }
         catch (Exception error)
         {
             Servants = Array.Empty<ServantCardViewModel>();
             SelectedServant = null;
             CurrentAppearance = null;
+            LoadAddressPreference(null);
             ScanStatus = $"扫描失败：{error.GetType().Name}";
         }
         finally
@@ -241,8 +260,10 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     partial void OnSelectedServantChanged(ServantCardViewModel? value)
     {
         CurrentAppearance = value?.SelectedAppearance;
+        LoadAddressPreference(value?.ServantId);
         UninstallCommand.NotifyCanExecuteChanged();
         OpenPackFolderCommand.NotifyCanExecuteChanged();
+        SaveAddressCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnCurrentAppearanceChanged(ServantAppearanceItemViewModel? value)
@@ -255,4 +276,48 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         string.Equals(servant.Publisher, "embedded", StringComparison.OrdinalIgnoreCase)
             ? "内置"
             : "来源未验证";
+
+    private void LoadAddressPreference(string? servantId)
+    {
+        if (string.IsNullOrWhiteSpace(servantId))
+        {
+            UsePackageDefaultAddress = true;
+            UseCustomAddress = false;
+            CustomAddress = string.Empty;
+            AddressStatus = string.Empty;
+            return;
+        }
+
+        var preference = _preferences.LoadAsync(servantId).GetAwaiter().GetResult();
+        UsePackageDefaultAddress = preference.AddressMode == FgoPet.Core.Settings.AddressMode.PackageDefault;
+        UseCustomAddress = preference.AddressMode == FgoPet.Core.Settings.AddressMode.UserDefined;
+        CustomAddress = preference.AddressText ?? string.Empty;
+        AddressStatus = string.Empty;
+    }
+
+    private async Task SaveAddressAsync()
+    {
+        if (SelectedServant is null) return;
+        if (UseCustomAddress && string.IsNullOrWhiteSpace(CustomAddress))
+        {
+            AddressStatus = "请输入自定义称呼。";
+            return;
+        }
+
+        var preference = UseCustomAddress
+            ? new ServantPreference(FgoPet.Core.Settings.AddressMode.UserDefined, CustomAddress)
+            : new ServantPreference(FgoPet.Core.Settings.AddressMode.PackageDefault);
+        await _preferences.SaveAsync(SelectedServant.ServantId, preference);
+        AddressStatus = "称呼已保存。";
+    }
+
+    partial void OnUsePackageDefaultAddressChanged(bool value)
+    {
+        if (value) UseCustomAddress = false;
+    }
+
+    partial void OnUseCustomAddressChanged(bool value)
+    {
+        if (value) UsePackageDefaultAddress = false;
+    }
 }
