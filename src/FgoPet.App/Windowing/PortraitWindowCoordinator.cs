@@ -90,6 +90,16 @@ public sealed class PortraitWindowCoordinator : IDisposable
         var savedMonitor = monitors.FirstOrDefault(monitor => monitor.Id == saved.MonitorId);
         if (savedMonitor is not null)
         {
+            var savedDpi = _screen.GetDpi(savedMonitor.Id);
+            if (double.IsFinite(savedDpi.X) && savedDpi.X > 0
+                && double.IsFinite(savedDpi.Y) && savedDpi.Y > 0)
+            {
+                // RestorePlacement runs before SourceInitialized, so use the saved
+                // monitor's DPI instead of the default 1.0 scale when converting the
+                // persisted device coordinates back to WPF DIPs.
+                _dpi = savedDpi;
+            }
+
             var deviceSize = new DeviceSize(
                 (int)Math.Round(saved.WindowWidthDip * saved.SavedDpiX),
                 (int)Math.Round(saved.WindowHeightDip * saved.SavedDpiY));

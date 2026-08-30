@@ -569,6 +569,37 @@ public sealed class PortraitWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void PortraitWindowCoordinator_uses_saved_monitor_dpi_before_restoring_placement()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow();
+            var placement = new MemoryPlacementStore
+            {
+                Value = new WindowPlacement("display", 100, 200, 2, 2, 150, 300),
+            };
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                placement,
+                new FixedScreenService(new Dpi2(2, 2)));
+
+            coordinator.RestorePlacement();
+
+            Assert.Equal(100, window.Left);
+            Assert.Equal(200, window.Top);
+            Assert.Equal(150, window.Width);
+            Assert.Equal(300, window.Height);
+            window.Close();
+        });
+    }
+
     private static (string Root, string ManifestPath) WriteBundle(string root, byte[] body, byte[] expression)
     {
         Directory.CreateDirectory(Path.Combine(root, "runtime", "expressions"));
@@ -675,9 +706,13 @@ public sealed class PortraitWindowIntegrationTests
 
     private sealed class FixedScreenService : IScreenLayoutService
     {
+        private readonly Dpi2 _dpi;
+
+        public FixedScreenService(Dpi2? dpi = null) => _dpi = dpi ?? new Dpi2(1, 1);
+
         public IReadOnlyList<MonitorInfo> GetMonitors() =>
             [new MonitorInfo("display", new DeviceRect(0, 0, 2000, 1200), true)];
-        public Dpi2 GetDpi(string monitorId) => new(1, 1);
+        public Dpi2 GetDpi(string monitorId) => _dpi;
     }
 
     private sealed class EmptyRepository : IArtPackageRepository
