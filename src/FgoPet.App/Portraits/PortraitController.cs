@@ -64,7 +64,17 @@ public sealed class PortraitController : IPortraitController
         _cache.Put(selection, state.Snapshot);
         StateChanged?.Invoke(this, EventArgs.Empty);
 
-        await _repository.MarkLastKnownGoodAsync(selection, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // The portrait is already active at this point. A transient or restricted
+            // state directory must not turn a successful activation into a startup
+            // failure; the next activation can retry persistence.
+            await _repository.MarkLastKnownGoodAsync(selection, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Best effort only. Keep the in-memory state available for this session.
+        }
     }
 
     public void SetExpression(ExpressionSemantic semantic)

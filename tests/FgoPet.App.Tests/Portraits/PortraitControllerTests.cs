@@ -51,6 +51,18 @@ public sealed class PortraitControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task ActivateAsync_keeps_running_when_last_known_good_persistence_is_unavailable()
+    {
+        var bundle = WriteBundle("persistence-unavailable");
+        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "persistence-unavailable", bundle.Root));
+        _repository.ThrowOnLastKnownGood = true;
+
+        await _controller.ActivateAsync(new PortraitSelection("pkg", "persistence-unavailable"), CancellationToken.None);
+
+        Assert.NotNull(_controller.CurrentState);
+    }
+
+    [Fact]
     public async Task A_failed_candidate_preserves_the_old_state()
     {
         var valid = WriteBundle("valid");
@@ -206,6 +218,8 @@ public sealed class PortraitControllerTests : IDisposable
 
         public List<PortraitSelection> LastKnownGoods { get; } = new();
 
+        public bool ThrowOnLastKnownGood { get; set; }
+
         public Task<PackCatalog> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new PackCatalog(Array.Empty<InstalledPack>()));
 
@@ -223,6 +237,11 @@ public sealed class PortraitControllerTests : IDisposable
 
         public Task MarkLastKnownGoodAsync(PortraitSelection selection, CancellationToken cancellationToken)
         {
+            if (ThrowOnLastKnownGood)
+            {
+                throw new UnauthorizedAccessException("test persistence failure");
+            }
+
             LastKnownGoods.Add(selection);
             return Task.CompletedTask;
         }
