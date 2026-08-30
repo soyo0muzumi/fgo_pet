@@ -16,9 +16,13 @@ using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Theming;
+using FgoPet.App.Services;
+using FgoPet.App.ViewModels;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Agents;
+using FgoPet.Core.Archives;
+using FgoPet.Core.Todo;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -93,6 +97,11 @@ public static class ServiceRegistration
         .AddSingleton<SqliteTodoRepository>()
         .AddSingleton<SqliteAgentRepository>()
         .AddSingleton<SqliteWorkArchiveRepository>()
+        .AddSingleton<ITodoRepository>(provider => provider.GetRequiredService<SqliteTodoRepository>())
+        .AddSingleton<IAgentRepository>(provider => provider.GetRequiredService<SqliteAgentRepository>())
+        .AddSingleton<IWorkArchiveRepository>(provider => provider.GetRequiredService<SqliteWorkArchiveRepository>())
+        .AddSingleton<TodoApplicationService>()
+        .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
         .AddSingleton<FocusSessionService>()
@@ -161,7 +170,8 @@ public static class ServiceRegistration
         .AddSingleton(provider => new AttachedPanelViewModel(
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),
-            provider.GetRequiredService<ConversationViewModel>()))
+            provider.GetRequiredService<ConversationViewModel>(),
+            provider.GetRequiredService<TodoListViewModel>()))
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))
