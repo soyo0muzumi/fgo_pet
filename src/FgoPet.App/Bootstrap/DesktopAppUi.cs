@@ -152,11 +152,23 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         if (_portrait.Dispatcher.CheckAccess())
         {
-            _lifetime.ShowOrHidePet();
+            ToggleOwnedPortrait();
             return;
         }
 
-        _portrait.Dispatcher.BeginInvoke(_lifetime.ShowOrHidePet, DispatcherPriority.Send);
+        _portrait.Dispatcher.BeginInvoke(ToggleOwnedPortrait, DispatcherPriority.Send);
+    }
+
+    private void ToggleOwnedPortrait()
+    {
+        if (_portrait.IsVisible)
+        {
+            _portrait.Hide();
+            return;
+        }
+
+        ShowPortrait();
+        _portrait.Activate();
     }
 
     private void Exit()

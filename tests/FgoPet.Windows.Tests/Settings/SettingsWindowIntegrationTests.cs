@@ -268,6 +268,35 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
+    public void Tray_show_request_uses_owned_portrait_when_lifetime_visibility_state_cannot_show_it()
+    {
+        StaRun(() =>
+        {
+            var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<FgoPet.App.Lifetime.IAppLifetime, NonDisplayingLifetime>();
+            using var provider = services.BuildServiceProvider();
+            var ui = provider.GetRequiredService<DesktopAppUi>();
+            var tray = provider.GetRequiredService<TrayService>();
+            var portrait = provider.GetRequiredService<FgoPet.App.Main.PortraitWindow>();
+            try
+            {
+                ui.InitializeTray();
+
+                tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                    .Single(item => item.Text == "显示/隐藏")
+                    .PerformClick();
+
+                Assert.True(portrait.IsVisible);
+                Assert.NotEqual(IntPtr.Zero, new WindowInteropHelper(portrait).Handle);
+            }
+            finally
+            {
+                portrait.Hide();
+            }
+        });
+    }
+
+    [Fact]
     public void Dialogue_settings_request_opens_the_model_connection_section()
     {
         StaRun(() =>
@@ -618,5 +647,14 @@ public sealed class SettingsWindowIntegrationTests
         public AppSettings Load() => _settings;
 
         public void Save(AppSettings settings) => _settings = settings;
+    }
+
+    private sealed class NonDisplayingLifetime : FgoPet.App.Lifetime.IAppLifetime
+    {
+        public bool IsPetVisible => false;
+        public void AttachPetWindow(Window window) { }
+        public void ShowOrHidePet() { }
+        public void RequestNormalExit() { }
+        public void Shutdown(int exitCode) { }
     }
 }
