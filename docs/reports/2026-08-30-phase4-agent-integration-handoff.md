@@ -68,4 +68,4 @@ The Phase 4 implementation commits are:
 
 `7afe8a4`, `f139ac3`, `d9ae2ba`, `debd484`, `e6418a1`, `74606ec`, `eada3e6`,
 `38ec69c`, `5fc4a76`, `2b03f93`, `9cb60bc`, `5b45465`, `623109e`, `68b3ff0`,
-`275023c`, `481a36d`, `e63afa9`, and the final review-hardening commit.
+`275023c`, `481a36d`, `e63afa9`, and `b8540f8`.
