@@ -110,7 +110,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     public void ShowPortrait()
     {
         _lifetime.AttachPetWindow(_portrait);
-        _coordinator.RestorePlacement();
+        _coordinator.InitializePlacement();
         _portrait.Show();
     }
 

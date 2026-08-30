@@ -15,9 +15,10 @@ using Point = System.Windows.Point;
 namespace FgoPet.App.Windowing;
 
 /// <summary>
-/// Wires a portrait window to the controller: presents validated states, restores and
-/// saves placement, makes transparent pixels pass through via <c>WM_NCHITTEST</c>, and
-/// turns press/move/release into click/drag using the system drag threshold.
+/// Wires a portrait window to the controller: presents validated states, centers the
+/// first portrait shown in a process, saves later placement, makes transparent pixels
+/// pass through via <c>WM_NCHITTEST</c>, and turns press/move/release into click/drag
+/// using the system drag threshold.
 /// </summary>
 public sealed class PortraitWindowCoordinator : IDisposable
 {
@@ -35,6 +36,8 @@ public sealed class PortraitWindowCoordinator : IDisposable
     private Dpi2 _dpi = new(1.0, 1.0);
     private bool _dragging;
     private bool _pressWasOnPortrait;
+    private bool _initialPlacementRequested;
+    private bool _initialPlacementApplied;
 
     public PortraitWindowCoordinator(
         PortraitWindow window,
@@ -78,56 +81,15 @@ public sealed class PortraitWindowCoordinator : IDisposable
         };
     }
 
-    public void RestorePlacement()
+    /// <summary>
+    /// Requests deterministic placement for the first portrait shown in this process.
+    /// Persisted placement is intentionally ignored; once applied, hiding and showing
+    /// the portrait again keeps its current location.
+    /// </summary>
+    public void InitializePlacement()
     {
-        var saved = _placement.Load();
-        if (saved is null)
-        {
-            return;
-        }
-
-        var monitors = _screen.GetMonitors();
-        var savedMonitor = monitors.FirstOrDefault(monitor => monitor.Id == saved.MonitorId);
-        if (savedMonitor is not null)
-        {
-            var savedDpi = _screen.GetDpi(savedMonitor.Id);
-            if (double.IsFinite(savedDpi.X) && savedDpi.X > 0
-                && double.IsFinite(savedDpi.Y) && savedDpi.Y > 0)
-            {
-                // RestorePlacement runs before SourceInitialized, so use the saved
-                // monitor's DPI instead of the default 1.0 scale when converting the
-                // persisted device coordinates back to WPF DIPs.
-                _dpi = savedDpi;
-            }
-
-            var deviceSize = new DeviceSize(
-                (int)Math.Round(saved.WindowWidthDip * saved.SavedDpiX),
-                (int)Math.Round(saved.WindowHeightDip * saved.SavedDpiY));
-            var savedDevice = new SavedPlacement(
-                saved.MonitorId,
-                new DeviceRect(
-                    savedMonitor.WorkArea.X + (int)Math.Round(saved.OffsetX * saved.SavedDpiX),
-                    savedMonitor.WorkArea.Y + (int)Math.Round(saved.OffsetY * saved.SavedDpiY),
-                    deviceSize.Width,
-                    deviceSize.Height));
-            var restored = ScreenLayout.Restore(savedDevice, monitors, deviceSize);
-            // The placement store records the portrait bounds, while WPF positions
-            // the host window. When the attached panel is prepared the portrait is
-            // offset inside that host, so convert the restored portrait point back
-            // to host coordinates before showing it again.
-            _window.Left = (restored.X / _dpi.X) - _window.PortraitHostOffset.X;
-            _window.Top = (restored.Y / _dpi.Y) - _window.PortraitHostOffset.Y;
-            _window.Width = restored.Width / _dpi.X;
-            _window.Height = restored.Height / _dpi.Y;
-
-            // A hidden window can retain its previous panel offsets and a temporary
-            // portrait-sized host. Rebuild the current layout after restoring the
-            // portrait point so the panel and hit-test bounds are valid on show.
-            if (_controller.CurrentState is not null)
-            {
-                ArrangeAttachedPanel();
-            }
-        }
+        _initialPlacementRequested = true;
+        TryCenterInitialPortrait();
     }
 
     public void Dispose()
@@ -144,6 +106,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         var handle = new WindowInteropHelper(_window).Handle;
         _source = HwndSource.FromHwnd(handle);
         _source?.AddHook(OnWindowMessage);
+        TryCenterInitialPortrait();
     }
 
     private IntPtr OnWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -284,7 +247,56 @@ public sealed class PortraitWindowCoordinator : IDisposable
         _window.Present(state.Snapshot, state.Geometry);
         _window.PortraitView.SetExpression(state.ExpressionAssetId);
         ArrangeAttachedPanel();
+        TryCenterInitialPortrait();
     }
+
+    private void TryCenterInitialPortrait()
+    {
+        if (!_initialPlacementRequested || _initialPlacementApplied || _source is null)
+        {
+            return;
+        }
+
+        var monitors = _screen.GetMonitors();
+        var monitor = monitors.FirstOrDefault(candidate => candidate.IsPrimary)
+            ?? monitors.FirstOrDefault();
+        if (monitor is null)
+        {
+            return;
+        }
+
+        var monitorDpi = _screen.GetDpi(monitor.Id);
+        if (IsValidDpi(monitorDpi)
+            && (Math.Abs(_dpi.X - monitorDpi.X) > 0.001 || Math.Abs(_dpi.Y - monitorDpi.Y) > 0.001))
+        {
+            ApplyWindowDpi(monitorDpi);
+        }
+
+        var portrait = _window.PortraitScreenBounds;
+        if (!double.IsFinite(portrait.Width) || portrait.Width <= 0
+            || !double.IsFinite(portrait.Height) || portrait.Height <= 0
+            || !IsValidDpi(_dpi))
+        {
+            return;
+        }
+
+        var deviceSize = new DeviceSize(
+            Math.Max(1, (int)Math.Round(portrait.Width * _dpi.X)),
+            Math.Max(1, (int)Math.Round(portrait.Height * _dpi.Y)));
+        var centered = new DeviceRect(
+            monitor.WorkArea.X + ((monitor.WorkArea.Width - deviceSize.Width) / 2),
+            monitor.WorkArea.Y + ((monitor.WorkArea.Height - deviceSize.Height) / 2),
+            deviceSize.Width,
+            deviceSize.Height);
+        var visible = ScreenLayout.ClampFullyVisible(centered, monitor.WorkArea);
+        _window.MovePortraitToDevice(new DevicePoint(visible.X, visible.Y), _dpi);
+        ArrangeAttachedPanel();
+        _initialPlacementApplied = true;
+    }
+
+    private static bool IsValidDpi(Dpi2 dpi) =>
+        double.IsFinite(dpi.X) && dpi.X > 0
+        && double.IsFinite(dpi.Y) && dpi.Y > 0;
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

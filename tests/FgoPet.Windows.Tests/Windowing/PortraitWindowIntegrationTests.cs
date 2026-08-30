@@ -362,51 +362,6 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
-    public void Restoring_after_hiding_at_the_edge_keeps_the_portrait_inside_the_work_area()
-    {
-        StaRun(() =>
-        {
-            var panel = new AttachedPanelViewModel(TimeProvider.System);
-            var window = new PortraitWindow(panel) { Left = 1800, Top = 400 };
-            var placement = new MemoryPlacementStore
-            {
-                Value = new WindowPlacement("display", 1850, 400, 1, 1, 150, 300),
-            };
-            var controller = new PortraitController(
-                new EmptyRepository(),
-                new ExpressionResolver(),
-                new PortraitSnapshotCache(),
-                new Dpi2(1, 1));
-            using var coordinator = new PortraitWindowCoordinator(
-                window,
-                controller,
-                placement,
-                new FixedScreenService());
-            try
-            {
-                panel.PortraitClick();
-                var geometry = PortraitLayout.Calculate(
-                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 150, 300),
-                    0.5,
-                    new Dpi2(1, 1));
-                window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
-
-                // The panel layout moves the host left of the portrait. RestorePlacement
-                // must therefore subtract that offset when reusing the saved portrait point.
-                coordinator.RestorePlacement();
-
-                var portrait = window.PortraitScreenBounds;
-                Assert.Equal(1850, portrait.X);
-                Assert.Equal(2000, portrait.Right);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
-    [Fact]
     public void Portrait_local_coordinates_subtract_canvas_offset_without_dividing_wpf_dips_again()
     {
         StaRun(() =>
@@ -584,15 +539,12 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
-    public void PortraitWindowCoordinator_restores_saved_placement()
+    public void PortraitWindowCoordinator_centers_initial_portrait_without_loading_saved_placement()
     {
         StaRun(() =>
         {
-            var window = new PortraitWindow();
-            var placement = new MemoryPlacementStore
-            {
-                Value = new WindowPlacement("display", 100, 200, 2, 2, 150, 300),
-            };
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 10, Top = 20 };
             var controller = new PortraitController(
                 new EmptyRepository(),
                 new ExpressionResolver(),
@@ -601,47 +553,35 @@ public sealed class PortraitWindowIntegrationTests
             using var coordinator = new PortraitWindowCoordinator(
                 window,
                 controller,
-                placement,
+                new ThrowingLoadPlacementStore(),
                 new FixedScreenService());
-
-            coordinator.RestorePlacement();
-
-            Assert.Equal(200, window.Left);
-            Assert.Equal(400, window.Top);
-            Assert.Equal(300, window.Width);
-            Assert.Equal(600, window.Height);
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void PortraitWindowCoordinator_uses_saved_monitor_dpi_before_restoring_placement()
-    {
-        StaRun(() =>
-        {
-            var window = new PortraitWindow();
-            var placement = new MemoryPlacementStore
+            try
             {
-                Value = new WindowPlacement("display", 100, 200, 2, 2, 150, 300),
-            };
-            var controller = new PortraitController(
-                new EmptyRepository(),
-                new ExpressionResolver(),
-                new PortraitSnapshotCache(),
-                new Dpi2(1, 1));
-            using var coordinator = new PortraitWindowCoordinator(
-                window,
-                controller,
-                placement,
-                new FixedScreenService(new Dpi2(2, 2)));
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 150, 300),
+                    0.5,
+                    new Dpi2(1, 1));
+                window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
+                window.Show();
 
-            coordinator.RestorePlacement();
+                coordinator.InitializePlacement();
 
-            Assert.Equal(100, window.Left);
-            Assert.Equal(200, window.Top);
-            Assert.Equal(150, window.Width);
-            Assert.Equal(300, window.Height);
-            window.Close();
+                var portrait = window.PortraitScreenBounds;
+                Assert.Equal(925, portrait.X, precision: 4);
+                Assert.Equal(450, portrait.Y, precision: 4);
+
+                window.MovePortraitToDevice(new DevicePoint(120, 180), new Dpi2(1, 1));
+                coordinator.InitializePlacement();
+
+                portrait = window.PortraitScreenBounds;
+                Assert.Equal(120, portrait.X, precision: 4);
+                Assert.Equal(180, portrait.Y, precision: 4);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
@@ -741,6 +681,13 @@ public sealed class PortraitWindowIntegrationTests
         public WindowPlacement? Value { get; set; }
         public WindowPlacement? Load() => Value;
         public void Save(WindowPlacement placement) => Value = placement;
+    }
+
+    private sealed class ThrowingLoadPlacementStore : IWindowPlacementStore
+    {
+        public string Location => "unused";
+        public WindowPlacement? Load() => throw new InvalidOperationException("saved placement must not be read");
+        public void Save(WindowPlacement placement) { }
     }
 
     private sealed class MutableTimeProvider : TimeProvider
