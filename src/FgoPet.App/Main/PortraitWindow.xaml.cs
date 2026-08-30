@@ -76,6 +76,8 @@ public partial class PortraitWindow : Window
         _geometry?.LogicalSize.Width ?? Width,
         _geometry?.LogicalSize.Height ?? Height);
 
+    internal LogicalPoint PortraitHostOffset => new(_portraitOffsetX, _portraitOffsetY);
+
     internal void HandlePortraitClick() => _panel.PortraitClick();
 
     internal void HandleEscape() => _panel.Escape();

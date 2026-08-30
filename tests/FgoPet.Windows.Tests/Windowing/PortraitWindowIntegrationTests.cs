@@ -362,6 +362,51 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
+    public void Restoring_after_hiding_at_the_edge_keeps_the_portrait_inside_the_work_area()
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 1800, Top = 400 };
+            var placement = new MemoryPlacementStore
+            {
+                Value = new WindowPlacement("display", 1850, 400, 1, 1, 150, 300),
+            };
+            var controller = new PortraitController(
+                new EmptyRepository(),
+                new ExpressionResolver(),
+                new PortraitSnapshotCache(),
+                new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(
+                window,
+                controller,
+                placement,
+                new FixedScreenService());
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 150, 300),
+                    0.5,
+                    new Dpi2(1, 1));
+                window.ArrangeOverlayPanel(geometry, new DeviceRect(0, 0, 2000, 1200), new Dpi2(1, 1));
+
+                // The panel layout moves the host left of the portrait. RestorePlacement
+                // must therefore subtract that offset when reusing the saved portrait point.
+                coordinator.RestorePlacement();
+
+                var portrait = window.PortraitScreenBounds;
+                Assert.Equal(1850, portrait.X);
+                Assert.Equal(2000, portrait.Right);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Portrait_local_coordinates_subtract_canvas_offset_without_dividing_wpf_dips_again()
     {
         StaRun(() =>

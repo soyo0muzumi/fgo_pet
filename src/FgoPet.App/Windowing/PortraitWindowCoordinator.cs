@@ -111,10 +111,22 @@ public sealed class PortraitWindowCoordinator : IDisposable
                     deviceSize.Width,
                     deviceSize.Height));
             var restored = ScreenLayout.Restore(savedDevice, monitors, deviceSize);
-            _window.Left = restored.X / _dpi.X;
-            _window.Top = restored.Y / _dpi.Y;
+            // The placement store records the portrait bounds, while WPF positions
+            // the host window. When the attached panel is prepared the portrait is
+            // offset inside that host, so convert the restored portrait point back
+            // to host coordinates before showing it again.
+            _window.Left = (restored.X / _dpi.X) - _window.PortraitHostOffset.X;
+            _window.Top = (restored.Y / _dpi.Y) - _window.PortraitHostOffset.Y;
             _window.Width = restored.Width / _dpi.X;
             _window.Height = restored.Height / _dpi.Y;
+
+            // A hidden window can retain its previous panel offsets and a temporary
+            // portrait-sized host. Rebuild the current layout after restoring the
+            // portrait point so the panel and hit-test bounds are valid on show.
+            if (_controller.CurrentState is not null)
+            {
+                ArrangeAttachedPanel();
+            }
         }
     }
 
