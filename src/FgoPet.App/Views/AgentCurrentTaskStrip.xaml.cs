@@ -10,4 +10,7 @@ public partial class AgentCurrentTaskStrip : UserControl
 
     private void OnOpenTaskClick(object sender, RoutedEventArgs e) =>
         (DataContext as AgentCurrentTaskViewModel)?.OpenCurrentTask();
+
+    private void OnArchiveClick(object sender, RoutedEventArgs e) =>
+        (DataContext as AgentCurrentTaskViewModel)?.RequestArchive();
 }

@@ -234,6 +234,27 @@ public sealed class RuntimeDatabaseMigrator
               todo_key TEXT NOT NULL,
               PRIMARY KEY(archive_id, todo_key));
             CREATE INDEX ix_work_archives_date ON work_archives(archive_date DESC);
+            CREATE TABLE long_work_archives(
+              archive_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              summary TEXT NOT NULL CHECK(length(summary) <= 6000),
+              covered_archive_ids TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_long_work_archives_created ON long_work_archives(created_at_utc DESC);
+            """),
+        new(6, """
+            ALTER TABLE work_archives ADD COLUMN title TEXT NOT NULL DEFAULT '工作归档';
+            ALTER TABLE work_archives ADD COLUMN started_on TEXT NULL;
+            ALTER TABLE work_archives ADD COLUMN completed_on TEXT NULL;
+            ALTER TABLE work_archives ADD COLUMN outcomes TEXT NOT NULL DEFAULT '[]';
+            CREATE TABLE IF NOT EXISTS long_work_archives(
+              archive_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              summary TEXT NOT NULL CHECK(length(summary) <= 6000),
+              covered_archive_ids TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS ix_long_work_archives_created
+              ON long_work_archives(created_at_utc DESC);
             """),
     };
 

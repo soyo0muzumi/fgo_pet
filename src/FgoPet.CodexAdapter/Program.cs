@@ -14,6 +14,10 @@ public static class Program
         var credential = Environment.GetEnvironmentVariable("FGO_PET_ADAPTER_CREDENTIAL") ?? string.Empty;
         var sourceInstance = Environment.GetEnvironmentVariable("FGO_PET_AGENT_INSTANCE") ?? "unpaired";
         var taskId = Environment.GetEnvironmentVariable("FGO_PET_AGENT_TASK") ?? "mcp-session";
+        var sequence = long.TryParse(Environment.GetEnvironmentVariable("FGO_PET_AGENT_SEQUENCE"), out var configuredSequence)
+            && configuredSequence > 0
+            ? configuredSequence
+            : 1;
         var relay = new CodexRelaySession(pipeName, credential);
         if (string.Equals(mode, "hook", StringComparison.OrdinalIgnoreCase))
         {
@@ -29,7 +33,7 @@ public static class Program
             if (kind is not null)
             {
                 await relay.SendEventAsync(CodexHookMapper.Map(
-                    new CodexHookObservation(taskId, 1, kind.Value),
+                    new CodexHookObservation(taskId, sequence, kind.Value),
                     "codex",
                     sourceInstance)).ConfigureAwait(false);
             }

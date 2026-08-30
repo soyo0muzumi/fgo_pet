@@ -12,6 +12,7 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
     {
         _projector = projector ?? throw new ArgumentNullException(nameof(projector));
         _ = time ?? throw new ArgumentNullException(nameof(time));
+        _projector.EventApplied += OnProjectorEventApplied;
     }
 
     [ObservableProperty]
@@ -22,6 +23,8 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 
     [ObservableProperty]
     private int _otherActiveCount;
+
+    public bool HasOtherActiveTasks => OtherActiveCount > 0;
 
     [ObservableProperty]
     private bool _attentionRequired;
@@ -34,23 +37,12 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 
     public AgentTaskProjection? CurrentProjection { get; private set; }
     public event Action<AgentTaskProjection>? OpenTaskRequested;
+    public event Action<AgentTaskProjection>? ArchiveRequested;
 
     public AgentProjectionApplyResult Apply(AgentEvent agentEvent)
     {
         ArgumentNullException.ThrowIfNull(agentEvent);
-        var result = _projector.Apply(agentEvent);
-        if (result is AgentProjectionApplyResult.IgnoredDuplicate or AgentProjectionApplyResult.IgnoredStale)
-        {
-            return result;
-        }
-
-        if (agentEvent.EventType == AgentEventType.GoalCompleted)
-        {
-            WantsToTalk = true;
-        }
-
-        Refresh();
-        return result;
+        return _projector.Apply(agentEvent);
     }
 
     public bool ConsumeTalkIntent()
@@ -72,6 +64,17 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
         }
     }
 
+    public void RequestArchive()
+    {
+        if (!WantsToTalk || CurrentProjection is null)
+        {
+            return;
+        }
+
+        WantsToTalk = false;
+        ArchiveRequested?.Invoke(CurrentProjection);
+    }
+
     private void Refresh()
     {
         var active = _projector.Current
@@ -84,9 +87,25 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
             ? "暂无 Agent 任务"
             : CurrentProjection.Summary ?? CurrentProjection.TaskId;
         OtherActiveCount = Math.Max(0, active.Length - 1);
+        OnPropertyChanged(nameof(HasOtherActiveTasks));
         var attention = active.FirstOrDefault(item => item.AttentionRequired);
         AttentionRequired = attention is not null;
         AttentionText = attention is null ? string.Empty : "需要你的确认 · 点击打开任务";
         OnPropertyChanged(nameof(CurrentProjection));
+    }
+
+    private void OnProjectorEventApplied(AgentEvent agentEvent, AgentProjectionApplyResult result)
+    {
+        if (result is AgentProjectionApplyResult.IgnoredDuplicate or AgentProjectionApplyResult.IgnoredStale)
+        {
+            return;
+        }
+
+        if (agentEvent.EventType == AgentEventType.GoalCompleted)
+        {
+            WantsToTalk = true;
+        }
+
+        Refresh();
     }
 }

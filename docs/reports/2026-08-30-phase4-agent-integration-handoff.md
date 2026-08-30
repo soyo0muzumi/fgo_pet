@@ -30,8 +30,8 @@ dotnet build FgoPet.sln --no-restore
 dotnet test FgoPet.sln --no-build
 ```
 
-The exact final result is recorded with the command output at handoff time. The
-Codex plugin manifest validator also passes for
+Release verification passed with 0 warnings, 0 errors, and 568/568 tests passing
+across all 8 test assemblies. The Codex plugin manifest validator also passes for
 `integrations/codex/fgo-pet-agent`.
 
 ## Manual Windows gate still required
@@ -42,7 +42,7 @@ by unit tests:
 1. Relay single-instance behavior and Windows named-pipe ACL inspection.
 2. Plugin install/revoke in the target Codex runtime.
 3. App restart recovery with a live adapter and settings switch.
-4. Top navigation visual regression, eight-row Todo bound, reduced-motion behavior,
+4. Top navigation visual regression, scrollable Todo layout, reduced-motion behavior,
    and the Agent acceptance loop.
 
 ## Known limitations and future adapter points
@@ -55,10 +55,12 @@ by unit tests:
 - Exact desktop task navigation is not guaranteed. It is capability-gated and the app
   uses an in-app fallback until a runtime proves support; Phase 4 does not promise a
   guessed `codex://` scheme.
-- Agent connection enable/disable and allowlist UI are persisted in the app model;
-  wiring them to a long-running relay process is the next deployment integration step.
-- Long-archive summaries are user-selected and user-confirmed. No background
-  compression or silent memory write is performed.
+- Agent connection enable/disable and pending-data clear controls are persisted in the
+  app model and sent through the versioned App pipe; durable relay-process grant
+  storage and multi-process lifecycle wiring remain deployment work.
+- Work-archive metadata and long-archive summaries are persisted and exported only
+  after explicit user confirmation. No background compression or silent memory write
+  is performed.
 
 ## Commit range
 
@@ -66,4 +68,4 @@ The Phase 4 implementation commits are:
 
 `7afe8a4`, `f139ac3`, `d9ae2ba`, `debd484`, `e6418a1`, `74606ec`, `eada3e6`,
 `38ec69c`, `5fc4a76`, `2b03f93`, `9cb60bc`, `5b45465`, `623109e`, `68b3ff0`,
-`275023c`, followed by the Task 13 acceptance/docs commit.
+`275023c`, `481a36d`, `e63afa9`, and the final review-hardening commit.

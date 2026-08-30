@@ -54,4 +54,8 @@ public interface IAgentGateway
     Task<IReadOnlyList<AgentEvent>> QueryKnownStatesAsync(
         IReadOnlyList<AgentExecution> knownExecutions,
         CancellationToken cancellationToken = default);
+
+    Task ClearPendingEventsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    Task SetConnectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -72,7 +72,7 @@ public sealed partial class TodoListViewModel : ObservableObject
         var materialized = items.ToArray();
         HasOverflow = materialized.Length > MaxVisibleRows;
         VisibleItems.Clear();
-        var visible = materialized.Take(MaxVisibleRows)
+        var visible = materialized
             .Select(item => new TodoItemViewModel(item, _time))
             .ToArray();
         foreach (var item in visible)

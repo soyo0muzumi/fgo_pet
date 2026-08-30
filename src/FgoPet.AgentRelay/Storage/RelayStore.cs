@@ -23,6 +23,7 @@ public sealed record RegistrationGrant(
 public sealed record QueuedInboundEvent(ProtocolEnvelope Envelope, DateTimeOffset EnqueuedAt);
 
 public sealed record DispatchReceipt(string DispatchRequestId, string Result, DateTimeOffset CreatedAt);
+public sealed record QueuedDispatch(string SourceType, string SourceInstance, DispatchTaskRequest Request, DateTimeOffset EnqueuedAt);
 
 public sealed class RelayStore
 {
@@ -33,6 +34,7 @@ public sealed class RelayStore
     private readonly Queue<QueuedInboundEvent> _inbound = new();
     private readonly HashSet<string> _inboundKeys = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DispatchReceipt> _dispatchReceipts = new(StringComparer.Ordinal);
+    private readonly Queue<QueuedDispatch> _outbound = new();
 
     public bool AcceptEvents { get; private set; } = true;
 
@@ -133,8 +135,16 @@ public sealed class RelayStore
         lock (_gate)
         {
             AcceptEvents = enabled;
-            if (!enabled) _inbound.Clear();
+            if (!enabled)
+            {
+                ClearPendingUnsafe(clearDeduplication: true);
+            }
         }
+    }
+
+    public void ClearPending()
+    {
+        lock (_gate) ClearPendingUnsafe(clearDeduplication: true);
     }
 
     public DispatchReceipt? GetDispatchReceipt(string requestId)
@@ -145,5 +155,35 @@ public sealed class RelayStore
     public void SaveDispatchReceipt(DispatchReceipt receipt)
     {
         lock (_gate) _dispatchReceipts.TryAdd(receipt.DispatchRequestId, receipt);
+    }
+
+    public void EnqueueOutbound(QueuedDispatch dispatch)
+    {
+        lock (_gate) _outbound.Enqueue(dispatch);
+    }
+
+    public IReadOnlyList<QueuedDispatch> DrainOutbound(string sourceType, string sourceInstance)
+    {
+        lock (_gate)
+        {
+            var matching = _outbound
+                .Where(item => item.SourceType == sourceType && item.SourceInstance == sourceInstance)
+                .ToArray();
+            if (matching.Length == 0) return Array.Empty<QueuedDispatch>();
+
+            var retained = _outbound
+                .Where(item => item.SourceType != sourceType || item.SourceInstance != sourceInstance)
+                .ToArray();
+            _outbound.Clear();
+            foreach (var item in retained) _outbound.Enqueue(item);
+            return matching;
+        }
+    }
+
+    private void ClearPendingUnsafe(bool clearDeduplication)
+    {
+        _inbound.Clear();
+        _outbound.Clear();
+        if (clearDeduplication) _inboundKeys.Clear();
     }
 }

@@ -8,7 +8,7 @@ namespace FgoPet.App.Tests.ViewModels;
 public sealed class TodoListViewModelTests
 {
     [Fact]
-    public void Todo_list_shows_at_most_eight_timeline_rows_and_reports_overflow()
+    public void Todo_list_keeps_overflow_rows_for_the_existing_scroll_container()
     {
         var repository = new FakeTodoRepository();
         var service = new TodoApplicationService(repository, TimeProvider.System);
@@ -20,7 +20,7 @@ public sealed class TodoListViewModelTests
         var viewModel = new TodoListViewModel(service, TimeProvider.System);
         viewModel.Refresh();
 
-        Assert.Equal(8, viewModel.VisibleItems.Count);
+        Assert.Equal(10, viewModel.VisibleItems.Count);
         Assert.True(viewModel.HasOverflow);
         Assert.Equal(TodoListTab.Todo, viewModel.SelectedTab);
     }

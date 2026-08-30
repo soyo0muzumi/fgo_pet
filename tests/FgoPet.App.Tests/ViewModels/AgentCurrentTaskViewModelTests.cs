@@ -17,6 +17,7 @@ public sealed class AgentCurrentTaskViewModelTests
         Assert.Equal("task-1", viewModel.CurrentTaskId);
         Assert.Equal("Building the bridge", viewModel.CurrentTaskText);
         Assert.False(viewModel.AttentionRequired);
+        Assert.False(viewModel.HasOtherActiveTasks);
 
         viewModel.Apply(new AgentEvent("codex", "source-1", "task-1", 2, AgentEventType.AttentionRequired, DateTimeOffset.UtcNow));
         Assert.True(viewModel.AttentionRequired);
@@ -37,5 +38,18 @@ public sealed class AgentCurrentTaskViewModelTests
         Assert.True(viewModel.WantsToTalk);
         Assert.True(viewModel.ConsumeTalkIntent());
         Assert.False(viewModel.WantsToTalk);
+    }
+
+    [Fact]
+    public void Shows_other_active_task_count_without_an_arbitrary_three_item_cap()
+    {
+        var viewModel = new AgentCurrentTaskViewModel(new AgentEventProjector(), TimeProvider.System);
+        for (var index = 1; index <= 5; index++)
+        {
+            viewModel.Apply(new AgentEvent("codex", "source-1", $"task-{index}", 1, AgentEventType.TaskStarted, DateTimeOffset.UtcNow));
+        }
+
+        Assert.Equal(4, viewModel.OtherActiveCount);
+        Assert.True(viewModel.HasOtherActiveTasks);
     }
 }

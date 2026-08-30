@@ -81,8 +81,13 @@ public sealed class UserDataExportService
                 FROM todo_items ORDER BY created_at_utc, todo_id
                 """, cancellationToken),
             ReadRows(connection, """
-                SELECT archive_id, archive_date, source_types, summary, created_at_utc
+                SELECT archive_id, archive_date, source_types, title, started_on, completed_on,
+                       summary, outcomes, created_at_utc
                 FROM work_archives ORDER BY archive_date, created_at_utc, archive_id
+                """, cancellationToken),
+            ReadRows(connection, """
+                SELECT archive_id, title, summary, covered_archive_ids, created_at_utc
+                FROM long_work_archives ORDER BY created_at_utc, archive_id
                 """, cancellationToken));
     }
 
@@ -120,7 +125,8 @@ public sealed class UserDataExportService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Memories,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> ContentBindings,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Todos,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> WorkArchives)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> WorkArchives,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> LongWorkArchives)
     {
         public IDictionary<string, object?> ToJsonObject() => new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -133,6 +139,7 @@ public sealed class UserDataExportService
             ["content_bindings"] = ContentBindings,
             ["todos"] = Todos,
             ["work_archives"] = WorkArchives,
+            ["long_work_archives"] = LongWorkArchives,
         };
     }
 }

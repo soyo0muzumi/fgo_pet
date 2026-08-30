@@ -22,10 +22,25 @@ public sealed class SqliteWorkArchiveRepositoryTests : IDisposable
             .Activate(at.AddMinutes(1)).Complete(at.AddMinutes(2)));
         todos.Save(new TodoItem("todo-3", "Still planned", null, TodoPriority.Normal, null, at, at));
 
-        var archive = new WorkArchive("archive-1", new[] { "todo-1" }, new[] { "codex" }, DateOnly.Parse("2026-08-30"), "Delivered.", at);
+        var archive = new WorkArchive(
+            "archive-1",
+            new[] { "todo-1" },
+            new[] { "codex" },
+            DateOnly.Parse("2026-08-30"),
+            "Delivered.",
+            at,
+            "工作归档",
+            DateOnly.Parse("2026-08-29"),
+            DateOnly.Parse("2026-08-30"),
+            new[] { "发布桥接" });
         archives.Confirm(archive);
 
-        Assert.NotNull(archives.Get("archive-1"));
+        var loaded = archives.Get("archive-1");
+        Assert.NotNull(loaded);
+        Assert.Equal("工作归档", loaded!.Title);
+        Assert.Equal(DateOnly.Parse("2026-08-29"), loaded.StartedOn);
+        Assert.Equal(DateOnly.Parse("2026-08-30"), loaded.CompletedOn);
+        Assert.Equal(new[] { "发布桥接" }, loaded.Outcomes);
         Assert.Null(todos.Get("todo-1"));
         Assert.NotNull(todos.Get("todo-2"));
         Assert.NotNull(todos.Get("todo-3"));

@@ -1,7 +1,9 @@
 using System.IO.Pipes;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
+using FgoPet.AgentProtocol.Validation;
 using FgoPet.AgentRelay.Routing;
+using System.Text.Json;
 
 namespace FgoPet.AgentRelay.Pipes;
 
@@ -21,6 +23,24 @@ public sealed class AdapterPipeServer
     public Task<string> ProcessLineAsync(string line)
     {
         var envelope = ProtocolEnvelope.Parse(line);
+        if (string.Equals(envelope.MessageType, "status_check", StringComparison.Ordinal))
+        {
+            AgentProtocolValidator.Validate(envelope);
+            var includeDispatches = envelope.Payload.TryGetProperty("include_dispatches", out var value)
+                && value.ValueKind == JsonValueKind.True;
+            var dispatches = includeDispatches
+                ? _router.DrainOutbound(_credential, DateTimeOffset.UtcNow)
+                    .Select(item => ProtocolEnvelope.Create(
+                        "dispatch-" + item.Request.DispatchRequestId,
+                        "dispatch_task",
+                        item.Request,
+                        item.EnqueuedAt)
+                        .ToJson())
+                    .ToArray()
+                : Array.Empty<string>();
+            return Task.FromResult(JsonSerializer.Serialize(new { result = "dispatches", dispatches }));
+        }
+
         var receipt = _router.RouteAdapterEvent(_credential, envelope, DateTimeOffset.UtcNow);
         return Task.FromResult($"{{\"result\":\"{receipt.Result.ToString().ToLowerInvariant()}\"}}");
     }

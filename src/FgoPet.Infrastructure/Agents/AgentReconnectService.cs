@@ -13,6 +13,7 @@ public sealed class AgentReconnectService
     private readonly IAgentGateway _gateway;
     private readonly IAgentRepository _agents;
     private readonly AgentEventProjector _projector;
+    private int _polling;
 
     public AgentReconnectService(IAgentGateway gateway, IAgentRepository agents, AgentEventProjector projector)
     {
@@ -38,5 +39,37 @@ public sealed class AgentReconnectService
         }
 
         return new AgentReconnectResult(true, known.Count, applied, status);
+    }
+
+    public async Task<int> PollAsync(CancellationToken cancellationToken = default)
+    {
+        if (_gateway is not AgentRelayClient relay || Interlocked.Exchange(ref _polling, 1) != 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var events = await relay.PollPendingEventsAsync(cancellationToken).ConfigureAwait(false);
+            var applied = 0;
+            foreach (var agentEvent in events)
+            {
+                if (_projector.Apply(agentEvent) == AgentProjectionApplyResult.Applied) applied++;
+            }
+
+            return applied;
+        }
+        catch (IOException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return 0;
+        }
+        catch (TimeoutException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return 0;
+        }
+        finally
+        {
+            Volatile.Write(ref _polling, 0);
+        }
     }
 }

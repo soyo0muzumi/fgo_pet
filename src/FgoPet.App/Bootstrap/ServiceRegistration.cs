@@ -105,7 +105,10 @@ public static class ServiceRegistration
         .AddSingleton<TodoApplicationService>()
         .AddSingleton<TodoProposalService>()
         .AddSingleton<ArchiveDraftService>()
+        .AddSingleton<ILongArchiveSummaryStore, MemoryLongArchiveSummaryStore>()
+        .AddSingleton<LongArchiveService>()
         .AddSingleton<DataClearService>()
+        .AddSingleton<AgentDispatchService>()
         .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
@@ -122,6 +125,7 @@ public static class ServiceRegistration
         .AddSingleton<AgentConnectionSettingsViewModel>()
         .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
         .AddSingleton<AgentReconnectService>()
+        .AddSingleton<AgentTaskNavigationService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<HttpClient>()
@@ -178,12 +182,44 @@ public static class ServiceRegistration
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ArchiveDraftService>()))
-        .AddSingleton(provider => new AttachedPanelViewModel(
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<IFocusSessionService>(),
-            provider.GetRequiredService<ConversationViewModel>(),
-            provider.GetRequiredService<TodoListViewModel>(),
-            provider.GetRequiredService<AgentCurrentTaskViewModel>()))
+        .AddSingleton(provider =>
+        {
+            var currentAgentTask = provider.GetRequiredService<AgentCurrentTaskViewModel>();
+            var conversation = provider.GetRequiredService<ConversationViewModel>();
+            var todoService = provider.GetRequiredService<TodoApplicationService>();
+            var agentRepository = provider.GetRequiredService<IAgentRepository>();
+            var archiveDrafts = provider.GetRequiredService<ArchiveDraftService>();
+            currentAgentTask.OpenTaskRequested += projection =>
+            {
+                _ = provider.GetRequiredService<AgentTaskNavigationService>().OpenAsync(projection);
+            };
+            currentAgentTask.ArchiveRequested += projection =>
+            {
+                var coveredTodos = projection.CoveredTaskKeys
+                    .Select(ParseTaskIdentity)
+                    .Where(identity => identity is not null)
+                    .Select(identity => agentRepository.GetExecution(identity!.Value.SourceType, identity.Value.SourceInstance, identity.Value.TaskId))
+                    .Where(execution => execution is not null)
+                    .Select(execution => todoService.Get(execution!.TodoId))
+                    .Where(todo => todo?.Status == TodoStatus.Completed)
+                    .Cast<TodoItem>()
+                    .DistinctBy(todo => todo.Id)
+                    .ToArray();
+                if (coveredTodos.Length > 0)
+                {
+                    conversation.ShowArchiveDraft(archiveDrafts.CreateDraft(
+                        projection.SourceType,
+                        coveredTodos,
+                        "Agent 目标已完成，可整理相关工作。"));
+                }
+            };
+            return new AttachedPanelViewModel(
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IFocusSessionService>(),
+                conversation,
+                provider.GetRequiredService<TodoListViewModel>(),
+                currentAgentTask);
+        })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))
@@ -207,5 +243,11 @@ public static class ServiceRegistration
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)
         .AddSingleton<Func<ServantFocusConnector>>(provider => provider.GetRequiredService<ServantFocusConnector>)
         .AddSingleton<AppStartup>();
+    }
+
+    private static (string SourceType, string SourceInstance, string TaskId)? ParseTaskIdentity(string key)
+    {
+        var parts = key.Split('/', 3, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 3 ? (parts[0], parts[1], parts[2]) : null;
     }
 }

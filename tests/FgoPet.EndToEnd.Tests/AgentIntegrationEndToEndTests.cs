@@ -80,6 +80,7 @@ public sealed class AgentIntegrationEndToEndTests
     {
         var fixture = CreateFixture();
         var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
+        fixture.Router.SetAllowedTargets("codex", new[] { "opaque-project" });
 
         var offline = fixture.Router.RouteDispatch(fixture.Grant.Credential, request, DateTimeOffset.UtcNow);
         Assert.Equal(RelayRouteResult.Offline, offline.Result);

@@ -94,7 +94,7 @@ public sealed class SqliteTodoRepository : ITodoRepository
     {
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
-        foreach (var table in new[] { "work_archive_items", "work_archives", "agent_event_receipts", "agent_executions", "todo_items" })
+        foreach (var table in new[] { "work_archive_items", "work_archives", "long_work_archives", "agent_event_receipts", "agent_executions", "todo_items" })
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;

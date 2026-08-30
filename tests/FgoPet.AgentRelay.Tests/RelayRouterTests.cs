@@ -40,6 +40,7 @@ public sealed class RelayRouterTests
         var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
         var grant = Approve(registration, at);
         router.SetAdapterOnline("codex", grant.SourceInstance, true);
+        router.SetAllowedTargets("codex", new[] { "opaque-project" });
         var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
 
         var first = router.RouteDispatch(grant.Credential, request, at);
@@ -48,6 +49,10 @@ public sealed class RelayRouterTests
         Assert.Equal(RelayRouteResult.Accepted, first.Result);
         Assert.Equal(RelayRouteResult.AlreadyApplied, second.Result);
         Assert.Equal(first.DispatchRequestId, second.DispatchRequestId);
+        Assert.Equal(request.DispatchRequestId, first.TaskId);
+        Assert.Equal(grant.SourceInstance, first.SourceInstance);
+        var outbound = Assert.Single(router.DrainOutbound(grant.Credential, at.AddMinutes(1)));
+        Assert.Equal(request, outbound.Request);
     }
 
     [Fact]

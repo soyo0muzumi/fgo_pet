@@ -24,6 +24,7 @@ The adapter process receives these environment variables from its launcher:
 | `FGO_PET_ADAPTER_CREDENTIAL` | paired relay credential |
 | `FGO_PET_AGENT_INSTANCE` | opaque paired source instance |
 | `FGO_PET_AGENT_TASK` | opaque current task id |
+| `FGO_PET_AGENT_SEQUENCE` | positive event sequence supplied by the hook host |
 
 The App Server client uses `thread/start` and `turn/start` through an injected JSON
 RPC transport. The target passed to it is opaque; the adapter resolves it internally

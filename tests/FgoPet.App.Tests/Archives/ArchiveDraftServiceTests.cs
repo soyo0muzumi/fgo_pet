@@ -24,6 +24,8 @@ public sealed class ArchiveDraftServiceTests
         service.Confirm(draft);
 
         Assert.Single(archives.Saved);
+        Assert.Equal("工作归档", archives.Saved.Single().Title);
+        Assert.Equal(DateOnly.FromDateTime(completed.CompletedAt!.Value.LocalDateTime.Date), archives.Saved.Single().StartedOn);
         Assert.Empty(todos.Items);
     }
 

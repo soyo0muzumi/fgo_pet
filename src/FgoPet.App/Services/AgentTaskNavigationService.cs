@@ -1,4 +1,5 @@
 using FgoPet.Core.Agents;
+using FgoPet.Infrastructure.Agents;
 
 namespace FgoPet.App.Services;
 
@@ -22,6 +23,25 @@ public sealed class AgentTaskNavigationService
         {
             AgentOpenTaskStatus.Exact => "已打开 Agent 任务。",
             AgentOpenTaskStatus.AppOnly => $"已打开 Agent，请确认任务 ID：{execution.TaskId}",
+            AgentOpenTaskStatus.Unsupported => "当前 Agent 不支持打开任务。",
+            AgentOpenTaskStatus.Offline => "Agent 当前离线，请稍后重试。",
+            _ => result.SafeError ?? "无法打开 Agent 任务。",
+        };
+        return new AgentTaskNavigationResult(result.Status, message);
+    }
+
+    public async Task<AgentTaskNavigationResult> OpenAsync(
+        AgentTaskProjection projection,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        var result = await _gateway.OpenTaskAsync(
+            new AgentOpenTaskRequest(projection.SourceType, projection.SourceInstance, projection.TaskId),
+            cancellationToken).ConfigureAwait(false);
+        var message = result.Status switch
+        {
+            AgentOpenTaskStatus.Exact => "已打开 Agent 任务。",
+            AgentOpenTaskStatus.AppOnly => $"已打开 Agent，请确认任务 ID：{projection.TaskId}",
             AgentOpenTaskStatus.Unsupported => "当前 Agent 不支持打开任务。",
             AgentOpenTaskStatus.Offline => "Agent 当前离线，请稍后重试。",
             _ => result.SafeError ?? "无法打开 Agent 任务。",

@@ -8,13 +8,21 @@ public sealed record WorkArchive
         IReadOnlyList<string> sourceTypes,
         DateOnly archiveDate,
         string summary,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string title = "工作归档",
+        DateOnly? startedOn = null,
+        DateOnly? completedOn = null,
+        IReadOnlyList<string>? outcomes = null)
     {
         ArchiveId = ArchiveValidation.Id(archiveId, nameof(archiveId));
         CoveredTodoKeys = ArchiveValidation.Ids(coveredTodoKeys, nameof(coveredTodoKeys));
         SourceTypes = ArchiveValidation.Ids(sourceTypes, nameof(sourceTypes));
         ArchiveDate = archiveDate;
+        Title = ArchiveValidation.Text(title, nameof(title), 256);
         Summary = ArchiveValidation.Text(summary, nameof(summary), 6_000);
+        StartedOn = startedOn;
+        CompletedOn = completedOn;
+        Outcomes = ArchiveValidation.Texts(outcomes ?? Array.Empty<string>(), nameof(outcomes), 1_000);
         CreatedAt = createdAt;
     }
 
@@ -22,7 +30,11 @@ public sealed record WorkArchive
     public IReadOnlyList<string> CoveredTodoKeys { get; }
     public IReadOnlyList<string> SourceTypes { get; }
     public DateOnly ArchiveDate { get; }
+    public string Title { get; }
+    public DateOnly? StartedOn { get; }
+    public DateOnly? CompletedOn { get; }
     public string Summary { get; }
+    public IReadOnlyList<string> Outcomes { get; }
     public DateTimeOffset CreatedAt { get; }
 }
 
@@ -52,4 +64,10 @@ internal static class ArchiveValidation
     }
 
     public static string Text(string value, string parameterName, int maxLength) => Id(value, parameterName, maxLength);
+
+    public static IReadOnlyList<string> Texts(IReadOnlyList<string> values, string parameterName, int maxLength)
+    {
+        ArgumentNullException.ThrowIfNull(values, parameterName);
+        return values.Select(value => Text(value, parameterName, maxLength)).Distinct(StringComparer.Ordinal).ToArray();
+    }
 }

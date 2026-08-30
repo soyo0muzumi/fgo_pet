@@ -8,6 +8,7 @@
       <TextBlock Text="选择已启用的来源与授权目标。发送内容仅包含标题、描述、优先级、截止时间和目标 ID。" Foreground="#FF9FB2D8" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,8"/>
       <ComboBox ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection}" DisplayMemberPath="DisplayName" Margin="0,0,0,5"/>
       <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="DisplayName"/>
+      <Button Content="确认派发" Command="{Binding ConfirmCommand}" Foreground="#FF70E7F5" Background="Transparent" BorderBrush="#6642DFF5" BorderThickness="1" Padding="7,3" HorizontalAlignment="Right" Margin="0,8,0,0"/>
     </StackPanel>
   </Border>
 </UserControl>

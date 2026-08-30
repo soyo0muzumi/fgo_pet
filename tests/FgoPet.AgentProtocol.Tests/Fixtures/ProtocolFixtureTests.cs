@@ -71,6 +71,17 @@ public sealed class ProtocolFixtureTests
         Assert.Equal("attention_required", sanitized.EventType);
     }
 
+    [Theory]
+    [InlineData("C:\\Users\\alice\\project")]
+    [InlineData("token=secret-value")]
+    public void Opaque_identity_fields_cannot_carry_paths_or_credentials(string unsafeIdentity)
+    {
+        var message = new AgentEventMessage("codex", "source-1", unsafeIdentity, 1, "task_started", DateTimeOffset.UtcNow);
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("message-identity", "agent_event", message)));
+    }
+
     [Fact]
     public void Denylisted_payload_fields_are_rejected_even_if_not_modelled()
     {

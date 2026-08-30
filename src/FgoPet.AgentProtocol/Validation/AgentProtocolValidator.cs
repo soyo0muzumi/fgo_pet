@@ -75,9 +75,10 @@ public static class AgentProtocolValidator
 
         if (string.Equals(message.EventType, "goal_completed", StringComparison.Ordinal))
         {
-            if (message.CoveredTaskKeys.Count == 0) throw new AgentProtocolValidationException("A completed goal must declare covered task keys.");
+            var coveredTaskKeys = message.CoveredTaskKeys ?? Array.Empty<string>();
+            if (coveredTaskKeys.Count == 0) throw new AgentProtocolValidationException("A completed goal must declare covered task keys.");
             var prefix = $"{message.SourceType}/{message.SourceInstance}/";
-            if (message.CoveredTaskKeys.Any(key => !key.StartsWith(prefix, StringComparison.Ordinal)))
+            if (coveredTaskKeys.Any(key => !key.StartsWith(prefix, StringComparison.Ordinal)))
             {
                 throw new AgentProtocolValidationException("Goal coverage cannot cross Agent source identities.");
             }
@@ -90,8 +91,11 @@ public static class AgentProtocolValidator
         RequireText(message.TodoId, nameof(message.TodoId));
         RequireText(message.Title, nameof(message.Title));
         RequireText(message.TargetId, nameof(message.TargetId));
+        AgentPayloadSanitizer.SanitizeText(message.DispatchRequestId, nameof(message.DispatchRequestId));
+        AgentPayloadSanitizer.SanitizeText(message.TodoId, nameof(message.TodoId));
         AgentPayloadSanitizer.SanitizeText(message.Title, nameof(message.Title));
         AgentPayloadSanitizer.SanitizeText(message.Description, nameof(message.Description));
+        AgentPayloadSanitizer.SanitizeText(message.Priority, nameof(message.Priority));
         if (AgentPayloadSanitizer.ContainsForbiddenText(message.TargetId)) throw new AgentProtocolValidationException("Target ID is not opaque.");
     }
 
@@ -100,6 +104,9 @@ public static class AgentProtocolValidator
         RequireText(message.SourceType, nameof(message.SourceType));
         RequireText(message.SourceInstance, nameof(message.SourceInstance));
         RequireText(message.TaskId, nameof(message.TaskId));
+        AgentPayloadSanitizer.SanitizeText(message.SourceType, nameof(message.SourceType));
+        AgentPayloadSanitizer.SanitizeText(message.SourceInstance, nameof(message.SourceInstance));
+        AgentPayloadSanitizer.SanitizeText(message.TaskId, nameof(message.TaskId));
     }
 
     private static void ValidateRegistration(AdapterRegistrationRequest message)
@@ -107,6 +114,9 @@ public static class AgentProtocolValidator
         RequireText(message.SourceType, nameof(message.SourceType));
         RequireText(message.DisplayName, nameof(message.DisplayName));
         RequireText(message.Version, nameof(message.Version));
+        AgentPayloadSanitizer.SanitizeText(message.SourceType, nameof(message.SourceType));
+        AgentPayloadSanitizer.SanitizeText(message.DisplayName, nameof(message.DisplayName));
+        AgentPayloadSanitizer.SanitizeText(message.Version, nameof(message.Version));
     }
 
     private static void ValidateApproval(PairingApprovalMessage message)

@@ -20,6 +20,7 @@ public sealed record AgentTaskProjection(
     string? Summary,
     bool AttentionRequired,
     bool GoalCompleted,
+    IReadOnlyList<string> CoveredTaskKeys,
     long LastSequence,
     DateTimeOffset UpdatedAt);
 
@@ -34,12 +35,25 @@ public sealed class AgentEventProjector
         .OrderByDescending(item => item.UpdatedAt)
         .ToArray();
 
+    public event Action<AgentEvent, AgentProjectionApplyResult>? EventApplied;
+
     public AgentTaskProjection? Get(string identity) => _projections.GetValueOrDefault(identity);
 
     public AgentProjectionApplyResult Apply(AgentEvent agentEvent)
     {
         ArgumentNullException.ThrowIfNull(agentEvent);
-        var persistenceResult = _agents?.ApplyEvent(agentEvent);
+        AgentEventApplyResult? persistenceResult;
+        try
+        {
+            persistenceResult = _agents?.ApplyEvent(agentEvent);
+        }
+        catch (KeyNotFoundException) when (_agents is not null)
+        {
+            // Hooks may observe an Agent task that was not dispatched by FGO Pet.
+            // Keep that task in the in-memory companion projection without creating
+            // a Todo or execution record from untrusted external state.
+            persistenceResult = null;
+        }
         if (persistenceResult == AgentEventApplyResult.AlreadyApplied)
         {
             return AgentProjectionApplyResult.IgnoredDuplicate;
@@ -64,12 +78,16 @@ public sealed class AgentEventProjector
         if (agentEvent.EventType == AgentEventType.TaskRemoved)
         {
             _projections.Remove(identity);
+            EventApplied?.Invoke(agentEvent, AgentProjectionApplyResult.Removed);
             return AgentProjectionApplyResult.Removed;
         }
 
         var status = existing?.Status ?? AgentExecutionStatus.Dispatching;
         var attention = existing?.AttentionRequired ?? false;
         var goalCompleted = existing?.GoalCompleted ?? false;
+        var coveredTaskKeys = agentEvent.CoveredTaskKeys.Count == 0
+            ? existing?.CoveredTaskKeys ?? Array.Empty<string>()
+            : agentEvent.CoveredTaskKeys;
         var summary = agentEvent.Summary ?? existing?.Summary;
         switch (agentEvent.EventType)
         {
@@ -110,8 +128,10 @@ public sealed class AgentEventProjector
             summary,
             attention,
             goalCompleted,
+            coveredTaskKeys,
             agentEvent.Sequence,
             agentEvent.OccurredAt);
+        EventApplied?.Invoke(agentEvent, AgentProjectionApplyResult.Applied);
         return AgentProjectionApplyResult.Applied;
     }
 }

@@ -8,6 +8,16 @@ public static partial class AgentPayloadSanitizer
     public static AgentEventMessage Sanitize(AgentEventMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        EnsureSafeText(message.SourceType, nameof(message.SourceType));
+        EnsureSafeText(message.SourceInstance, nameof(message.SourceInstance));
+        EnsureSafeText(message.TaskId, nameof(message.TaskId));
+        EnsureSafeText(message.TodoId, nameof(message.TodoId));
+        EnsureSafeText(message.DispatchRequestId, nameof(message.DispatchRequestId));
+        foreach (var coveredTaskKey in message.CoveredTaskKeys ?? Array.Empty<string>())
+        {
+            EnsureSafeText(coveredTaskKey, nameof(message.CoveredTaskKeys));
+        }
+
         if (message.IsPrivate)
         {
             return message with { Title = null, Summary = null };

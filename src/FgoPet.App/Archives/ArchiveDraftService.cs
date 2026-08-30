@@ -67,15 +67,16 @@ public sealed class ArchiveDraftService
     public void Confirm(ArchiveDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
-        var text = string.IsNullOrWhiteSpace(draft.Title)
-            ? draft.Summary
-            : $"{draft.Title}\n{draft.Summary}";
         _archives.Confirm(new WorkArchive(
             draft.ArchiveId,
             draft.CoveredTodoKeys,
             new[] { draft.SourceType },
             draft.ArchiveDate,
-            text,
-            _time.GetUtcNow()));
+            draft.Summary,
+            _time.GetUtcNow(),
+            draft.Title,
+            draft.StartedOn,
+            draft.CompletedOn,
+            draft.Outcomes));
     }
 }

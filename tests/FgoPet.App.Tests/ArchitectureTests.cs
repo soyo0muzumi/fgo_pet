@@ -52,7 +52,9 @@ public sealed class ArchitectureTests
         var app = ReferencedProjects("FgoPet.App");
 
         Assert.Empty(core);
-        Assert.Equal(new[] { "FgoPet.Core" }, infra.OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal(
+            new[] { "FgoPet.AgentProtocol", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            infra.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Equal(
             new[] { "FgoPet.Core", "FgoPet.Infrastructure" }.OrderBy(name => name, StringComparer.Ordinal),
             app.OrderBy(name => name, StringComparer.Ordinal));

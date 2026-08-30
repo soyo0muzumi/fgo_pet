@@ -26,17 +26,19 @@ displayed as a card and is not persisted until the user confirms it. Dispatch al
 requires confirmation and only accepts a planned Todo. A stable request id makes a
 retry idempotent. Offline or rejected dispatches do not activate the Todo.
 
-The expanded Todo view has Todo / History / Only today tabs, date groups, a maximum
-of eight visible rows, and a thin execution timeline. Work archives are similarly
-explicit: completed Todos can be selected for an archive draft, and the user must
-confirm before the archive or any long-memory summary is written.
+The expanded Todo view has Todo / History / Only today tabs, date groups, a
+scrollable list that retains all matching rows, and a thin execution timeline.
+Work archives are similarly explicit: completed Todos can be selected for an
+archive draft, and the user must confirm before the archive or any long-memory
+summary is written.
 
 ## Privacy and recovery
 
 The Agent connection settings page controls the global connection switch, paired
 source allowlists, export of safe Todo/archive rows, and clearing all Agent Todo
-data. Clearing removes Todos, executions, event receipts, and work archives while
-leaving connection pairing metadata intact so a later re-pair decision is explicit.
+data. Clearing removes Todos, executions, event receipts, work archives, and relay
+pending queues while leaving connection pairing metadata intact so a later re-pair
+decision is explicit.
 
 On reconnect, persisted non-terminal executions are queried through the gateway and
 applied using the same sequence and terminal-state guards as live events. Replayed
@@ -52,3 +54,8 @@ coverage belonging to the same source identity.
 
 See [the Codex adapter guide](codex-adapter.md) for the local plugin layout and
 runtime variables.
+
+Accepted app dispatches are held in the paired adapter outbox until the adapter
+polls `status_check` with `include_dispatches=true`. The adapter must then pass the
+opaque target to its own App Server resolver and emit lifecycle events through the
+same relay session.

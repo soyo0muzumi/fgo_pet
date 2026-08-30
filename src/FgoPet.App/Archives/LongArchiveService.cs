@@ -37,11 +37,16 @@ public sealed class LongArchiveService
 {
     private readonly ILongArchiveSummaryStore _store;
     private readonly TimeProvider _time;
+    private readonly FgoPet.Core.Archives.IWorkArchiveRepository? _repository;
 
-    public LongArchiveService(ILongArchiveSummaryStore store, TimeProvider time)
+    public LongArchiveService(
+        ILongArchiveSummaryStore store,
+        TimeProvider time,
+        FgoPet.Core.Archives.IWorkArchiveRepository? repository = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _repository = repository;
     }
 
     public LongArchiveDraft CreateDraft(IReadOnlyList<FgoPet.Core.Archives.WorkArchive> archives, string title, string? summary = null)
@@ -64,11 +69,35 @@ public sealed class LongArchiveService
         ArgumentNullException.ThrowIfNull(draft);
         var summary = new LongArchiveSummary(draft.SummaryId, draft.Title, draft.Summary, draft.CoveredArchiveIds, _time.GetUtcNow());
         _store.Save(summary);
-        foreach (var old in _store.List().Where(item => item.SummaryId != summary.SummaryId && draft.CoveredArchiveIds.Contains(item.SummaryId, StringComparer.Ordinal)).ToArray())
+        _repository?.SaveLongArchive(new FgoPet.Core.Archives.LongWorkArchive(
+            summary.SummaryId,
+            summary.Title,
+            summary.Summary,
+            summary.CoveredArchiveIds,
+            summary.CreatedAt));
+        foreach (var old in ExistingSummaries()
+            .Where(item => item.SummaryId != summary.SummaryId && draft.CoveredArchiveIds.Contains(item.SummaryId, StringComparer.Ordinal))
+            .ToArray())
         {
             _store.Delete(old.SummaryId);
+            _repository?.DeleteLongArchive(old.SummaryId);
         }
 
         return summary;
+    }
+
+    private IReadOnlyList<LongArchiveSummary> ExistingSummaries()
+    {
+        var fromRepository = _repository?.ListLongArchives().Select(item => new LongArchiveSummary(
+            item.ArchiveId,
+            item.Title,
+            item.Summary,
+            item.CoveredArchiveIds,
+            item.CreatedAt)) ?? Array.Empty<LongArchiveSummary>();
+        return _store.List()
+            .Concat(fromRepository)
+            .GroupBy(item => item.SummaryId, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
     }
 }

@@ -10,10 +10,13 @@
       <TextBlock Text="{Binding CurrentTaskText}" Foreground="#FFF0F5FF" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
       <TextBlock Foreground="#FF9FB2D8" FontSize="8" Margin="0,2,0,0">
         <Run Text="另有 "/><Run Text="{Binding OtherActiveCount}"/><Run Text=" 项活跃任务"/>
-        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding OtherActiveCount}" Value="1"><Setter Property="Visibility" Value="Visible"/></DataTrigger><DataTrigger Binding="{Binding OtherActiveCount}" Value="2"><Setter Property="Visibility" Value="Visible"/></DataTrigger><DataTrigger Binding="{Binding OtherActiveCount}" Value="3"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasOtherActiveTasks}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
       </TextBlock>
       <Button Content="{Binding AttentionText}" Click="OnOpenTaskClick" Foreground="#FFD242E8" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9">
         <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding AttentionRequired}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
+      </Button>
+      <Button Content="开始整理已完成工作" Click="OnArchiveClick" Foreground="#FFD242E8" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9">
+        <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding WantsToTalk}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
       </Button>
     </StackPanel>
   </Border>

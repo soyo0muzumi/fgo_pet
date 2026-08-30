@@ -31,12 +31,18 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject
     private readonly IAppSettingsStore _settings;
     private readonly IAgentRepository _agents;
     private readonly DataClearService? _clear;
+    private readonly IAgentGateway? _gateway;
 
-    public AgentConnectionSettingsViewModel(IAppSettingsStore settings, IAgentRepository agents, DataClearService? clear = null)
+    public AgentConnectionSettingsViewModel(
+        IAppSettingsStore settings,
+        IAgentRepository agents,
+        DataClearService? clear = null,
+        IAgentGateway? gateway = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _agents = agents ?? throw new ArgumentNullException(nameof(agents));
         _clear = clear;
+        _gateway = gateway;
         Reload();
     }
 
@@ -79,6 +85,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject
         {
             AgentConnection = new AgentConnectionSettings(Enabled, sourceEnabled, allowlist),
         });
+        _gateway?.SetConnectionEnabledAsync(Enabled).GetAwaiter().GetResult();
         StatusText = Enabled ? "Agent 连接设置已保存。" : "Agent 总开关已关闭，待发送事件将被清空。";
     }
 
