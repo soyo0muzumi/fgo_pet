@@ -101,6 +101,7 @@ public static class ServiceRegistration
         .AddSingleton<IAgentRepository>(provider => provider.GetRequiredService<SqliteAgentRepository>())
         .AddSingleton<IWorkArchiveRepository>(provider => provider.GetRequiredService<SqliteWorkArchiveRepository>())
         .AddSingleton<TodoApplicationService>()
+        .AddSingleton<TodoProposalService>()
         .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
@@ -166,7 +167,8 @@ public static class ServiceRegistration
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IAppSettingsStore>(),
-            provider.GetRequiredService<ModelConnectionViewModel>()))
+            provider.GetRequiredService<ModelConnectionViewModel>(),
+            provider.GetRequiredService<TodoProposalService>()))
         .AddSingleton(provider => new AttachedPanelViewModel(
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),

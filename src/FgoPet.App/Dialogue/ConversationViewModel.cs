@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using FgoPet.Core.Dialogue;
 using FgoPet.App.Settings;
 using FgoPet.Core.Settings;
+using FgoPet.App.ViewModels;
 
 namespace FgoPet.App.Dialogue;
 
@@ -11,19 +12,32 @@ public sealed partial class ConversationViewModel : ObservableObject
 {
     private readonly ConversationOrchestrator _orchestrator;
     private readonly IAppSettingsStore _settings;
+    private readonly ModelConnectionViewModel? _modelConnection;
+    private readonly TodoProposalService? _todoProposals;
     private string _activeConversationId = string.Empty;
     private bool _configurationRequired;
 
-    public ConversationViewModel(ConversationOrchestrator orchestrator, IAppSettingsStore settings)
+    public ConversationViewModel(
+        ConversationOrchestrator orchestrator,
+        IAppSettingsStore settings,
+        ModelConnectionViewModel? modelConnection = null,
+        TodoProposalService? todoProposals = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _modelConnection = modelConnection;
+        _todoProposals = todoProposals;
+        if (_modelConnection is not null)
+        {
+            _modelConnection.ConnectionSaved += OnConnectionSaved;
+        }
         _orchestrator.Updated += OnConversationUpdated;
         var model = _settings.Load().ModelConnection;
         ProviderStatusText = model?.ProviderId ?? "未配置供应商";
         ModelStatusText = model?.ModelId ?? "未配置模型";
         _configurationRequired = model is null;
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
+        SendOrStopCommand = new AsyncRelayCommand(SendOrStopAsync, () => CanSendOrStop);
         StopCommand = new RelayCommand(Stop, () => IsStreaming);
         NewConversationCommand = new RelayCommand(NewConversation);
         OpenSettingsCommand = new RelayCommand(OpenSettings);
@@ -33,18 +47,23 @@ public sealed partial class ConversationViewModel : ObservableObject
     public event Action<SettingsSection>? SettingsRequested;
 
     public ObservableCollection<ConversationTurnViewModel> Turns { get; } = new();
+    public ObservableCollection<TodoProposalViewModel> TodoProposals { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanSendOrStop))]
     private string _activeServantId = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
+    [NotifyPropertyChangedFor(nameof(CanSendOrStop))]
     private string _inputText = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(CanStop))]
+    [NotifyPropertyChangedFor(nameof(CanSendOrStop))]
+    [NotifyPropertyChangedFor(nameof(ActionLabel))]
     private bool _isStreaming;
 
     [ObservableProperty]
@@ -62,7 +81,12 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public bool CanStop => IsStreaming;
 
+    public bool CanSendOrStop => CanSend || CanStop;
+
+    public string ActionLabel => IsStreaming ? "停止生成" : "发送消息";
+
     public IAsyncRelayCommand SendCommand { get; }
+    public IAsyncRelayCommand SendOrStopCommand { get; }
     public IRelayCommand StopCommand { get; }
     public IRelayCommand NewConversationCommand { get; }
     public IRelayCommand OpenSettingsCommand { get; }
@@ -96,6 +120,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
         _orchestrator.CancelCurrent();
         Turns.Clear();
+        ClearTodoProposals();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
@@ -113,6 +138,16 @@ public sealed partial class ConversationViewModel : ObservableObject
         var model = _settings.Load().ModelConnection;
         ProviderStatusText = model?.ProviderId ?? "未配置供应商";
         ModelStatusText = model?.ModelId ?? "未配置模型";
+    }
+
+    private void OnConnectionSaved(ModelConnectionSettings connection)
+    {
+        ProviderStatusText = connection.ProviderId;
+        ModelStatusText = connection.ModelId;
+        _configurationRequired = false;
+        OnPropertyChanged(nameof(IsConfigurationRequired));
+        OnPropertyChanged(nameof(IsConfigurationStateVisible));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
     }
 
 
@@ -154,6 +189,17 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private void Stop() => _orchestrator.CancelCurrent();
 
+    private async Task SendOrStopAsync()
+    {
+        if (IsStreaming)
+        {
+            Stop();
+            return;
+        }
+
+        await SendAsync();
+    }
+
     private void NewConversation()
     {
         if (string.IsNullOrWhiteSpace(ActiveServantId))
@@ -163,6 +209,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
         _orchestrator.StartNewConversation(ActiveServantId);
         Turns.Clear();
+        ClearTodoProposals();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         _configurationRequired = false;
@@ -219,6 +266,7 @@ public sealed partial class ConversationViewModel : ObservableObject
                 {
                     completedTurn.IsStreaming = false;
                 }
+                TryLoadTodoProposals(update.TextDelta);
                 break;
             case ConversationUpdateType.Cancelled:
                 RemoveStreamingTurns();
@@ -253,11 +301,60 @@ public sealed partial class ConversationViewModel : ObservableObject
         OnPropertyChanged(nameof(IsConfigurationStateVisible));
     }
 
-    partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
-    partial void OnActiveServantIdChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+    public bool TryLoadTodoProposals(string? structuredResponse)
+    {
+        if (_todoProposals is null || string.IsNullOrWhiteSpace(structuredResponse))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = _todoProposals.Parse(structuredResponse);
+            ClearTodoProposals();
+            foreach (var proposal in parsed)
+            {
+                var viewModel = new TodoProposalViewModel(proposal, _todoProposals);
+                viewModel.Closed += OnTodoProposalClosed;
+                TodoProposals.Add(viewModel);
+            }
+
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private void ClearTodoProposals()
+    {
+        foreach (var proposal in TodoProposals)
+        {
+            proposal.Closed -= OnTodoProposalClosed;
+        }
+
+        TodoProposals.Clear();
+    }
+
+    private void OnTodoProposalClosed(TodoProposalViewModel proposal) => TodoProposals.Remove(proposal);
+
+    partial void OnInputTextChanged(string value)
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnActiveServantIdChanged(string value)
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+    }
+
     partial void OnIsStreamingChanged(bool value)
     {
         SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
     }
 }

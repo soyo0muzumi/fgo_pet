@@ -18,7 +18,7 @@
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
   </UserControl.Resources>
-  <StackPanel>
+  <StackPanel x:Name="TimelineRoot">
     <Grid Margin="0,0,0,8">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel Orientation="Horizontal">
