@@ -26,8 +26,10 @@ public sealed class SqliteEventStore
         command.CommandText = """
             INSERT OR IGNORE INTO runtime_events(
               event_id, session_id, type, occurred_at_utc, cycle_number, phase, servant_id,
-              elapsed_seconds, effective_seconds, priority, schema_version, payload_json)
-            VALUES($id, $session, $type, $at, $cycle, $phase, $servant, $elapsed, $effective, $priority, $schema, $payload)
+              elapsed_seconds, effective_seconds, priority, schema_version, payload_json,
+              source, subject_id, summary, is_private)
+            VALUES($id, $session, $type, $at, $cycle, $phase, $servant, $elapsed, $effective, $priority, $schema, $payload,
+              $source, $subject, $summary, $private)
             """;
         command.Parameters.AddWithValue("$id", runtimeEvent.EventId);
         command.Parameters.AddWithValue("$session", runtimeEvent.SessionId);
@@ -41,6 +43,10 @@ public sealed class SqliteEventStore
         command.Parameters.AddWithValue("$priority", runtimeEvent.Priority);
         command.Parameters.AddWithValue("$schema", runtimeEvent.SchemaVersion);
         command.Parameters.AddWithValue("$payload", (object?)runtimeEvent.PayloadJson ?? DBNull.Value);
+        command.Parameters.AddWithValue("$source", runtimeEvent.Source);
+        command.Parameters.AddWithValue("$subject", (object?)runtimeEvent.SubjectId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$summary", (object?)runtimeEvent.Summary ?? DBNull.Value);
+        command.Parameters.AddWithValue("$private", runtimeEvent.IsPrivate ? 1 : 0);
         return command.ExecuteNonQuery() == 1;
     }
 }

@@ -163,6 +163,14 @@ public sealed class RuntimeDatabaseMigrator
                LIMIT 1),
               'legacy-summary');
             """),
+        new(4, """
+            ALTER TABLE runtime_events ADD COLUMN source TEXT NOT NULL DEFAULT 'system';
+            ALTER TABLE runtime_events ADD COLUMN subject_id TEXT NULL;
+            ALTER TABLE runtime_events ADD COLUMN summary TEXT NULL;
+            ALTER TABLE runtime_events ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0 CHECK(is_private IN (0,1));
+            CREATE INDEX ix_runtime_events_source_subject
+              ON runtime_events(source, subject_id, occurred_at_utc);
+            """),
     };
 
     private readonly RuntimeDatabase _database;

@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(3L, Scalar<long>(connection,
+        Assert.Equal(4L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
@@ -84,7 +84,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
         using var connection = database.Open();
 
-        Execute(connection, "INSERT INTO runtime_events VALUES('e1','s1','focus_completed','2026-08-27T09:25:00Z',1,'focus','mash',1500,1500,2,1,NULL)");
+        Execute(connection, "INSERT INTO runtime_events(event_id, session_id, type, occurred_at_utc, cycle_number, phase, servant_id, elapsed_seconds, effective_seconds, priority, schema_version, payload_json) VALUES('e1','s1','focus_completed','2026-08-27T09:25:00Z',1,'focus','mash',1500,1500,2,1,NULL)");
         Assert.Throws<SqliteException>(() => Execute(connection,
             "INSERT INTO timeline_entries VALUES('t1','missing-event','2026-08-27T09:25:00Z','focus_completed','mash',1500,1500,NULL)"));
         Assert.Throws<SqliteException>(() => Execute(connection,
