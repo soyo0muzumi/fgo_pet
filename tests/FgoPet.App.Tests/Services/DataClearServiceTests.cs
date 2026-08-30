@@ -8,24 +8,24 @@ namespace FgoPet.App.Tests.Services;
 public sealed class DataClearServiceTests
 {
     [Fact]
-    public void Clear_agent_todo_data_delegates_to_the_agent_data_boundary()
+    public async Task Clear_agent_todo_data_delegates_to_the_agent_data_boundary()
     {
         var repository = new FakeTodoRepository();
         repository.HasData = true;
         var service = new DataClearService(repository);
 
-        service.ClearAgentTodoData();
+        await service.ClearAgentTodoDataAsync();
 
         Assert.False(repository.HasData);
     }
 
     [Fact]
-    public void Clear_agent_todo_data_also_requests_relay_pending_data_clear()
+    public async Task Clear_agent_todo_data_also_requests_relay_pending_data_clear()
     {
         var relay = new FakeGateway();
         var service = new DataClearService(new FakeTodoRepository { HasData = true }, relay);
 
-        service.ClearAgentTodoData();
+        await service.ClearAgentTodoDataAsync();
 
         Assert.True(relay.ClearRequested);
     }
