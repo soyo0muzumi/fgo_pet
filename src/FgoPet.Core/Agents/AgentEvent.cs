@@ -47,6 +47,7 @@ public sealed record AgentEvent
     public string? TodoId { get; init; }
     public string? DispatchRequestId { get; init; }
     public string Identity => $"{SourceType}/{SourceInstance}/{TaskId}/{Sequence}";
+    public string TaskIdentity => $"{SourceType}/{SourceInstance}/{TaskId}";
     public string EventKey => Identity;
     public DateTimeOffset OccurredAtUtc => OccurredAt;
 
