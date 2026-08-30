@@ -1,0 +1,28 @@
+namespace FgoPet.Core.Agents;
+
+public enum AgentEventApplyResult
+{
+    Applied,
+    AlreadyApplied,
+    IgnoredStale,
+}
+
+public sealed record PersistedAgentConnection(
+    string SourceType,
+    string DisplayName,
+    string Version,
+    bool Enabled,
+    DateTimeOffset? LastEventAtUtc,
+    int PendingCount,
+    AgentCapabilities Capabilities);
+
+public interface IAgentRepository
+{
+    void SaveExecution(AgentExecution execution);
+    AgentExecution? GetExecution(string id);
+    AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId);
+    IReadOnlyList<AgentExecution> ListNonTerminalExecutions();
+    AgentEventApplyResult ApplyEvent(AgentEvent agentEvent);
+    void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets);
+    IReadOnlyList<PersistedAgentConnection> ListConnections();
+}
