@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
@@ -148,7 +149,15 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     }
 
     private void OnTrayShowHideRequested(object? sender, EventArgs e)
-        => _lifetime.ShowOrHidePet();
+    {
+        if (_portrait.Dispatcher.CheckAccess())
+        {
+            _lifetime.ShowOrHidePet();
+            return;
+        }
+
+        _portrait.Dispatcher.BeginInvoke(_lifetime.ShowOrHidePet, DispatcherPriority.Send);
+    }
 
     private void Exit()
     {
