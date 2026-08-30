@@ -94,4 +94,34 @@ public sealed class RelayPipeIntegrationTests
         Assert.Equal(request, dispatch.DeserializePayload<DispatchTaskRequest>());
         Assert.Empty(router.DrainOutbound(grant.Credential, at));
     }
+
+    [Fact]
+    public async Task App_pipe_pushes_source_switch_and_allowlist_to_the_relay()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var pending = registration.Request(new AdapterRegistrationRequest("codex", "Codex", "1.0"), at);
+        var grant = registration.Approve(pending.RequestId, at.AddSeconds(1));
+        router.SetAdapterOnline("codex", grant.SourceInstance, true);
+        var app = new AppPipeServer(router, "unused-app", grant.Credential);
+
+        await app.ProcessLineAsync(ProtocolEnvelope.Create(
+            "settings-1",
+            "status_check",
+            new { source_type = "codex", source_enabled = false, allowed_targets = new[] { "opaque-project" } },
+            at).ToJson());
+
+        var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
+        Assert.Equal(RelayRouteResult.Disabled, router.RouteDispatch(grant.Credential, request, at).Result);
+
+        await app.ProcessLineAsync(ProtocolEnvelope.Create(
+            "settings-2",
+            "status_check",
+            new { source_type = "codex", source_enabled = true, allowed_targets = new[] { "opaque-project" } },
+            at.AddMinutes(1)).ToJson());
+
+        Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at.AddMinutes(1)).Result);
+    }
 }

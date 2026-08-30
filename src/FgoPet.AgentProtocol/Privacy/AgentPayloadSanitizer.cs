@@ -35,7 +35,7 @@ public static partial class AgentPayloadSanitizer
         return value.Trim();
     }
 
-    internal static bool ContainsForbiddenText(string? value) =>
+    public static bool ContainsForbiddenText(string? value) =>
         !string.IsNullOrWhiteSpace(value)
         && (AbsolutePathPattern().IsMatch(value) || CredentialPattern().IsMatch(value));
 

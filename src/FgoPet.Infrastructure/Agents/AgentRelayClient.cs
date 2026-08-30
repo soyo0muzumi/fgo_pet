@@ -112,6 +112,22 @@ public sealed class AgentRelayClient : IAgentGateway
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task SetSourceEnabledAsync(string sourceType, bool enabled, CancellationToken cancellationToken = default)
+    {
+        await SendAsync(
+            ProtocolEnvelope.Create("source-" + Guid.NewGuid().ToString("N"), "status_check", new { source_type = sourceType, source_enabled = enabled }),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetAllowedTargetsAsync(string sourceType, IReadOnlyList<string> targetIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
+        ArgumentNullException.ThrowIfNull(targetIds);
+        await SendAsync(
+            ProtocolEnvelope.Create("allowlist-" + Guid.NewGuid().ToString("N"), "status_check", new { source_type = sourceType, allowed_targets = targetIds }),
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<IReadOnlyList<AgentEvent>> QueryKnownStatesAsync(
         IReadOnlyList<AgentExecution> knownExecutions,
         CancellationToken cancellationToken = default)

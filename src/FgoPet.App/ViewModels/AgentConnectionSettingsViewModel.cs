@@ -86,6 +86,14 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject
             AgentConnection = new AgentConnectionSettings(Enabled, sourceEnabled, allowlist),
         });
         _gateway?.SetConnectionEnabledAsync(Enabled).GetAwaiter().GetResult();
+        foreach (var item in Connections)
+        {
+            _gateway?.SetSourceEnabledAsync(item.SourceType, item.IsEnabled).GetAwaiter().GetResult();
+            var targets = allowlist.TryGetValue(item.SourceType, out var configured)
+                ? configured.Select(target => target.TargetId).ToArray()
+                : item.Targets.Select(target => target.TargetId).ToArray();
+            _gateway?.SetAllowedTargetsAsync(item.SourceType, targets).GetAwaiter().GetResult();
+        }
         StatusText = Enabled ? "Agent 连接设置已保存。" : "Agent 总开关已关闭，待发送事件将被清空。";
     }
 

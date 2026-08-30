@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
+using FgoPet.AgentProtocol.Privacy;
 using FgoPet.AgentProtocol.Validation;
 using FgoPet.AgentRelay.Routing;
 using System.Text.Json;
@@ -37,6 +38,32 @@ public sealed class AppPipeServer
                 && (enabled.ValueKind == JsonValueKind.True || enabled.ValueKind == JsonValueKind.False))
             {
                 _router.SetConnectionEnabled(enabled.GetBoolean());
+            }
+
+            if (envelope.Payload.TryGetProperty("source_type", out var sourceType)
+                && sourceType.ValueKind == JsonValueKind.String
+                && envelope.Payload.TryGetProperty("allowed_targets", out var allowedTargets)
+                && allowedTargets.ValueKind == JsonValueKind.Array)
+            {
+                var source = sourceType.GetString() ?? string.Empty;
+                var targets = allowedTargets.EnumerateArray()
+                    .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
+                    .ToArray();
+                if (string.IsNullOrWhiteSpace(source) || targets.Any(string.IsNullOrWhiteSpace)
+                    || targets.Any(AgentPayloadSanitizer.ContainsForbiddenText))
+                {
+                    throw new AgentProtocolValidationException("The source allowlist must contain opaque target IDs.");
+                }
+
+                _router.ConfigureAllowedTargets(_credential, source, targets!, DateTimeOffset.UtcNow);
+            }
+
+            if (envelope.Payload.TryGetProperty("source_type", out sourceType)
+                && sourceType.ValueKind == JsonValueKind.String
+                && envelope.Payload.TryGetProperty("source_enabled", out var sourceEnabled)
+                && (sourceEnabled.ValueKind == JsonValueKind.True || sourceEnabled.ValueKind == JsonValueKind.False))
+            {
+                _router.ConfigureSourceEnabled(_credential, sourceType.GetString()!, sourceEnabled.GetBoolean(), DateTimeOffset.UtcNow);
             }
 
             var includeEvents = envelope.Payload.TryGetProperty("include_events", out var value)

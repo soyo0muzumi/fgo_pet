@@ -58,4 +58,11 @@ public interface IAgentGateway
     Task ClearPendingEventsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     Task SetConnectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    Task SetSourceEnabledAsync(string sourceType, bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    Task SetAllowedTargetsAsync(
+        string sourceType,
+        IReadOnlyList<string> targetIds,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

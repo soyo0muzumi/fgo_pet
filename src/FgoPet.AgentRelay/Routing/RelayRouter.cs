@@ -33,6 +33,7 @@ public sealed class RelayRouter
     private readonly RegistrationService _registration;
     private readonly Dictionary<string, bool> _adapterOnline = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _allowedTargets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _sourceEnabled = new(StringComparer.Ordinal);
     private bool _appOnline;
 
     public RelayRouter(RelayStore store, RegistrationService registration)
@@ -50,6 +51,28 @@ public sealed class RelayRouter
 
     public void SetAllowedTargets(string sourceType, IEnumerable<string> targetIds) =>
         _allowedTargets[sourceType] = new HashSet<string>(targetIds, StringComparer.Ordinal);
+
+    public void ConfigureAllowedTargets(string credential, string sourceType, IEnumerable<string> targetIds, DateTimeOffset at)
+    {
+        var grant = _registration.Authenticate(credential, at);
+        if (!string.Equals(grant.SourceType, sourceType, StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException("The allowlist source identity does not match the registered adapter.");
+        }
+
+        SetAllowedTargets(sourceType, targetIds);
+    }
+
+    public void ConfigureSourceEnabled(string credential, string sourceType, bool enabled, DateTimeOffset at)
+    {
+        var grant = _registration.Authenticate(credential, at);
+        if (!string.Equals(grant.SourceType, sourceType, StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException("The source switch identity does not match the registered adapter.");
+        }
+
+        _sourceEnabled[sourceType] = enabled;
+    }
 
     public void SetConnectionEnabled(bool enabled) => _store.SetAcceptEvents(enabled);
 
@@ -73,7 +96,10 @@ public sealed class RelayRouter
             throw new UnauthorizedAccessException("The event source identity does not match the registered adapter.");
         }
 
-        if (!_store.AcceptEvents) return new RelayRouteReceipt(RelayRouteResult.Disabled);
+        if (!_store.AcceptEvents || !_sourceEnabled.GetValueOrDefault(grant.SourceType, true))
+        {
+            return new RelayRouteReceipt(RelayRouteResult.Disabled);
+        }
         var sanitizedEnvelope = envelope with { Payload = System.Text.Json.JsonSerializer.SerializeToElement(eventMessage, ProtocolEnvelope.JsonOptions) };
         AgentProtocolValidator.Validate(sanitizedEnvelope);
         var queued = _store.EnqueueInbound(sanitizedEnvelope, at);
@@ -85,7 +111,10 @@ public sealed class RelayRouter
         var grant = _registration.Authenticate(credential, at);
         var envelope = ProtocolEnvelope.Create("dispatch-" + request.DispatchRequestId, "dispatch_task", request, at);
         AgentProtocolValidator.Validate(envelope);
-        if (!_store.AcceptEvents) return new RelayRouteReceipt(RelayRouteResult.Disabled, request.DispatchRequestId);
+        if (!_store.AcceptEvents || !_sourceEnabled.GetValueOrDefault(grant.SourceType, true))
+        {
+            return new RelayRouteReceipt(RelayRouteResult.Disabled, request.DispatchRequestId);
+        }
         if (_store.GetDispatchReceipt(request.DispatchRequestId) is not null)
         {
             return new RelayRouteReceipt(RelayRouteResult.AlreadyApplied, request.DispatchRequestId);
