@@ -49,7 +49,8 @@ public sealed class AppPipeServer
                 var targets = allowedTargets.EnumerateArray()
                     .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
                     .ToArray();
-                if (string.IsNullOrWhiteSpace(source) || targets.Any(string.IsNullOrWhiteSpace)
+                if (string.IsNullOrWhiteSpace(source) || source.Length > 512 || targets.Any(string.IsNullOrWhiteSpace)
+                    || targets.Any(target => target is null || target.Length > 512)
                     || targets.Any(AgentPayloadSanitizer.ContainsForbiddenText))
                 {
                     throw new AgentProtocolValidationException("The source allowlist must contain opaque target IDs.");

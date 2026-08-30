@@ -1,3 +1,4 @@
+using FgoPet.AgentProtocol;
 using FgoPet.Core.Agents;
 
 namespace FgoPet.Infrastructure.Agents;
@@ -64,6 +65,10 @@ public sealed class AgentReconnectService
             return 0;
         }
         catch (TimeoutException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return 0;
+        }
+        catch (AgentProtocolValidationException) when (!cancellationToken.IsCancellationRequested)
         {
             return 0;
         }

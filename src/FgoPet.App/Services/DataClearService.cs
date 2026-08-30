@@ -15,9 +15,12 @@ public sealed class DataClearService
         _gateway = gateway;
     }
 
-    public void ClearAgentTodoData()
+    public async Task ClearAgentTodoDataAsync(CancellationToken cancellationToken = default)
     {
-        _todos.ClearAgentTodoData();
-        _gateway?.ClearPendingEventsAsync().GetAwaiter().GetResult();
+        await Task.Run(_todos.ClearAgentTodoData, cancellationToken).ConfigureAwait(false);
+        if (_gateway is not null)
+        {
+            await _gateway.ClearPendingEventsAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 }

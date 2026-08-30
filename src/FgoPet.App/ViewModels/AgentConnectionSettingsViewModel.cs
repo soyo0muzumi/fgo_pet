@@ -68,7 +68,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject
         }
     }
 
-    public void Save()
+    public async Task SaveAsync(CancellationToken cancellationToken = default)
     {
         var current = _settings.Load();
         var sourceEnabled = Connections.ToDictionary(item => item.SourceType, item => item.IsEnabled, StringComparer.Ordinal);
@@ -81,25 +81,33 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject
             }
         }
 
-        _settings.Save(current with
+        var updated = current with
         {
             AgentConnection = new AgentConnectionSettings(Enabled, sourceEnabled, allowlist),
-        });
-        _gateway?.SetConnectionEnabledAsync(Enabled).GetAwaiter().GetResult();
+        };
+        await Task.Run(() => _settings.Save(updated), cancellationToken).ConfigureAwait(true);
+        if (_gateway is not null)
+        {
+            await _gateway.SetConnectionEnabledAsync(Enabled, cancellationToken).ConfigureAwait(true);
+        }
         foreach (var item in Connections)
         {
-            _gateway?.SetSourceEnabledAsync(item.SourceType, item.IsEnabled).GetAwaiter().GetResult();
+            if (_gateway is null) continue;
+            await _gateway.SetSourceEnabledAsync(item.SourceType, item.IsEnabled, cancellationToken).ConfigureAwait(true);
             var targets = allowlist.TryGetValue(item.SourceType, out var configured)
                 ? configured.Select(target => target.TargetId).ToArray()
                 : item.Targets.Select(target => target.TargetId).ToArray();
-            _gateway?.SetAllowedTargetsAsync(item.SourceType, targets).GetAwaiter().GetResult();
+            await _gateway.SetAllowedTargetsAsync(item.SourceType, targets, cancellationToken).ConfigureAwait(true);
         }
         StatusText = Enabled ? "Agent 连接设置已保存。" : "Agent 总开关已关闭，待发送事件将被清空。";
     }
 
-    public void ClearAgentTodoData()
+    public async Task ClearAgentTodoDataAsync(CancellationToken cancellationToken = default)
     {
-        _clear?.ClearAgentTodoData();
+        if (_clear is not null)
+        {
+            await _clear.ClearAgentTodoDataAsync(cancellationToken).ConfigureAwait(true);
+        }
         StatusText = "Agent Todo、执行投影、事件回执与归档明细已清除；配对和 allowlist 保留。";
     }
 }

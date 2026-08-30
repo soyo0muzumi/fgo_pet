@@ -12,9 +12,19 @@ public partial class AgentConnectionSettingsView : UserControl
         DataContext = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
     }
 
-    private void OnSaveClick(object sender, RoutedEventArgs e) =>
-        (DataContext as AgentConnectionSettingsViewModel)?.Save();
+    private async void OnSaveClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is AgentConnectionSettingsViewModel viewModel)
+        {
+            await viewModel.SaveAsync();
+        }
+    }
 
-    private void OnClearClick(object sender, RoutedEventArgs e) =>
-        (DataContext as AgentConnectionSettingsViewModel)?.ClearAgentTodoData();
+    private async void OnClearClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is AgentConnectionSettingsViewModel viewModel)
+        {
+            await viewModel.ClearAgentTodoDataAsync();
+        }
+    }
 }

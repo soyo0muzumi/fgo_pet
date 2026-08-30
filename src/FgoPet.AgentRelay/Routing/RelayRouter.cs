@@ -31,6 +31,7 @@ public sealed class RelayRouter
 {
     private readonly RelayStore _store;
     private readonly RegistrationService _registration;
+    private readonly object _stateGate = new();
     private readonly Dictionary<string, bool> _adapterOnline = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _allowedTargets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _sourceEnabled = new(StringComparer.Ordinal);
@@ -46,11 +47,15 @@ public sealed class RelayRouter
 
     public void SetAppOnline(bool online) => _appOnline = online;
 
-    public void SetAdapterOnline(string sourceType, string sourceInstance, bool online) =>
-        _adapterOnline[$"{sourceType}/{sourceInstance}"] = online;
+    public void SetAdapterOnline(string sourceType, string sourceInstance, bool online)
+    {
+        lock (_stateGate) _adapterOnline[$"{sourceType}/{sourceInstance}"] = online;
+    }
 
-    public void SetAllowedTargets(string sourceType, IEnumerable<string> targetIds) =>
-        _allowedTargets[sourceType] = new HashSet<string>(targetIds, StringComparer.Ordinal);
+    public void SetAllowedTargets(string sourceType, IEnumerable<string> targetIds)
+    {
+        lock (_stateGate) _allowedTargets[sourceType] = new HashSet<string>(targetIds, StringComparer.Ordinal);
+    }
 
     public void ConfigureAllowedTargets(string credential, string sourceType, IEnumerable<string> targetIds, DateTimeOffset at)
     {
@@ -71,7 +76,7 @@ public sealed class RelayRouter
             throw new UnauthorizedAccessException("The source switch identity does not match the registered adapter.");
         }
 
-        _sourceEnabled[sourceType] = enabled;
+        lock (_stateGate) _sourceEnabled[sourceType] = enabled;
     }
 
     public void SetConnectionEnabled(bool enabled) => _store.SetAcceptEvents(enabled);
@@ -96,7 +101,7 @@ public sealed class RelayRouter
             throw new UnauthorizedAccessException("The event source identity does not match the registered adapter.");
         }
 
-        if (!_store.AcceptEvents || !_sourceEnabled.GetValueOrDefault(grant.SourceType, true))
+        if (!_store.AcceptEvents || !IsSourceEnabled(grant.SourceType))
         {
             return new RelayRouteReceipt(RelayRouteResult.Disabled);
         }
@@ -120,12 +125,12 @@ public sealed class RelayRouter
             return new RelayRouteReceipt(RelayRouteResult.AlreadyApplied, request.DispatchRequestId);
         }
 
-        if (!_adapterOnline.GetValueOrDefault($"{grant.SourceType}/{grant.SourceInstance}"))
+        if (!IsAdapterOnline(grant.SourceType, grant.SourceInstance))
         {
             return new RelayRouteReceipt(RelayRouteResult.Offline, request.DispatchRequestId, "adapter_offline");
         }
 
-        if (!_allowedTargets.TryGetValue(grant.SourceType, out var targets) || !targets.Contains(request.TargetId))
+        if (!IsTargetAllowed(grant.SourceType, request.TargetId))
         {
             return new RelayRouteReceipt(RelayRouteResult.Unauthorized, request.DispatchRequestId, "target_not_allowed");
         }
@@ -150,7 +155,7 @@ public sealed class RelayRouter
             throw new UnauthorizedAccessException("The open-task source identity does not match the registered adapter.");
         }
 
-        return _adapterOnline.GetValueOrDefault($"{grant.SourceType}/{grant.SourceInstance}")
+        return IsAdapterOnline(grant.SourceType, grant.SourceInstance)
             ? new RelayOpenReceipt(AgentOpenTaskStatus.AppOnly, "exact_navigation_not_supported")
             : new RelayOpenReceipt(AgentOpenTaskStatus.Offline, "adapter_offline");
     }
@@ -160,5 +165,23 @@ public sealed class RelayRouter
         var events = _store.DrainInbound();
         _appOnline = false;
         return events;
+    }
+
+    private bool IsSourceEnabled(string sourceType)
+    {
+        lock (_stateGate) return _sourceEnabled.GetValueOrDefault(sourceType, true);
+    }
+
+    private bool IsAdapterOnline(string sourceType, string sourceInstance)
+    {
+        lock (_stateGate) return _adapterOnline.GetValueOrDefault($"{sourceType}/{sourceInstance}");
+    }
+
+    private bool IsTargetAllowed(string sourceType, string targetId)
+    {
+        lock (_stateGate)
+        {
+            return _allowedTargets.TryGetValue(sourceType, out var targets) && targets.Contains(targetId);
+        }
     }
 }
