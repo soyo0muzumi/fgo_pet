@@ -1,6 +1,9 @@
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Panels;
@@ -63,6 +66,31 @@ public sealed class DialoguePanelIntegrationTests
 
             var input = Assert.IsType<System.Windows.Controls.TextBox>(view.FindName("DialogueInputBox"));
             Assert.NotEqual(System.Windows.Media.Brushes.White, input.Background);
+        });
+    }
+
+    [Fact]
+    public void Dialogue_actions_use_accessible_arrow_and_stop_icons()
+    {
+        StaRun(() =>
+        {
+            var view = new AttachedPanelView
+            {
+                DataContext = new AttachedPanelViewModel(TimeProvider.System),
+            };
+            var send = Assert.IsType<Button>(view.FindName("SendDialogueButton"));
+            var stop = Assert.IsType<Button>(view.FindName("StopDialogueButton"));
+
+            Assert.Equal("发送消息", AutomationProperties.GetName(send));
+            Assert.Equal("停止生成", AutomationProperties.GetName(stop));
+            Assert.Equal(34, send.Width);
+            Assert.Equal(34, send.Height);
+            Assert.Equal(34, stop.Width);
+            Assert.Equal(34, stop.Height);
+            Assert.IsType<Viewbox>(send.Content);
+            Assert.IsType<Viewbox>(stop.Content);
+            Assert.IsType<Path>(((Viewbox)send.Content).Child);
+            Assert.IsType<Path>(((Viewbox)stop.Content).Child);
         });
     }
 
