@@ -26,7 +26,12 @@ public enum AgentDispatchStatus
     Failed,
 }
 
-public sealed record AgentDispatchResult(AgentDispatchStatus Status, string DispatchRequestId, string? SafeError = null);
+public sealed record AgentDispatchResult(
+    AgentDispatchStatus Status,
+    string DispatchRequestId,
+    string? SafeError = null,
+    string? TaskId = null,
+    string? SourceInstance = null);
 
 public sealed record AgentOpenTaskRequest(string SourceType, string SourceInstance, string TaskId);
 

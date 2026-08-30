@@ -1,5 +1,6 @@
 using System.Globalization;
 using FgoPet.Core.Todo;
+using FgoPet.Core.Agents;
 
 namespace FgoPet.App.ViewModels;
 
@@ -7,13 +8,15 @@ public sealed class TodoItemViewModel
 {
     private readonly TimeProvider _time;
 
-    public TodoItemViewModel(TodoItem item, TimeProvider time)
+    public TodoItemViewModel(TodoItem item, TimeProvider time, AgentExecution? execution = null)
     {
         Item = item ?? throw new ArgumentNullException(nameof(item));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        Execution = execution is null ? null : new AgentExecutionViewModel(execution);
     }
 
     public TodoItem Item { get; }
+    public AgentExecutionViewModel? Execution { get; }
     public string Id => Item.Id;
     public string Title => Item.Title;
     public string Description => Item.Description ?? string.Empty;
