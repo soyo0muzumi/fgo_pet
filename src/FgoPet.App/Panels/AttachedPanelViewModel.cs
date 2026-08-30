@@ -42,12 +42,14 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         TimeProvider time,
         IFocusSessionService? focus,
         ConversationViewModel? conversation = null,
-        TodoListViewModel? todoList = null)
+        TodoListViewModel? todoList = null,
+        AgentCurrentTaskViewModel? currentAgentTask = null)
     {
         _time = time;
         _focus = focus;
         Conversation = conversation;
         TodoList = todoList;
+        CurrentAgentTask = currentAgentTask;
         _lastInteraction = time.GetUtcNow();
         if (focus is not null)
         {
@@ -138,6 +140,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     public ObservableCollection<TodoItemViewModel> Todo { get; } = new();
 
     public TodoListViewModel? TodoList { get; }
+
+    public AgentCurrentTaskViewModel? CurrentAgentTask { get; }
 
     public ObservableCollection<TimelineItemViewModel> Today { get; } = new();
 

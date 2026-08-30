@@ -114,6 +114,7 @@ public static class ServiceRegistration
         .AddSingleton<ServantLibraryViewModel>()
         .AddSingleton<IAgentGateway>(_ => new AgentRelayClient(string.Empty))
         .AddSingleton<AgentEventProjector>()
+        .AddSingleton<AgentCurrentTaskViewModel>()
         .AddSingleton<AgentReconnectService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
@@ -173,7 +174,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),
             provider.GetRequiredService<ConversationViewModel>(),
-            provider.GetRequiredService<TodoListViewModel>()))
+            provider.GetRequiredService<TodoListViewModel>(),
+            provider.GetRequiredService<AgentCurrentTaskViewModel>()))
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))
