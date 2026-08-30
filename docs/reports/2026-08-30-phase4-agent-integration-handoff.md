@@ -30,7 +30,7 @@ dotnet build FgoPet.sln --no-restore
 dotnet test FgoPet.sln --no-build
 ```
 
-Release verification passed with 0 warnings, 0 errors, and 568/568 tests passing
+Release verification passed with 0 warnings, 0 errors, and 569/569 tests passing
 across all 8 test assemblies. The Codex plugin manifest validator also passes for
 `integrations/codex/fgo-pet-agent`.
 
@@ -68,4 +68,4 @@ The Phase 4 implementation commits are:
 
 `7afe8a4`, `f139ac3`, `d9ae2ba`, `debd484`, `e6418a1`, `74606ec`, `eada3e6`,
 `38ec69c`, `5fc4a76`, `2b03f93`, `9cb60bc`, `5b45465`, `623109e`, `68b3ff0`,
-`275023c`, `481a36d`, `e63afa9`, and `b8540f8`.
+`275023c`, `481a36d`, `e63afa9`, `b8540f8`, and `21b1efb`.
