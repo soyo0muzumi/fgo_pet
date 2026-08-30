@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
+using FgoPet.AgentProtocol.Validation;
 using FgoPet.AgentRelay.Routing;
 
 namespace FgoPet.AgentRelay.Pipes;
@@ -21,6 +22,12 @@ public sealed class AppPipeServer
     public Task<string> ProcessLineAsync(string line)
     {
         var envelope = ProtocolEnvelope.Parse(line);
+        AgentProtocolValidator.Validate(envelope);
+        if (!string.Equals(envelope.MessageType, "dispatch_task", StringComparison.Ordinal))
+        {
+            throw new AgentProtocolValidationException("App pipe accepts dispatch_task messages only.");
+        }
+
         var request = envelope.DeserializePayload<DispatchTaskRequest>();
         var receipt = _router.RouteDispatch(_credential, request, DateTimeOffset.UtcNow);
         return Task.FromResult($"{{\"result\":\"{receipt.Result.ToString().ToLowerInvariant()}\",\"dispatch_request_id\":\"{request.DispatchRequestId}\"}}");
