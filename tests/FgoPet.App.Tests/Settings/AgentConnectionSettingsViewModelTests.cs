@@ -10,7 +10,7 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class AgentConnectionSettingsViewModelTests
 {
     [Fact]
-    public void Saves_global_and_source_switches_without_touching_allowlist()
+    public async Task Saves_global_and_source_switches_without_touching_allowlist()
     {
         var settings = new FakeSettingsStore();
         var repository = new FakeAgentRepository();
@@ -21,7 +21,7 @@ public sealed class AgentConnectionSettingsViewModelTests
 
         viewModel.Enabled = true;
         viewModel.Connections.Single().IsEnabled = false;
-        viewModel.Save();
+        await viewModel.SaveAsync();
 
         Assert.True(settings.Current.AgentConnection.Enabled);
         Assert.False(settings.Current.AgentConnection.SourceEnabled["codex"]);
