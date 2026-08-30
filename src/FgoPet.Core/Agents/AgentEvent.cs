@@ -12,8 +12,8 @@ public sealed record AgentEvent
         string? title = null,
         string? summary = null,
         bool IsPrivate = false,
-        string? todoId = null,
-        string? dispatchRequestId = null)
+        string? TodoId = null,
+        string? DispatchRequestId = null)
     {
         if (sequence < 1)
         {
@@ -29,10 +29,10 @@ public sealed record AgentEvent
         Title = IsPrivate ? null : NormalizeOptional(title, nameof(title), 500);
         Summary = IsPrivate ? null : NormalizeOptional(summary, nameof(summary), 4_000);
         this.IsPrivate = IsPrivate;
-        TodoId = string.IsNullOrWhiteSpace(todoId) ? null : AgentIdentityValidation.Id(todoId, nameof(todoId));
-        DispatchRequestId = string.IsNullOrWhiteSpace(dispatchRequestId)
+        this.TodoId = string.IsNullOrWhiteSpace(TodoId) ? null : AgentIdentityValidation.Id(TodoId, nameof(TodoId));
+        this.DispatchRequestId = string.IsNullOrWhiteSpace(DispatchRequestId)
             ? null
-            : AgentIdentityValidation.Id(dispatchRequestId, nameof(dispatchRequestId));
+            : AgentIdentityValidation.Id(DispatchRequestId, nameof(DispatchRequestId));
     }
 
     public string SourceType { get; init; }
