@@ -85,7 +85,7 @@ public sealed record ProtocolEnvelope
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
-    internal static JsonSerializerOptions JsonOptions { get; } = new(JsonSerializerDefaults.Web)
+    public static JsonSerializerOptions JsonOptions { get; } = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
         PropertyNameCaseInsensitive = true,

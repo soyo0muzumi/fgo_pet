@@ -71,11 +71,7 @@ public static class AgentProtocolValidator
         RequireText(message.TaskId, nameof(message.TaskId));
         if (message.Sequence < 1) throw new AgentProtocolValidationException("Agent event sequence must be positive.");
         if (!AgentEventWireNames.IsKnown(message.EventType)) throw new AgentProtocolValidationException($"Unknown Agent event '{message.EventType}'.");
-        var sanitized = AgentPayloadSanitizer.Sanitize(message);
-        if (!ReferenceEquals(sanitized, message) && (!string.IsNullOrWhiteSpace(message.Title) || !string.IsNullOrWhiteSpace(message.Summary)))
-        {
-            throw new AgentProtocolValidationException("Private Agent events must not carry title or summary fields.");
-        }
+        _ = AgentPayloadSanitizer.Sanitize(message);
 
         if (string.Equals(message.EventType, "goal_completed", StringComparison.Ordinal))
         {
