@@ -45,6 +45,18 @@ public sealed class ModelConnectionViewModelTests
     }
 
     [Fact]
+    public void Selecting_provider_updates_its_default_endpoint_and_model()
+    {
+        var viewModel = CreateViewModel(new FakeSettings(), new FakeCredentials());
+
+        viewModel.SelectedProviderId = "deepseek";
+
+        Assert.Equal("https://api.deepseek.com/v1", viewModel.BaseUrl);
+        Assert.Equal("deepseek-chat", viewModel.ModelId);
+        Assert.Equal("DeepSeek", viewModel.ProviderStatusText);
+    }
+
+    [Fact]
     public async Task Test_connection_uses_newly_entered_key_before_save()
     {
         var settings = new FakeSettings();

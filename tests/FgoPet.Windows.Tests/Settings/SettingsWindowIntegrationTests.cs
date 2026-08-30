@@ -210,6 +210,32 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
+    public void Tray_show_hide_request_can_show_portrait_before_startup_show()
+    {
+        StaRun(() =>
+        {
+            using var provider = ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var ui = provider.GetRequiredService<DesktopAppUi>();
+            var tray = provider.GetRequiredService<TrayService>();
+            var portrait = provider.GetRequiredService<FgoPet.App.Main.PortraitWindow>();
+            try
+            {
+                ui.InitializeTray();
+                var showHideItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                    .Single(item => item.Text == "显示/隐藏");
+
+                showHideItem.PerformClick();
+
+                Assert.True(portrait.IsVisible);
+            }
+            finally
+            {
+                portrait.Hide();
+            }
+        });
+    }
+
+    [Fact]
     public void Dialogue_settings_request_opens_the_model_connection_section()
     {
         StaRun(() =>

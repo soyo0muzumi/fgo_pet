@@ -51,7 +51,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _controller = controller;
         _conversation = conversation;
         _portraitMenu = CreatePortraitMenu();
-        _tray.ShowHideRequested += (_, _) => _lifetime.ShowOrHidePet();
+        _tray.ShowHideRequested += OnTrayShowHideRequested;
         _tray.RestoreRequested += OnTrayRestoreRequested;
         _tray.SettingsRequested += (_, _) => ShowSettings();
         _tray.OpenPackFolderRequested += (_, _) => OpenPackagesRoot();
@@ -66,6 +66,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         if (_initialized) return;
         _initialized = true;
+        _lifetime.AttachPetWindow(_portrait);
         _portrait.ContextMenu = _portraitMenu;
         _controller.StateChanged += OnPortraitStateChanged;
     }
@@ -101,6 +102,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void Dispose()
     {
+        _tray.ShowHideRequested -= OnTrayShowHideRequested;
         _tray.RestoreRequested -= OnTrayRestoreRequested;
         _controller.StateChanged -= OnPortraitStateChanged;
     }
@@ -144,6 +146,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             _lifetime.ShowOrHidePet();
         }
     }
+
+    private void OnTrayShowHideRequested(object? sender, EventArgs e)
+        => _lifetime.ShowOrHidePet();
 
     private void Exit()
     {

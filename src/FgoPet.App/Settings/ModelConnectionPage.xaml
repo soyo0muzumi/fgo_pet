@@ -17,10 +17,15 @@
                 <ComboBox x:Name="ProviderComboBox"
                           Style="{StaticResource SettingsComboBoxStyle}"
                           ItemsSource="{Binding Providers}"
-                          DisplayMemberPath="DisplayName"
                           SelectedValuePath="ProviderId"
                           SelectedValue="{Binding SelectedProviderId, UpdateSourceTrigger=PropertyChanged}"
-                          automation:AutomationProperties.Name="模型供应商" />
+                          automation:AutomationProperties.Name="模型供应商">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding DisplayName}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
                 <TextBlock Margin="0,14,0,0" Text="API Key" Style="{StaticResource SettingsCaptionStyle}" />
                 <Grid>

@@ -47,6 +47,19 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ProviderStatusText))]
     private string _selectedProviderId;
 
+    partial void OnSelectedProviderIdChanged(string value)
+    {
+        var provider = Providers.FirstOrDefault(candidate => candidate.ProviderId == value);
+        if (provider is null)
+        {
+            return;
+        }
+
+        BaseUrl = provider.DefaultBaseUrl;
+        ModelId = DefaultModel(provider.ProviderId);
+        AvailableModels = Array.Empty<ProviderModel>();
+    }
+
     [ObservableProperty]
     private string _baseUrl;
 

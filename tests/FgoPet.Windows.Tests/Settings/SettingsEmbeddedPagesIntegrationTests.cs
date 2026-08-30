@@ -48,6 +48,29 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
     }
 
     [Fact]
+    public void Model_connection_provider_selector_renders_display_name()
+    {
+        StaRun(() =>
+        {
+            var catalog = new FgoPet.Infrastructure.Providers.ProviderCatalog();
+            var credentials = new FakeCredentials();
+            var viewModel = new ModelConnectionViewModel(
+                new FakeSettingsStore(AppSettings.Defaults),
+                credentials,
+                catalog,
+                new FgoPet.App.Providers.ChatProviderFactory(catalog, credentials, new HttpClient()));
+            var page = new ModelConnectionPage(viewModel);
+
+            var selectedTemplate = Assert.IsType<DataTemplate>(page.ProviderComboBox.ItemTemplate);
+            var selectedLabel = Assert.IsType<TextBlock>(selectedTemplate.LoadContent());
+            var displayBinding = System.Windows.Data.BindingOperations.GetBinding(selectedLabel, TextBlock.TextProperty);
+
+            Assert.Equal("DisplayName", displayBinding?.Path.Path);
+            Assert.Equal("OpenAI", viewModel.Providers.Single(provider => provider.ProviderId == viewModel.SelectedProviderId).DisplayName);
+        });
+    }
+
+    [Fact]
     public void Conversation_memory_page_hosts_review_controls_without_a_top_level_window()
     {
         StaRun(() =>
