@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using FgoPet.App.Dialogue;
@@ -10,8 +11,12 @@ using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
+using FgoPet.Core.Portraits;
+using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Bootstrap;
+
+public delegate Task PortraitActivation(PortraitSelection selection, CancellationToken cancellationToken);
 
 /// <summary>Owns the production WPF windows, tray callbacks, and portrait context menu.</summary>
 public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
@@ -26,8 +31,11 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly AppPaths _paths;
     private readonly PortraitController _controller;
     private readonly ConversationViewModel? _conversation;
+    private readonly PortraitActivation _activatePortrait;
+    private readonly IAppSettingsStore? _appSettings;
     private readonly ContextMenu _portraitMenu;
     private bool _initialized;
+    private Task? _portraitRecovery;
 
     public DesktopAppUi(
         TrayService tray,
@@ -39,7 +47,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         IAppLifetime lifetime,
         AppPaths paths,
         PortraitController controller,
-        ConversationViewModel? conversation = null)
+        ConversationViewModel? conversation = null,
+        PortraitActivation? portraitActivation = null,
+        IAppSettingsStore? appSettings = null)
     {
         _tray = tray;
         _libraryViewModel = libraryViewModel;
@@ -51,6 +61,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _paths = paths;
         _controller = controller;
         _conversation = conversation;
+        _activatePortrait = portraitActivation
+            ?? (controller is null ? ((_, _) => Task.CompletedTask) : controller.ActivateAsync);
+        _appSettings = appSettings;
         _portraitMenu = CreatePortraitMenu();
         _tray.ShowHideRequested += OnTrayShowHideRequested;
         _tray.RestoreRequested += OnTrayRestoreRequested;
@@ -167,8 +180,43 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             return;
         }
 
-        ShowPortrait();
-        _portrait.Activate();
+        if (_controller is null || _controller.CurrentState is not null || _appSettings is null)
+        {
+            ShowPortrait();
+            _portrait.Activate();
+            return;
+        }
+
+        if (_portraitRecovery is null || _portraitRecovery.IsCompleted)
+        {
+            _portraitRecovery = RecoverAndShowPortraitAsync();
+        }
+    }
+
+    private async Task RecoverAndShowPortraitAsync()
+    {
+        var selection = _appSettings?.Load().Selection;
+        if (selection is null)
+        {
+            ShowSettings(SettingsSection.RolePackages);
+            return;
+        }
+
+        try
+        {
+            await _activatePortrait(selection, CancellationToken.None);
+            ShowPortrait();
+            _portrait.Activate();
+        }
+        catch (Exception error)
+        {
+            ShowSettings(SettingsSection.RolePackages);
+            MessageBox.Show(
+                $"人物加载失败：{error.Message}",
+                "FGO Pet",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private void Exit()

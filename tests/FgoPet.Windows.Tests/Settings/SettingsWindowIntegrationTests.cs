@@ -214,7 +214,11 @@ public sealed class SettingsWindowIntegrationTests
     {
         StaRun(() =>
         {
-            using var provider = ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
+            var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
+            using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
             var tray = provider.GetRequiredService<TrayService>();
             var portrait = provider.GetRequiredService<FgoPet.App.Main.PortraitWindow>();
@@ -225,6 +229,7 @@ public sealed class SettingsWindowIntegrationTests
                     .Single(item => item.Text == "显示/隐藏");
 
                 showHideItem.PerformClick();
+                portrait.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 Assert.True(portrait.IsVisible);
             }
@@ -240,7 +245,11 @@ public sealed class SettingsWindowIntegrationTests
     {
         StaRun(() =>
         {
-            using var provider = ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
+            var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
+            using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
             var tray = provider.GetRequiredService<TrayService>();
             var portrait = provider.GetRequiredService<FgoPet.App.Main.PortraitWindow>();
@@ -272,8 +281,11 @@ public sealed class SettingsWindowIntegrationTests
     {
         StaRun(() =>
         {
+            var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<FgoPet.App.Lifetime.IAppLifetime, NonDisplayingLifetime>();
+            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
             var tray = provider.GetRequiredService<TrayService>();
@@ -288,6 +300,42 @@ public sealed class SettingsWindowIntegrationTests
 
                 Assert.True(portrait.IsVisible);
                 Assert.NotEqual(IntPtr.Zero, new WindowInteropHelper(portrait).Handle);
+            }
+            finally
+            {
+                portrait.Hide();
+            }
+        });
+    }
+
+    [Fact]
+    public void Tray_show_request_reactivates_saved_selection_when_portrait_state_is_cold()
+    {
+        StaRun(() =>
+        {
+            var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
+            PortraitSelection? activated = null;
+            var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<PortraitActivation>((requested, _) =>
+            {
+                activated = requested;
+                return Task.CompletedTask;
+            });
+            using var provider = services.BuildServiceProvider();
+            var ui = provider.GetRequiredService<DesktopAppUi>();
+            var tray = provider.GetRequiredService<TrayService>();
+            var portrait = provider.GetRequiredService<FgoPet.App.Main.PortraitWindow>();
+            try
+            {
+                ui.InitializeTray();
+
+                tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
+                    .Single(item => item.Text == "显示/隐藏")
+                    .PerformClick();
+                portrait.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                Assert.Equal(selection, activated);
             }
             finally
             {

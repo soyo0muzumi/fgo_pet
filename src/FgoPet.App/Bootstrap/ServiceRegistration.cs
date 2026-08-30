@@ -77,6 +77,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<PortraitSnapshotCache>(),
             new Dpi2(1, 1)))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<PortraitController>())
+        .AddSingleton<PortraitActivation>(provider => provider.GetRequiredService<PortraitController>().ActivateAsync)
         // Phase 2 runtime: one versioned database plus focus orchestration.
         .AddSingleton(provider => new RuntimeDatabase(provider.GetRequiredService<AppPaths>().RuntimeDatabasePath))
         .AddSingleton<FgoPet.App.Bootstrap.IRuntimeDatabaseMigrator>(provider =>
@@ -165,7 +166,9 @@ public static class ServiceRegistration
             provider.GetRequiredService<IAppLifetime>(),
             provider.GetRequiredService<AppPaths>(),
             provider.GetRequiredService<PortraitController>(),
-            provider.GetRequiredService<ConversationViewModel>()))
+            provider.GetRequiredService<ConversationViewModel>(),
+            provider.GetRequiredService<PortraitActivation>(),
+            provider.GetRequiredService<IAppSettingsStore>()))
         .AddSingleton<IDesktopAppUi>(provider => provider.GetRequiredService<DesktopAppUi>())
         .AddSingleton<IAppShell, DesktopAppShell>()
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)
