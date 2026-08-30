@@ -4,11 +4,12 @@
 
 Phase 3 (settings UI + theme) is implemented per
 `docs/superpowers/plans/2026-08-29-settings-ui-theme-implementation.md`.
-Tasks 1–8 are committed on `main`; Task 9 verification ran clean. Manual
-matrix cells are pending human observation (see
-`docs/testing/phase3-settings-matrix.md`); Phase 3 remains
-**conditionally releasable** — do not ship until every required cell is
-observed.
+The settings shell, runtime dialogue redesign, provider routing, and the
+portrait/tray recovery fixes are committed on `main` and were pushed as the
+release baseline at `ef58d85`. The user completed the Release manual review
+on 2026-08-30; Phase 3 is **accepted and releasable**. Phase 4 work starts
+after this baseline and is tracked separately in
+`docs/superpowers/plans/2026-08-30-phase4-codex-integration-implementation.md`.
 
 ## What landed
 
@@ -31,14 +32,18 @@ observed.
 
 ## Automated verification (2026-08-30)
 
-Command: `scripts/test-phase3-settings.ps1` (four Release suites, serial).
+Command: `dotnet test FgoPet.sln -c Release --no-restore`.
 
 | Suite | Result |
 |-------|--------|
-| FgoPet.Core.Tests | 123 / 123 passed |
-| FgoPet.Infrastructure.Tests | 124 / 124 passed |
-| FgoPet.App.Tests | 167 / 167 passed |
-| FgoPet.Windows.Tests | 59 / 59 passed |
+| FgoPet.Core.Tests | 125 / 125 passed |
+| FgoPet.Infrastructure.Tests | 126 / 126 passed |
+| FgoPet.App.Tests | 171 / 171 passed |
+| FgoPet.Windows.Tests | 68 / 68 passed |
+
+Total: **490 passed / 0 failed / 0 skipped**. A prior parallel run exposed a
+transient WPF `PackagePart` cleanup failure; the affected test passed when
+rerun alone and the complete suite passed on the subsequent run.
 
 `dotnet build FgoPet.sln -c Release -warnaserror`: 0 warnings, 0 errors.
 
@@ -64,9 +69,13 @@ publish is framework-dependent, not self-contained.
   four header columns, hit-testing, drag behavior, and DPI metrics are
   unchanged by the redesign.
 
-## Remaining work (manual)
+## Release follow-up
 
-1. Fill every cell of `docs/testing/phase3-settings-matrix.md` on a clean
-   profile at 100% / 150% / 200% scaling.
-2. Fix any observed failures; rerun the gate script afterward.
-3. Release remains deferred while any required cell is 未观察.
+1. The full multi-DPI matrix in `docs/testing/phase3-settings-matrix.md`
+   remains a public-release hardening aid, not a blocker for the accepted
+   Phase 3 baseline.
+2. The Phase 4 kickoff plan defines the next extension points: versioned
+   event metadata, sanitized Codex events, the local durable outbox,
+   reconnect/deduplication, optional prompt context, and task-jump fallback.
+3. Phase 4 must keep the bridge optional and must not read Codex private data,
+   capture terminal/tool traces, or trigger the model from external events.
