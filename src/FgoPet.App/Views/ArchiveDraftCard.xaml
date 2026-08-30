@@ -1,0 +1,13 @@
+<UserControl x:Class="FgoPet.App.Views.ArchiveDraftCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border Background="#3314243B" BorderBrush="#66D242E8" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,7">
+    <StackPanel>
+      <TextBlock Text="工作归档 · 确认后清理明细" Foreground="#FFD242E8" FontSize="9" FontWeight="Bold"/>
+      <TextBlock Text="{Binding CoveredTodoCount, StringFormat=将归档并清理 {0} 条已完成 Todo}" Foreground="#FF9FB2D8" FontSize="8" Margin="0,3,0,5"/>
+      <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" Foreground="#FFF0F5FF" Background="#33101C2E" BorderBrush="#6638516C" BorderThickness="1" Padding="5"/>
+      <TextBox Text="{Binding Summary, UpdateSourceTrigger=PropertyChanged}" Foreground="#FFF0F5FF" Background="#33101C2E" BorderBrush="#6638516C" BorderThickness="1" Padding="5" MinHeight="35" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,4,0,0"/>
+      <Button Content="确认归档并清理" Click="OnConfirmClick" Foreground="#FFD242E8" Background="Transparent" BorderBrush="#66D242E8" BorderThickness="1" Padding="7,3" HorizontalAlignment="Right" Margin="0,5,0,0" FontSize="9"/>
+    </StackPanel>
+  </Border>
+</UserControl>

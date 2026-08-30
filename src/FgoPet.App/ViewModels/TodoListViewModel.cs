@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Services;
 using FgoPet.Core.Todo;
+using FgoPet.Core.Archives;
 
 namespace FgoPet.App.ViewModels;
 
@@ -29,15 +30,18 @@ public sealed partial class TodoListViewModel : ObservableObject
 
     private readonly TodoApplicationService _service;
     private readonly TimeProvider _time;
+    private readonly IWorkArchiveRepository? _archives;
 
-    public TodoListViewModel(TodoApplicationService service, TimeProvider time)
+    public TodoListViewModel(TodoApplicationService service, TimeProvider time, IWorkArchiveRepository? archives = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _archives = archives;
     }
 
     public ObservableCollection<TodoItemViewModel> VisibleItems { get; } = new();
     public ObservableCollection<TodoGroupViewModel> Groups { get; } = new();
+    public ObservableCollection<WorkArchive> WorkArchives { get; } = new();
 
     [ObservableProperty]
     private TodoListTab _selectedTab = TodoListTab.Todo;
@@ -77,6 +81,7 @@ public sealed partial class TodoListViewModel : ObservableObject
         }
 
         Groups.Clear();
+        WorkArchives.Clear();
         if (SelectedTab == TodoListTab.History)
         {
             foreach (var group in visible.GroupBy(item => GetHistoryHeader(item.Item.CompletedAt ?? item.Item.UpdatedAt)))
@@ -87,6 +92,14 @@ public sealed partial class TodoListViewModel : ObservableObject
         else if (visible.Length > 0)
         {
             Groups.Add(new TodoGroupViewModel("待办事项", visible));
+        }
+
+        if (SelectedTab == TodoListTab.History && _archives is not null)
+        {
+            foreach (var archive in _archives.List())
+            {
+                WorkArchives.Add(archive);
+            }
         }
 
         OnPropertyChanged(nameof(HasOverflow));

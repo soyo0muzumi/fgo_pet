@@ -5,6 +5,7 @@ using FgoPet.Core.Dialogue;
 using FgoPet.App.Settings;
 using FgoPet.Core.Settings;
 using FgoPet.App.ViewModels;
+using FgoPet.App.Archives;
 
 namespace FgoPet.App.Dialogue;
 
@@ -14,6 +15,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly IAppSettingsStore _settings;
     private readonly ModelConnectionViewModel? _modelConnection;
     private readonly TodoProposalService? _todoProposals;
+    private readonly ArchiveDraftService? _archiveDrafts;
     private string _activeConversationId = string.Empty;
     private bool _configurationRequired;
 
@@ -21,12 +23,14 @@ public sealed partial class ConversationViewModel : ObservableObject
         ConversationOrchestrator orchestrator,
         IAppSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
-        TodoProposalService? todoProposals = null)
+        TodoProposalService? todoProposals = null,
+        ArchiveDraftService? archiveDrafts = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _modelConnection = modelConnection;
         _todoProposals = todoProposals;
+        _archiveDrafts = archiveDrafts;
         if (_modelConnection is not null)
         {
             _modelConnection.ConnectionSaved += OnConnectionSaved;
@@ -48,6 +52,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public ObservableCollection<ConversationTurnViewModel> Turns { get; } = new();
     public ObservableCollection<TodoProposalViewModel> TodoProposals { get; } = new();
+    public ObservableCollection<ArchiveDraftViewModel> ArchiveDrafts { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
@@ -121,6 +126,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         _orchestrator.CancelCurrent();
         Turns.Clear();
         ClearTodoProposals();
+        ArchiveDrafts.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
@@ -210,6 +216,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         _orchestrator.StartNewConversation(ActiveServantId);
         Turns.Clear();
         ClearTodoProposals();
+        ArchiveDrafts.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         _configurationRequired = false;
@@ -338,6 +345,16 @@ public sealed partial class ConversationViewModel : ObservableObject
     }
 
     private void OnTodoProposalClosed(TodoProposalViewModel proposal) => TodoProposals.Remove(proposal);
+
+    public void ShowArchiveDraft(ArchiveDraft draft)
+    {
+        if (_archiveDrafts is null)
+        {
+            return;
+        }
+
+        ArchiveDrafts.Add(new ArchiveDraftViewModel(draft, _archiveDrafts));
+    }
 
     partial void OnInputTextChanged(string value)
     {

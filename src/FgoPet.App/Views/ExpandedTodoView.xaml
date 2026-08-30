@@ -59,6 +59,19 @@
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
+    <ItemsControl ItemsSource="{Binding WorkArchives}" Margin="0,3,0,0">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <Border Background="#3314243B" BorderBrush="#6642DFF5" BorderThickness="1" Padding="6" Margin="19,0,0,5">
+            <StackPanel>
+              <TextBlock Text="工作归档" Foreground="{StaticResource Cyan}" FontSize="8" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Text}" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
+              <TextBlock Foreground="{StaticResource Muted}" FontSize="8"><Run Text="{Binding ArchiveDate}"/><Run Text=" · 覆盖 " /><Run Text="{Binding CoveredTodoKeys.Count}"/><Run Text=" 条 Todo"/></TextBlock>
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
     <TextBlock Text="还有更多待办，可在此区域滚动查看" Foreground="{StaticResource Muted}" FontSize="8" Margin="19,0,0,0">
       <TextBlock.Style>
         <Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasOverflow}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
