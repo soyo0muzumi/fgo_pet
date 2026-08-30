@@ -16,6 +16,7 @@ public sealed class SettingsViewModelTests
             item => AssertItem(item, SettingsSection.Personalization, "个性化", "IconPersonalizationGeometry"),
             item => AssertItem(item, SettingsSection.RolePackages, "角色包", "IconRolePackageGeometry"),
             item => AssertItem(item, SettingsSection.ModelConnection, "AI 模型与连接", "IconConnectionGeometry"),
+            item => AssertItem(item, SettingsSection.AgentConnection, "Agent 连接", "IconAgentGeometry"),
             item => AssertItem(item, SettingsSection.ConversationMemory, "对话与记忆", "IconConversationGeometry"),
             item => AssertItem(item, SettingsSection.Privacy, "数据与隐私", "IconPrivacyGeometry"),
             item => AssertItem(item, SettingsSection.Theme, "主题", "IconThemeGeometry"));

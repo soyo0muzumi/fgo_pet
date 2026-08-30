@@ -19,6 +19,7 @@ using FgoPet.App.Theming;
 using FgoPet.App.Services;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Archives;
+using FgoPet.App.Views.Settings;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Agents;
@@ -104,6 +105,7 @@ public static class ServiceRegistration
         .AddSingleton<TodoApplicationService>()
         .AddSingleton<TodoProposalService>()
         .AddSingleton<ArchiveDraftService>()
+        .AddSingleton<DataClearService>()
         .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
@@ -117,6 +119,8 @@ public static class ServiceRegistration
         .AddSingleton<IAgentGateway>(_ => new AgentRelayClient(string.Empty))
         .AddSingleton<AgentEventProjector>()
         .AddSingleton<AgentCurrentTaskViewModel>()
+        .AddSingleton<AgentConnectionSettingsViewModel>()
+        .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
         .AddSingleton<AgentReconnectService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
@@ -145,6 +149,7 @@ public static class ServiceRegistration
                 provider.GetRequiredService<IAppSettingsStore>(),
                 provider.GetRequiredService<SettingsViewModel>())),
             SettingsSection.ModelConnection => provider.GetRequiredService<ModelConnectionPage>(),
+            SettingsSection.AgentConnection => provider.GetRequiredService<AgentConnectionSettingsView>(),
             SettingsSection.ConversationMemory => provider.GetRequiredService<ConversationMemoryPage>(),
             SettingsSection.Privacy => provider.GetRequiredService<PrivacyPage>(),
             SettingsSection.Theme => provider.GetRequiredService<ThemePage>(),

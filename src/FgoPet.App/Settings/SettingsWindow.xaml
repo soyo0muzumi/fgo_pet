@@ -74,6 +74,9 @@
                                                 <DataTrigger Binding="{Binding IconKey}" Value="IconConnectionGeometry">
                                                     <Setter Property="Data" Value="{StaticResource IconConnectionGeometry}" />
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding IconKey}" Value="IconAgentGeometry">
+                                                    <Setter Property="Data" Value="{StaticResource IconConnectionGeometry}" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding IconKey}" Value="IconConversationGeometry">
                                                     <Setter Property="Data" Value="{StaticResource IconConversationGeometry}" />
                                                 </DataTrigger>

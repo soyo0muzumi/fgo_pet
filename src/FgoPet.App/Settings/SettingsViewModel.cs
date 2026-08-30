@@ -11,6 +11,7 @@ public sealed class SettingsViewModel : ObservableObject
         new(SettingsSection.Personalization, "个性化", "调整应用的个性化偏好。", "IconPersonalizationGeometry"),
         new(SettingsSection.RolePackages, "角色包", "安装、浏览并管理角色包。", "IconRolePackageGeometry"),
         new(SettingsSection.ModelConnection, "AI 模型与连接", "配置提供商、凭据、端点和模型。", "IconConnectionGeometry"),
+        new(SettingsSection.AgentConnection, "Agent 连接", "管理 Agent 来源、授权和项目 allowlist。", "IconAgentGeometry"),
         new(SettingsSection.ConversationMemory, "对话与记忆", "管理对话和记忆偏好。", "IconConversationGeometry"),
         new(SettingsSection.Privacy, "数据与隐私", "导出或清理本地用户数据。", "IconPrivacyGeometry"),
         new(SettingsSection.Theme, "主题", "选择设置界面的视觉主题。", "IconThemeGeometry"),
