@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
+    <ProjectReference Include="..\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
   </ItemGroup>
 </Project>

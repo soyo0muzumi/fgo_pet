@@ -18,12 +18,14 @@ using FgoPet.App.Tray;
 using FgoPet.App.Theming;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Bond;
+using FgoPet.Infrastructure.Agents;
 using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.FileSystem;
 using FgoPet.Infrastructure.Focus;
@@ -88,6 +90,9 @@ public static class ServiceRegistration
         .AddSingleton<SqliteEventStore>()
         .AddSingleton<SqliteTimelineRepository>()
         .AddSingleton<SqliteBondRepository>()
+        .AddSingleton<SqliteTodoRepository>()
+        .AddSingleton<SqliteAgentRepository>()
+        .AddSingleton<SqliteWorkArchiveRepository>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
         .AddSingleton<FocusSessionService>()
@@ -97,6 +102,9 @@ public static class ServiceRegistration
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
+        .AddSingleton<IAgentGateway>(_ => new AgentRelayClient(string.Empty))
+        .AddSingleton<AgentEventProjector>()
+        .AddSingleton<AgentReconnectService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<HttpClient>()
@@ -146,7 +154,10 @@ public static class ServiceRegistration
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
         .AddSingleton<ConversationOrchestrator>()
-        .AddSingleton<ConversationViewModel>()
+        .AddSingleton(provider => new ConversationViewModel(
+            provider.GetRequiredService<ConversationOrchestrator>(),
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<ModelConnectionViewModel>()))
         .AddSingleton(provider => new AttachedPanelViewModel(
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IFocusSessionService>(),
