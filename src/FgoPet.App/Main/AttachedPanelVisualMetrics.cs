@@ -20,7 +20,7 @@ internal static class AttachedPanelVisualMetrics
         {
             AttachedPanelState.ExpandedFocus when customPresetVisible => 370,
             AttachedPanelState.ExpandedFocus => 240,
-            AttachedPanelState.ExpandedToday or AttachedPanelState.ExpandedTodo or AttachedPanelState.ExpandedDialogue => 260,
+            AttachedPanelState.ExpandedToday or AttachedPanelState.ExpandedTodo or AttachedPanelState.ExpandedDialogue => 220,
             _ when compactTimerVisible => 170,
             _ => 150,
         };

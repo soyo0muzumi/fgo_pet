@@ -1,4 +1,5 @@
 using System.IO;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -57,6 +58,7 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Equal(AppTheme.ModernGray, settings.Theme);
         Assert.Null(settings.UserProfile);
         Assert.Empty(settings.PackageSettings);
+        Assert.False(settings.AgentConnection.Enabled);
     }
 
     [Fact]
@@ -103,6 +105,38 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Contains("\"user_profile\"", json);
         Assert.Contains("\"display_name\":\"xqj\"", json);
         Assert.Contains("\"package_settings\"", json);
+    }
+
+    [Fact]
+    public void Save_then_Load_roundtrips_agent_connection_and_compatibility_dictionaries()
+    {
+        var saved = AppSettings.Defaults with
+        {
+            AgentConnection = new AgentConnectionSettings(
+                Enabled: true,
+                SourceEnabled: new Dictionary<string, bool>
+                {
+                    ["codex"] = true,
+                    ["cursor"] = false,
+                },
+                ProjectAllowlist: new Dictionary<string, IReadOnlyList<AgentProjectTarget>>
+                {
+                    ["codex"] = new[] { new AgentProjectTarget("opaque-project", "Project") },
+                }),
+        };
+
+        _store.Save(saved);
+
+        var loaded = _store.Load();
+        Assert.True(loaded.AgentConnection.Enabled);
+        Assert.Equal(saved.AgentConnection.SourceEnabled, loaded.AgentConnection.SourceEnabled);
+        Assert.Equal(saved.AgentConnection.ProjectAllowlist, loaded.AgentConnection.ProjectAllowlist);
+
+        var json = File.ReadAllText(_store.Location);
+        Assert.Contains("\"agent_connection\"", json);
+        Assert.Contains("\"source_enabled\"", json);
+        Assert.Contains("\"project_allowlist\"", json);
+        Assert.Contains("\"opaque-project\"", json);
     }
 
     [Fact]

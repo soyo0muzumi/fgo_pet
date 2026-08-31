@@ -36,6 +36,8 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             Assert.NotNull(page.ApiKeyBox);
             Assert.NotNull(page.BaseUrlBox);
             Assert.NotNull(page.ModelTextBox);
+            Assert.NotNull(page.ModelPickerToggle);
+            Assert.NotNull(page.ModelPickerPopup);
             Assert.NotNull(page.ModelList);
             Assert.NotNull(page.ModelListEmptyState);
             Assert.NotNull(page.RefreshModelsButton);
@@ -187,6 +189,14 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
         {
             try { action(); }
             catch (Exception error) { failure = error; }
+            finally
+            {
+                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
+                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+                {
+                    dispatcher.InvokeShutdown();
+                }
+            }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();

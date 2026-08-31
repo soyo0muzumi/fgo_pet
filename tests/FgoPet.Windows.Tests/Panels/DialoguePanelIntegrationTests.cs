@@ -3,7 +3,9 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Shapes;
+using System.Windows.Input;
 using System.Windows.Threading;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Panels;
@@ -39,7 +41,7 @@ public sealed class DialoguePanelIntegrationTests
             Assert.NotNull(view.FindName("DialogueButton"));
             Assert.NotNull(view.FindName("DialogueInputBox"));
             Assert.NotNull(view.FindName("SendDialogueButton"));
-            Assert.NotNull(view.FindName("StopDialogueButton"));
+            Assert.Null(view.FindName("StopDialogueButton"));
             Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
         });
     }
@@ -70,7 +72,7 @@ public sealed class DialoguePanelIntegrationTests
     }
 
     [Fact]
-    public void Dialogue_actions_use_accessible_arrow_and_stop_icons()
+    public void Dialogue_uses_one_compact_circular_action_button()
     {
         StaRun(() =>
         {
@@ -79,18 +81,31 @@ public sealed class DialoguePanelIntegrationTests
                 DataContext = new AttachedPanelViewModel(TimeProvider.System),
             };
             var send = Assert.IsType<Button>(view.FindName("SendDialogueButton"));
-            var stop = Assert.IsType<Button>(view.FindName("StopDialogueButton"));
 
-            Assert.Equal("发送消息", AutomationProperties.GetName(send));
-            Assert.Equal("停止生成", AutomationProperties.GetName(stop));
-            Assert.Equal(34, send.Width);
-            Assert.Equal(34, send.Height);
-            Assert.Equal(34, stop.Width);
-            Assert.Equal(34, stop.Height);
-            Assert.IsType<Viewbox>(send.Content);
-            Assert.IsType<Viewbox>(stop.Content);
-            Assert.IsType<Path>(((Viewbox)send.Content).Child);
-            Assert.IsType<Path>(((Viewbox)stop.Content).Child);
+            var actionLabelBinding = BindingOperations.GetBinding(send, AutomationProperties.NameProperty);
+            Assert.Equal("Conversation.ActionLabel", actionLabelBinding?.Path.Path);
+            Assert.Equal(20, send.Width);
+            Assert.Equal(20, send.Height);
+            Assert.Null(view.FindName("StopDialogueButton"));
+            Assert.IsType<Grid>(send.Content);
+        });
+    }
+
+    [Fact]
+    public void Dialogue_input_sends_on_enter_without_overriding_shift_enter()
+    {
+        StaRun(() =>
+        {
+            var view = new AttachedPanelView
+            {
+                DataContext = new AttachedPanelViewModel(TimeProvider.System),
+            };
+            var input = Assert.IsType<TextBox>(view.FindName("DialogueInputBox"));
+            var binding = Assert.Single(input.InputBindings.OfType<KeyBinding>());
+
+            Assert.Equal(Key.Enter, binding.Key);
+            Assert.Equal(ModifierKeys.None, binding.Modifiers);
+            Assert.True(input.AcceptsReturn);
         });
     }
 
@@ -210,6 +225,14 @@ public sealed class DialoguePanelIntegrationTests
             catch (Exception error)
             {
                 failure = error;
+            }
+            finally
+            {
+                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
+                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+                {
+                    dispatcher.InvokeShutdown();
+                }
             }
         });
         thread.SetApartmentState(ApartmentState.STA);

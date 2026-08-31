@@ -20,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="..\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Drawing" />
@@ -29,4 +31,19 @@
     <InternalsVisibleTo Include="FgoPet.App.Tests" />
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
+  <Target Name="CopySiblingRelay" AfterTargets="Build">
+    <ItemGroup>
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\FgoPet.AgentRelay\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
+      <!-- WPF gets this assembly from WindowsDesktop; standalone companions need their own copy. -->
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SiblingRelay)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishSiblingRelay" AfterTargets="Publish">
+    <ItemGroup>
+      <PublishedCompanion Include="$(TargetDir)FgoPet.AgentRelay.*;$(TargetDir)FgoPet.CodexAdapter.*;$(TargetDir)System.Security.Cryptography.ProtectedData.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PublishedCompanion)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -34,6 +34,27 @@ public sealed class ModelConnectionViewModelTests
     }
 
     [Fact]
+    public async Task Save_raises_connection_saved_after_persisting_metadata()
+    {
+        var settings = new FakeSettings();
+        var credentials = new FakeCredentials();
+        var viewModel = CreateViewModel(settings, credentials);
+        viewModel.SelectedProviderId = "deepseek";
+        viewModel.BaseUrl = "https://api.deepseek.com/v1";
+        viewModel.ModelId = "deepseek-reasoner";
+        ModelConnectionSettings? saved = null;
+        viewModel.ConnectionSaved += connection => saved = connection;
+        viewModel.SetApiKey("secret-value");
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(settings.Saved!.ModelConnection, saved);
+        Assert.Equal("deepseek", saved?.ProviderId);
+        Assert.Equal("deepseek-reasoner", saved?.ModelId);
+    }
+
+    [Fact]
     public void Provider_catalog_exposes_provider_and_model_labels_for_status()
     {
         var viewModel = CreateViewModel(new FakeSettings(), new FakeCredentials());

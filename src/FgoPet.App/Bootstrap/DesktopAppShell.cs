@@ -2,6 +2,7 @@ using FgoPet.App.Servants;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Agents;
 using FgoPet.Infrastructure.Agents;
 using Microsoft.Extensions.Logging;
 
@@ -41,7 +42,8 @@ public sealed class DesktopAppShell : IAppShell
         IPhase2Availability? phase2 = null,
         Func<ServantFocusConnector>? connectorFactory = null,
         ILogger<DesktopAppShell>? logger = null,
-        AgentReconnectService? agentReconnect = null)
+        AgentReconnectService? agentReconnect = null,
+        IAgentRelayRuntime? agentRuntime = null)
     {
         _repository = repository;
         _controller = controller;
@@ -53,10 +55,19 @@ public sealed class DesktopAppShell : IAppShell
         _connectorFactory = connectorFactory;
         _logger = logger;
         _agentReconnect = agentReconnect;
+        _agentRuntime = agentRuntime;
+        if (_agentRuntime is not null)
+        {
+            _agentRuntime.SnapshotChanged += OnAgentRuntimeSnapshotChanged;
+        }
     }
 
     private readonly ILogger<DesktopAppShell>? _logger;
     private readonly AgentReconnectService? _agentReconnect;
+    private readonly IAgentRelayRuntime? _agentRuntime;
+    private bool _agentStarted;
+    private bool _agentRuntimeEnabled;
+    private int _reconnectReady;
 
     public async Task StartAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -65,7 +76,28 @@ public sealed class DesktopAppShell : IAppShell
 
         // 2-3. Phase 2 runtime: migrate then restore, degrading on any failure.
         InitializePhase2Runtime();
-        await ReconnectAgentAsync(cancellationToken).ConfigureAwait(true);
+        if (_agentRuntime is not null)
+        {
+            var startedAgentRuntime = false;
+            if (!_agentStarted)
+            {
+                _agentStarted = true;
+                startedAgentRuntime = true;
+                _agentRuntimeEnabled = _settings.Load().AgentConnection.Enabled && _phase2?.IsAvailable != false;
+                // Disabled startup may notify an existing Relay, but never launches it.
+                // Neither that bounded probe nor enabled bootstrap blocks the desktop.
+                _ = StartAgentRuntimeAsync(_agentRuntimeEnabled);
+            }
+
+            // Runtime startup is intentionally fire-and-forget, so reconnect once
+            // here for an already-running Relay and again when the runtime first
+            // publishes an online snapshot after bootstrapping one.
+            if (startedAgentRuntime && _agentRuntimeEnabled)
+            {
+                _ = ReconnectAgentAsync(cancellationToken);
+            }
+        }
+        else await ReconnectAgentAsync(cancellationToken).ConfigureAwait(true);
 
         var offeredPack = arguments.FirstOrDefault(path =>
             path.EndsWith(".fgopetpack", StringComparison.OrdinalIgnoreCase));
@@ -101,6 +133,40 @@ public sealed class DesktopAppShell : IAppShell
 
         // 4. Portrait last.
         _ui.ShowPortrait();
+    }
+
+    private async Task StartAgentRuntimeAsync(bool enabled)
+    {
+        try { await _agentRuntime!.SetEnabledAsync(enabled).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            _logger?.LogWarning("Agent runtime startup unavailable: {ExceptionType}", error.GetType().Name);
+        }
+    }
+
+    private void OnAgentRuntimeSnapshotChanged(AgentRelaySnapshot snapshot)
+    {
+        var enabled = _phase2?.IsAvailable != false && _settings.Load().AgentConnection.Enabled;
+        _agentRuntimeEnabled = enabled;
+        if (!enabled || _agentReconnect is null)
+        {
+            // A disabled setting starts a fresh reconnect cycle. Clear the
+            // online-cycle gate even when the runtime snapshot is still online
+            // so enabling it again can reconcile persisted executions once.
+            Volatile.Write(ref _reconnectReady, 0);
+            return;
+        }
+
+        if (!snapshot.RelayOnline)
+        {
+            Volatile.Write(ref _reconnectReady, 0);
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _reconnectReady, 1) == 0)
+        {
+            _ = ReconnectAgentAsync(CancellationToken.None);
+        }
     }
 
     private async Task ReconnectAgentAsync(CancellationToken cancellationToken)

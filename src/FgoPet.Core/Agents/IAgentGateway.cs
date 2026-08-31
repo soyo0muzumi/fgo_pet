@@ -16,7 +16,10 @@ public sealed record AgentDispatchRequest(
     TodoPriority Priority,
     DateTimeOffset? DueAt,
     string SourceType,
-    string TargetId);
+    string TargetId)
+{
+    public string? SourceInstanceId { get; init; }
+}
 
 public enum AgentDispatchStatus
 {
@@ -56,6 +59,11 @@ public interface IAgentGateway
         CancellationToken cancellationToken = default);
 
     Task ClearPendingEventsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>Confirms events only after the caller has durably projected them.</summary>
+    Task AcknowledgeEventsAsync(
+        IReadOnlyList<AgentEvent> events,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     Task SetConnectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

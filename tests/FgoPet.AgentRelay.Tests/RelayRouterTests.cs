@@ -39,7 +39,7 @@ public sealed class RelayRouterTests
         var router = new RelayRouter(store, registration);
         var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
         var grant = Approve(registration, at);
-        router.SetAdapterOnline("codex", grant.SourceInstance, true);
+        router.TouchAdapterOnline(grant, at);
         router.SetAllowedTargets("codex", new[] { "opaque-project" });
         var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
 
@@ -88,6 +88,133 @@ public sealed class RelayRouterTests
         var queued = Assert.Single(router.DrainInbound()).DeserializePayload<AgentEventMessage>();
         Assert.Null(queued.Title);
         Assert.Null(queued.Summary);
+    }
+
+    [Fact]
+    public void Relay_delivery_survives_restart_until_explicit_acknowledgement()
+    {
+        var state = new InMemoryRelayStateStore();
+        var firstStore = new RelayStore(state);
+        var firstRegistration = new RegistrationService(firstStore);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(firstRegistration, at);
+        var firstRouter = new RelayRouter(firstStore, firstRegistration);
+        firstRouter.TouchAdapterOnline(grant, at);
+        firstRouter.SetAllowedTargets("codex", new[] { "opaque-project" });
+        var message = new AgentEventMessage("codex", grant.SourceInstance, "task-1", 1, "task_started", at);
+        Assert.Equal(RelayRouteResult.Queued, firstRouter.RouteAdapterEvent(
+            grant.Credential, ProtocolEnvelope.Create("event-1", "agent_event", message, at), at).Result);
+        var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project")
+        {
+            SourceType = "codex", SourceInstanceId = grant.SourceInstance,
+        };
+        Assert.Equal(RelayRouteResult.Accepted, firstRouter.RouteDispatch(grant.Credential, request, at).Result);
+
+        var restartedStore = new RelayStore(state);
+        var restartedRegistration = new RegistrationService(restartedStore);
+        var restartedRouter = new RelayRouter(restartedStore, restartedRegistration);
+        restartedRouter.TouchAdapterOnline(grant, at);
+        Assert.Single(restartedRouter.DrainInbound(consume: false));
+        Assert.Single(restartedRouter.DrainOutbound(grant, at, consume: false));
+
+        Assert.Equal("acknowledged", restartedRouter.AcknowledgeInbound(new EventAcknowledgementRequest(
+            "codex", grant.SourceInstance, new[] { new EventAcknowledgement("task-1", 1) }), at));
+        Assert.Equal("acknowledged", restartedRouter.AcknowledgeDispatches(grant, new DispatchAcknowledgementRequest(
+            "codex", grant.SourceInstance, new[] { request.DispatchRequestId }), at));
+        var afterAck = new RelayStore(state);
+        Assert.Empty(afterAck.DrainInbound(consume: false));
+        Assert.Empty(afterAck.DrainOutbound("codex", grant.SourceInstance, consume: false));
+    }
+
+    [Fact]
+    public void Clearing_pending_delivery_removes_receipts_so_retry_is_not_a_false_duplicate()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(registration, at);
+        router.TouchAdapterOnline(grant, at);
+        router.SetAllowedTargets("codex", new[] { "opaque-project" });
+        var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
+        Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at).Result);
+        router.ClearPending();
+        Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at).Result);
+    }
+
+    [Fact]
+    public void Outbound_capacity_returns_backpressure_without_dropping_the_new_request()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(registration, at);
+        router.TouchAdapterOnline(grant, at);
+        router.SetAllowedTargets("codex", new[] { "opaque-project" });
+        for (var index = 0; index < RelayStore.MaxQueuedDispatches; index++)
+        {
+            var request = new DispatchTaskRequest($"dispatch-{index}", $"todo-{index}", "Ship it", null, "normal", null, "opaque-project");
+            Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at).Result);
+        }
+
+        var rejected = router.RouteDispatch(grant.Credential,
+            new DispatchTaskRequest("dispatch-over-capacity", "todo-over-capacity", "Ship it", null, "normal", null, "opaque-project"), at);
+
+        Assert.Equal(RelayRouteResult.Backpressure, rejected.Result);
+        Assert.Equal(RelayStore.MaxQueuedDispatches, store.Snapshot.Outbound.Count);
+        Assert.Null(store.GetDispatchReceipt("dispatch-over-capacity"));
+    }
+
+    [Fact]
+    public void Acknowledged_events_release_queue_dedupe_keys_but_keep_sequence_watermark()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(registration, at);
+        for (var sequence = 1; sequence <= RelayStore.MaxInboundEventKeys + 1; sequence++)
+        {
+            var message = new AgentEventMessage("codex", grant.SourceInstance, "task-1", sequence, "task_updated", at);
+            Assert.Equal(RelayRouteResult.Queued, router.RouteAdapterEvent(
+                grant.Credential, ProtocolEnvelope.Create($"event-{sequence}", "agent_event", message, at), at).Result);
+            Assert.Equal("acknowledged", router.AcknowledgeInbound(new EventAcknowledgementRequest(
+                "codex", grant.SourceInstance, new[] { new EventAcknowledgement("task-1", sequence) }), at));
+        }
+
+        Assert.Empty(store.Snapshot.InboundEventKeys);
+        Assert.Single(store.Snapshot.InboundEventWatermarks);
+        Assert.Equal(RelayStore.MaxInboundEventKeys + 1, store.Snapshot.InboundEventWatermarks[0].Sequence);
+        var replay = new AgentEventMessage("codex", grant.SourceInstance, "task-1", RelayStore.MaxInboundEventKeys, "task_updated", at);
+        Assert.Equal(RelayRouteResult.AlreadyApplied, router.RouteAdapterEvent(
+            grant.Credential, ProtocolEnvelope.Create("replay", "agent_event", replay, at), at).Result);
+    }
+
+    [Fact]
+    public void Structured_event_identity_prevents_slash_collisions_and_cross_source_ack()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var first = new RegistrationGrant("a/b", "c", Convert.ToBase64String(new byte[32]), at, Enabled: true);
+        var second = new RegistrationGrant("a", "b/c", Convert.ToBase64String(Enumerable.Repeat((byte)1, 32).ToArray()), at, Enabled: true);
+        store.SaveGrant(first);
+        store.SaveGrant(second);
+        var firstMessage = new AgentEventMessage(first.SourceType, first.SourceInstance, "d", 1, "task_started", at);
+        var secondMessage = new AgentEventMessage(second.SourceType, second.SourceInstance, "d", 1, "task_started", at);
+
+        Assert.Equal(RelayRouteResult.Queued, router.RouteAdapterEvent(first.Credential,
+            ProtocolEnvelope.Create("event-first", "agent_event", firstMessage, at), at).Result);
+        Assert.Equal(RelayRouteResult.Queued, router.RouteAdapterEvent(second.Credential,
+            ProtocolEnvelope.Create("event-second", "agent_event", secondMessage, at), at).Result);
+        Assert.Equal("acknowledged", router.AcknowledgeInbound(new EventAcknowledgementRequest(
+            first.SourceType, first.SourceInstance, new[] { new EventAcknowledgement("d", 1) }), at));
+
+        var remaining = Assert.Single(router.DrainInbound(consume: false)).DeserializePayload<AgentEventMessage>();
+        Assert.Equal(second.SourceType, remaining.SourceType);
+        Assert.Equal(second.SourceInstance, remaining.SourceInstance);
     }
 
     private static RegistrationGrant Approve(RegistrationService service, DateTimeOffset at)

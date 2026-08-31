@@ -19,6 +19,14 @@ public partial class ModelConnectionPage : UserControl
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await _viewModel.InitializeAsync();
 
+    private void OnModelSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count > 0 && ModelPickerPopup.IsOpen)
+        {
+            _viewModel.IsModelPickerOpen = false;
+        }
+    }
+
     private void OnOfflineClick(object sender, RoutedEventArgs e) =>
         StatusChanged?.Invoke(this, EventArgs.Empty);
 

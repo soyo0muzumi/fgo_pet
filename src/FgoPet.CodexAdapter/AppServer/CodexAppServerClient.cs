@@ -6,6 +6,7 @@ namespace FgoPet.CodexAdapter.AppServer;
 public interface ICodexTargetResolver
 {
     string Resolve(string targetId);
+    bool IsReadOnly(string targetId) => false;
 }
 
 public interface ICodexAppServerRpc
@@ -13,7 +14,7 @@ public interface ICodexAppServerRpc
     Task<JsonElement> CallAsync(string method, object parameters, CancellationToken cancellationToken = default);
 }
 
-public sealed record CodexStartedTask(string TaskId);
+public sealed record CodexStartedTask(string TaskId, string? TurnId = null);
 
 public sealed class CodexAppServerClient
 {
@@ -32,11 +33,12 @@ public sealed class CodexAppServerClient
     {
         ArgumentNullException.ThrowIfNull(request);
         var cwd = _targets.Resolve(request.TargetId);
+        var readOnly = _targets.IsReadOnly(request.TargetId);
         var thread = await _rpc.CallAsync(
             "thread/start",
-            new { cwd },
+            new { cwd, approvalPolicy = "on-request", sandbox = readOnly ? "read-only" : "workspace-write", serviceName = "fgo-pet" },
             cancellationToken).ConfigureAwait(false);
-        var taskId = ReadString(thread, "thread_id") ?? ReadString(thread, "id");
+        var taskId = thread.GetProperty("thread").GetProperty("id").GetString();
         if (string.IsNullOrWhiteSpace(taskId))
         {
             throw new InvalidOperationException("Codex App Server did not return a thread ID.");
@@ -45,84 +47,16 @@ public sealed class CodexAppServerClient
         var input = string.IsNullOrWhiteSpace(request.Description)
             ? request.Title
             : $"{request.Title}\n\n{request.Description}";
-        await _rpc.CallAsync(
+        object sandboxPolicy = readOnly
+            ? new { type = "readOnly", networkAccess = false }
+            : new { type = "workspaceWrite", writableRoots = new[] { cwd }, networkAccess = false, excludeSlashTmp = true, excludeTmpdirEnvVar = true };
+        var turn = await _rpc.CallAsync(
             "turn/start",
-            new { thread_id = taskId, input },
+            new { threadId = taskId, input = new[] { new { type = "text", text = input } }, cwd, approvalPolicy = "on-request", sandboxPolicy },
             cancellationToken).ConfigureAwait(false);
-        return new CodexStartedTask(taskId);
+        var turnId = turn.GetProperty("turn").GetProperty("id").GetString();
+        if (string.IsNullOrWhiteSpace(turnId)) throw new InvalidDataException("codex_turn_missing");
+        return new CodexStartedTask(taskId, turnId);
     }
 
-    private static string? ReadString(JsonElement value, string propertyName)
-    {
-        if (value.TryGetProperty(propertyName, out var direct) && direct.ValueKind == JsonValueKind.String)
-        {
-            return direct.GetString();
-        }
-
-        return value.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Object
-            ? ReadString(result, propertyName)
-            : null;
-    }
-}
-
-public sealed class JsonRpcLineClient : ICodexAppServerRpc, IAsyncDisposable
-{
-    private readonly StreamReader _reader;
-    private readonly StreamWriter _writer;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private long _nextId;
-
-    public JsonRpcLineClient(Stream input, Stream output)
-    {
-        _reader = new StreamReader(input ?? throw new ArgumentNullException(nameof(input)), leaveOpen: true);
-        _writer = new StreamWriter(output ?? throw new ArgumentNullException(nameof(output))) { AutoFlush = true };
-    }
-
-    public async Task<JsonElement> CallAsync(string method, object parameters, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var id = Interlocked.Increment(ref _nextId);
-            await _writer.WriteLineAsync(JsonSerializer.Serialize(new
-            {
-                jsonrpc = "2.0",
-                id,
-                method,
-                @params = parameters,
-            })).ConfigureAwait(false);
-            while (await _reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
-            {
-                using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                if (!root.TryGetProperty("id", out var responseId) || responseId.GetInt64() != id)
-                {
-                    continue;
-                }
-
-                if (root.TryGetProperty("error", out var error))
-                {
-                    throw new InvalidOperationException(error.ToString());
-                }
-
-                return root.TryGetProperty("result", out var result)
-                    ? result.Clone()
-                    : root.Clone();
-            }
-
-            throw new EndOfStreamException("Codex App Server closed the RPC stream.");
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        _gate.Dispose();
-        _reader.Dispose();
-        _writer.Dispose();
-        return ValueTask.CompletedTask;
-    }
 }

@@ -13,6 +13,8 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
         _projector = projector ?? throw new ArgumentNullException(nameof(projector));
         _ = time ?? throw new ArgumentNullException(nameof(time));
         _projector.EventApplied += OnProjectorEventApplied;
+        _projector.ExecutionRestored += OnExecutionRestored;
+        Refresh();
     }
 
     [ObservableProperty]
@@ -108,4 +110,6 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 
         Refresh();
     }
+
+    private void OnExecutionRestored(AgentExecution execution) => Refresh();
 }

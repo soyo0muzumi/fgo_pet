@@ -52,37 +52,76 @@
                          Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
                          automation:AutomationProperties.Name="Base URL" />
 
-                <TextBlock Margin="0,14,0,0" Text="当前 Model" Style="{StaticResource SettingsCaptionStyle}" />
+                <TextBlock Margin="0,14,0,0" Text="当前模型" Style="{StaticResource SettingsCaptionStyle}" />
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
                     <TextBox x:Name="ModelTextBox"
                              Style="{StaticResource SettingsTextBoxStyle}"
+                             Padding="9,7,38,7"
                              Text="{Binding ModelId, UpdateSourceTrigger=PropertyChanged}"
                              automation:AutomationProperties.Name="模型 ID" />
-                    <Button Grid.Column="1" Margin="8,0,0,0"
-                            x:Name="RefreshModelsButton"
-                            Style="{StaticResource SettingsSecondaryButtonStyle}"
-                            Content="刷新模型"
-                            Command="{Binding RefreshModelsCommand}" />
+                    <ToggleButton x:Name="ModelPickerToggle"
+                                  HorizontalAlignment="Right"
+                                  Width="34"
+                                  Height="34"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  IsChecked="{Binding IsModelPickerOpen, Mode=TwoWay}"
+                                  ToolTip="选择可用模型"
+                                  automation:AutomationProperties.Name="展开模型列表">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border Background="{TemplateBinding Background}">
+                                    <Path Width="9" Height="6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Fill="{DynamicResource MutedTextBrush}" Data="M 0,0 L 9,0 L 4.5,6 Z" />
+                                </Border>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
                 </Grid>
 
-                <TextBlock Margin="0,14,0,0" Text="模型列表" Style="{StaticResource SettingsCaptionStyle}" />
-                <Grid MinHeight="96">
-                    <ListBox x:Name="ModelList"
-                             MinHeight="96" MaxHeight="180"
-                             Style="{StaticResource SettingsListBoxStyle}"
-                             ItemsSource="{Binding AvailableModels}"
-                             DisplayMemberPath="DisplayName"
-                             automation:AutomationProperties.Name="可用模型列表" />
-                    <StackPanel x:Name="ModelListEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                        <TextBlock Text="尚未获取模型" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                        <TextBlock Text="保存密钥后选择“刷新模型”。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" />
-                        <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=ModelList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
-                    </StackPanel>
-                </Grid>
+                <Popup x:Name="ModelPickerPopup"
+                       PlacementTarget="{Binding ElementName=ModelPickerToggle}"
+                       Placement="Right"
+                       HorizontalOffset="8"
+                       AllowsTransparency="True"
+                       StaysOpen="False"
+                       IsOpen="{Binding IsModelPickerOpen, Mode=TwoWay}"
+                       DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                    <Border Width="250"
+                            Background="{DynamicResource SurfaceRaisedBrush}"
+                            BorderBrush="{DynamicResource BorderStrongBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="可用模型" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="RefreshModelsButton"
+                                        HorizontalAlignment="Right"
+                                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                        Content="刷新"
+                                        Padding="9,5"
+                                        Command="{Binding RefreshModelsCommand}" />
+                            </Grid>
+                            <Grid MinHeight="80">
+                                <ListBox x:Name="ModelList"
+                                         MinHeight="80" MaxHeight="180"
+                                         Style="{StaticResource SettingsListBoxStyle}"
+                                         ItemsSource="{Binding AvailableModels}"
+                                         DisplayMemberPath="DisplayName"
+                                         SelectedValuePath="Id"
+                                         SelectedValue="{Binding ModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         SelectionChanged="OnModelSelectionChanged"
+                                         automation:AutomationProperties.Name="可用模型列表" />
+                                <StackPanel x:Name="ModelListEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                    <TextBlock Text="尚未获取模型" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    <TextBlock Text="使用“刷新”获取供应商模型。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" TextWrapping="Wrap" TextAlignment="Center" />
+                                    <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=ModelList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </StackPanel>
         </Border>
 

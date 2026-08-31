@@ -4,6 +4,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using FgoPet.App.Dialogue;
+using FgoPet.App.ViewModels;
+using FgoPet.App.Views;
 using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Panels;
@@ -13,6 +15,8 @@ public partial class AttachedPanelView : UserControl
 {
     private AttachedPanelViewModel? _model;
     private ConversationViewModel? _conversation;
+    private TodoListViewModel? _todoList;
+    private Window? _dispatchWindow;
 
     public AttachedPanelView()
     {
@@ -47,6 +51,7 @@ public partial class AttachedPanelView : UserControl
         {
             _model.PropertyChanged += OnModelPropertyChanged;
             AttachConversation(_model.Conversation);
+            AttachTodoList(_model.TodoList);
         }
         ApplyState();
     }
@@ -67,6 +72,55 @@ public partial class AttachedPanelView : UserControl
         }
 
         RefreshDialogueSurfaces();
+    }
+
+    private void AttachTodoList(TodoListViewModel? todoList)
+    {
+        if (_todoList is not null)
+        {
+            _todoList.DispatchRequested -= OnDispatchRequested;
+        }
+
+        _todoList = todoList;
+        if (_todoList is not null)
+        {
+            _todoList.DispatchRequested += OnDispatchRequested;
+        }
+    }
+
+    private void OnDispatchRequested(AgentDispatchDialogViewModel viewModel)
+    {
+        if (_dispatchWindow is { IsVisible: true })
+        {
+            _dispatchWindow.Activate();
+            return;
+        }
+
+        var dialog = new AgentDispatchDialog { DataContext = viewModel };
+        var owner = Window.GetWindow(this);
+        var window = new Window
+        {
+            Title = "交给 Agent",
+            Content = dialog,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            WindowStartupLocation = owner?.IsVisible == true
+                ? WindowStartupLocation.CenterOwner
+                : WindowStartupLocation.CenterScreen,
+            Owner = owner?.IsVisible == true ? owner : null,
+            Background = Brushes.Transparent,
+        };
+        _dispatchWindow = window;
+        window.Closed += (_, _) =>
+        {
+            viewModel.Dispose();
+            if (ReferenceEquals(_dispatchWindow, window))
+            {
+                _dispatchWindow = null;
+            }
+        };
+        window.ShowDialog();
     }
 
     private void OnConversationTurnsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
@@ -206,8 +260,6 @@ public partial class AttachedPanelView : UserControl
         }
     }
     private void OnStopTimerClick(object sender, RoutedEventArgs e) => _model?.StopTimer();
-    private void OnSendDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.SendCommand.Execute(null);
-    private void OnStopDialogueClick(object sender, RoutedEventArgs e) => _model?.Conversation?.StopCommand.Execute(null);
     private void OnNewConversationClick(object sender, RoutedEventArgs e) => _model?.Conversation?.NewConversationCommand.Execute(null);
     private void OnDialogueSettingsClick(object sender, RoutedEventArgs e) => _model?.Conversation?.OpenSettingsCommand.Execute(null);
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
@@ -225,6 +277,7 @@ public partial class AttachedPanelView : UserControl
         if (_model is not null)
         {
             _model.PropertyChanged -= OnModelPropertyChanged;
+            AttachTodoList(null);
             _model = null;
         }
     }

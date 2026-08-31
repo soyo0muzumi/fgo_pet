@@ -36,8 +36,39 @@ public sealed class AgentEventProjector
         .ToArray();
 
     public event Action<AgentEvent, AgentProjectionApplyResult>? EventApplied;
+    public event Action<AgentExecution>? ExecutionRestored;
 
     public AgentTaskProjection? Get(string identity) => _projections.GetValueOrDefault(identity);
+
+    /// <summary>
+    /// Rehydrates a non-terminal execution after an App restart. The persisted
+    /// execution is authoritative when the Relay has no new receipt to replay;
+    /// subsequent events still start at sequence one and advance this projection.
+    /// </summary>
+    public void Restore(AgentExecution execution)
+    {
+        ArgumentNullException.ThrowIfNull(execution);
+        var identity = $"{execution.SourceType}/{execution.SourceInstance}/{execution.TaskId}";
+        if (execution.IsTerminal || _projections.ContainsKey(identity))
+        {
+            return;
+        }
+
+        _projections[identity] = new AgentTaskProjection(
+            identity,
+            execution.SourceType,
+            execution.SourceInstance,
+            execution.TaskId,
+            execution.TodoId,
+            execution.Status,
+            Summary: null,
+            AttentionRequired: execution.Status == AgentExecutionStatus.Attention,
+            GoalCompleted: false,
+            CoveredTaskKeys: Array.Empty<string>(),
+            LastSequence: 0,
+            UpdatedAt: execution.UpdatedAt);
+        ExecutionRestored?.Invoke(execution);
+    }
 
     public AgentProjectionApplyResult Apply(AgentEvent agentEvent)
     {

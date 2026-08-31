@@ -47,3 +47,9 @@ packages/local/
 captures/
 exports/
 backups/
+
+# Local agent state, generated evidence, and publish output
+.claude/
+.learnings/
+.superpowers/
+artifacts/

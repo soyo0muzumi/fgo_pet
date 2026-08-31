@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Providers;
 using FgoPet.App.Settings;
@@ -10,6 +11,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Infrastructure.Secrets;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -78,7 +80,35 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         Assert.Equal("deepseek-chat", viewModel.ModelStatusText);
     }
 
-    private ConversationViewModel CreateViewModel(SequenceSettingsStore? settings = null)
+    [Fact]
+    public async Task Provider_and_model_badges_refresh_when_connection_is_saved()
+    {
+        var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });
+        var credentials = new TestCredentials();
+        var catalog = new ProviderCatalog();
+        var connection = new ModelConnectionViewModel(
+            settings,
+            credentials,
+            catalog,
+            new ChatProviderFactory(catalog, credentials, new HttpClient()));
+        var viewModel = CreateViewModel(settings, connection);
+
+        Assert.Equal("未配置供应商", viewModel.ProviderStatusText);
+        connection.SelectedProviderId = "deepseek";
+        connection.BaseUrl = "https://api.deepseek.com/v1";
+        connection.ModelId = "deepseek-chat";
+        connection.SetApiKey("secret-value");
+
+        await connection.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("deepseek", viewModel.ProviderStatusText);
+        Assert.Equal("deepseek-chat", viewModel.ModelStatusText);
+        Assert.False(viewModel.IsConfigurationRequired);
+    }
+
+    private ConversationViewModel CreateViewModel(
+        SequenceSettingsStore? settings = null,
+        ModelConnectionViewModel? modelConnection = null)
     {
         settings ??= new SequenceSettingsStore(AppSettings.Defaults with
         {
@@ -94,7 +124,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
             new PromptComposer(),
             TimeProvider.System,
             settings);
-        return new ConversationViewModel(orchestrator, settings);
+        return new ConversationViewModel(orchestrator, settings, modelConnection);
     }
 
     public void Dispose()
@@ -119,6 +149,17 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     {
         public IChatProvider Resolve() =>
             throw new ProviderRequestException(ProviderFailureCategory.Configuration, "未配置。");
+    }
+
+    private sealed class TestCredentials : ICredentialStore, ICredentialReader
+    {
+        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(false);
+
+        public Task DeleteAsync(string target, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>("secret-value");
     }
 
     private sealed class DelegatingContentResolver : IConversationContentResolver

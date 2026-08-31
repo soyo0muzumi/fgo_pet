@@ -41,6 +41,7 @@ public sealed class PromptComposerTests
         Assert.Equal(PromptAssemblyStatus.Complete, prompt.Status);
         Assert.Contains("安全规则", texts[0]);
         Assert.Contains("产品能力边界", texts[1]);
+        Assert.Contains(texts, text => text.Contains("稳定、认真，称呼用户为御主。", StringComparison.Ordinal));
         Assert.True(Array.IndexOf(texts, "上一轮消息") < 0);
         Assert.Contains(texts, text => text.Contains("当前穿着休闲服", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("这是 approved 的身份资料", StringComparison.Ordinal));

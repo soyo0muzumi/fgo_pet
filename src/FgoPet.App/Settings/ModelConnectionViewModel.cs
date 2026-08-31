@@ -43,6 +43,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     public IReadOnlyList<ProviderDescriptor> Providers { get; }
 
+    /// <summary>Raised after the persisted connection becomes the active app configuration.</summary>
+    public event Action<ModelConnectionSettings>? ConnectionSaved;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ProviderStatusText))]
     private string _selectedProviderId;
@@ -58,6 +61,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         BaseUrl = provider.DefaultBaseUrl;
         ModelId = DefaultModel(provider.ProviderId);
         AvailableModels = Array.Empty<ProviderModel>();
+        IsModelPickerOpen = false;
     }
 
     [ObservableProperty]
@@ -69,6 +73,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     [ObservableProperty]
     private IReadOnlyList<ProviderModel> _availableModels;
+
+    [ObservableProperty]
+    private bool _isModelPickerOpen;
 
     [ObservableProperty]
     private bool _isKeySaved;
@@ -144,6 +151,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
             }
 
             _settings.Save(_settings.Load() with { ModelConnection = connection });
+            ConnectionSaved?.Invoke(connection);
             StatusText = $"已保存 · {ProviderStatusText} · {ModelStatusText}";
         }
         catch (ArgumentException error)

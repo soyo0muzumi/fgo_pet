@@ -1,5 +1,7 @@
 # Phase 4 Agent integration handoff
 
+> Historical implementation baseline. Current closeout status and remaining user acceptance are recorded in `2026-09-01-phase4-closeout.md`; the test count below is not evidence for later changes.
+
 Date: 2026-08-30
 
 ## Delivered

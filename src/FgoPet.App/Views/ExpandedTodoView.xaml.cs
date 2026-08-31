@@ -37,4 +37,13 @@ public partial class ExpandedTodoView : UserControl
             model.SelectTab(TodoListTab.History);
         }
     }
+
+    private void OnDispatchClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is TodoListViewModel model
+            && sender is FrameworkElement { Tag: FgoPet.Core.Todo.TodoItem todo })
+        {
+            model.RequestDispatch(todo);
+        }
+    }
 }

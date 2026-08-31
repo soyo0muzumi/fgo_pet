@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Services;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Todo;
 using FgoPet.Core.Archives;
+using FgoPet.Infrastructure.Agents;
 
 namespace FgoPet.App.ViewModels;
 
@@ -31,17 +33,39 @@ public sealed partial class TodoListViewModel : ObservableObject
     private readonly TodoApplicationService _service;
     private readonly TimeProvider _time;
     private readonly IWorkArchiveRepository? _archives;
+    private readonly IAgentRelayAdministration? _administration;
+    private readonly AgentDispatchService? _dispatchService;
+    private readonly AgentEventProjector? _projector;
 
-    public TodoListViewModel(TodoApplicationService service, TimeProvider time, IWorkArchiveRepository? archives = null)
+    public TodoListViewModel(
+        TodoApplicationService service,
+        TimeProvider time,
+        IWorkArchiveRepository? archives = null,
+        IAgentRelayAdministration? administration = null,
+        AgentDispatchService? dispatchService = null,
+        AgentEventProjector? projector = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _archives = archives;
+        _administration = administration;
+        _dispatchService = dispatchService;
+        _projector = projector;
+        if (_projector is not null)
+        {
+            _projector.EventApplied += OnAgentEventApplied;
+        }
     }
 
     public ObservableCollection<TodoItemViewModel> VisibleItems { get; } = new();
     public ObservableCollection<TodoGroupViewModel> Groups { get; } = new();
     public ObservableCollection<WorkArchive> WorkArchives { get; } = new();
+
+    /// <summary>
+    /// Raised only after the user explicitly presses a Todo's “交给 Agent” button.
+    /// The panel view hosts the resulting modal dialog; no dispatch happens here.
+    /// </summary>
+    public event Action<AgentDispatchDialogViewModel>? DispatchRequested;
 
     [ObservableProperty]
     private TodoListTab _selectedTab = TodoListTab.Todo;
@@ -50,6 +74,19 @@ public sealed partial class TodoListViewModel : ObservableObject
     private bool _onlyToday;
 
     public bool HasOverflow { get; private set; }
+
+    public bool CanOpenDispatch => _administration is not null && _dispatchService is not null;
+
+    public void RequestDispatch(TodoItem todo)
+    {
+        ArgumentNullException.ThrowIfNull(todo);
+        if (!todo.CanDispatch || _administration is null || _dispatchService is null)
+        {
+            return;
+        }
+
+        DispatchRequested?.Invoke(new AgentDispatchDialogViewModel(todo, _administration, _dispatchService));
+    }
 
     public void SelectTab(TodoListTab tab)
     {
@@ -122,6 +159,17 @@ public sealed partial class TodoListViewModel : ObservableObject
     {
         if (SelectedTab == TodoListTab.History)
         {
+            Refresh();
+        }
+    }
+
+    private void OnAgentEventApplied(AgentEvent agentEvent, AgentProjectionApplyResult result)
+    {
+        if (result == AgentProjectionApplyResult.Applied)
+        {
+            // Agent event persistence updates the Todo in the same transaction.
+            // Rebuild the item view models so an open panel reflects completion,
+            // failure, cancellation, and active progress immediately.
             Refresh();
         }
     }

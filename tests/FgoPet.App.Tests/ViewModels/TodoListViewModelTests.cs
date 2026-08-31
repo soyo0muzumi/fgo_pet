@@ -1,6 +1,8 @@
 using FgoPet.App.Services;
+using FgoPet.Core.Agents;
 using FgoPet.App.ViewModels;
 using FgoPet.Core.Todo;
+using FgoPet.Infrastructure.Agents;
 using Xunit;
 
 namespace FgoPet.App.Tests.ViewModels;
@@ -46,6 +48,35 @@ public sealed class TodoListViewModelTests
         Assert.Equal("Today", viewModel.VisibleItems[0].Title);
     }
 
+    [Fact]
+    public void Agent_completion_refreshes_an_open_todo_projection()
+    {
+        var repository = new FakeTodoRepository();
+        var service = new TodoApplicationService(repository, TimeProvider.System);
+        var todo = service.Create("Ship", null, TodoPriority.Normal, null);
+        var agents = new FakeAgentRepository(repository);
+        agents.SaveExecution(new AgentExecution(
+            "execution-1", todo.Id, "codex", "source-1", "task-1", "dispatch-1", DateTimeOffset.UtcNow));
+        var projector = new AgentEventProjector(agents);
+        var viewModel = new TodoListViewModel(service, TimeProvider.System, projector: projector);
+        viewModel.Refresh();
+
+        projector.Apply(new AgentEvent(
+            "codex", "source-1", "task-1", 1, AgentEventType.TaskStarted,
+            DateTimeOffset.UtcNow, TodoId: todo.Id));
+        Assert.Equal(TodoStatus.Active, repository.Get(todo.Id)!.Status);
+        Assert.Single(viewModel.VisibleItems);
+
+        projector.Apply(new AgentEvent(
+            "codex", "source-1", "task-1", 2, AgentEventType.TaskCompleted,
+            DateTimeOffset.UtcNow.AddMinutes(1), TodoId: todo.Id));
+
+        Assert.Empty(viewModel.VisibleItems);
+        viewModel.SelectTab(TodoListTab.History);
+        Assert.Single(viewModel.VisibleItems);
+        Assert.Equal(TodoStatus.Completed, viewModel.VisibleItems[0].Status);
+    }
+
     private sealed class FakeTodoRepository : ITodoRepository
     {
         public List<TodoItem> Items { get; } = new();
@@ -59,5 +90,44 @@ public sealed class TodoListViewModelTests
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Items.Where(item => item.CompletedAt?.ToLocalTime().Date == localDate.ToDateTime(TimeOnly.MinValue).Date).ToArray();
         public void Delete(string id) => Items.RemoveAll(item => item.Id == id);
         public void ClearAgentTodoData() => Items.Clear();
+    }
+
+    private sealed class FakeAgentRepository(FakeTodoRepository todos) : IAgentRepository
+    {
+        private AgentExecution? _execution;
+
+        public void SaveExecution(AgentExecution execution) => _execution = execution;
+        public AgentExecution? GetExecution(string id) => _execution?.Id == id ? _execution : null;
+        public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) => _execution;
+        public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => _execution is { IsNonTerminal: true }
+            ? new[] { _execution }
+            : Array.Empty<AgentExecution>();
+
+        public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent)
+        {
+            if (_execution is null)
+            {
+                throw new KeyNotFoundException();
+            }
+
+            _execution = agentEvent.EventType switch
+            {
+                AgentEventType.TaskStarted => _execution.MarkStarted(agentEvent.OccurredAt),
+                AgentEventType.TaskCompleted => _execution.MarkCompleted(agentEvent.OccurredAt),
+                _ => _execution,
+            };
+            var todo = todos.Get(_execution.TodoId);
+            if (todo is not null)
+            {
+                todos.Save(agentEvent.EventType == AgentEventType.TaskCompleted
+                    ? todo.Complete(agentEvent.OccurredAt)
+                    : todo.Status == TodoStatus.Planned ? todo.Activate(agentEvent.OccurredAt) : todo);
+            }
+
+            return AgentEventApplyResult.Applied;
+        }
+
+        public void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets) { }
+        public IReadOnlyList<PersistedAgentConnection> ListConnections() => Array.Empty<PersistedAgentConnection>();
     }
 }

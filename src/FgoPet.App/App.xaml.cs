@@ -17,9 +17,10 @@ public partial class App : Application
 
         var activation = e.Args.FirstOrDefault(path => path.EndsWith(".fgopetpack", StringComparison.OrdinalIgnoreCase))
             ?? "--activate";
-        if (!SingleInstanceCoordinator.TryCreatePrimary("main", out _singleInstance, out var isPrimary) || !isPrimary)
+        var instanceName = Environment.GetEnvironmentVariable("FGO_PET_PIPE_SUFFIX") ?? "main";
+        if (!SingleInstanceCoordinator.TryCreatePrimary(instanceName, out _singleInstance, out var isPrimary) || !isPrimary)
         {
-            SingleInstanceCoordinator.ForwardActivation("main", activation, TimeSpan.FromSeconds(2));
+            SingleInstanceCoordinator.ForwardActivation(instanceName, activation, TimeSpan.FromSeconds(2));
             Shutdown(0);
             return;
         }

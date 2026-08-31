@@ -173,6 +173,14 @@ public sealed class AttachedPanelViewIntegrationTests
             {
                 failure = error;
             }
+            finally
+            {
+                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
+                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+                {
+                    dispatcher.InvokeShutdown();
+                }
+            }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();

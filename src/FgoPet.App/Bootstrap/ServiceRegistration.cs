@@ -2,6 +2,8 @@ using System.Net.Http;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
+using FgoPet.AgentRuntime;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Providers;
 using FgoPet.App.Focus;
@@ -108,7 +110,18 @@ public static class ServiceRegistration
         .AddSingleton<ILongArchiveSummaryStore, MemoryLongArchiveSummaryStore>()
         .AddSingleton<LongArchiveService>()
         .AddSingleton<DataClearService>()
-        .AddSingleton<AgentDispatchService>()
+        .AddSingleton<AgentDispatchService>(provider =>
+        {
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentDispatchService(
+                provider.GetRequiredService<ITodoRepository>(),
+                provider.GetRequiredService<IAgentRepository>(),
+                provider.GetRequiredService<IAgentGateway>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IAgentRelayAdministration>(),
+                provider.GetRequiredService<AgentEventProjector>(),
+                action => dispatcher.InvokeAsync(action, DispatcherPriority.DataBind).Task);
+        })
         .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
@@ -119,12 +132,63 @@ public static class ServiceRegistration
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
-        .AddSingleton<IAgentGateway>(_ => new AgentRelayClient(string.Empty))
+        .AddSingleton(_ =>
+        {
+            var defaults = RelayRuntimeOptions.ForCurrentUser();
+            return new RelayRuntimeOptions(Environment.GetEnvironmentVariable("FGO_PET_PIPE_SUFFIX") ?? defaults.PipeSuffix,
+                paths.StorageRoot, defaults.RelayExecutablePath, defaults.ConnectTimeout, defaults.StartupTimeout);
+        })
+        .AddSingleton<CodexWorkerProcess>()
+        .AddSingleton(provider =>
+        {
+            var options = provider.GetRequiredService<RelayRuntimeOptions>();
+            return new AgentControlClient(RelayPipeNames.ForCurrentUser(options).App, options.ConnectTimeout);
+        })
+        .AddSingleton<AgentRelayClient>()
+        .AddSingleton<IAgentGateway>(provider => provider.GetRequiredService<AgentRelayClient>())
+        .AddSingleton<IAgentRelayAdministration>(provider =>
+        {
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentRelayAdministration(
+                provider.GetRequiredService<AgentControlClient>(),
+                provider.GetRequiredService<IAgentRepository>(),
+                provider.GetRequiredService<AgentEventProjector>(),
+                action => dispatcher.InvokeAsync(action, DispatcherPriority.Background).Task);
+        })
+        .AddSingleton<IAgentRelayRuntime>(provider =>
+        {
+            var options = provider.GetRequiredService<RelayRuntimeOptions>();
+            var bootstrap = new RelayProcessBootstrapper(new DefaultRelayProbe(), new DefaultRelayProcessLauncher(), new DefaultRuntimeDelay());
+            var projector = provider.GetRequiredService<AgentEventProjector>();
+            var worker = provider.GetRequiredService<CodexWorkerProcess>();
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentRelayRuntime(provider.GetRequiredService<AgentRelayClient>(),
+                provider.GetRequiredService<IAgentRelayAdministration>(),
+                async token =>
+                {
+                    var result = await bootstrap.EnsureReadyAsync(options, token).ConfigureAwait(false);
+                    if (result.Status == RelayBootstrapStatus.Ready) worker.EnsureStarted();
+                    return result;
+                },
+                (events, token) => dispatcher.InvokeAsync(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    foreach (var agentEvent in events) projector.Apply(agentEvent);
+                }, DispatcherPriority.Background, token).Task);
+        })
         .AddSingleton<AgentEventProjector>()
         .AddSingleton<AgentCurrentTaskViewModel>()
         .AddSingleton<AgentConnectionSettingsViewModel>()
         .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
-        .AddSingleton<AgentReconnectService>()
+        .AddSingleton<AgentReconnectService>(provider =>
+        {
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentReconnectService(
+                provider.GetRequiredService<IAgentGateway>(),
+                provider.GetRequiredService<IAgentRepository>(),
+                provider.GetRequiredService<AgentEventProjector>(),
+                action => dispatcher.InvokeAsync(action, DispatcherPriority.Background).Task);
+        })
         .AddSingleton<AgentTaskNavigationService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()

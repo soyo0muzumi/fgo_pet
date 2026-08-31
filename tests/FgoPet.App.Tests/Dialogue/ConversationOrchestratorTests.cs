@@ -36,6 +36,20 @@ public sealed class ConversationOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Send_includes_bound_persona_in_the_provider_request()
+    {
+        var provider = new FakeProvider([new ChatStreamChunk("已收到", IsComplete: true)]);
+        var orchestrator = CreateOrchestrator(provider);
+
+        await orchestrator.SendAsync("800100", "请陪我工作", CancellationToken.None);
+
+        Assert.NotNull(provider.LastRequest);
+        Assert.Contains(provider.LastRequest!.Messages, message =>
+            message.Role == ChatMessageRole.System
+            && message.Text.Contains("认真陪伴用户。", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Cancel_does_not_persist_partial_assistant_text()
     {
         var provider = new BlockingProvider();
@@ -106,9 +120,21 @@ public sealed class ConversationOrchestratorTests : IDisposable
         foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
         {
             var path = _databasePath + suffix;
-            if (File.Exists(path))
+            DeleteWithRetry(path);
+        }
+    }
+
+    private static void DeleteWithRetry(string path)
+    {
+        for (var attempt = 0; attempt < 5 && File.Exists(path); attempt++)
+        {
+            try
             {
                 File.Delete(path);
+            }
+            catch (IOException) when (attempt < 4)
+            {
+                Thread.Sleep(50);
             }
         }
     }
@@ -173,6 +199,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
     private sealed class FakeProvider(IReadOnlyList<ChatStreamChunk> chunks) : IChatProvider
     {
+        public ChatRequest? LastRequest { get; private set; }
+
         public string ProviderId => "test";
         public string ModelId => "test-model";
 
@@ -183,6 +211,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
             ChatRequest request,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            LastRequest = request;
             foreach (var chunk in chunks)
             {
                 cancellationToken.ThrowIfCancellationRequested();
