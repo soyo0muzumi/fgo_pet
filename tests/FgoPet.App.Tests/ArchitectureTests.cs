@@ -79,8 +79,21 @@ public sealed class ArchitectureTests
     private static IEnumerable<string> ProjectFiles() => FindCsproj(RepoRoot());
 
     private static bool IsOnThisCheckout(string path) =>
-        !path.Contains($"{Path.DirectorySeparatorChar}spikes{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-        && !path.Contains(".worktrees", StringComparison.Ordinal);
+        !path.Contains($"{Path.DirectorySeparatorChar}spikes{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+
+    [Fact]
+    public void Checkout_filter_accepts_project_paths_from_a_worktree_checkout()
+    {
+        var projectPath = Path.Combine(
+            Path.GetTempPath(),
+            ".worktrees",
+            "phase4-runtime-repair",
+            "src",
+            "FgoPet.Core",
+            "FgoPet.Core.csproj");
+
+        Assert.True(IsOnThisCheckout(projectPath));
+    }
 
     private static string ReadProject(string projectName) =>
         File.ReadAllText(FindCsproj(RepoRoot()).Where(IsOnThisCheckout)
