@@ -117,7 +117,7 @@ public sealed record RegistrationStatusResponse(
     string Status, string RequestId, string? SourceInstanceId, string? Credential, string? Error);
 public sealed record AuthenticateRequest(string SourceType, string SourceInstanceId, string Credential);
 public sealed record RegistrationDecisionRequest(string RequestId, string Decision);
-public sealed record UpdatePermissionsRequest(string SourceType, IReadOnlyList<string> AllowedTargetIds, bool Enabled);
+public sealed record UpdatePermissionsRequest(string SourceType, string SourceInstanceId, IReadOnlyList<string> AllowedTargetIds, bool Enabled);
 public sealed record RevokeSourceRequest(string SourceType, string SourceInstanceId);
 ```
 
@@ -265,7 +265,7 @@ Add `System.Security.Cryptography.ProtectedData` version `8.0.0`. `DpapiSecretPr
 
 - [ ] **Step 4: Make `RelayStore` persist every authoritative mutation**
 
-Load state in the constructor. After add/refresh pending, decision, grant, permission change, and revoke, capture an immutable snapshot under `_gate`, release the lock, and save it. Never persist inbound/outbound queues, dedupe keys, or live-online flags.
+Load state in the constructor. For add/refresh pending, decision, grant, permission change, and revoke, serialize mutations through `_gate`, persist the candidate immutable snapshot, then publish it in memory. A failed save leaves the previous state intact; snapshots cannot overtake each other. Never persist inbound/outbound queues, dedupe keys, or live-online flags.
 
 - [ ] **Step 5: Run focused tests and commit**
 
