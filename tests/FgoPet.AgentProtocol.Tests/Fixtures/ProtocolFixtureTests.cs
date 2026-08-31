@@ -154,7 +154,7 @@ public sealed class ProtocolFixtureTests
         var response = new RegistrationStatusResponse("approved", "req-1", "instance-1", credential, null);
 
         AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m1", "authenticate", authenticate));
-        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m2", "registration_status", response));
+        AgentProtocolValidator.ValidateResponse(ProtocolEnvelope.Create("m2", "registration_status", response));
 
         var invalid = new AuthenticateRequest("codex", "instance-1", "c2VjcmV0");
         Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
@@ -185,12 +185,22 @@ public sealed class ProtocolFixtureTests
         AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m1", "decide_registration", decision));
         AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m2", "update_permissions", permissions));
         AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m3", "revoke_source", revoke));
-        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m4", "connection_test", connection));
+        AgentProtocolValidator.ValidateResponse(ProtocolEnvelope.Create("m4", "connection_test", connection));
 
         Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
             ProtocolEnvelope.Create("m5", "decide_registration", new RegistrationDecisionRequest("req-1", "maybe"))));
         Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
             ProtocolEnvelope.Create("m6", "update_permissions", new UpdatePermissionsRequest("codex", "instance-1", new[] { "C:\\\\secret" }, true))));
+    }
+
+    [Fact]
+    public void Registration_status_request_cannot_mix_response_status_or_credential()
+    {
+        var mixed = ProtocolEnvelope.Parse(
+            "{\"protocol_version\":\"1\",\"message_id\":\"m1\",\"message_type\":\"registration_status\",\"sent_at\":\"2026-08-30T08:00:00Z\",\"payload\":{\"request_id\":\"req-1\",\"source_instance_id\":\"instance-1\",\"request_nonce\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"status\":\"approved\",\"credential\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"}}");
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(mixed));
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.ValidateResponse(mixed));
     }
 
     private static string Nonce() => new('a', 64);

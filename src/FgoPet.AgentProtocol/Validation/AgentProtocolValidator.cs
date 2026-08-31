@@ -37,7 +37,17 @@ public static class AgentProtocolValidator
         "approve", "reject",
     };
 
-    public static void Validate(ProtocolEnvelope envelope)
+    /// <summary>
+    /// Validates an envelope sent as a request. Response payloads must be
+    /// validated through <see cref="ValidateResponse"/> so direction-specific
+    /// fields cannot be smuggled into the other schema.
+    /// </summary>
+    public static void Validate(ProtocolEnvelope envelope) => ValidateEnvelope(envelope, isResponse: false);
+
+    /// <summary>Validates an envelope received as a response.</summary>
+    public static void ValidateResponse(ProtocolEnvelope envelope) => ValidateEnvelope(envelope, isResponse: true);
+
+    private static void ValidateEnvelope(ProtocolEnvelope envelope, bool isResponse)
     {
         ArgumentNullException.ThrowIfNull(envelope);
         if (!string.Equals(envelope.ProtocolVersion, ProtocolEnvelope.CurrentProtocolVersion, StringComparison.Ordinal))
@@ -56,9 +66,21 @@ public static class AgentProtocolValidator
             throw new AgentProtocolValidationException("Protocol payload must be a JSON object.");
         }
 
-        var allowsTopLevelCredential = envelope.MessageType == "authenticate"
-            || (envelope.MessageType == "registration_status" && HasProperty(envelope.Payload, "status"));
+        var allowsTopLevelCredential = !isResponse && envelope.MessageType == "authenticate"
+            || isResponse && envelope.MessageType == "registration_status";
         EnsureNoDenylistedFields(envelope.Payload, allowsTopLevelCredential);
+
+        if (isResponse)
+        {
+            ValidateResponseEnvelope(envelope);
+            return;
+        }
+
+        ValidateRequestEnvelope(envelope);
+    }
+
+    private static void ValidateRequestEnvelope(ProtocolEnvelope envelope)
+    {
         switch (envelope.MessageType)
         {
             case "agent_event": ValidateEvent(envelope.DeserializePayload<AgentEventMessage>()); break;
@@ -79,36 +101,67 @@ public static class AgentProtocolValidator
             case "registration_status":
                 if (HasProperty(envelope.Payload, "status"))
                 {
-                    ValidateRegistrationStatusResponse(envelope.DeserializePayload<RegistrationStatusResponse>());
+                    throw new AgentProtocolValidationException("Registration status response was supplied where a request was expected.");
                 }
-                else
-                {
-                    ValidateRegistrationStatusRequest(envelope.DeserializePayload<RegistrationStatusRequest>());
-                }
+
+                ValidateRegistrationStatusRequest(envelope.DeserializePayload<RegistrationStatusRequest>());
                 break;
             case "authenticate": ValidateAuthenticate(envelope.DeserializePayload<AuthenticateRequest>()); break;
             case "connection_test":
                 if (HasAnyProperty(envelope.Payload, "relay_online", "app_online", "adapter_online", "protocol_version", "status", "observed_at_utc", "error"))
                 {
-                    ValidateConnectionTest(envelope.DeserializePayload<RelayConnectionTestResponse>());
+                    throw new AgentProtocolValidationException("Connection test response was supplied where a request was expected.");
                 }
                 break;
             case "pending_sources":
                 if (HasAnyProperty(envelope.Payload, "request_id", "source_type", "display_name", "source_instance_id", "adapter_version", "requested_at_utc", "expires_at_utc"))
                 {
-                    ValidatePendingSource(envelope.DeserializePayload<PendingSourceDto>());
+                    throw new AgentProtocolValidationException("Pending source response was supplied where a request was expected.");
                 }
                 break;
             case "decide_registration": ValidateDecision(envelope.DeserializePayload<RegistrationDecisionRequest>()); break;
             case "list_sources":
                 if (HasAnyProperty(envelope.Payload, "source_type", "display_name", "source_instance_id", "adapter_version", "approved_at_utc", "enabled", "allowed_target_ids", "is_online"))
                 {
-                    ValidateApprovedSource(envelope.DeserializePayload<ApprovedSourceDto>());
+                    throw new AgentProtocolValidationException("Approved source response was supplied where a request was expected.");
                 }
                 break;
             case "update_permissions": ValidatePermissions(envelope.DeserializePayload<UpdatePermissionsRequest>()); break;
             case "revoke_source": ValidateRevoke(envelope.DeserializePayload<RevokeSourceRequest>()); break;
             case "status_check": break;
+        }
+    }
+
+    private static void ValidateResponseEnvelope(ProtocolEnvelope envelope)
+    {
+        switch (envelope.MessageType)
+        {
+            case "registration_response": ValidateResponse(envelope.DeserializePayload<RegistrationResponse>()); break;
+            case "registration_status":
+                if (HasAnyProperty(envelope.Payload, "request_nonce", "source_type", "display_name", "adapter_version", "protocol_version"))
+                {
+                    throw new AgentProtocolValidationException("Registration status request fields cannot appear in a response.");
+                }
+
+                if (!HasProperty(envelope.Payload, "status"))
+                {
+                    throw new AgentProtocolValidationException("Registration status response must include status.");
+                }
+
+                ValidateRegistrationStatusResponse(envelope.DeserializePayload<RegistrationStatusResponse>());
+                break;
+            case "connection_test":
+                if (!HasAnyProperty(envelope.Payload, "relay_online", "app_online", "adapter_online", "protocol_version", "status", "observed_at_utc", "error"))
+                {
+                    throw new AgentProtocolValidationException("Connection test response is missing its response payload.");
+                }
+
+                ValidateConnectionTest(envelope.DeserializePayload<RelayConnectionTestResponse>());
+                break;
+            case "pending_sources": ValidatePendingSource(envelope.DeserializePayload<PendingSourceDto>()); break;
+            case "list_sources": ValidateApprovedSource(envelope.DeserializePayload<ApprovedSourceDto>()); break;
+            default:
+                throw new AgentProtocolValidationException($"Message type '{envelope.MessageType}' is request-only.");
         }
     }
 
