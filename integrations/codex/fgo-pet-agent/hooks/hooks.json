@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook started" }
+    ],
+    "TaskStarted": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook started" }
+    ],
+    "TaskResumed": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook resumed" }
+    ],
+    "AttentionRequired": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook attention" }
+    ],
+    "TaskFailed": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook failed" }
+    ],
+    "TaskCancelled": [
+      { "type": "command", "command": "fgo-pet-codex-adapter hook cancelled" }
+    ]
+  }
+}

@@ -10,6 +10,7 @@ public enum ExpressionSemantic
     Sad,
     Surprised,
     Angry,
+    WantsToTalk,
 }
 
 /// <summary>Canonical snake_case keys for the eight core expression semantics.</summary>
@@ -23,6 +24,7 @@ public static class ExpressionSemanticKeys
     public const string Sad = "sad";
     public const string Surprised = "surprised";
     public const string Angry = "angry";
+    public const string WantsToTalk = "wants_to_talk";
 
     public static readonly IReadOnlyList<string> Core = new[]
     {
@@ -39,6 +41,7 @@ public static class ExpressionSemanticKeys
         ExpressionSemantic.Sad => Sad,
         ExpressionSemantic.Surprised => Surprised,
         ExpressionSemantic.Angry => Angry,
+        ExpressionSemantic.WantsToTalk => WantsToTalk,
         _ => throw new ArgumentOutOfRangeException(nameof(semantic), semantic, null),
     };
 
@@ -54,6 +57,7 @@ public static class ExpressionSemanticKeys
             case Sad: semantic = ExpressionSemantic.Sad; return true;
             case Surprised: semantic = ExpressionSemantic.Surprised; return true;
             case Angry: semantic = ExpressionSemantic.Angry; return true;
+            case WantsToTalk: semantic = ExpressionSemantic.WantsToTalk; return true;
             default: semantic = default; return false;
         }
     }

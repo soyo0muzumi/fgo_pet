@@ -171,6 +171,91 @@ public sealed class RuntimeDatabaseMigrator
             CREATE INDEX ix_runtime_events_source_subject
               ON runtime_events(source, subject_id, occurred_at_utc);
             """),
+        new(5, """
+            CREATE TABLE todo_items(
+              todo_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL CHECK(length(title) <= 500),
+              description TEXT NULL CHECK(description IS NULL OR length(description) <= 4000),
+              priority TEXT NOT NULL CHECK(priority IN ('low','normal','high')),
+              due_at_utc TEXT NULL,
+              status TEXT NOT NULL CHECK(status IN ('planned','active','completed')),
+              created_at_utc TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL,
+              completed_at_utc TEXT NULL);
+            CREATE INDEX ix_todo_items_status_updated ON todo_items(status, updated_at_utc DESC);
+            CREATE INDEX ix_todo_items_completed_date ON todo_items(completed_at_utc);
+            CREATE TABLE agent_executions(
+              execution_id TEXT PRIMARY KEY,
+              todo_id TEXT NOT NULL,
+              source_type TEXT NOT NULL,
+              source_instance TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              dispatch_request_id TEXT NOT NULL UNIQUE,
+              status TEXT NOT NULL CHECK(status IN ('dispatching','active','attention','completed','failed','cancelled')),
+              started_at_utc TEXT NULL,
+              updated_at_utc TEXT NOT NULL,
+              ended_at_utc TEXT NULL,
+              UNIQUE(source_type, source_instance, task_id));
+            CREATE INDEX ix_agent_executions_todo_current
+              ON agent_executions(todo_id, updated_at_utc DESC);
+            CREATE TABLE agent_event_receipts(
+              source_type TEXT NOT NULL,
+              source_instance TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              sequence INTEGER NOT NULL CHECK(sequence > 0),
+              event_type TEXT NOT NULL,
+              occurred_at_utc TEXT NOT NULL,
+              is_private INTEGER NOT NULL CHECK(is_private IN (0,1)),
+              PRIMARY KEY(source_type, source_instance, task_id, sequence));
+            CREATE INDEX ix_agent_event_receipts_task
+              ON agent_event_receipts(source_type, source_instance, task_id, sequence DESC);
+            CREATE TABLE agent_connections(
+              source_type TEXT PRIMARY KEY,
+              display_name TEXT NOT NULL,
+              version TEXT NOT NULL,
+              enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+              last_event_at_utc TEXT NULL,
+              pending_count INTEGER NOT NULL CHECK(pending_count >= 0),
+              capabilities_json TEXT NOT NULL);
+            CREATE TABLE agent_project_targets(
+              source_type TEXT NOT NULL,
+              target_id TEXT NOT NULL,
+              display_name TEXT NOT NULL,
+              PRIMARY KEY(source_type, target_id),
+              FOREIGN KEY(source_type) REFERENCES agent_connections(source_type) ON DELETE CASCADE);
+            CREATE TABLE work_archives(
+              archive_id TEXT PRIMARY KEY,
+              archive_date TEXT NOT NULL,
+              source_types TEXT NOT NULL,
+              summary TEXT NOT NULL CHECK(length(summary) <= 6000),
+              created_at_utc TEXT NOT NULL);
+            CREATE TABLE work_archive_items(
+              archive_id TEXT NOT NULL REFERENCES work_archives(archive_id) ON DELETE CASCADE,
+              todo_key TEXT NOT NULL,
+              PRIMARY KEY(archive_id, todo_key));
+            CREATE INDEX ix_work_archives_date ON work_archives(archive_date DESC);
+            CREATE TABLE long_work_archives(
+              archive_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              summary TEXT NOT NULL CHECK(length(summary) <= 6000),
+              covered_archive_ids TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_long_work_archives_created ON long_work_archives(created_at_utc DESC);
+            """),
+        new(6, """
+            ALTER TABLE work_archives ADD COLUMN title TEXT NOT NULL DEFAULT '工作归档';
+            ALTER TABLE work_archives ADD COLUMN started_on TEXT NULL;
+            ALTER TABLE work_archives ADD COLUMN completed_on TEXT NULL;
+            ALTER TABLE work_archives ADD COLUMN outcomes TEXT NOT NULL DEFAULT '[]';
+            CREATE TABLE IF NOT EXISTS long_work_archives(
+              archive_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              summary TEXT NOT NULL CHECK(length(summary) <= 6000),
+              covered_archive_ids TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS ix_long_work_archives_created
+              ON long_work_archives(created_at_utc DESC);
+            """),
     };
 
     private readonly RuntimeDatabase _database;

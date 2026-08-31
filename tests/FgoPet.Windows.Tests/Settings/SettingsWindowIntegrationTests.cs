@@ -46,7 +46,7 @@ public sealed class SettingsWindowIntegrationTests
                 Assert.Equal("设置", window.Title);
                 Assert.NotNull(window.SettingsNavigation);
                 Assert.NotNull(window.SettingsContent);
-                Assert.Equal(7, window.SettingsNavigation.Items.Count);
+                Assert.Equal(8, window.SettingsNavigation.Items.Count);
 
                 var profileContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
                 profileContent.Text = "unsaved session input";

@@ -79,6 +79,17 @@ public sealed class ExpressionResolverTests
     }
 
     [Fact]
+    public void Resolve_wants_to_talk_falls_back_to_existing_neutral_expression()
+    {
+        var manifest = AppearanceFixture.Appearance(
+            mapping: new Dictionary<string, string> { ["neutral"] = "face01" });
+
+        Assert.Equal(
+            new ExpressionResolution(ExpressionSemantic.WantsToTalk, "face01", UsedFallback: true),
+            _resolver.Resolve(ExpressionSemantic.WantsToTalk, manifest));
+    }
+
+    [Fact]
     public void Resolve_unresolvable_semantic_throws()
     {
         var manifest = AppearanceFixture.Appearance(

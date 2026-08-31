@@ -74,6 +74,20 @@ public sealed class UserDataExportService
                        persona_version, knowledge_version, persona_hash, knowledge_hash,
                        created_at_utc
                 FROM content_bindings ORDER BY servant_id, created_at_utc, binding_id
+                """, cancellationToken),
+            ReadRows(connection, """
+                SELECT todo_id, title, description, priority, due_at_utc, status,
+                       created_at_utc, updated_at_utc, completed_at_utc
+                FROM todo_items ORDER BY created_at_utc, todo_id
+                """, cancellationToken),
+            ReadRows(connection, """
+                SELECT archive_id, archive_date, source_types, title, started_on, completed_on,
+                       summary, outcomes, created_at_utc
+                FROM work_archives ORDER BY archive_date, created_at_utc, archive_id
+                """, cancellationToken),
+            ReadRows(connection, """
+                SELECT archive_id, title, summary, covered_archive_ids, created_at_utc
+                FROM long_work_archives ORDER BY created_at_utc, archive_id
                 """, cancellationToken));
     }
 
@@ -109,7 +123,10 @@ public sealed class UserDataExportService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Summaries,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> MemoryCandidates,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Memories,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> ContentBindings)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> ContentBindings,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> Todos,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> WorkArchives,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> LongWorkArchives)
     {
         public IDictionary<string, object?> ToJsonObject() => new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -120,6 +137,9 @@ public sealed class UserDataExportService
             ["memory_candidates"] = MemoryCandidates,
             ["memories"] = Memories,
             ["content_bindings"] = ContentBindings,
+            ["todos"] = Todos,
+            ["work_archives"] = WorkArchives,
+            ["long_work_archives"] = LongWorkArchives,
         };
     }
 }

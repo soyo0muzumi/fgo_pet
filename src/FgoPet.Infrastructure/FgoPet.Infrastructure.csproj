@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>FgoPet.Infrastructure</RootNamespace>
@@ -10,5 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
+    <ProjectReference Include="..\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
+    <ProjectReference Include="..\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
   </ItemGroup>
 </Project>

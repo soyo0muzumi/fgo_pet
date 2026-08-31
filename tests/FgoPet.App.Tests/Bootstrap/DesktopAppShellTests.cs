@@ -2,12 +2,40 @@ using FgoPet.App.Bootstrap;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Agents;
 using Xunit;
 
 namespace FgoPet.App.Tests.Bootstrap;
 
 public sealed class DesktopAppShellTests
 {
+    [Fact]
+    public async Task Disabled_startup_notifies_runtime_once_without_waiting_for_it()
+    {
+        var runtime = new PendingRuntime();
+        var ui = new FakeUi();
+        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeSettings(), ui, agentRuntime: runtime);
+        await shell.StartAsync([], CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        await shell.StartAsync([], CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(ui.LibraryShown);
+        Assert.Equal(1, runtime.Calls);
+        Assert.False(runtime.Enabled);
+        runtime.Complete();
+    }
+
+    private sealed class PendingRuntime : IAgentRelayRuntime
+    {
+        private readonly TaskCompletionSource _pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls { get; private set; }
+        public bool Enabled { get; private set; }
+        public AgentRelaySnapshot Current => AgentRelaySnapshot.Disabled;
+        public event Action<AgentRelaySnapshot>? SnapshotChanged { add { } remove { } }
+        public Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+        { Calls++; Enabled = enabled; return _pending.Task; }
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Complete() => _pending.TrySetResult();
+    }
+
     [Fact]
     public async Task Start_without_installed_pack_keeps_tray_and_shows_library()
     {

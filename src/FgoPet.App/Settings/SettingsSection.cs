@@ -6,6 +6,7 @@ public enum SettingsSection
     Personalization,
     RolePackages,
     ModelConnection,
+    AgentConnection,
     ConversationMemory,
     Privacy,
     Theme,

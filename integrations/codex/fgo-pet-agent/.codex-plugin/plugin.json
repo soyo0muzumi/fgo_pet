@@ -1,0 +1,19 @@
+{
+  "name": "fgo-pet-agent",
+  "version": "0.2.0",
+  "description": "Explicitly paired FGO Pet task and goal reporting for Codex.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Fgo Pet Agent",
+    "shortDescription": "Use Fgo Pet Agent in Codex.",
+    "longDescription": "Fgo Pet Agent reports user-confirmed task and goal outcomes over a current-user-only local Relay. Pairing and approval are explicit; no credentials are passed through Codex configuration.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use FGO Pet only after explicit user confirmation; if pairing is pending, ask the user to approve the adapter in FGO Pet settings."
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -2,6 +2,8 @@ using System.Net.Http;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
+using FgoPet.AgentRuntime;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Providers;
 using FgoPet.App.Focus;
@@ -16,14 +18,22 @@ using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Theming;
+using FgoPet.App.Services;
+using FgoPet.App.ViewModels;
+using FgoPet.App.Archives;
+using FgoPet.App.Views.Settings;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Bond;
+using FgoPet.Core.Agents;
+using FgoPet.Core.Archives;
+using FgoPet.Core.Todo;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Bond;
+using FgoPet.Infrastructure.Agents;
 using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.FileSystem;
 using FgoPet.Infrastructure.Focus;
@@ -88,6 +98,20 @@ public static class ServiceRegistration
         .AddSingleton<SqliteEventStore>()
         .AddSingleton<SqliteTimelineRepository>()
         .AddSingleton<SqliteBondRepository>()
+        .AddSingleton<SqliteTodoRepository>()
+        .AddSingleton<SqliteAgentRepository>()
+        .AddSingleton<SqliteWorkArchiveRepository>()
+        .AddSingleton<ITodoRepository>(provider => provider.GetRequiredService<SqliteTodoRepository>())
+        .AddSingleton<IAgentRepository>(provider => provider.GetRequiredService<SqliteAgentRepository>())
+        .AddSingleton<IWorkArchiveRepository>(provider => provider.GetRequiredService<SqliteWorkArchiveRepository>())
+        .AddSingleton<TodoApplicationService>()
+        .AddSingleton<TodoProposalService>()
+        .AddSingleton<ArchiveDraftService>()
+        .AddSingleton<ILongArchiveSummaryStore, MemoryLongArchiveSummaryStore>()
+        .AddSingleton<LongArchiveService>()
+        .AddSingleton<DataClearService>()
+        .AddSingleton<AgentDispatchService>()
+        .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
         .AddSingleton<IFocusSnapshotStore>(provider => new SqliteFocusSnapshotStore(provider.GetRequiredService<SqliteFocusRepository>()))
         .AddSingleton<FocusSessionService>()
@@ -97,6 +121,56 @@ public static class ServiceRegistration
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
+        .AddSingleton(_ =>
+        {
+            var defaults = RelayRuntimeOptions.ForCurrentUser();
+            return new RelayRuntimeOptions(Environment.GetEnvironmentVariable("FGO_PET_PIPE_SUFFIX") ?? defaults.PipeSuffix,
+                paths.StorageRoot, defaults.RelayExecutablePath, defaults.ConnectTimeout, defaults.StartupTimeout);
+        })
+        .AddSingleton<CodexWorkerProcess>()
+        .AddSingleton(provider =>
+        {
+            var options = provider.GetRequiredService<RelayRuntimeOptions>();
+            return new AgentControlClient(RelayPipeNames.ForCurrentUser(options).App, options.ConnectTimeout);
+        })
+        .AddSingleton<AgentRelayClient>()
+        .AddSingleton<IAgentGateway>(provider => provider.GetRequiredService<AgentRelayClient>())
+        .AddSingleton<IAgentRelayAdministration>(provider =>
+        {
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentRelayAdministration(
+                provider.GetRequiredService<AgentControlClient>(),
+                provider.GetRequiredService<IAgentRepository>(),
+                provider.GetRequiredService<AgentEventProjector>(),
+                action => dispatcher.InvokeAsync(action, DispatcherPriority.Background).Task);
+        })
+        .AddSingleton<IAgentRelayRuntime>(provider =>
+        {
+            var options = provider.GetRequiredService<RelayRuntimeOptions>();
+            var bootstrap = new RelayProcessBootstrapper(new DefaultRelayProbe(), new DefaultRelayProcessLauncher(), new DefaultRuntimeDelay());
+            var projector = provider.GetRequiredService<AgentEventProjector>();
+            var worker = provider.GetRequiredService<CodexWorkerProcess>();
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            return new AgentRelayRuntime(provider.GetRequiredService<AgentRelayClient>(),
+                provider.GetRequiredService<IAgentRelayAdministration>(),
+                async token =>
+                {
+                    var result = await bootstrap.EnsureReadyAsync(options, token).ConfigureAwait(false);
+                    if (result.Status == RelayBootstrapStatus.Ready) worker.EnsureStarted();
+                    return result;
+                },
+                (events, token) => dispatcher.InvokeAsync(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    foreach (var agentEvent in events) projector.Apply(agentEvent);
+                }, DispatcherPriority.Background, token).Task);
+        })
+        .AddSingleton<AgentEventProjector>()
+        .AddSingleton<AgentCurrentTaskViewModel>()
+        .AddSingleton<AgentConnectionSettingsViewModel>()
+        .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
+        .AddSingleton<AgentReconnectService>()
+        .AddSingleton<AgentTaskNavigationService>()
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<HttpClient>()
@@ -124,6 +198,7 @@ public static class ServiceRegistration
                 provider.GetRequiredService<IAppSettingsStore>(),
                 provider.GetRequiredService<SettingsViewModel>())),
             SettingsSection.ModelConnection => provider.GetRequiredService<ModelConnectionPage>(),
+            SettingsSection.AgentConnection => provider.GetRequiredService<AgentConnectionSettingsView>(),
             SettingsSection.ConversationMemory => provider.GetRequiredService<ConversationMemoryPage>(),
             SettingsSection.Privacy => provider.GetRequiredService<PrivacyPage>(),
             SettingsSection.Theme => provider.GetRequiredService<ThemePage>(),
@@ -146,11 +221,50 @@ public static class ServiceRegistration
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
         .AddSingleton<ConversationOrchestrator>()
-        .AddSingleton<ConversationViewModel>()
-        .AddSingleton(provider => new AttachedPanelViewModel(
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<IFocusSessionService>(),
-            provider.GetRequiredService<ConversationViewModel>()))
+        .AddSingleton(provider => new ConversationViewModel(
+            provider.GetRequiredService<ConversationOrchestrator>(),
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<ModelConnectionViewModel>(),
+            provider.GetRequiredService<TodoProposalService>(),
+            provider.GetRequiredService<ArchiveDraftService>()))
+        .AddSingleton(provider =>
+        {
+            var currentAgentTask = provider.GetRequiredService<AgentCurrentTaskViewModel>();
+            var conversation = provider.GetRequiredService<ConversationViewModel>();
+            var todoService = provider.GetRequiredService<TodoApplicationService>();
+            var agentRepository = provider.GetRequiredService<IAgentRepository>();
+            var archiveDrafts = provider.GetRequiredService<ArchiveDraftService>();
+            currentAgentTask.OpenTaskRequested += projection =>
+            {
+                _ = provider.GetRequiredService<AgentTaskNavigationService>().OpenAsync(projection);
+            };
+            currentAgentTask.ArchiveRequested += projection =>
+            {
+                var coveredTodos = projection.CoveredTaskKeys
+                    .Select(ParseTaskIdentity)
+                    .Where(identity => identity is not null)
+                    .Select(identity => agentRepository.GetExecution(identity!.Value.SourceType, identity.Value.SourceInstance, identity.Value.TaskId))
+                    .Where(execution => execution is not null)
+                    .Select(execution => todoService.Get(execution!.TodoId))
+                    .Where(todo => todo?.Status == TodoStatus.Completed)
+                    .Cast<TodoItem>()
+                    .DistinctBy(todo => todo.Id)
+                    .ToArray();
+                if (coveredTodos.Length > 0)
+                {
+                    conversation.ShowArchiveDraft(archiveDrafts.CreateDraft(
+                        projection.SourceType,
+                        coveredTodos,
+                        "Agent 目标已完成，可整理相关工作。"));
+                }
+            };
+            return new AttachedPanelViewModel(
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IFocusSessionService>(),
+                conversation,
+                provider.GetRequiredService<TodoListViewModel>(),
+                currentAgentTask);
+        })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
             provider.GetRequiredService<IFocusSessionService>()))
@@ -174,5 +288,11 @@ public static class ServiceRegistration
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)
         .AddSingleton<Func<ServantFocusConnector>>(provider => provider.GetRequiredService<ServantFocusConnector>)
         .AddSingleton<AppStartup>();
+    }
+
+    private static (string SourceType, string SourceInstance, string TaskId)? ParseTaskIdentity(string key)
+    {
+        var parts = key.Split('/', 3, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 3 ? (parts[0], parts[1], parts[2]) : null;
     }
 }

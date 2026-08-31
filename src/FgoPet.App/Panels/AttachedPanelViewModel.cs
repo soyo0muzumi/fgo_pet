@@ -9,6 +9,7 @@ using FgoPet.Core.Events;
 using FgoPet.Core.Focus;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Timeline;
+using FgoPet.App.ViewModels;
 
 namespace FgoPet.App.Panels;
 
@@ -40,11 +41,15 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     public AttachedPanelViewModel(
         TimeProvider time,
         IFocusSessionService? focus,
-        ConversationViewModel? conversation = null)
+        ConversationViewModel? conversation = null,
+        TodoListViewModel? todoList = null,
+        AgentCurrentTaskViewModel? currentAgentTask = null)
     {
         _time = time;
         _focus = focus;
         Conversation = conversation;
+        TodoList = todoList;
+        CurrentAgentTask = currentAgentTask;
         _lastInteraction = time.GetUtcNow();
         if (focus is not null)
         {
@@ -133,6 +138,10 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     }
 
     public ObservableCollection<TodoItemViewModel> Todo { get; } = new();
+
+    public TodoListViewModel? TodoList { get; }
+
+    public AgentCurrentTaskViewModel? CurrentAgentTask { get; }
 
     public ObservableCollection<TimelineItemViewModel> Today { get; } = new();
 

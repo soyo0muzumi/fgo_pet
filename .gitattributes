@@ -1,0 +1,2 @@
+# SHA-256 manifests cover these fixture bytes exactly; keep checkout line endings stable.
+tests/fixtures/packs/** text eol=lf

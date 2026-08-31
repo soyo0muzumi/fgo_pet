@@ -2,6 +2,8 @@ using FgoPet.App.Servants;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Agents;
+using FgoPet.Infrastructure.Agents;
 using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Bootstrap;
@@ -39,7 +41,9 @@ public sealed class DesktopAppShell : IAppShell
         IFocusRestorer? restorer = null,
         IPhase2Availability? phase2 = null,
         Func<ServantFocusConnector>? connectorFactory = null,
-        ILogger<DesktopAppShell>? logger = null)
+        ILogger<DesktopAppShell>? logger = null,
+        AgentReconnectService? agentReconnect = null,
+        IAgentRelayRuntime? agentRuntime = null)
     {
         _repository = repository;
         _controller = controller;
@@ -50,9 +54,14 @@ public sealed class DesktopAppShell : IAppShell
         _phase2 = phase2;
         _connectorFactory = connectorFactory;
         _logger = logger;
+        _agentReconnect = agentReconnect;
+        _agentRuntime = agentRuntime;
     }
 
     private readonly ILogger<DesktopAppShell>? _logger;
+    private readonly AgentReconnectService? _agentReconnect;
+    private readonly IAgentRelayRuntime? _agentRuntime;
+    private bool _agentStarted;
 
     public async Task StartAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -61,6 +70,17 @@ public sealed class DesktopAppShell : IAppShell
 
         // 2-3. Phase 2 runtime: migrate then restore, degrading on any failure.
         InitializePhase2Runtime();
+        if (_agentRuntime is not null)
+        {
+            if (!_agentStarted)
+            {
+                _agentStarted = true;
+                // Disabled startup may notify an existing Relay, but never launches it.
+                // Neither that bounded probe nor enabled bootstrap blocks the desktop.
+                _ = StartAgentRuntimeAsync(_settings.Load().AgentConnection.Enabled && _phase2?.IsAvailable != false);
+            }
+        }
+        else await ReconnectAgentAsync(cancellationToken).ConfigureAwait(true);
 
         var offeredPack = arguments.FirstOrDefault(path =>
             path.EndsWith(".fgopetpack", StringComparison.OrdinalIgnoreCase));
@@ -96,6 +116,32 @@ public sealed class DesktopAppShell : IAppShell
 
         // 4. Portrait last.
         _ui.ShowPortrait();
+    }
+
+    private async Task StartAgentRuntimeAsync(bool enabled)
+    {
+        try { await _agentRuntime!.SetEnabledAsync(enabled).ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            _logger?.LogWarning("Agent runtime startup unavailable: {ExceptionType}", error.GetType().Name);
+        }
+    }
+
+    private async Task ReconnectAgentAsync(CancellationToken cancellationToken)
+    {
+        if (_agentReconnect is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _agentReconnect.ReconnectAsync(cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception error)
+        {
+            _logger?.LogWarning(error, "Agent reconnect was unavailable: {ExceptionType}", error.GetType().Name);
+        }
     }
 
     private void InitializePhase2Runtime()

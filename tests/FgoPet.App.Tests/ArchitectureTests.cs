@@ -1,5 +1,5 @@
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using System.Windows;
 using FgoPet.App.Bootstrap;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,7 +52,9 @@ public sealed class ArchitectureTests
         var app = ReferencedProjects("FgoPet.App");
 
         Assert.Empty(core);
-        Assert.Equal(new[] { "FgoPet.Core" }, infra.OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal(
+            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            infra.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Equal(
             new[] { "FgoPet.Core", "FgoPet.Infrastructure" }.OrderBy(name => name, StringComparer.Ordinal),
             app.OrderBy(name => name, StringComparer.Ordinal));
@@ -77,8 +79,21 @@ public sealed class ArchitectureTests
     private static IEnumerable<string> ProjectFiles() => FindCsproj(RepoRoot());
 
     private static bool IsOnThisCheckout(string path) =>
-        !path.Contains($"{Path.DirectorySeparatorChar}spikes{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-        && !path.Contains(".worktrees", StringComparison.Ordinal);
+        !path.Contains($"{Path.DirectorySeparatorChar}spikes{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+
+    [Fact]
+    public void Checkout_filter_accepts_project_paths_from_a_worktree_checkout()
+    {
+        var projectPath = Path.Combine(
+            Path.GetTempPath(),
+            ".worktrees",
+            "phase4-runtime-repair",
+            "src",
+            "FgoPet.Core",
+            "FgoPet.Core.csproj");
+
+        Assert.True(IsOnThisCheckout(projectPath));
+    }
 
     private static string ReadProject(string projectName) =>
         File.ReadAllText(FindCsproj(RepoRoot()).Where(IsOnThisCheckout)
@@ -86,12 +101,10 @@ public sealed class ArchitectureTests
 
     private static IEnumerable<string> ReferencedProjects(string projectName)
     {
-        var text = ReadProject(projectName);
-        return Regex.Matches(
-                text,
-                @"<ProjectReference\s+Include\s*=\s*""[^""]*[/\\]([^/\\]+)\.csproj""",
-                RegexOptions.IgnoreCase)
-            .Select(match => match.Groups[1].Value)
+        // Companion executables are build/publish dependencies, not assembly references.
+        return XDocument.Parse(ReadProject(projectName)).Descendants("ProjectReference")
+            .Where(reference => !string.Equals((string?)reference.Attribute("ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase))
+            .Select(reference => Path.GetFileNameWithoutExtension((string)reference.Attribute("Include")!))
             .ToArray();
     }
 

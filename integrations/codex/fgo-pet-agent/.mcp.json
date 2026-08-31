@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fgo-pet-agent": {
+      "command": "fgo-pet-codex-adapter",
+      "args": ["mcp"]
+    }
+  }
+}

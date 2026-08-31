@@ -8,6 +8,7 @@ using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Panels;
+using FgoPet.Infrastructure.Agents;
 
 namespace FgoPet.App.Main;
 
@@ -20,6 +21,7 @@ public partial class PortraitWindow : Window
     private readonly AttachedPanelViewModel _panel;
     private readonly AttachedPanelView _panelView;
     private readonly IFocusSessionService? _focus;
+    private readonly AgentReconnectService? _agentReconnect;
     private readonly DispatcherTimer _idleTimer;
     private PortraitGeometry? _geometry;
     private double _portraitOffsetX;
@@ -34,10 +36,11 @@ public partial class PortraitWindow : Window
     {
     }
 
-    public PortraitWindow(AttachedPanelViewModel panel, IFocusSessionService? focus)
+    public PortraitWindow(AttachedPanelViewModel panel, IFocusSessionService? focus, AgentReconnectService? agentReconnect = null)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
         _focus = focus;
+        _agentReconnect = agentReconnect;
         InitializeComponent();
         _idleTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -86,6 +89,7 @@ public partial class PortraitWindow : Window
     {
         // The focus countdown consumes the same 1 s cadence as the idle collapse.
         _focus?.Tick();
+        _ = _agentReconnect?.PollAsync();
         _panel.Tick();
     }
 
