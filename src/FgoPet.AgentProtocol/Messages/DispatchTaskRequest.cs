@@ -46,4 +46,10 @@ public sealed record DispatchTaskRequest
 
     [JsonPropertyName("target_id")]
     public string TargetId { get; init; } = string.Empty;
+
+    [JsonPropertyName("source_type")]
+    public string? SourceType { get; init; }
+
+    [JsonPropertyName("source_instance_id")]
+    public string? SourceInstanceId { get; init; }
 }

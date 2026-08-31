@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -53,6 +54,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
                 Theme = ParseTheme(dto.Theme),
                 UserProfile = dto.UserProfile?.ToModel(),
                 PackageSettings = ParsePackageSettings(dto.PackageSettings),
+                AgentConnection = dto.AgentConnection?.ToModel() ?? AgentConnectionSettings.Defaults,
             };
         }
         catch (JsonException)
@@ -87,6 +89,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
                     setting => (string?)setting.Value,
                     StringComparer.Ordinal),
                 StringComparer.Ordinal),
+            AgentConnection = AgentConnectionDto.FromModel(settings.AgentConnection),
         };
         AtomicJson.Write(_path, JsonSerializer.Serialize(dto));
     }
@@ -110,6 +113,9 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
         [JsonPropertyName("model_connection")]
         public ModelConnectionDto? ModelConnection { get; init; }
+
+        [JsonPropertyName("agent_connection")]
+        public AgentConnectionDto? AgentConnection { get; init; }
 
         [JsonPropertyName("memory_enabled")]
         public bool? MemoryEnabled { get; init; }
@@ -148,6 +154,65 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
         public static ModelConnectionDto? FromModel(ModelConnectionSettings? settings) =>
             settings is null ? null : new ModelConnectionDto(settings.ProviderId, settings.BaseUrl, settings.ModelId);
+    }
+
+    private sealed record AgentConnectionDto(
+        [property: JsonPropertyName("enabled")] bool Enabled,
+        [property: JsonPropertyName("source_enabled")] Dictionary<string, bool>? SourceEnabled,
+        [property: JsonPropertyName("project_allowlist")] Dictionary<string, AgentProjectTargetDto[]>? ProjectAllowlist)
+    {
+        public AgentConnectionSettings ToModel()
+        {
+            if (!Enabled && (SourceEnabled is null || SourceEnabled.Count == 0)
+                && (ProjectAllowlist is null || ProjectAllowlist.Count == 0))
+            {
+                return AgentConnectionSettings.Defaults;
+            }
+
+            var allowlist = ProjectAllowlist?.ToDictionary(
+                pair => pair.Key,
+                pair =>
+                {
+                    if (pair.Value is null)
+                    {
+                        throw new JsonException("Agent project allowlist must be an array.");
+                    }
+
+                    return (IReadOnlyList<AgentProjectTarget>)pair.Value
+                        .Select(target => target.ToModel())
+                        .ToArray();
+                },
+                StringComparer.Ordinal);
+            return new AgentConnectionSettings(Enabled, SourceEnabled, allowlist);
+        }
+
+        public static AgentConnectionDto FromModel(AgentConnectionSettings settings) => new(
+            settings.Enabled,
+            settings.SourceEnabled.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            settings.ProjectAllowlist.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Select(AgentProjectTargetDto.FromModel).ToArray(),
+                StringComparer.Ordinal));
+    }
+
+    private sealed record AgentProjectTargetDto(
+        [property: JsonPropertyName("target_id")] string? TargetId,
+        [property: JsonPropertyName("display_name")] string? DisplayName)
+    {
+        public AgentProjectTarget ToModel()
+        {
+            try
+            {
+                return new AgentProjectTarget(TargetId ?? string.Empty, DisplayName ?? string.Empty);
+            }
+            catch (ArgumentException error)
+            {
+                throw new JsonException("Invalid Agent project target.", error);
+            }
+        }
+
+        public static AgentProjectTargetDto FromModel(AgentProjectTarget target) =>
+            new(target.TargetId, target.DisplayName);
     }
 
     private sealed record ServantPreferenceDto(

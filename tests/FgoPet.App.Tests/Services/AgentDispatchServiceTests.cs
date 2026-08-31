@@ -7,6 +7,38 @@ namespace FgoPet.App.Tests.Services;
 
 public sealed class AgentDispatchServiceTests
 {
+    [Theory]
+    [InlineData(1, null, AgentDispatchStatus.Accepted)]
+    [InlineData(2, null, AgentDispatchStatus.Failed)]
+    [InlineData(2, "instance-2", AgentDispatchStatus.Accepted)]
+    public async Task Production_dispatch_uses_one_authorized_instance_or_requires_explicit_selection(int count, string? instance, AgentDispatchStatus expected)
+    {
+        var todos = new FakeTodoRepository();
+        var agents = new FakeAgentRepository();
+        var gateway = new FakeGateway(AgentDispatchStatus.Accepted);
+        var todo = new TodoApplicationService(todos, TimeProvider.System).Create("Ship", null, TodoPriority.Normal, null);
+        var service = new AgentDispatchService(todos, agents, gateway, TimeProvider.System, new FakeAdministration(count));
+        var result = await service.DispatchAsync(todo, "codex", "project-1", true, sourceInstanceId: instance);
+        Assert.Equal(expected, result.Status);
+        if (expected == AgentDispatchStatus.Accepted)
+        {
+            Assert.Equal(instance ?? "instance-1", gateway.LastRequest!.SourceInstanceId);
+            Assert.Equal(gateway.LastRequest.SourceInstanceId, agents.SavedExecution!.SourceInstance);
+        }
+        else Assert.Null(gateway.LastRequest);
+    }
+
+    private sealed class FakeAdministration(int count) : IAgentRelayAdministration
+    {
+        public Task<AgentRelaySnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(
+            new AgentRelaySnapshot(AgentRelayConnectionState.Connected, true, true, true, DateTimeOffset.UtcNow, [],
+                Enumerable.Range(1, count).Select(i => new AgentApprovedSource("codex", $"instance-{i}", "Codex", "1", true, ["project-1"], true)).ToArray()));
+        public Task<AgentRelaySnapshot> TestConnectionAsync(CancellationToken cancellationToken = default) => GetSnapshotAsync(cancellationToken);
+        public Task DecideRegistrationAsync(string requestId, bool approve, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task UpdatePermissionsAsync(string sourceType, string sourceInstanceId, IReadOnlyList<string> targetIds, bool enabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task RevokeSourceAsync(string sourceType, string sourceInstanceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     [Fact]
     public async Task Accepted_dispatch_activates_todo_and_persists_execution()
     {

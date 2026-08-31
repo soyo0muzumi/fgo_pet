@@ -1,0 +1,46 @@
+{
+  "schema_version": 3,
+  "appearance_id": "casual",
+  "assets": [
+    {
+      "type": "body",
+      "stable_id": "full_body",
+      "path": "runtime/full_body.png",
+      "sha256": "sha256:e38e71bbf86480b37b11ca3be761252a1f7f9fb3d67588983c1d1b651ee2d1f9"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c01",
+      "path": "runtime/expressions/r01c01.png",
+      "sha256": "sha256:aa6cab409b9515a68d926925c64d5ca05cf977a6cb669692b3c34b31385cdc56"
+    }
+  ],
+  "composition": {
+    "body_id": "full_body",
+    "default_expression_id": "r01c01",
+    "overlay_offset": { "x": 13, "y": 0 },
+    "overlay_size": { "width": 256, "height": 240 },
+    "panel_anchor": { "x": 151, "y": 360 },
+    "default_scale": 0.5
+  },
+  "expression_semantics": {
+    "neutral": "r01c01",
+    "happy": "r01c01",
+    "excited": "r01c01",
+    "shy": "r01c01",
+    "concerned": "r01c01",
+    "sad": "r01c01",
+    "surprised": "r01c01",
+    "angry": "r01c01"
+  },
+  "fallback": {
+    "neutral": "neutral",
+    "happy": "neutral",
+    "excited": "neutral",
+    "shy": "neutral",
+    "concerned": "neutral",
+    "sad": "neutral",
+    "surprised": "neutral",
+    "angry": "neutral"
+  }
+}

@@ -18,7 +18,7 @@ public static class AgentProtocolValidator
         "agent_event", "dispatch_task", "open_task", "registration_request",
         "registration_approval", "registration_response", "registration_status",
         "authenticate", "connection_test", "pending_sources", "decide_registration",
-        "list_sources", "update_permissions", "revoke_source", "status_check",
+        "list_sources", "update_permissions", "revoke_source", "status_check", "error",
     };
 
     private static readonly HashSet<string> KnownRegistrationStatuses = new(StringComparer.Ordinal)
@@ -81,6 +81,8 @@ public static class AgentProtocolValidator
 
     private static void ValidateRequestEnvelope(ProtocolEnvelope envelope)
     {
+        if (envelope.MessageType == "error" || HasAnyProperty(envelope.Payload, "result", "sources", "events", "dispatches"))
+            throw new AgentProtocolValidationException("Response-only fields cannot appear in a request.");
         switch (envelope.MessageType)
         {
             case "agent_event": ValidateEvent(envelope.DeserializePayload<AgentEventMessage>()); break;
@@ -158,10 +160,84 @@ public static class AgentProtocolValidator
 
                 ValidateConnectionTest(envelope.DeserializePayload<RelayConnectionTestResponse>());
                 break;
-            case "pending_sources": ValidatePendingSource(envelope.DeserializePayload<PendingSourceDto>()); break;
-            case "list_sources": ValidateApprovedSource(envelope.DeserializePayload<ApprovedSourceDto>()); break;
+            case "pending_sources":
+                ValidateResult(envelope, "pending_sources", "ok");
+                ValidateSourceCollection<PendingSourceDto>(envelope, ValidatePendingSource);
+                break;
+            case "list_sources":
+                ValidateResult(envelope, "list_sources", "ok");
+                ValidateSourceCollection<ApprovedSourceDto>(envelope, ValidateApprovedSource);
+                break;
+            case "authenticate": ValidateResult(envelope, "authenticated", "unauthorized", "revoked"); break;
+            case "agent_event":
+                ValidateResult(envelope, "queued", "alreadyapplied", "already_applied", "disabled", "unauthorized", "revoked", "ok");
+                break;
+            case "dispatch_task":
+                ValidateResult(envelope, "accepted", "alreadyapplied", "already_applied", "disabled", "offline", "unauthorized");
+                ValidateOptionalIdentifier(envelope.Payload, "dispatch_request_id");
+                ValidateOptionalIdentifier(envelope.Payload, "task_id");
+                ValidateOptionalIdentifier(envelope.Payload, "source_instance");
+                break;
+            case "open_task": ValidateResult(envelope, "exact", "apponly", "app_only", "unsupported", "offline"); break;
+            case "decide_registration":
+            case "update_permissions":
+            case "revoke_source": ValidateResult(envelope, "ok"); break;
+            case "status_check":
+                ValidateResult(envelope, "status", "dispatches", "ok");
+                ValidateEmbeddedEnvelopes(envelope.Payload, "events", "agent_event");
+                ValidateEmbeddedEnvelopes(envelope.Payload, "dispatches", "dispatch_task");
+                break;
+            case "error": ValidateResult(envelope); break;
             default:
                 throw new AgentProtocolValidationException($"Message type '{envelope.MessageType}' is request-only.");
+        }
+    }
+
+    private static void ValidateResult(ProtocolEnvelope envelope, params string[] allowed)
+    {
+        if (!envelope.Payload.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.String)
+            throw new AgentProtocolValidationException("The relay response requires a result code.");
+        var code = result.GetString();
+        RequireText(code, "result");
+        if (code!.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-')
+            || allowed.Length > 0 && !allowed.Contains(code, StringComparer.Ordinal))
+            throw new AgentProtocolValidationException("The relay response result code is invalid.");
+        ValidateOptionalIdentifier(envelope.Payload, "error");
+    }
+
+    private static void ValidateOptionalIdentifier(JsonElement payload, string property)
+    {
+        if (!payload.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null) return;
+        if (value.ValueKind != JsonValueKind.String)
+            throw new AgentProtocolValidationException("A relay response identifier must be text.");
+        ValidateSafeIdentifier(value.GetString(), property);
+    }
+
+    private static void ValidateSourceCollection<T>(ProtocolEnvelope envelope, Action<T> validate)
+    {
+        if (!envelope.Payload.TryGetProperty("sources", out var sources) || sources.ValueKind != JsonValueKind.Array)
+            throw new AgentProtocolValidationException("The relay response requires a source collection.");
+        foreach (var source in sources.EnumerateArray())
+        {
+            if (source.ValueKind != JsonValueKind.Object)
+                throw new AgentProtocolValidationException("A source must be a JSON object.");
+            validate((envelope with { Payload = source }).DeserializePayload<T>());
+        }
+    }
+
+    private static void ValidateEmbeddedEnvelopes(JsonElement payload, string property, string messageType)
+    {
+        if (!payload.TryGetProperty(property, out var items)) return;
+        if (items.ValueKind != JsonValueKind.Array)
+            throw new AgentProtocolValidationException("A relay event or dispatch collection must be an array.");
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind is not JsonValueKind.String and not JsonValueKind.Object)
+                throw new AgentProtocolValidationException("An embedded envelope must be an object or JSON string.");
+            var nested = ProtocolEnvelope.Parse(item.ValueKind == JsonValueKind.String ? item.GetString()! : item.GetRawText());
+            if (nested.MessageType != messageType)
+                throw new AgentProtocolValidationException("An embedded envelope has the wrong message type.");
+            Validate(nested);
         }
     }
 
@@ -201,6 +277,11 @@ public static class AgentProtocolValidator
 
     private static void ValidateDispatch(DispatchTaskRequest message)
     {
+        if (message.SourceType is not null || message.SourceInstanceId is not null)
+        {
+            ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+            ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        }
         RequireText(message.DispatchRequestId, nameof(message.DispatchRequestId));
         RequireText(message.TodoId, nameof(message.TodoId));
         RequireText(message.Title, nameof(message.Title));
@@ -368,6 +449,7 @@ public static class AgentProtocolValidator
     private static void ValidateSafeIdentifier(string? value, string fieldName)
     {
         RequireText(value, fieldName);
+        if (value!.Any(char.IsControl)) throw new AgentProtocolValidationException("An identifier cannot contain control characters.");
         AgentPayloadSanitizer.SanitizeText(value, fieldName);
     }
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
@@ -72,62 +73,62 @@ public sealed class RelayProcessBootstrapper
             options.ConnectTimeout,
             options.StartupTimeout);
 
-        var first = await _probe.ProbeAsync(options, cancellationToken).ConfigureAwait(false);
-        if (IsVersionMismatch(first))
-        {
-            return new RelayBootstrapResult(RelayBootstrapStatus.VersionMismatch, first.Error ?? DescribeVersion(first.ProtocolVersion));
-        }
-
-        if (first.Ready && IsCurrentProtocol(first))
-        {
-            return new RelayBootstrapResult(RelayBootstrapStatus.Ready, null);
-        }
-
-        if (first.Ready)
-        {
-            return new RelayBootstrapResult(RelayBootstrapStatus.VersionMismatch, first.Error ?? DescribeVersion(first.ProtocolVersion));
-        }
-
+        cancellationToken.ThrowIfCancellationRequested();
+        var start = _timeProvider.GetTimestamp();
+        using var budget = new CancellationTokenSource(options.StartupTimeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
+        var token = linked.Token;
+        var launched = false;
+        string? lastError = null;
+        TimeSpan Remaining() => options.StartupTimeout - _timeProvider.GetElapsedTime(start);
+        RelayBootstrapResult TimedOut() => new(RelayBootstrapStatus.TimedOut, lastError ?? "Relay startup timed out.");
         try
         {
-            _launcher.Start(options);
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
-        {
-            return new RelayBootstrapResult(RelayBootstrapStatus.StartFailed, error.Message);
-        }
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                var remaining = Remaining();
+                if (remaining <= TimeSpan.Zero) return TimedOut();
+                // Bound even a faulty injected probe that ignores its cancellation token.
+                var result = await _probe.ProbeAsync(options, token)
+                    .WaitAsync(remaining, _timeProvider, token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                if (Remaining() <= TimeSpan.Zero) return TimedOut();
+                lastError = result.Error ?? lastError;
+                if (IsVersionMismatch(result) || result.Ready && !IsCurrentProtocol(result))
+                {
+                    return new RelayBootstrapResult(RelayBootstrapStatus.VersionMismatch, result.Error ?? DescribeVersion(result.ProtocolVersion));
+                }
 
-        var start = _timeProvider.GetTimestamp();
-        var lastError = first.Error;
-        while (true)
+                if (result.Ready) return new RelayBootstrapResult(RelayBootstrapStatus.Ready, null);
+                if (!launched)
+                {
+                    token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        _launcher.Start(options);
+                        launched = true;
+                    }
+                    catch (Exception error) when (error is not OperationCanceledException)
+                    {
+                        return new RelayBootstrapResult(RelayBootstrapStatus.StartFailed, "relay_start_failed");
+                    }
+                }
+
+                remaining = Remaining();
+                if (remaining <= TimeSpan.Zero) return TimedOut();
+                await _delay.DelayAsync(remaining < ProbeInterval ? remaining : ProbeInterval, token)
+                    .WaitAsync(remaining, _timeProvider, token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return TimedOut();
+        }
+        catch (TimeoutException)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var elapsed = _timeProvider.GetElapsedTime(start);
-            if (elapsed >= options.StartupTimeout)
-            {
-                return new RelayBootstrapResult(RelayBootstrapStatus.TimedOut, lastError ?? "Relay startup timed out.");
-            }
-
-            var remaining = options.StartupTimeout - elapsed;
-            await _delay.DelayAsync(remaining < ProbeInterval ? remaining : ProbeInterval, cancellationToken)
-                .ConfigureAwait(false);
-
-            var result = await _probe.ProbeAsync(options, cancellationToken).ConfigureAwait(false);
-            lastError = result.Error ?? lastError;
-            if (IsVersionMismatch(result))
-            {
-                return new RelayBootstrapResult(RelayBootstrapStatus.VersionMismatch, result.Error ?? DescribeVersion(result.ProtocolVersion));
-            }
-
-            if (result.Ready && IsCurrentProtocol(result))
-            {
-                return new RelayBootstrapResult(RelayBootstrapStatus.Ready, null);
-            }
-
-            if (result.Ready)
-            {
-                return new RelayBootstrapResult(RelayBootstrapStatus.VersionMismatch, result.Error ?? DescribeVersion(result.ProtocolVersion));
-            }
+            return TimedOut();
         }
     }
 
@@ -165,7 +166,8 @@ public sealed class DefaultRelayProcessLauncher : IRelayProcessLauncher
         info.ArgumentList.Add(options.PipeSuffix);
         info.ArgumentList.Add("--state-root");
         info.ArgumentList.Add(options.StateRoot);
-        if (Process.Start(info) is null)
+        using var process = Process.Start(info);
+        if (process is null)
         {
             throw new InvalidOperationException("The relay process could not be started.");
         }
@@ -189,26 +191,30 @@ public sealed class DefaultRelayProbe : IRelayProbe
 
         var appTask = ProbeAppAsync(names.App, options.ConnectTimeout, timeout.Token);
         var adapterTask = ProbeAdapterAsync(names.Adapter, options.ConnectTimeout, timeout.Token);
-        RelayProbeResult app;
-        bool adapterReady;
+        RelayProbeResult? app = null;
         try
         {
             app = await appTask.ConfigureAwait(false);
-            adapterReady = await adapterTask.ConfigureAwait(false);
+            if (!app.Ready) return app;
+            var adapterReady = await adapterTask.ConfigureAwait(false);
+            return adapterReady
+                ? app
+                : new RelayProbeResult(false, app.ProtocolVersion, "The adapter relay pipe is not ready.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new RelayProbeResult(false, null, "Relay pipe probe timed out.");
+            // An unavailable adapter cannot erase an app endpoint's known incompatibility.
+            return app is { Ready: false }
+                ? app
+                : new RelayProbeResult(false, app?.ProtocolVersion, "Relay pipe probe timed out.");
         }
-
-        if (!app.Ready)
+        finally
         {
-            return app with { Ready = false };
+            await timeout.CancelAsync().ConfigureAwait(false);
+            // Both connect operations are owned here, including failure/cancellation paths.
+            try { await Task.WhenAll(appTask, adapterTask).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
         }
-
-        return adapterReady
-            ? app
-            : new RelayProbeResult(false, app.ProtocolVersion, "The adapter relay pipe is not ready.");
     }
 
     private static async Task<RelayProbeResult> ProbeAppAsync(string pipeName, TimeSpan timeout, CancellationToken cancellationToken)
@@ -222,6 +228,8 @@ public sealed class DefaultRelayProbe : IRelayProbe
                 new { });
             var line = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
             var envelope = ProtocolEnvelope.Parse(line);
+            if (envelope.MessageId != request.MessageId || envelope.MessageType != "connection_test")
+                throw new AgentProtocolValidationException("The connection probe response does not match its request.");
             if (!string.Equals(envelope.ProtocolVersion, ProtocolEnvelope.CurrentProtocolVersion, StringComparison.Ordinal))
             {
                 return new RelayProbeResult(false, envelope.ProtocolVersion, "The relay protocol version is not supported.");
@@ -234,7 +242,8 @@ public sealed class DefaultRelayProbe : IRelayProbe
             }
 
             AgentProtocolValidator.ValidateResponse(envelope);
-            var ready = response.RelayOnline && response.AppOnline;
+            // The standalone Relay can pair adapters while the desktop App is closed.
+            var ready = response.RelayOnline;
             return new RelayProbeResult(
                 ready,
                 response.ProtocolVersion,
@@ -244,7 +253,8 @@ public sealed class DefaultRelayProbe : IRelayProbe
         {
             throw;
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or AgentProtocolValidationException or JsonException)
+        catch (Exception error) when (error is IOException or InvalidDataException or AgentProtocolValidationException
+            or JsonException or DecoderFallbackException or UnauthorizedAccessException)
         {
             return new RelayProbeResult(false, null, "The app relay pipe did not return a valid connection response.");
         }
@@ -254,7 +264,8 @@ public sealed class DefaultRelayProbe : IRelayProbe
     {
         try
         {
-            await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutSource.CancelAfter(timeout);
             await pipe.ConnectAsync(timeoutSource.Token).ConfigureAwait(false);

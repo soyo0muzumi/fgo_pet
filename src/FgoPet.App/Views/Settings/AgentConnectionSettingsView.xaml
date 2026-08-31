@@ -1,34 +1,116 @@
 <UserControl x:Class="FgoPet.App.Views.Settings.AgentConnectionSettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <StackPanel>
-    <Border Style="{StaticResource SettingsCardStyle}">
-      <StackPanel>
-        <TextBlock Text="Agent 总开关" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
-        <TextBlock Text="FGO Pet 只接收已授权来源的状态事件；关闭后不会删除配对或项目 allowlist。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
-        <CheckBox Content="启用 Agent 集成" IsChecked="{Binding Enabled, Mode=TwoWay}"/>
-        <Button Content="保存连接设置" Style="{StaticResource SettingsPrimaryButtonStyle}" HorizontalAlignment="Left" Margin="0,10,0,0" Click="OnSaveClick"/>
-        <TextBlock Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,8,0,0"/>
-        <Button Content="清除全部 Agent Todo 数据" Style="{StaticResource SettingsDangerButtonStyle}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnClearClick"/>
-      </StackPanel>
-    </Border>
-    <Border Style="{StaticResource SettingsCardStyle}">
-      <StackPanel>
-        <TextBlock Text="已配对来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
-        <ItemsControl ItemsSource="{Binding Connections}" Margin="0,8,0,0">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,8">
-                <StackPanel>
-                  <DockPanel><CheckBox IsChecked="{Binding IsEnabled}" Content="{Binding DisplayName}"/><TextBlock DockPanel.Dock="Right" Text="{Binding Version}" Foreground="{DynamicResource MutedTextBrush}"/></DockPanel>
-                  <TextBlock Text="{Binding SourceType}" Style="{StaticResource SettingsStatusStyle}"/>
-                  <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11"><Run Text="最后事件："/><Run Text="{Binding LastEventText}"/><Run Text=" · pending："/><Run Text="{Binding PendingCount}"/></TextBlock>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </StackPanel>
-    </Border>
-  </StackPanel>
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+      <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </ResourceDictionary>
+  </UserControl.Resources>
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel>
+      <Border Style="{StaticResource SettingsCardStyle}">
+        <StackPanel>
+          <TextBlock Text="Agent 总开关" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <TextBlock Text="FGO Pet 只接收已授权来源的状态事件；关闭后不会删除配对或项目权限。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <CheckBox Content="启用 Agent 集成" IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding CanInteract}"/>
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="保存连接设置" Style="{StaticResource SettingsPrimaryButtonStyle}" HorizontalAlignment="Left" Click="OnSaveClick" IsEnabled="{Binding CanInteract}"/>
+            <Button Content="刷新状态" Margin="8,0,0,0" Click="OnRefreshClick" IsEnabled="{Binding CanInteract}"/>
+            <Button Content="测试连接" Margin="8,0,0,0" Click="OnTestConnectionClick" IsEnabled="{Binding CanInteract}"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock Text="状态：" Style="{StaticResource SettingsStatusStyle}"/>
+            <TextBlock Text="{Binding StateText}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+            <TextBlock Style="{StaticResource SettingsStatusStyle}"><Run Text="Relay："/><Run Text="{Binding RelayStatusText, Mode=OneWay}"/></TextBlock>
+            <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="App："/><Run Text="{Binding AppStatusText, Mode=OneWay}"/></TextBlock>
+            <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="适配器："/><Run Text="{Binding AdapterStatusText, Mode=OneWay}"/></TextBlock>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+          <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <TextBlock Text="{Binding InstallationGuidanceText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+          <Button Content="清除全部 Agent Todo 数据" Style="{StaticResource SettingsDangerButtonStyle}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnClearClick" IsEnabled="{Binding CanInteract}"/>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <StackPanel>
+          <TextBlock Text="待批准来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <TextBlock Text="适配器首次连接会出现在这里。批准前不会获得任务或事件权限。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <TextBlock Text="当前没有待批准请求。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoPendingSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <ItemsControl ItemsSource="{Binding PendingSources}" Visibility="{Binding HasPendingSources, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap"><Run Text="类型："/><Run Text="{Binding SourceType, Mode=OneWay}"/><Run Text="  实例："/><Run Text="{Binding SourceInstanceId, Mode=OneWay}"/></TextBlock>
+                    <TextBlock Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap"><Run Text="版本："/><Run Text="{Binding AdapterVersion, Mode=OneWay}"/><Run Text=" · 请求："/><Run Text="{Binding RequestedAtText, Mode=OneWay}"/><Run Text=" · 过期："/><Run Text="{Binding ExpiresAtText, Mode=OneWay}"/></TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                      <Button Content="批准" Click="OnApprovePendingClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="72"/>
+                      <Button Content="拒绝" Margin="8,0,0,0" Click="OnRejectPendingClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="72"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <StackPanel>
+          <TextBlock Text="已授权来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <TextBlock Text="权限按来源实例保存。项目 ID 是由适配器提供的不透明标识，每行一个；不要填写项目名称代替 ID。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <TextBlock Text="当前没有已授权来源。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+          <ItemsControl ItemsSource="{Binding ApprovedSources}" Visibility="{Binding HasApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,10" Margin="0,0,0,10">
+                  <StackPanel>
+                    <DockPanel LastChildFill="False">
+                      <CheckBox Content="启用来源" IsChecked="{Binding IsEnabled, Mode=TwoWay}" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                      <TextBlock DockPanel.Dock="Right" Text="{Binding OnlineText}" Foreground="{DynamicResource MutedTextBrush}"/>
+                    </DockPanel>
+                    <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap"><Run Text="类型："/><Run Text="{Binding SourceType, Mode=OneWay}"/><Run Text="  实例："/><Run Text="{Binding SourceInstanceId, Mode=OneWay}"/></TextBlock>
+                    <TextBlock Style="{StaticResource SettingsStatusStyle}"><Run Text="适配器版本："/><Run Text="{Binding AdapterVersion, Mode=OneWay}"/></TextBlock>
+                    <TextBlock Text="允许的项目 ID" Foreground="{DynamicResource TextBrush}" Margin="0,8,0,4"/>
+                    <TextBox Text="{Binding TargetIdsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="允许的项目 ID，每行一个" AcceptsReturn="True" MinHeight="52" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                      <Button Content="保存权限" Click="OnSaveSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
+                      <Button Content="撤销授权" Margin="8,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}" Click="OnRevokeSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsLegacyMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <StackPanel>
+          <TextBlock Text="已配对来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <ItemsControl ItemsSource="{Binding Connections}" Margin="0,8,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,8">
+                  <StackPanel>
+                    <DockPanel><CheckBox IsChecked="{Binding IsEnabled}" Content="{Binding DisplayName}"/><TextBlock DockPanel.Dock="Right" Text="{Binding Version}" Foreground="{DynamicResource MutedTextBrush}"/></DockPanel>
+                    <TextBlock Text="{Binding SourceType}" Style="{StaticResource SettingsStatusStyle}"/>
+                    <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11"><Run Text="最后事件："/><Run Text="{Binding LastEventText, Mode=OneWay}"/><Run Text=" · pending："/><Run Text="{Binding PendingCount, Mode=OneWay}"/></TextBlock>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

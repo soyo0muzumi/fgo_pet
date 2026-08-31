@@ -18,8 +18,13 @@ public sealed class CodexAppServerClientTests
 
         Assert.Equal("thread-1", result.TaskId);
         Assert.Equal(new[] { "thread/start", "turn/start" }, rpc.Methods);
-        Assert.Contains("Ship it", rpc.Parameters[1].GetProperty("input").GetString(), StringComparison.Ordinal);
-        Assert.Contains("Run the approved tests", rpc.Parameters[1].GetProperty("input").GetString(), StringComparison.Ordinal);
+        Assert.Equal("thread-1", rpc.Parameters[1].GetProperty("threadId").GetString());
+        var input = rpc.Parameters[1].GetProperty("input")[0];
+        Assert.Equal("text", input.GetProperty("type").GetString());
+        Assert.Contains("Ship it", input.GetProperty("text").GetString(), StringComparison.Ordinal);
+        Assert.Contains("Run the approved tests", input.GetProperty("text").GetString(), StringComparison.Ordinal);
+        Assert.Equal("on-request", rpc.Parameters[0].GetProperty("approvalPolicy").GetString());
+        Assert.Equal("workspace-write", rpc.Parameters[0].GetProperty("sandbox").GetString());
     }
 
     private sealed class DictionaryTargetResolver(IReadOnlyDictionary<string, string> targets) : ICodexTargetResolver
@@ -37,8 +42,8 @@ public sealed class CodexAppServerClientTests
             Methods.Add(method);
             Parameters.Add(JsonSerializer.SerializeToElement(parameters));
             return Task.FromResult(method == "thread/start"
-                ? JsonSerializer.SerializeToElement(new { thread_id = "thread-1" })
-                : JsonSerializer.SerializeToElement(new { ok = true }));
+                ? JsonSerializer.SerializeToElement(new { thread = new { id = "thread-1" } })
+                : JsonSerializer.SerializeToElement(new { turn = new { id = "turn-1", status = "inProgress" } }));
         }
     }
 }

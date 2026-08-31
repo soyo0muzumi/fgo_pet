@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "package_id": "preview.mash",
+  "package_version": "1.0.0",
+  "servant_id": "mash_kyrielight",
+  "display_name": "玛修·基列莱特（实机预览）",
+  "publisher": "local-preview",
+  "min_app_version": "1.0.0",
+  "preview_path": "previews/library.png",
+  "appearances": [
+    {
+      "appearance_id": "casual",
+      "manifest_path": "appearances/casual/manifest.json"
+    }
+  ]
+}

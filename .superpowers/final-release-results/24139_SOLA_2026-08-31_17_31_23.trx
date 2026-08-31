@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="9f7c8cf1-3f29-4f12-9d50-c6c801d293c6" name="24139@SOLA 2026-08-31 17:31:23" runUser="SOLA\24139" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-08-31T17:31:23.2496699+08:00" queuing="2026-08-31T17:31:23.2496704+08:00" start="2026-08-31T17:31:20.1449065+08:00" finish="2026-08-31T17:31:23.2647242+08:00" />
+  <TestSettings name="default" id="73b288c7-6c1f-41cd-9efa-a1280f93be18">
+    <Deployment runDeploymentRoot="24139_SOLA_2026-08-31_17_31_23" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="1580d520-aa1c-4628-a267-90683aa7723f" testId="81bcb78c-018b-22fc-3ce4-7581371845aa" testName="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Confirmed_mcp_completion_travels_through_relay_and_reaches_terminal_projection" computerName="SOLA" duration="00:00:01.1209214" startTime="2026-08-31T17:31:22.8749795+08:00" endTime="2026-08-31T17:31:22.8750079+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1580d520-aa1c-4628-a267-90683aa7723f" />
+    <UnitTestResult executionId="8f83e8ab-427f-4b0d-9dd7-a3a372142c43" testId="0808bc4d-1666-d2ea-3d49-6db0dbbafac6" testName="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Relay_dispatch_is_offline_safe_and_repeated_request_is_stable_when_adapter_returns" computerName="SOLA" duration="00:00:00.0021833" startTime="2026-08-31T17:31:22.8801857+08:00" endTime="2026-08-31T17:31:22.8801858+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8f83e8ab-427f-4b0d-9dd7-a3a372142c43" />
+    <UnitTestResult executionId="181cbdfc-7426-44d3-90cc-1b39116150f5" testId="2b3c48bf-7a95-1f8b-a38d-c416100879de" testName="FgoPet.EndToEnd.Tests.RelayPairingRoundTripTests.Durable_pairing_permissions_event_round_trip_restart_and_revoke_use_the_real_wire_contract" computerName="SOLA" duration="00:00:01.3285362" startTime="2026-08-31T17:31:23.0790397+08:00" endTime="2026-08-31T17:31:23.0790403+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="181cbdfc-7426-44d3-90cc-1b39116150f5" />
+    <UnitTestResult executionId="761397b3-2ebd-49b9-abc2-67602718d32a" testId="49fc2e6f-a46b-a959-e906-879304ebd69b" testName="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Hook_events_are_idempotent_at_the_relay_boundary_and_private_payloads_are_redacted" computerName="SOLA" duration="00:00:00.0033178" startTime="2026-08-31T17:31:22.8796480+08:00" endTime="2026-08-31T17:31:22.8796482+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="761397b3-2ebd-49b9-abc2-67602718d32a" />
+    <UnitTestResult executionId="c01f51de-e578-46d7-b6eb-da6817a1ebb5" testId="25c1e8b0-e0ed-590e-852a-5ddd6cd117fe" testName="FgoPet.EndToEnd.Tests.AppRelayControlTests.Desktop_control_client_pairs_dispatches_and_projects_over_real_pipes" computerName="SOLA" duration="00:00:01.2097735" startTime="2026-08-31T17:31:22.9632658+08:00" endTime="2026-08-31T17:31:22.9632664+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c01f51de-e578-46d7-b6eb-da6817a1ebb5" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Hook_events_are_idempotent_at_the_relay_boundary_and_private_payloads_are_redacted" storage="d:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\fgopet.endtoend.tests\bin\release\net8.0-windows\fgopet.endtoend.tests.dll" id="49fc2e6f-a46b-a959-e906-879304ebd69b">
+      <Execution id="761397b3-2ebd-49b9-abc2-67602718d32a" />
+      <TestMethod codeBase="D:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\FgoPet.EndToEnd.Tests\bin\Release\net8.0-windows\FgoPet.EndToEnd.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests" name="Hook_events_are_idempotent_at_the_relay_boundary_and_private_payloads_are_redacted" />
+    </UnitTest>
+    <UnitTest name="FgoPet.EndToEnd.Tests.AppRelayControlTests.Desktop_control_client_pairs_dispatches_and_projects_over_real_pipes" storage="d:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\fgopet.endtoend.tests\bin\release\net8.0-windows\fgopet.endtoend.tests.dll" id="25c1e8b0-e0ed-590e-852a-5ddd6cd117fe">
+      <Execution id="c01f51de-e578-46d7-b6eb-da6817a1ebb5" />
+      <TestMethod codeBase="D:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\FgoPet.EndToEnd.Tests\bin\Release\net8.0-windows\FgoPet.EndToEnd.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="FgoPet.EndToEnd.Tests.AppRelayControlTests" name="Desktop_control_client_pairs_dispatches_and_projects_over_real_pipes" />
+    </UnitTest>
+    <UnitTest name="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Relay_dispatch_is_offline_safe_and_repeated_request_is_stable_when_adapter_returns" storage="d:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\fgopet.endtoend.tests\bin\release\net8.0-windows\fgopet.endtoend.tests.dll" id="0808bc4d-1666-d2ea-3d49-6db0dbbafac6">
+      <Execution id="8f83e8ab-427f-4b0d-9dd7-a3a372142c43" />
+      <TestMethod codeBase="D:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\FgoPet.EndToEnd.Tests\bin\Release\net8.0-windows\FgoPet.EndToEnd.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests" name="Relay_dispatch_is_offline_safe_and_repeated_request_is_stable_when_adapter_returns" />
+    </UnitTest>
+    <UnitTest name="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests.Confirmed_mcp_completion_travels_through_relay_and_reaches_terminal_projection" storage="d:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\fgopet.endtoend.tests\bin\release\net8.0-windows\fgopet.endtoend.tests.dll" id="81bcb78c-018b-22fc-3ce4-7581371845aa">
+      <Execution id="1580d520-aa1c-4628-a267-90683aa7723f" />
+      <TestMethod codeBase="D:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\FgoPet.EndToEnd.Tests\bin\Release\net8.0-windows\FgoPet.EndToEnd.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="FgoPet.EndToEnd.Tests.AgentIntegrationEndToEndTests" name="Confirmed_mcp_completion_travels_through_relay_and_reaches_terminal_projection" />
+    </UnitTest>
+    <UnitTest name="FgoPet.EndToEnd.Tests.RelayPairingRoundTripTests.Durable_pairing_permissions_event_round_trip_restart_and_revoke_use_the_real_wire_contract" storage="d:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\fgopet.endtoend.tests\bin\release\net8.0-windows\fgopet.endtoend.tests.dll" id="2b3c48bf-7a95-1f8b-a38d-c416100879de">
+      <Execution id="181cbdfc-7426-44d3-90cc-1b39116150f5" />
+      <TestMethod codeBase="D:\fgo_unpack\fgo_pet\.worktrees\phase4-runtime-repair\tests\FgoPet.EndToEnd.Tests\bin\Release\net8.0-windows\FgoPet.EndToEnd.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="FgoPet.EndToEnd.Tests.RelayPairingRoundTripTests" name="Durable_pairing_permissions_event_round_trip_restart_and_revoke_use_the_real_wire_contract" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="81bcb78c-018b-22fc-3ce4-7581371845aa" executionId="1580d520-aa1c-4628-a267-90683aa7723f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0808bc4d-1666-d2ea-3d49-6db0dbbafac6" executionId="8f83e8ab-427f-4b0d-9dd7-a3a372142c43" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2b3c48bf-7a95-1f8b-a38d-c416100879de" executionId="181cbdfc-7426-44d3-90cc-1b39116150f5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="49fc2e6f-a46b-a959-e906-879304ebd69b" executionId="761397b3-2ebd-49b9-abc2-67602718d32a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="25c1e8b0-e0ed-590e-852a-5ddd6cd117fe" executionId="c01f51de-e578-46d7-b6eb-da6817a1ebb5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="5" executed="5" passed="5" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.21)&#xD;
+[xUnit.net 00:00:00.49]   Discovering: FgoPet.EndToEnd.Tests&#xD;
+[xUnit.net 00:00:00.57]   Discovered:  FgoPet.EndToEnd.Tests&#xD;
+[xUnit.net 00:00:00.58]   Starting:    FgoPet.EndToEnd.Tests&#xD;
+[xUnit.net 00:00:02.09]   Finished:    FgoPet.EndToEnd.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

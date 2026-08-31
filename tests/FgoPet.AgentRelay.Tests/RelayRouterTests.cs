@@ -39,7 +39,7 @@ public sealed class RelayRouterTests
         var router = new RelayRouter(store, registration);
         var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
         var grant = Approve(registration, at);
-        router.SetAdapterOnline("codex", grant.SourceInstance, true);
+        router.TouchAdapterOnline(grant, at);
         router.SetAllowedTargets("codex", new[] { "opaque-project" });
         var request = new DispatchTaskRequest("dispatch-1", "todo-1", "Ship it", null, "normal", null, "opaque-project");
 

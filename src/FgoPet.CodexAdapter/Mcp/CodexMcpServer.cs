@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
 using FgoPet.AgentProtocol.Privacy;
 using FgoPet.CodexAdapter.Relay;
@@ -13,6 +14,11 @@ public sealed class CodexMcpServer
     private readonly string _taskId;
     private long _sequence;
 
+    public CodexMcpServer(ICodexRelayConnector connector, string taskId)
+        : this(connector, "codex", connector.SourceInstanceId, taskId)
+    {
+    }
+
     public CodexMcpServer(ICodexRelaySession relay, string sourceType, string sourceInstance, string taskId)
     {
         _relay = relay ?? throw new ArgumentNullException(nameof(relay));
@@ -23,24 +29,46 @@ public sealed class CodexMcpServer
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken = default)
     {
-        using var document = JsonDocument.Parse(line);
-        var root = document.RootElement;
-        var id = root.TryGetProperty("id", out var idValue) ? idValue.Clone() : default;
-        var method = root.TryGetProperty("method", out var methodValue) ? methodValue.GetString() : null;
-        return method switch
+        JsonDocument document;
+        try { document = JsonDocument.Parse(line); }
+        catch (JsonException) { return Error(default, -32700, "parse_error"); }
+        using (document)
         {
-            "initialize" => Response(id, new { protocolVersion = "2024-11-05", capabilities = new { tools = new { } }, serverInfo = new { name = "fgo-pet-agent", version = "1" } }),
-            "notifications/initialized" => Response(id, new { }),
-            "tools/list" => Response(id, new { tools = Tools }),
-            "tools/call" => await HandleToolCallAsync(id, root, cancellationToken).ConfigureAwait(false),
-            _ => Error(id, -32601, "method_not_found"),
-        };
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return Error(default, -32600, "invalid_request");
+            if (!root.TryGetProperty("id", out var id)) return string.Empty;
+            if (id.ValueKind is not JsonValueKind.String and not JsonValueKind.Number and not JsonValueKind.Null)
+                return Error(default, -32600, "invalid_request");
+            var method = ReadOptionalString(root, "method");
+            try
+            {
+                return method switch
+                {
+                    "initialize" => Response(id, new { protocolVersion = "2024-11-05", capabilities = new { tools = new { } }, serverInfo = new { name = "fgo-pet-agent", version = "1" } }),
+                    "tools/list" => Response(id, new { tools = Tools }),
+                    "tools/call" => await HandleToolCallAsync(id, root, cancellationToken).ConfigureAwait(false),
+                    _ => Error(id, -32601, "method_not_found"),
+                };
+            }
+            catch (AdapterConnectionException error) { return ConnectionError(id, error.Result); }
+            catch (AgentProtocolValidationException) { return Error(id, -32602, "invalid_params"); }
+            catch (IOException) { return ConnectionError(id, new(AdapterConnectionStatus.RelayOffline)); }
+            catch (InvalidDataException) { return ConnectionError(id, new(AdapterConnectionStatus.RelayOffline)); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return ConnectionError(id, new(AdapterConnectionStatus.RelayOffline));
+            }
+        }
     }
 
     private async Task<string> HandleToolCallAsync(JsonElement id, JsonElement root, CancellationToken cancellationToken)
     {
         var parameters = root.TryGetProperty("params", out var value) ? value : default;
-        var name = parameters.TryGetProperty("name", out var nameValue) ? nameValue.GetString() : null;
+        if (parameters.ValueKind != JsonValueKind.Object)
+        {
+            return Error(id, -32602, "invalid_params");
+        }
+        var name = ReadOptionalString(parameters, "name");
         var arguments = parameters.TryGetProperty("arguments", out var args) ? args : default;
         var confirmed = arguments.ValueKind == JsonValueKind.Object
             && arguments.TryGetProperty("user_confirmed", out var confirmedValue)
@@ -48,6 +76,20 @@ public sealed class CodexMcpServer
         if (!confirmed)
         {
             return Error(id, -32602, "user_confirmation_required");
+        }
+
+        if (name is not "report_task_completed" and not "report_goal_completed")
+        {
+            return Error(id, -32602, "unknown_tool");
+        }
+
+        if (_relay is ICodexRelayConnector connector)
+        {
+            var connection = await connector.EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
+            if (connection.Status != AdapterConnectionStatus.Connected)
+            {
+                return ConnectionError(id, connection);
+            }
         }
 
         if (name == "report_task_completed")
@@ -95,9 +137,18 @@ public sealed class CodexMcpServer
             ? child.GetString()
             : null;
 
-    private static string Response(JsonElement id, object result) => JsonSerializer.Serialize(new { jsonrpc = "2.0", id, result });
+    private static string Response(JsonElement id, object result) => JsonSerializer.Serialize(new { jsonrpc = "2.0", id = ResponseId(id), result });
 
-    private static string Error(JsonElement id, int code, string message) => JsonSerializer.Serialize(new { jsonrpc = "2.0", id, error = new { code, message } });
+    private static string Error(JsonElement id, int code, string message) => JsonSerializer.Serialize(new { jsonrpc = "2.0", id = ResponseId(id), error = new { code, message } });
+
+    private static object? ResponseId(JsonElement id) => id.ValueKind == JsonValueKind.Undefined ? null : id;
+
+    private static string ConnectionError(JsonElement id, AdapterConnectionResult connection) => Response(id, new
+    {
+        isError = true,
+        content = new[] { new { type = "text", text = connection.StatusCode } },
+        structuredContent = new { status = connection.StatusCode, request_id = connection.RequestId },
+    });
 
     private static object[] Tools =>
     [

@@ -1,5 +1,5 @@
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using System.Windows;
 using FgoPet.App.Bootstrap;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,7 +53,7 @@ public sealed class ArchitectureTests
 
         Assert.Empty(core);
         Assert.Equal(
-            new[] { "FgoPet.AgentProtocol", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
             infra.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Equal(
             new[] { "FgoPet.Core", "FgoPet.Infrastructure" }.OrderBy(name => name, StringComparer.Ordinal),
@@ -101,12 +101,10 @@ public sealed class ArchitectureTests
 
     private static IEnumerable<string> ReferencedProjects(string projectName)
     {
-        var text = ReadProject(projectName);
-        return Regex.Matches(
-                text,
-                @"<ProjectReference\s+Include\s*=\s*""[^""]*[/\\]([^/\\]+)\.csproj""",
-                RegexOptions.IgnoreCase)
-            .Select(match => match.Groups[1].Value)
+        // Companion executables are build/publish dependencies, not assembly references.
+        return XDocument.Parse(ReadProject(projectName)).Descendants("ProjectReference")
+            .Where(reference => !string.Equals((string?)reference.Attribute("ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase))
+            .Select(reference => Path.GetFileNameWithoutExtension((string)reference.Attribute("Include")!))
             .ToArray();
     }
 

@@ -1,0 +1,20 @@
+{
+  "name": "fgo-pet-local",
+  "interface": {
+    "displayName": "FGO Pet Local"
+  },
+  "plugins": [
+    {
+      "name": "fgo-pet-agent",
+      "source": {
+        "source": "local",
+        "path": "./fgo-pet-agent"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

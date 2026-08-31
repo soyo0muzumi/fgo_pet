@@ -1,6 +1,6 @@
 # Phase 4 Runtime Repair Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Current execution policy (user-approved, 2026-08-31):** Use the lightweight three-stage plan below. It supersedes the former mandatory per-task subagent/review/full-suite/report cadence. The original Task 1–10 sections remain technical reference, not ten separate workflow gates. Keep the approved product and security requirements; do not restart completed work.
 
 **Goal:** Make Phase 4 pass real Windows/Codex acceptance with one Relay process, durable pairing, complete administration UI, installed adapter command, restart recovery, and verified bidirectional task communication.
 
@@ -9,6 +9,60 @@
 **Tech Stack:** .NET 8, C# 12, WPF, `System.IO.Pipes`, Windows mutexes, DPAPI `CurrentUser`, `System.Text.Json`, CommunityToolkit.Mvvm, xUnit, PowerShell, Codex local plugins/MCP stdio.
 
 **Spec:** `docs/superpowers/specs/2026-08-31-phase4-runtime-repair-design.md`
+
+## Current Progress and Lightweight Execution Plan
+
+Reassessed at commit `1f33715` on branch `phase4-runtime-repair`. This is progress on the runtime repair, not a claim that the existing Phase 4 application is being rebuilt from scratch.
+
+| Area | Verified status |
+|---|---|
+| Baseline | Build/fixture and stale test issues repaired; prior review complete. |
+| Protocol contracts | Registration/administration DTOs and explicit request/response validation implemented and reviewed (`2c9a4a7`). |
+| Shared runtime | Initial implementation at `1f33715`; reviewed transport/bootstrap defects corrected, including authentication-frame validation/correlation and probe correlation; focused transport/bootstrap checks 21/21 passing. |
+| Durable Relay/Adapter and App integration | Stage A closed loop passes. Concentrated review findings in nonce replay, authorization/queue atomicity, liveness and bounded output are corrected. Stage B App control transport/lifetime, per-instance administration and the existing settings page are implemented and verified with focused checks. |
+| Installation and acceptance | Stage C implementation now includes installer/uninstaller, installed-command MCP smoke, production Codex executor and a Todo dispatch entry point. Final automated gate and visible/actual Codex acceptance are tracked below; Phase 4 is not yet accepted. |
+
+Existing evidence at `1f33715`: reported full solution 588/588 passing (568 baseline + 8 Protocol additions + 12 Runtime additions). This reassessment did not rerun tests. Passing tests do not close defects outside their coverage.
+
+### Stage A — Reliable communication and durable authorization
+
+- [x] Finish runtime corrections and combine original Tasks 3, 4, and 5: DPAPI-protected state, atomic persistence, Relay single ownership/two listeners, pairing/authentication/permissions/revoke, durable Adapter identity and reconnect.
+- [x] Close confirmed runtime findings: client `CurrentUserOnly` enforcement; preserve bytes after the first frame; enforce startup deadline across probes; retain a known protocol mismatch when the other pipe times out; contain malformed UTF-8 and access failures.
+- [x] Correct misleading frame-limit/no-credential tests while covering those fixes. Define Relay readiness separately from App-handler availability so bootstrap does not depend on the App already being online.
+- [x] Prove the focused closed loop: request → approval → authentication → permitted dispatch/event round trip → restart retains grant → revoke rejects further use. Use isolated pipes/state and current-user boundaries.
+
+Scope: AgentRuntime, AgentRelay, CodexAdapter and their directly affected tests/project references. One focused independent check of this security/concurrency boundary, not a review for every file or old task number. Fix confirmed defects with covering tests; no prescribed multi-round review ritual.
+
+Stage A evidence: Protocol 21/21; Runtime transport/bootstrap 21/21; Adapter non-DPAPI 25/25 plus unchanged normal-user DPAPI identity 4/4. Relay targeted boundary/pipe checks passed after corrections, including bounded output 2/2 and connection-test 1/1. Normal Windows-user verification: protected Relay state 2/2 and EndToEnd 4/4, including production clients over real Windows pipes with DPAPI, restart and revoke. The sandbox lacks the DPAPI user profile; encryption was not weakened. The concentrated Stage A review is closed. This uses an in-process Relay host: separate executables, installed plugin, visible App and actual Codex task execution remain Stage C acceptance, not proven by these tests.
+
+### Stage B — App integration and usable settings
+
+- [x] Combine original Tasks 6 and 7: App bootstrap/reconnect/shutdown, typed administration status, pending approval/rejection, test connection, per-instance target permissions, revoke, and installation guidance on the existing Agent Connection page.
+- [x] Verify the changed App/Infrastructure behavior and directly affected Windows UI cases; reuse unrelated test evidence. Preserve disabled-by-default connection and existing top-level navigation.
+
+Scope: Infrastructure, App, affected project references and tests. Ordinary implementation/self-review; no mandatory new implementer/reviewer pair or per-task report. Carry sibling Relay binaries in App build/publish output.
+
+Stage B evidence (2026-08-31): Infrastructure `AgentRelayRuntimeTests` 7/7; App settings/dispatch/startup subset 15/15; new real-pipe `AppRelayControlTests` 1/1; Windows STA `AgentConnectionPageTests` 1/1 after fixing read-only `Run.Text` binding modes. The page test resolves production DI and lays out pending/approved rows without launching Relay. Build outputs contain the sibling Relay exe/dll/deps/runtimeconfig. No full suite was repeated. Bounded self-review covered the changed control transport, cancellation ownership, source-instance checks and UI feedback; no extra independent review cycle. The existing UI/UX guidance informed async busy protection, text status/accessibility and preservation of unsaved permission edits.
+
+Stage C update: the Adapter now has a production worker and child App Server executor, initialized against the locally generated Codex 0.151.0-alpha.7.2 schema, with streamed events, explicit registered targets, protected dispatch journal, duplicate suppression, and authorization rechecks. The Todo dialog uses authoritative per-instance/target choices. Focused worker checks 2/2, RPC checks 2/2 and dialog checks 2/2 passed. Actual account-backed Codex execution is still awaiting user consent; these tests are not a substitute. Installer smoke, publish output and the final Release gate remain to be recorded.
+
+### Stage C — Installation and real-machine acceptance
+
+- [ ] Combine original Tasks 8, 9, and 10: reproducible installer/uninstaller, installed-command MCP smoke, complete isolated real-process coverage, and visible Release App/Codex acceptance.
+- [x] Run one final Release restore/build/analyzer/full-test gate on the final code. Full run: 669/670; obsolete architecture assertion corrected and affected subset 7/7 passed. Actual-device follow-ups: companion dependency packaging rebuild passed; settings persistence subset 17/17 passed and visible restart verified. No unrelated full-suite repeat.
+- [ ] Record actual pairing, connection test, permission changes, dispatch/progress/completion, restart, revoke, and exactly one Relay owner. Simulated MCP input does not replace actual App/Codex evidence.
+
+Scope: packaging/scripts/integration tests and one final acceptance record. Testing uses isolated installation/state roots first; real user PATH/plugin installation, publishing, merge, or destructive actions retain their approval boundaries.
+
+Final evidence is consolidated in `2026-08-31-phase4-final-acceptance.md`. Isolated installation/MCP/uninstall, actual visible connection test, restart with the same grant, one Relay owner, and revoke are verified. Actual account-backed Codex dispatch/progress/completion awaits user consent; Stage C is deliberately not marked fully accepted.
+
+### Working Rules
+
+- Keep this plan as the active checklist and produce one final acceptance record; old briefs/reports are reference material, not a requirement to generate more paperwork.
+- Batch adjacent work. Use a subagent only when a bounded independent assignment saves time; a task number alone is not a reason to dispatch one. Do not open additional user-visible tasks.
+- During development, run tests for changed behavior and affected dependencies. Reuse passing evidence only while relevant code, dependencies, configuration, and environment remain unchanged. Review does not rerun the same suite for reassurance.
+- Retain targeted regression tests for confirmed defects, safety boundaries, and the final real-machine check. Do not delete tests or conceal failures to shorten the process.
+- Report meaningful milestones or blockers; no repeated full-suite runs, repeated all-clear reviews, or fresh design approval for already-approved scope.
 
 ## Global Constraints
 
@@ -21,7 +75,7 @@
 - Codex receives no arbitrary FGO Pet filesystem, shell, or terminal capability.
 - FGO Pet reports installation state but never silently installs or updates the plugin.
 - Preserve unrelated working-tree changes; inspect each target file immediately before editing it.
-- Every behavior is implemented test-first; focused tests pass before the next task begins.
+- Correctness changes retain focused regression tests, test-first for bug fixes; stage checks cover changed behavior and affected dependencies, not an automatic full-suite run after each original task.
 
 ## File Structure
 
@@ -682,10 +736,10 @@ git commit -m "docs(agent): record phase 4 acceptance"
 ## Completion Checklist
 
 - [ ] Review `git status --short` and confirm no unrelated user changes were staged or overwritten.
-- [ ] Confirm all ten task commits exist or document why commits were intentionally withheld.
+- [ ] Confirm the three current stages are complete; commits follow coherent changes rather than an obligatory one-commit-per-original-task count.
 - [ ] Confirm Release build reports zero warnings and zero errors.
 - [ ] Confirm every solution test passes, including real-process tests.
 - [ ] Confirm plugin validation and installed-command MCP smoke pass.
 - [ ] Confirm visible pairing, test connection, dispatch, progress, completion, restart recovery, permission change, and revocation evidence exists.
 - [ ] Confirm exactly one Relay owner and no acceptance-only processes or installations remain.
-- [ ] Run the required post-implementation simplify/harden review before claiming completion.
+- [ ] Confirm focused security/concurrency findings are resolved and final self-review/acceptance evidence is complete; do not duplicate per-task review loops.

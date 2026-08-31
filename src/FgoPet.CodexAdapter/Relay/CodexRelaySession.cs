@@ -1,9 +1,7 @@
-using System.IO.Pipes;
-using System.Text.Json;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
-using FgoPet.AgentProtocol.Privacy;
 using FgoPet.AgentProtocol.Validation;
+using FgoPet.AgentRuntime.Pipes;
 
 namespace FgoPet.CodexAdapter.Relay;
 
@@ -12,74 +10,37 @@ public interface ICodexRelaySession
     Task SendEventAsync(AgentEventMessage message, CancellationToken cancellationToken = default);
 }
 
-public sealed class CodexRelaySession : ICodexRelaySession
+/// <summary>Adapter-only transport; credentials belong to each authenticated exchange, not this client.</summary>
+public sealed class CodexRelaySession : IAdapterRelayTransport
 {
-    private readonly string _pipeName;
-    private readonly string _credential;
-    private readonly TimeSpan _connectTimeout;
+    private readonly JsonLinePipeClient _client;
 
-    public CodexRelaySession(string pipeName, string credential, TimeSpan? connectTimeout = null)
+    public CodexRelaySession(string pipeName, TimeSpan? connectTimeout = null) =>
+        _client = new JsonLinePipeClient(pipeName, connectTimeout ?? TimeSpan.FromMilliseconds(500));
+
+    public async Task<ProtocolEnvelope> SendAsync(ProtocolEnvelope request, AuthenticateRequest? authentication = null,
+        CancellationToken cancellationToken = default)
     {
-        _pipeName = pipeName;
-        _credential = credential;
-        _connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(500);
-    }
+        AgentProtocolValidator.Validate(request);
+        ProtocolEnvelope? auth = authentication is null ? null :
+            ProtocolEnvelope.Create("auth-" + Guid.NewGuid().ToString("N"), "authenticate", authentication);
+        if (auth is not null) AgentProtocolValidator.Validate(auth);
+        var line = auth is null
+            ? await _client.SendAsync(request, cancellationToken).ConfigureAwait(false)
+            : await _client.SendAuthenticatedAsync(auth, request, cancellationToken).ConfigureAwait(false);
+        var response = ProtocolEnvelope.Parse(line);
+        if (response.ProtocolVersion != ProtocolEnvelope.CurrentProtocolVersion)
+            throw new AdapterConnectionException(new(AdapterConnectionStatus.VersionMismatch));
 
-    public async Task SendEventAsync(AgentEventMessage message, CancellationToken cancellationToken = default)
-    {
-        var envelope = ProtocolEnvelope.Create(
-            $"event-{message.SourceType}-{message.SourceInstance}-{message.TaskId}-{message.Sequence}",
-            "agent_event",
-            AgentPayloadSanitizer.Sanitize(message));
-        AgentProtocolValidator.Validate(envelope);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_connectTimeout);
-        await using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
-        using var writer = new StreamWriter(pipe) { AutoFlush = true };
-        using var reader = new StreamReader(pipe);
-        await writer.WriteLineAsync(envelope.ToJson()).ConfigureAwait(false);
-        _ = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
-    }
-
-    public async Task<IReadOnlyList<DispatchTaskRequest>> PollDispatchesAsync(CancellationToken cancellationToken = default)
-    {
-        var envelope = ProtocolEnvelope.Create(
-            "poll-" + Guid.NewGuid().ToString("N"),
-            "status_check",
-            new { include_dispatches = true });
-        AgentProtocolValidator.Validate(envelope);
-        using var response = await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
-        if (response is null
-            || !response.RootElement.TryGetProperty("dispatches", out var dispatches)
-            || dispatches.ValueKind != JsonValueKind.Array)
-        {
-            return Array.Empty<DispatchTaskRequest>();
-        }
-
-        var result = new List<DispatchTaskRequest>();
-        foreach (var item in dispatches.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.String) continue;
-            var dispatchEnvelope = ProtocolEnvelope.Parse(item.GetString()!);
-            AgentProtocolValidator.Validate(dispatchEnvelope);
-            if (!string.Equals(dispatchEnvelope.MessageType, "dispatch_task", StringComparison.Ordinal)) continue;
-            result.Add(dispatchEnvelope.DeserializePayload<DispatchTaskRequest>());
-        }
-
-        return result;
-    }
-
-    private async Task<JsonDocument?> SendAsync(ProtocolEnvelope envelope, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_connectTimeout);
-        await using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
-        using var writer = new StreamWriter(pipe) { AutoFlush = true };
-        using var reader = new StreamReader(pipe);
-        await writer.WriteLineAsync(envelope.ToJson()).ConfigureAwait(false);
-        var line = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
-        return line is null ? null : JsonDocument.Parse(line);
+        AgentProtocolValidator.ValidateResponse(response);
+        var authFailure = auth is not null && response.MessageId == auth.MessageId
+            && response.MessageType is "authenticate" or "error"
+            && response.Payload.TryGetProperty("result", out var status)
+            && status.ValueKind == System.Text.Json.JsonValueKind.String && status.GetString() != "authenticated";
+        var expectedType = request.MessageType == "registration_request" ? "registration_status" : request.MessageType;
+        if (!authFailure && (response.MessageId != request.MessageId
+            || response.MessageType != expectedType && response.MessageType != "error"))
+            throw new AgentProtocolValidationException("The relay response does not match its request.");
+        return response;
     }
 }

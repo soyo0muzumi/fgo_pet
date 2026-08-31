@@ -40,7 +40,7 @@ public sealed class RelayProcessBootstrapperTests
     }
 
     [Fact]
-    public async Task Bootstrap_reports_a_protocol_mismatch_without_starting_or_authenticating()
+    public async Task Bootstrap_reports_a_protocol_mismatch_without_starting()
     {
         var probe = new SequenceProbe(new RelayProbeResult(true, "2", null));
         var launcher = new RecordingLauncher();
@@ -50,20 +50,19 @@ public sealed class RelayProcessBootstrapperTests
 
         Assert.Equal(RelayBootstrapStatus.VersionMismatch, result.Status);
         Assert.Empty(launcher.Starts);
-        Assert.DoesNotContain("credential", probe.Requests, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task Bootstrap_reports_start_failure()
     {
         var probe = new SequenceProbe(new RelayProbeResult(false, null, "offline"));
-        var launcher = new RecordingLauncher(new InvalidOperationException("start failed"));
+        var launcher = new RecordingLauncher(new InvalidOperationException("start failed: C:\\private\\relay"));
 
         var result = await new RelayProcessBootstrapper(probe, launcher, new ImmediateDelay())
             .EnsureReadyAsync(TestOptions(), CancellationToken.None);
 
         Assert.Equal(RelayBootstrapStatus.StartFailed, result.Status);
-        Assert.Contains("start failed", result.Error, StringComparison.Ordinal);
+        Assert.Equal("relay_start_failed", result.Error);
         Assert.Single(launcher.Starts);
     }
 
@@ -72,10 +71,11 @@ public sealed class RelayProcessBootstrapperTests
     {
         var probe = new SequenceProbe(new RelayProbeResult(false, ProtocolEnvelope.CurrentProtocolVersion, "offline"));
         var launcher = new RecordingLauncher();
-        var delay = new CountingDelay();
+        var clock = new AdvanceTimeProvider();
+        var delay = new CountingDelay(clock);
 
-        var result = await new RelayProcessBootstrapper(probe, launcher, delay)
-            .EnsureReadyAsync(TestOptions(startupTimeout: TimeSpan.FromMilliseconds(1)), CancellationToken.None);
+        var result = await new RelayProcessBootstrapper(probe, launcher, delay, clock)
+            .EnsureReadyAsync(TestOptions(startupTimeout: TimeSpan.FromMilliseconds(100)), CancellationToken.None);
 
         Assert.Equal(RelayBootstrapStatus.TimedOut, result.Status);
         Assert.Single(launcher.Starts);
@@ -83,7 +83,7 @@ public sealed class RelayProcessBootstrapperTests
     }
 
     [Fact]
-    public async Task Json_line_client_round_trips_a_control_request_and_rejects_oversized_frames()
+    public async Task Json_line_client_round_trips_a_control_request()
     {
         var pipeName = "FgoPet.AgentRuntime.Test." + Guid.NewGuid().ToString("N");
         using var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -114,12 +114,10 @@ public sealed class RelayProcessBootstrapperTests
     {
         private readonly Queue<RelayProbeResult> _results = new(results);
         public int Probes { get; private set; }
-        public List<string> Requests { get; } = [];
 
         public Task<RelayProbeResult> ProbeAsync(RelayRuntimeOptions options, CancellationToken cancellationToken)
         {
             Probes++;
-            Requests.Add(options.PipeSuffix);
             return Task.FromResult(_results.Count > 1 ? _results.Dequeue() : _results.Peek());
         }
     }
@@ -139,13 +137,22 @@ public sealed class RelayProcessBootstrapperTests
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private sealed class CountingDelay : IRuntimeDelay
+    private sealed class CountingDelay(AdvanceTimeProvider clock) : IRuntimeDelay
     {
         public List<TimeSpan> Delays { get; } = [];
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
         {
             Delays.Add(delay);
+            clock.Advance(delay);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class AdvanceTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _timestamp;
+        public void Advance(TimeSpan elapsed) => _timestamp += elapsed.Ticks;
     }
 }

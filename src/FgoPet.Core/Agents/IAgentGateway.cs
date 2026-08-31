@@ -16,7 +16,10 @@ public sealed record AgentDispatchRequest(
     TodoPriority Priority,
     DateTimeOffset? DueAt,
     string SourceType,
-    string TargetId);
+    string TargetId)
+{
+    public string? SourceInstanceId { get; init; }
+}
 
 public enum AgentDispatchStatus
 {

@@ -1,7 +1,7 @@
-using System.Buffers;
 using System.IO.Pipes;
 using System.Text;
 using FgoPet.AgentProtocol;
+using FgoPet.AgentProtocol.Validation;
 
 namespace FgoPet.AgentRuntime.Pipes;
 
@@ -64,36 +64,51 @@ public sealed class JsonLinePipeClient
         ArgumentNullException.ThrowIfNull(operationRequestJson);
         var responses = await SendFramesAsync([authenticateRequestJson, operationRequestJson], cancellationToken)
             .ConfigureAwait(false);
-        if (responses.Count != 2)
-        {
-            throw new InvalidOperationException("The authenticated pipe exchange returned an incomplete response.");
-        }
-
-        return responses[1];
+        // A rejected authentication is returned intact, without issuing the operation.
+        return responses[^1];
     }
 
     private async Task<IReadOnlyList<string>> SendFramesAsync(
         IReadOnlyList<string> requests,
         CancellationToken cancellationToken)
     {
+        var authenticationRequest = requests.Count == 2 ? ProtocolEnvelope.Parse(requests[0]) : null;
+        if (authenticationRequest is not null)
+        {
+            AgentProtocolValidator.Validate(authenticationRequest);
+            if (authenticationRequest.MessageType != "authenticate")
+                throw new AgentProtocolValidationException("The first request must authenticate the connection.");
+        }
         await using var pipe = new NamedPipeClientStream(
             ".",
             _pipeName,
             PipeDirection.InOut,
-            PipeOptions.Asynchronous);
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectCancellation.CancelAfter(_connectTimeout);
         await pipe.ConnectAsync(connectCancellation.Token).ConfigureAwait(false);
 
+        var responses = new List<string>(requests.Count);
+        var reader = new JsonLineFrameReader(pipe);
         foreach (var request in requests)
         {
             await WriteFrameAsync(pipe, request, cancellationToken).ConfigureAwait(false);
-        }
-
-        var responses = new List<string>(requests.Count);
-        foreach (var _ in requests)
-        {
-            responses.Add(await ReadFrameAsync(pipe, cancellationToken).ConfigureAwait(false));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(_readTimeout);
+            var response = await reader.ReadAsync(timeout.Token).ConfigureAwait(false)
+                ?? throw new EndOfStreamException("The pipe closed before its response was received.");
+            responses.Add(response);
+            if (requests.Count == 2 && responses.Count == 1)
+            {
+                var authentication = ProtocolEnvelope.Parse(response);
+                if (authentication.MessageId != authenticationRequest!.MessageId
+                    || authentication.MessageType is not "authenticate" and not "error")
+                    throw new AgentProtocolValidationException("The authentication response does not match its request.");
+                // Let the typed consumer report incompatibility, without sending an operation.
+                if (authentication.ProtocolVersion != ProtocolEnvelope.CurrentProtocolVersion) break;
+                AgentProtocolValidator.ValidateResponse(authentication);
+                if (authentication.MessageType == "error" || authentication.Payload.GetProperty("result").GetString() != "authenticated") break;
+            }
         }
 
         return responses;
@@ -112,44 +127,6 @@ public sealed class JsonLinePipeClient
         await pipe.WriteAsync(bytes.AsMemory(), timeout.Token).ConfigureAwait(false);
         await pipe.WriteAsync(new byte[] { (byte)'\n' }.AsMemory(), timeout.Token).ConfigureAwait(false);
         await pipe.FlushAsync(timeout.Token).ConfigureAwait(false);
-    }
-
-    private async Task<string> ReadFrameAsync(Stream pipe, CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_readTimeout);
-        var rented = ArrayPool<byte>.Shared.Rent(4096);
-        var frame = new ArrayBufferWriter<byte>(4096);
-        try
-        {
-            while (true)
-            {
-                var count = await pipe.ReadAsync(rented.AsMemory(0, rented.Length), timeout.Token).ConfigureAwait(false);
-                if (count == 0)
-                {
-                    throw new EndOfStreamException("The pipe closed before a complete JSON-line response was received.");
-                }
-
-                var newline = Array.IndexOf(rented, (byte)'\n', 0, count);
-                var bytesToCopy = newline >= 0 ? newline : count;
-                if (frame.WrittenCount + bytesToCopy > MaxFrameBytes)
-                {
-                    throw new InvalidDataException("The JSON response exceeds the 1 MiB frame limit.");
-                }
-
-                rented.AsSpan(0, bytesToCopy).CopyTo(frame.GetSpan(bytesToCopy));
-                frame.Advance(bytesToCopy);
-                if (newline >= 0)
-                {
-                    var text = StrictUtf8.GetString(frame.WrittenSpan);
-                    return text.EndsWith('\r') ? text[..^1] : text;
-                }
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
     }
 
     private static void ValidateTimeout(TimeSpan timeout, string parameterName)

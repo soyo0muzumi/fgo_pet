@@ -1,25 +1,26 @@
-using System.IO.Pipes;
 using System.Text.Json;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;
 using FgoPet.AgentProtocol.Validation;
 using FgoPet.Core.Agents;
+using FgoPet.AgentRuntime;
 
 namespace FgoPet.Infrastructure.Agents;
 
 public sealed class AgentRelayClient : IAgentGateway
 {
-    private readonly string _pipeName;
-    private readonly TimeSpan _connectTimeout;
+    private readonly AgentControlClient _control;
     private volatile bool _connected;
     private DateTimeOffset? _lastEventAtUtc;
     public event Action<AgentEvent>? EventReceived;
     public AgentRelayClient(string pipeName, TimeSpan? connectTimeout = null)
+        : this(new AgentControlClient(string.IsNullOrWhiteSpace(pipeName)
+            ? RelayPipeNames.ForCurrentUser(RelayRuntimeOptions.ForCurrentUser()).App : pipeName,
+            connectTimeout ?? TimeSpan.FromMilliseconds(500))) { }
+
+    public AgentRelayClient(AgentControlClient control)
     {
-        _pipeName = string.IsNullOrWhiteSpace(pipeName)
-            ? $"fgo-pet-agent-app-{Environment.UserName}-v1"
-            : pipeName;
-        _connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(500);
+        _control = control;
     }
 
     public bool IsConnected => _connected;
@@ -36,16 +37,18 @@ public sealed class AgentRelayClient : IAgentGateway
 
         return new AgentGatewayStatus(
             true,
-            response.RootElement.TryGetProperty("protocol_version", out var version) && version.ValueKind == JsonValueKind.String
+            response.Payload.TryGetProperty("protocol_version", out var version) && version.ValueKind == JsonValueKind.String
                 ? version.GetString() ?? ProtocolEnvelope.CurrentProtocolVersion
                 : ProtocolEnvelope.CurrentProtocolVersion,
             _lastEventAtUtc,
-            response.RootElement.TryGetProperty("pending_count", out var pending) && pending.TryGetInt32(out var count) ? count : 0);
+            response.Payload.TryGetProperty("pending_count", out var pending) && pending.TryGetInt32(out var count) ? count : 0);
     }
 
     public async Task<AgentDispatchResult> DispatchAsync(AgentDispatchRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.SourceInstanceId))
+            return new AgentDispatchResult(AgentDispatchStatus.Failed, request.DispatchRequestId, "source_instance_required");
         var message = new DispatchTaskRequest(
             request.DispatchRequestId,
             request.TodoId,
@@ -53,7 +56,7 @@ public sealed class AgentRelayClient : IAgentGateway
             request.Description,
             request.Priority.ToString().ToLowerInvariant(),
             request.DueAt,
-            request.TargetId);
+            request.TargetId) { SourceType = request.SourceType, SourceInstanceId = request.SourceInstanceId };
         var envelope = ProtocolEnvelope.Create("dispatch-" + request.DispatchRequestId, "dispatch_task", message);
         AgentProtocolValidator.Validate(envelope);
         var response = await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
@@ -62,18 +65,19 @@ public sealed class AgentRelayClient : IAgentGateway
             return new AgentDispatchResult(AgentDispatchStatus.Offline, request.DispatchRequestId, "relay_offline");
         }
 
-        var result = response.RootElement.GetProperty("result").GetString();
+        var result = response.Payload.GetProperty("result").GetString();
         return new AgentDispatchResult(
             result switch
             {
                 "accepted" => AgentDispatchStatus.Accepted,
-                "alreadyapplied" => AgentDispatchStatus.AlreadyApplied,
+                "alreadyapplied" or "already_applied" => AgentDispatchStatus.AlreadyApplied,
+                "offline" => AgentDispatchStatus.Offline,
                 _ => AgentDispatchStatus.Failed,
             },
             request.DispatchRequestId,
-            result is "accepted" or "alreadyapplied" ? null : "relay_rejected",
-            ReadOptionalString(response.RootElement, "task_id"),
-            ReadOptionalString(response.RootElement, "source_instance"));
+            result is "accepted" or "alreadyapplied" or "already_applied" ? null : "relay_rejected",
+            ReadOptionalString(response.Payload, "task_id"),
+            ReadOptionalString(response.Payload, "source_instance"));
     }
 
     public async Task<AgentOpenTaskResult> OpenTaskAsync(AgentOpenTaskRequest request, CancellationToken cancellationToken = default)
@@ -90,43 +94,33 @@ public sealed class AgentRelayClient : IAgentGateway
             return new AgentOpenTaskResult(AgentOpenTaskStatus.Offline, "relay_offline");
         }
 
-        var status = response.RootElement.TryGetProperty("result", out var result)
+        var status = response.Payload.TryGetProperty("result", out var result)
             && result.ValueKind == JsonValueKind.String
-            && Enum.TryParse<AgentOpenTaskStatus>(result.GetString(), ignoreCase: true, out var parsed)
+            && Enum.TryParse<AgentOpenTaskStatus>(result.GetString()?.Replace("_", ""), ignoreCase: true, out var parsed)
             ? parsed
             : AgentOpenTaskStatus.Unsupported;
-        return new AgentOpenTaskResult(status, ReadOptionalString(response.RootElement, "error"));
+        return new AgentOpenTaskResult(status, ReadOptionalString(response.Payload, "error"));
     }
 
     public async Task ClearPendingEventsAsync(CancellationToken cancellationToken = default)
     {
-        await SendAsync(
+        await _control.SendAsync(
             ProtocolEnvelope.Create("clear-" + Guid.NewGuid().ToString("N"), "status_check", new { clear_pending = true }),
             cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SetConnectionEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
-        await SendAsync(
+        await _control.SendAsync(
             ProtocolEnvelope.Create("connection-" + Guid.NewGuid().ToString("N"), "status_check", new { enabled }),
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task SetSourceEnabledAsync(string sourceType, bool enabled, CancellationToken cancellationToken = default)
-    {
-        await SendAsync(
-            ProtocolEnvelope.Create("source-" + Guid.NewGuid().ToString("N"), "status_check", new { source_type = sourceType, source_enabled = enabled }),
-            cancellationToken).ConfigureAwait(false);
-    }
+    public Task SetSourceEnabledAsync(string sourceType, bool enabled, CancellationToken cancellationToken = default) =>
+        throw new AgentRelayException("source_instance_required");
 
-    public async Task SetAllowedTargetsAsync(string sourceType, IReadOnlyList<string> targetIds, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
-        ArgumentNullException.ThrowIfNull(targetIds);
-        await SendAsync(
-            ProtocolEnvelope.Create("allowlist-" + Guid.NewGuid().ToString("N"), "status_check", new { source_type = sourceType, allowed_targets = targetIds }),
-            cancellationToken).ConfigureAwait(false);
-    }
+    public Task SetAllowedTargetsAsync(string sourceType, IReadOnlyList<string> targetIds, CancellationToken cancellationToken = default) =>
+        throw new AgentRelayException("source_instance_required");
 
     public Task<IReadOnlyList<AgentEvent>> QueryKnownStatesAsync(
         IReadOnlyList<AgentExecution> knownExecutions,
@@ -153,7 +147,8 @@ public sealed class AgentRelayClient : IAgentGateway
             return Array.Empty<AgentEvent>();
         }
 
-        var events = ReadEvents(response.RootElement);
+        var events = ReadEvents(response.Payload);
+        if (events.Count > 0) _lastEventAtUtc = DateTimeOffset.UtcNow;
         if (knownExecutions is null)
         {
             foreach (var agentEvent in events) EventReceived?.Invoke(agentEvent);
@@ -166,21 +161,13 @@ public sealed class AgentRelayClient : IAgentGateway
         return events.Where(agentEvent => known.Contains(agentEvent.TaskIdentity)).ToArray();
     }
 
-    private async Task<JsonDocument?> SendAsync(ProtocolEnvelope envelope, CancellationToken cancellationToken)
+    private async Task<ProtocolEnvelope?> SendAsync(ProtocolEnvelope envelope, CancellationToken cancellationToken)
     {
         try
         {
-            await using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(_connectTimeout);
-            await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
-            using var writer = new StreamWriter(pipe) { AutoFlush = true };
-            using var reader = new StreamReader(pipe);
-            await writer.WriteLineAsync(envelope.ToJson()).ConfigureAwait(false);
-            var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            var response = await _control.SendAsync(envelope, cancellationToken).ConfigureAwait(false);
             _connected = true;
-            _lastEventAtUtc = DateTimeOffset.UtcNow;
-            return line is null ? null : JsonDocument.Parse(line);
+            return response;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -204,8 +191,8 @@ public sealed class AgentRelayClient : IAgentGateway
         var result = new List<AgentEvent>();
         foreach (var item in events.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.String) continue;
-            var envelope = ProtocolEnvelope.Parse(item.GetString()!);
+            var envelope = ProtocolEnvelope.Parse(item.ValueKind == JsonValueKind.String ? item.GetString()! : item.GetRawText());
+            AgentProtocolValidator.Validate(envelope);
             var message = envelope.DeserializePayload<AgentEventMessage>();
             if (!TryParseEventType(message.EventType, out var eventType)) continue;
             result.Add(new AgentEvent(
