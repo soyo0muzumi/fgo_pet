@@ -16,7 +16,25 @@ public static class AgentProtocolValidator
     private static readonly HashSet<string> KnownMessageTypes = new(StringComparer.Ordinal)
     {
         "agent_event", "dispatch_task", "open_task", "registration_request",
-        "registration_approval", "registration_response", "status_check",
+        "registration_approval", "registration_response", "registration_status",
+        "authenticate", "connection_test", "pending_sources", "decide_registration",
+        "list_sources", "update_permissions", "revoke_source", "status_check",
+    };
+
+    private static readonly HashSet<string> KnownRegistrationStatuses = new(StringComparer.Ordinal)
+    {
+        "pending", "approved", "rejected", "expired", "unauthorized", "revoked",
+    };
+
+    private static readonly HashSet<string> KnownConnectionStatuses = new(StringComparer.Ordinal)
+    {
+        "connected", "degraded", "offline", "relay_offline", "adapter_offline", "app_offline",
+        "authentication_failed", "version_mismatch", "awaiting_approval", "disabled", "error",
+    };
+
+    private static readonly HashSet<string> KnownRegistrationDecisions = new(StringComparer.Ordinal)
+    {
+        "approve", "reject",
     };
 
     public static void Validate(ProtocolEnvelope envelope)
@@ -38,15 +56,58 @@ public static class AgentProtocolValidator
             throw new AgentProtocolValidationException("Protocol payload must be a JSON object.");
         }
 
-        EnsureNoDenylistedFields(envelope.Payload);
+        var allowsTopLevelCredential = envelope.MessageType == "authenticate"
+            || (envelope.MessageType == "registration_status" && HasProperty(envelope.Payload, "status"));
+        EnsureNoDenylistedFields(envelope.Payload, allowsTopLevelCredential);
         switch (envelope.MessageType)
         {
             case "agent_event": ValidateEvent(envelope.DeserializePayload<AgentEventMessage>()); break;
             case "dispatch_task": ValidateDispatch(envelope.DeserializePayload<DispatchTaskRequest>()); break;
             case "open_task": ValidateOpen(envelope.DeserializePayload<OpenTaskRequest>()); break;
-            case "registration_request": ValidateRegistration(envelope.DeserializePayload<AdapterRegistrationRequest>()); break;
+            case "registration_request":
+                if (HasAnyProperty(envelope.Payload, "source_instance_id", "adapter_version", "protocol_version", "request_nonce"))
+                {
+                    ValidateRegistration(envelope.DeserializePayload<RegistrationRequestMessage>());
+                }
+                else
+                {
+                    ValidateRegistration(envelope.DeserializePayload<AdapterRegistrationRequest>());
+                }
+                break;
             case "registration_approval": ValidateApproval(envelope.DeserializePayload<PairingApprovalMessage>()); break;
             case "registration_response": ValidateResponse(envelope.DeserializePayload<RegistrationResponse>()); break;
+            case "registration_status":
+                if (HasProperty(envelope.Payload, "status"))
+                {
+                    ValidateRegistrationStatusResponse(envelope.DeserializePayload<RegistrationStatusResponse>());
+                }
+                else
+                {
+                    ValidateRegistrationStatusRequest(envelope.DeserializePayload<RegistrationStatusRequest>());
+                }
+                break;
+            case "authenticate": ValidateAuthenticate(envelope.DeserializePayload<AuthenticateRequest>()); break;
+            case "connection_test":
+                if (HasAnyProperty(envelope.Payload, "relay_online", "app_online", "adapter_online", "protocol_version", "status", "observed_at_utc", "error"))
+                {
+                    ValidateConnectionTest(envelope.DeserializePayload<RelayConnectionTestResponse>());
+                }
+                break;
+            case "pending_sources":
+                if (HasAnyProperty(envelope.Payload, "request_id", "source_type", "display_name", "source_instance_id", "adapter_version", "requested_at_utc", "expires_at_utc"))
+                {
+                    ValidatePendingSource(envelope.DeserializePayload<PendingSourceDto>());
+                }
+                break;
+            case "decide_registration": ValidateDecision(envelope.DeserializePayload<RegistrationDecisionRequest>()); break;
+            case "list_sources":
+                if (HasAnyProperty(envelope.Payload, "source_type", "display_name", "source_instance_id", "adapter_version", "approved_at_utc", "enabled", "allowed_target_ids", "is_online"))
+                {
+                    ValidateApprovedSource(envelope.DeserializePayload<ApprovedSourceDto>());
+                }
+                break;
+            case "update_permissions": ValidatePermissions(envelope.DeserializePayload<UpdatePermissionsRequest>()); break;
+            case "revoke_source": ValidateRevoke(envelope.DeserializePayload<RevokeSourceRequest>()); break;
             case "status_check": break;
         }
     }
@@ -119,6 +180,96 @@ public static class AgentProtocolValidator
         AgentPayloadSanitizer.SanitizeText(message.Version, nameof(message.Version));
     }
 
+    private static void ValidateRegistration(RegistrationRequestMessage message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.DisplayName, nameof(message.DisplayName));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateSafeIdentifier(message.AdapterVersion, nameof(message.AdapterVersion));
+        ValidateProtocolVersion(message.ProtocolVersion, nameof(message.ProtocolVersion));
+        ValidateNonce(message.RequestNonce);
+    }
+
+    private static void ValidateRegistrationStatusRequest(RegistrationStatusRequest message)
+    {
+        ValidateSafeIdentifier(message.RequestId, nameof(message.RequestId));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateNonce(message.RequestNonce);
+    }
+
+    private static void ValidateRegistrationStatusResponse(RegistrationStatusResponse message)
+    {
+        RequireKnown(message.Status, KnownRegistrationStatuses, nameof(message.Status));
+        ValidateSafeIdentifier(message.RequestId, nameof(message.RequestId));
+        if (message.SourceInstanceId is not null)
+        {
+            ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        }
+
+        if (message.Credential is not null)
+        {
+            if (!string.Equals(message.Status, "approved", StringComparison.Ordinal))
+            {
+                throw new AgentProtocolValidationException("A credential may only be returned for an approved registration.");
+            }
+
+            ValidateCredential(message.Credential);
+        }
+
+        ValidateOptionalError(message.Error);
+    }
+
+    private static void ValidateAuthenticate(AuthenticateRequest message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateCredential(message.Credential);
+    }
+
+    private static void ValidateConnectionTest(RelayConnectionTestResponse message)
+    {
+        ValidateProtocolVersion(message.ProtocolVersion, nameof(message.ProtocolVersion));
+        RequireKnown(message.Status, KnownConnectionStatuses, nameof(message.Status));
+        ValidateOptionalError(message.Error);
+    }
+
+    private static void ValidatePendingSource(PendingSourceDto message)
+    {
+        ValidateSafeIdentifier(message.RequestId, nameof(message.RequestId));
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.DisplayName, nameof(message.DisplayName));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateSafeIdentifier(message.AdapterVersion, nameof(message.AdapterVersion));
+    }
+
+    private static void ValidateApprovedSource(ApprovedSourceDto message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.DisplayName, nameof(message.DisplayName));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateSafeIdentifier(message.AdapterVersion, nameof(message.AdapterVersion));
+        ValidateTargetIds(message.AllowedTargetIds);
+    }
+
+    private static void ValidateDecision(RegistrationDecisionRequest message)
+    {
+        ValidateSafeIdentifier(message.RequestId, nameof(message.RequestId));
+        RequireKnown(message.Decision, KnownRegistrationDecisions, nameof(message.Decision));
+    }
+
+    private static void ValidatePermissions(UpdatePermissionsRequest message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateTargetIds(message.AllowedTargetIds);
+    }
+
+    private static void ValidateRevoke(RevokeSourceRequest message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+    }
+
     private static void ValidateApproval(PairingApprovalMessage message)
     {
         RequireText(message.SourceType, nameof(message.SourceType));
@@ -131,23 +282,25 @@ public static class AgentProtocolValidator
         if (message.Approved) RequireText(message.SourceInstance, nameof(message.SourceInstance));
     }
 
-    private static void EnsureNoDenylistedFields(JsonElement element)
+    private static void EnsureNoDenylistedFields(JsonElement element, bool allowTopLevelCredential, int depth = 0)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
             foreach (var property in element.EnumerateObject())
             {
-                if (DenylistedFields.Contains(property.Name))
+                var isTopLevelCredential = depth == 0
+                    && string.Equals(property.Name, "credential", StringComparison.OrdinalIgnoreCase);
+                if (DenylistedFields.Contains(property.Name) && !(allowTopLevelCredential && isTopLevelCredential))
                 {
                     throw new AgentProtocolValidationException($"Payload field '{property.Name}' is not allowed.");
                 }
 
-                EnsureNoDenylistedFields(property.Value);
+                EnsureNoDenylistedFields(property.Value, allowTopLevelCredential, depth + 1);
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
         {
-            foreach (var child in element.EnumerateArray()) EnsureNoDenylistedFields(child);
+            foreach (var child in element.EnumerateArray()) EnsureNoDenylistedFields(child, allowTopLevelCredential, depth + 1);
         }
     }
 
@@ -158,4 +311,93 @@ public static class AgentProtocolValidator
             throw new AgentProtocolValidationException($"Protocol field '{fieldName}' is required and bounded.");
         }
     }
+
+    private static void ValidateSafeIdentifier(string? value, string fieldName)
+    {
+        RequireText(value, fieldName);
+        AgentPayloadSanitizer.SanitizeText(value, fieldName);
+    }
+
+    private static void ValidateProtocolVersion(string? value, string fieldName)
+    {
+        RequireText(value, fieldName);
+        if (!string.Equals(value, ProtocolEnvelope.CurrentProtocolVersion, StringComparison.Ordinal))
+        {
+            throw new AgentProtocolValidationException($"Unsupported protocol version '{value}'.");
+        }
+    }
+
+    private static void ValidateNonce(string? value)
+    {
+        if (value is null || value.Length != 64 || value.Any(character => !IsHex(character)))
+        {
+            throw new AgentProtocolValidationException("Registration request nonce must be exactly 64 hexadecimal characters.");
+        }
+    }
+
+    private static void ValidateCredential(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            throw new AgentProtocolValidationException("Credential is required.");
+        }
+
+        byte[] decoded;
+        try
+        {
+            decoded = Convert.FromBase64String(value);
+        }
+        catch (FormatException error)
+        {
+            throw new AgentProtocolValidationException("Credential must be base64.", error);
+        }
+
+        if (decoded.Length != 32 || !string.Equals(Convert.ToBase64String(decoded), value, StringComparison.Ordinal))
+        {
+            throw new AgentProtocolValidationException("Credential must be canonical base64 for exactly 32 bytes.");
+        }
+    }
+
+    private static void ValidateTargetIds(IReadOnlyList<string>? targetIds)
+    {
+        if (targetIds is null)
+        {
+            throw new AgentProtocolValidationException("Allowed target IDs are required.");
+        }
+
+        foreach (var targetId in targetIds)
+        {
+            RequireText(targetId, nameof(targetIds));
+            if (AgentPayloadSanitizer.ContainsForbiddenText(targetId))
+            {
+                throw new AgentProtocolValidationException("Target ID is not opaque.");
+            }
+        }
+    }
+
+    private static void ValidateOptionalError(string? error)
+    {
+        if (error is null) return;
+        ValidateSafeIdentifier(error, nameof(error));
+    }
+
+    private static void RequireKnown(string? value, HashSet<string> knownValues, string fieldName)
+    {
+        RequireText(value, fieldName);
+        if (value is null || !knownValues.Contains(value))
+        {
+            throw new AgentProtocolValidationException($"Unknown {fieldName} '{value}'.");
+        }
+    }
+
+    private static bool HasProperty(JsonElement payload, string name) =>
+        payload.EnumerateObject().Any(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasAnyProperty(JsonElement payload, params string[] names) =>
+        names.Any(name => HasProperty(payload, name));
+
+    private static bool IsHex(char value) =>
+        value is >= '0' and <= '9'
+            or >= 'a' and <= 'f'
+            or >= 'A' and <= 'F';
 }

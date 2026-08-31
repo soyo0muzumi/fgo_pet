@@ -74,3 +74,32 @@ public sealed record RegistrationResponse
     [JsonPropertyName("credential")]
     public string? Credential { get; init; }
 }
+
+/// <summary>
+/// Versioned registration request sent by an adapter. The source instance and
+/// nonce make a request specific to one durable adapter identity.
+/// </summary>
+public sealed record RegistrationRequestMessage(
+    [property: JsonPropertyName("source_type")] string SourceType,
+    [property: JsonPropertyName("display_name")] string DisplayName,
+    [property: JsonPropertyName("source_instance_id")] string SourceInstanceId,
+    [property: JsonPropertyName("adapter_version")] string AdapterVersion,
+    [property: JsonPropertyName("protocol_version")] string ProtocolVersion,
+    [property: JsonPropertyName("request_nonce")] string RequestNonce);
+
+public sealed record RegistrationStatusRequest(
+    [property: JsonPropertyName("request_id")] string RequestId,
+    [property: JsonPropertyName("source_instance_id")] string SourceInstanceId,
+    [property: JsonPropertyName("request_nonce")] string RequestNonce);
+
+public sealed record RegistrationStatusResponse(
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("request_id")] string RequestId,
+    [property: JsonPropertyName("source_instance_id")] string? SourceInstanceId,
+    [property: JsonPropertyName("credential")] string? Credential,
+    [property: JsonPropertyName("error")] string? Error);
+
+public sealed record AuthenticateRequest(
+    [property: JsonPropertyName("source_type")] string SourceType,
+    [property: JsonPropertyName("source_instance_id")] string SourceInstanceId,
+    [property: JsonPropertyName("credential")] string Credential);

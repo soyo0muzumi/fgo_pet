@@ -100,4 +100,98 @@ public sealed class ProtocolFixtureTests
         Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
             ProtocolEnvelope.Create("message-1", "agent_event", message)));
     }
+
+    [Fact]
+    public void Registration_status_round_trips_one_time_credential()
+    {
+        var value = new RegistrationStatusResponse("approved", "req-1", "codex-abc", "secret", null);
+        var copy = ProtocolEnvelope.Create("m1", "registration_status", value)
+            .DeserializePayload<RegistrationStatusResponse>();
+
+        Assert.Equal(value, copy);
+    }
+
+    [Fact]
+    public void App_administration_contracts_cannot_expose_credentials()
+    {
+        Assert.DoesNotContain(typeof(PendingSourceDto).GetProperties(), p => p.Name.Contains("Credential"));
+        Assert.DoesNotContain(typeof(ApprovedSourceDto).GetProperties(), p => p.Name.Contains("Credential"));
+    }
+
+    [Fact]
+    public void Registration_request_uses_versioned_identity_and_nonce_fields()
+    {
+        var request = new RegistrationRequestMessage(
+            "codex", "Codex", "instance-1", "1.0", "1", Nonce());
+        var envelope = ProtocolEnvelope.Create("m1", "registration_request", request);
+
+        AgentProtocolValidator.Validate(envelope);
+        var json = envelope.ToJson();
+
+        Assert.Contains("\"source_instance_id\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"request_nonce\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Registration_request_rejects_incompatible_protocol_and_nonce()
+    {
+        var incompatible = new RegistrationRequestMessage(
+            "codex", "Codex", "instance-1", "1.0", "2", Nonce());
+        var malformedNonce = new RegistrationRequestMessage(
+            "codex", "Codex", "instance-1", "1.0", "1", "not-a-nonce");
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("m1", "registration_request", incompatible)));
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("m2", "registration_request", malformedNonce)));
+    }
+
+    [Fact]
+    public void Authenticate_and_registration_status_validate_32_byte_base64_credentials()
+    {
+        var credential = Convert.ToBase64String(new byte[32]);
+        var authenticate = new AuthenticateRequest("codex", "instance-1", credential);
+        var response = new RegistrationStatusResponse("approved", "req-1", "instance-1", credential, null);
+
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m1", "authenticate", authenticate));
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m2", "registration_status", response));
+
+        var invalid = new AuthenticateRequest("codex", "instance-1", "c2VjcmV0");
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("m3", "authenticate", invalid)));
+    }
+
+    [Fact]
+    public void Credential_fields_nested_or_on_requests_remain_forbidden()
+    {
+        var nested = ProtocolEnvelope.Parse(
+            "{\"protocol_version\":\"1\",\"message_id\":\"m1\",\"message_type\":\"authenticate\",\"sent_at\":\"2026-08-30T08:00:00Z\",\"payload\":{\"source_type\":\"codex\",\"source_instance_id\":\"instance-1\",\"credential\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"metadata\":{\"credential\":\"secret\"}}}");
+        var statusRequest = ProtocolEnvelope.Parse(
+            "{\"protocol_version\":\"1\",\"message_id\":\"m2\",\"message_type\":\"registration_status\",\"sent_at\":\"2026-08-30T08:00:00Z\",\"payload\":{\"request_id\":\"req-1\",\"source_instance_id\":\"instance-1\",\"request_nonce\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"credential\":\"secret\"}}");
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(nested));
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(statusRequest));
+    }
+
+    [Fact]
+    public void Administration_contracts_validate_decisions_permissions_and_protocol_status()
+    {
+        var decision = new RegistrationDecisionRequest("req-1", "approve");
+        var permissions = new UpdatePermissionsRequest("codex", "instance-1", new[] { "target-1" }, true);
+        var revoke = new RevokeSourceRequest("codex", "instance-1");
+        var connection = new RelayConnectionTestResponse(
+            true, true, true, "1", "connected", DateTimeOffset.UtcNow, null);
+
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m1", "decide_registration", decision));
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m2", "update_permissions", permissions));
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m3", "revoke_source", revoke));
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("m4", "connection_test", connection));
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("m5", "decide_registration", new RegistrationDecisionRequest("req-1", "maybe"))));
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(
+            ProtocolEnvelope.Create("m6", "update_permissions", new UpdatePermissionsRequest("codex", "instance-1", new[] { "C:\\\\secret" }, true))));
+    }
+
+    private static string Nonce() => new('a', 64);
 }
