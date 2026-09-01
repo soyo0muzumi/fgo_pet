@@ -5,6 +5,7 @@ public enum AgentExecutionStatus
     Dispatching,
     Active,
     Attention,
+    DispatchOutcomeUnknown,
     Completed,
     Failed,
     Cancelled,
@@ -22,7 +23,8 @@ public sealed record AgentExecution
         DateTimeOffset updatedAt,
         AgentExecutionStatus status = AgentExecutionStatus.Dispatching,
         DateTimeOffset? startedAt = null,
-        DateTimeOffset? endedAt = null)
+        DateTimeOffset? endedAt = null,
+        string? previousExecutionId = null)
     {
         Id = AgentIdentityValidation.Id(id, nameof(id));
         TodoId = AgentIdentityValidation.Id(todoId, nameof(todoId));
@@ -30,6 +32,9 @@ public sealed record AgentExecution
         SourceInstance = AgentIdentityValidation.Id(sourceInstance, nameof(sourceInstance));
         TaskId = AgentIdentityValidation.Id(taskId, nameof(taskId));
         DispatchRequestId = AgentIdentityValidation.Id(dispatchRequestId, nameof(dispatchRequestId));
+        PreviousExecutionId = string.IsNullOrWhiteSpace(previousExecutionId)
+            ? null
+            : AgentIdentityValidation.Id(previousExecutionId, nameof(previousExecutionId));
         Status = status;
         StartedAt = startedAt;
         UpdatedAt = updatedAt;
@@ -52,6 +57,7 @@ public sealed record AgentExecution
     public string SourceInstance { get; }
     public string TaskId { get; }
     public string DispatchRequestId { get; }
+    public string? PreviousExecutionId { get; }
     public AgentExecutionStatus Status { get; init; }
     public DateTimeOffset? StartedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -78,6 +84,12 @@ public sealed record AgentExecution
         return this with { Status = AgentExecutionStatus.Attention, StartedAt = StartedAt ?? at, UpdatedAt = at };
     }
 
+    public AgentExecution MarkDispatchOutcomeUnknown(DateTimeOffset at)
+    {
+        EnsureMutable();
+        return this with { Status = AgentExecutionStatus.DispatchOutcomeUnknown, UpdatedAt = at };
+    }
+
     public AgentExecution MarkUpdated(DateTimeOffset at)
     {
         EnsureMutable();
@@ -100,6 +112,30 @@ public sealed record AgentExecution
     {
         EnsureMutable();
         return this with { Status = AgentExecutionStatus.Cancelled, UpdatedAt = at, EndedAt = at };
+    }
+
+    public static AgentExecution CreateAttemptAfter(
+        AgentExecution previous,
+        string executionId,
+        string taskId,
+        string dispatchRequestId,
+        DateTimeOffset updatedAt)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        if (!previous.IsTerminal)
+        {
+            throw new InvalidOperationException("A new Agent execution requires a terminal previous execution.");
+        }
+
+        return new AgentExecution(
+            executionId,
+            previous.TodoId,
+            previous.SourceType,
+            previous.SourceInstance,
+            taskId,
+            dispatchRequestId,
+            updatedAt,
+            previousExecutionId: previous.Id);
     }
 
     public static void ValidateCanStart(IEnumerable<AgentExecution> executions)
