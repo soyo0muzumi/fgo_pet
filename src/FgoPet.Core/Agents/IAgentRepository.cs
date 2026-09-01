@@ -27,6 +27,7 @@ public interface IAgentRepository
     void SaveArchiveBatch(AgentArchiveBatch batch);
     AgentArchiveBatch? GetArchiveBatch(string batchId);
     IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches();
+    void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt);
     AgentEventApplyResult ApplyEvent(AgentEvent agentEvent);
     void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets);
     IReadOnlyList<PersistedAgentConnection> ListConnections();

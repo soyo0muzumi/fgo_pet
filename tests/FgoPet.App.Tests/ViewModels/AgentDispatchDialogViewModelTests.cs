@@ -114,6 +114,12 @@ public sealed class AgentDispatchDialogViewModelTests
         public AgentExecution? GetExecution(string id) => null;
         public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) => null;
         public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => [];
+        public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit) => [];
+        public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence) => false;
+        public void SaveArchiveBatch(AgentArchiveBatch batch) { }
+        public AgentArchiveBatch? GetArchiveBatch(string batchId) => null;
+        public IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches() => [];
+        public void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt) { }
         public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent) => AgentEventApplyResult.Applied;
         public void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets) { }
         public IReadOnlyList<PersistedAgentConnection> ListConnections() => [];

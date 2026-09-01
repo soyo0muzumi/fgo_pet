@@ -247,6 +247,12 @@ public sealed class AgentDispatchServiceTests : IDisposable
         public AgentExecution? GetExecution(string id) => SavedExecution?.Id == id ? SavedExecution : null;
         public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) => SavedExecution;
         public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => SavedExecution is { IsNonTerminal: true } ? new[] { SavedExecution } : Array.Empty<AgentExecution>();
+        public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit) => Array.Empty<AgentExecution>();
+        public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence) => false;
+        public void SaveArchiveBatch(AgentArchiveBatch batch) { }
+        public AgentArchiveBatch? GetArchiveBatch(string batchId) => null;
+        public IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches() => Array.Empty<AgentArchiveBatch>();
+        public void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt) { }
         public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent) => AgentEventApplyResult.Applied;
         public void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets) { }
         public IReadOnlyList<PersistedAgentConnection> ListConnections() => Array.Empty<PersistedAgentConnection>();

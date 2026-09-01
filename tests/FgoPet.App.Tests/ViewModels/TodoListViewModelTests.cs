@@ -102,6 +102,12 @@ public sealed class TodoListViewModelTests
         public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => _execution is { IsNonTerminal: true }
             ? new[] { _execution }
             : Array.Empty<AgentExecution>();
+        public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit) => Array.Empty<AgentExecution>();
+        public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence) => false;
+        public void SaveArchiveBatch(AgentArchiveBatch batch) { }
+        public AgentArchiveBatch? GetArchiveBatch(string batchId) => null;
+        public IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches() => Array.Empty<AgentArchiveBatch>();
+        public void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt) { }
 
         public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent)
         {

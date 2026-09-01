@@ -256,6 +256,56 @@ public sealed class RuntimeDatabaseMigrator
             CREATE INDEX IF NOT EXISTS ix_long_work_archives_created
               ON long_work_archives(created_at_utc DESC);
             """),
+        new(7, """
+            ALTER TABLE agent_executions ADD COLUMN previous_execution_id TEXT NULL;
+            DROP INDEX IF EXISTS ix_agent_executions_todo_current;
+            ALTER TABLE agent_executions RENAME TO agent_executions_legacy;
+            CREATE TABLE agent_executions(
+              execution_id TEXT PRIMARY KEY,
+              todo_id TEXT NOT NULL,
+              source_type TEXT NOT NULL,
+              source_instance TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              dispatch_request_id TEXT NOT NULL UNIQUE,
+              status TEXT NOT NULL CHECK(status IN ('dispatching','active','attention','dispatch_outcome_unknown','completed','failed','cancelled')),
+              started_at_utc TEXT NULL,
+              updated_at_utc TEXT NOT NULL,
+              ended_at_utc TEXT NULL,
+              previous_execution_id TEXT NULL,
+              UNIQUE(source_type, source_instance, task_id));
+            INSERT INTO agent_executions(
+              execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
+              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id)
+            SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
+              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id
+            FROM agent_executions_legacy;
+            DROP TABLE agent_executions_legacy;
+            CREATE INDEX ix_agent_executions_todo_current
+              ON agent_executions(todo_id, updated_at_utc DESC);
+            CREATE TABLE agent_archive_batches(
+                batch_id TEXT PRIMARY KEY,
+                created_at_utc TEXT NOT NULL,
+                state TEXT NOT NULL,
+                batch_sha256 TEXT NOT NULL,
+                safe_error TEXT NULL,
+                completed_at_utc TEXT NULL
+            );
+            CREATE TABLE agent_archive_items(
+                batch_id TEXT NOT NULL,
+                execution_id TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_instance TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                dispatch_request_id TEXT NOT NULL,
+                final_sequence INTEGER NOT NULL,
+                final_status TEXT NOT NULL,
+                ended_at_utc TEXT NOT NULL,
+                summary_sha256 TEXT NOT NULL,
+                PRIMARY KEY(batch_id, execution_id),
+                UNIQUE(batch_id, source_type, source_instance, task_id, dispatch_request_id),
+                FOREIGN KEY(batch_id) REFERENCES agent_archive_batches(batch_id) ON DELETE CASCADE
+            );
+            """),
     };
 
     private readonly RuntimeDatabase _database;

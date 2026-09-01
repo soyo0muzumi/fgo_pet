@@ -23,8 +23,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.CommandText = """
             INSERT INTO agent_executions(
               execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
-              status, started_at_utc, updated_at_utc, ended_at_utc)
-            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended)
+              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id)
+            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended, $previous)
             ON CONFLICT(execution_id) DO UPDATE SET
               todo_id=excluded.todo_id,
               source_type=excluded.source_type,
@@ -34,7 +34,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
               status=excluded.status,
               started_at_utc=excluded.started_at_utc,
               updated_at_utc=excluded.updated_at_utc,
-              ended_at_utc=excluded.ended_at_utc
+              ended_at_utc=excluded.ended_at_utc,
+              previous_execution_id=excluded.previous_execution_id
             """;
         AddExecutionParameters(command, execution);
         command.ExecuteNonQuery();
@@ -67,11 +68,230 @@ public sealed class SqliteAgentRepository : IAgentRepository
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = SelectExecutionSql + " WHERE status IN ('dispatching','active','attention') ORDER BY updated_at_utc DESC";
+        command.CommandText = SelectExecutionSql + " WHERE status IN ('dispatching','active','attention','dispatch_outcome_unknown') ORDER BY updated_at_utc DESC";
         using var reader = command.ExecuteReader();
         var result = new List<AgentExecution>();
         while (reader.Read()) result.Add(ReadExecution(reader));
         return result;
+    }
+
+    public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit)
+    {
+        if (limit <= 0)
+        {
+            return Array.Empty<AgentExecution>();
+        }
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = SelectExecutionSql + " WHERE status IN ('completed','failed','cancelled') AND ended_at_utc < $endedBefore ORDER BY ended_at_utc ASC, execution_id ASC LIMIT $limit";
+        command.Parameters.AddWithValue("$endedBefore", endedBefore.ToString("O"));
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var result = new List<AgentExecution>();
+        while (reader.Read()) result.Add(ReadExecution(reader));
+        return result;
+    }
+
+    public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence)
+    {
+        if (sequence < 1)
+        {
+            return false;
+        }
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM agent_event_receipts WHERE source_type=$source AND source_instance=$instance AND task_id=$task AND sequence=$sequence)";
+        command.Parameters.AddWithValue("$source", sourceType);
+        command.Parameters.AddWithValue("$instance", sourceInstance);
+        command.Parameters.AddWithValue("$task", taskId);
+        command.Parameters.AddWithValue("$sequence", sequence);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
+    }
+
+    public void SaveArchiveBatch(AgentArchiveBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using (var header = connection.CreateCommand())
+        {
+            header.Transaction = transaction;
+            header.CommandText = """
+                INSERT INTO agent_archive_batches(batch_id, created_at_utc, state, batch_sha256, safe_error, completed_at_utc)
+                VALUES($batch, $created, $state, $sha256, $error, $completed)
+                ON CONFLICT(batch_id) DO UPDATE SET
+                  created_at_utc=excluded.created_at_utc,
+                  state=excluded.state,
+                  batch_sha256=excluded.batch_sha256,
+                  safe_error=excluded.safe_error,
+                  completed_at_utc=excluded.completed_at_utc
+                """;
+            header.Parameters.AddWithValue("$batch", batch.BatchId);
+            header.Parameters.AddWithValue("$created", batch.CreatedAt.ToString("O"));
+            header.Parameters.AddWithValue("$state", ToDb(batch.State));
+            header.Parameters.AddWithValue("$sha256", batch.BatchSha256);
+            header.Parameters.AddWithValue("$error", batch.SafeError ?? (object)DBNull.Value);
+            header.Parameters.AddWithValue("$completed", (object)DBNull.Value);
+            header.ExecuteNonQuery();
+        }
+
+        using (var clear = connection.CreateCommand())
+        {
+            clear.Transaction = transaction;
+            clear.CommandText = "DELETE FROM agent_archive_items WHERE batch_id=$batch";
+            clear.Parameters.AddWithValue("$batch", batch.BatchId);
+            clear.ExecuteNonQuery();
+        }
+
+        foreach (var candidate in batch.Candidates)
+        {
+            using var item = connection.CreateCommand();
+            item.Transaction = transaction;
+            item.CommandText = """
+                INSERT INTO agent_archive_items(
+                  batch_id, execution_id, source_type, source_instance, task_id, dispatch_request_id,
+                  final_sequence, final_status, ended_at_utc, summary_sha256)
+                VALUES($batch, $execution, $source, $instance, $task, $request, $sequence, $status, $ended, $summary)
+                """;
+            item.Parameters.AddWithValue("$batch", batch.BatchId);
+            item.Parameters.AddWithValue("$execution", candidate.ExecutionId);
+            item.Parameters.AddWithValue("$source", candidate.Identity.SourceType);
+            item.Parameters.AddWithValue("$instance", candidate.Identity.SourceInstance);
+            item.Parameters.AddWithValue("$task", candidate.Identity.TaskId);
+            item.Parameters.AddWithValue("$request", candidate.Identity.DispatchRequestId);
+            item.Parameters.AddWithValue("$sequence", candidate.Identity.FinalSequence);
+            item.Parameters.AddWithValue("$status", ToDb(candidate.Identity.FinalStatus));
+            item.Parameters.AddWithValue("$ended", candidate.EndedAt.ToString("O"));
+            item.Parameters.AddWithValue("$summary", candidate.SummarySha256);
+            item.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    public AgentArchiveBatch? GetArchiveBatch(string batchId)
+    {
+        using var connection = _database.Open();
+        return ReadArchiveBatch(connection, null, batchId);
+    }
+
+    public IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches()
+    {
+        using var connection = _database.Open();
+        var headers = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT batch_id FROM agent_archive_batches WHERE state IN ($preparing, $prepared, $commitPending) ORDER BY created_at_utc ASC, batch_id ASC";
+            command.Parameters.AddWithValue("$preparing", ToDb(AgentArchiveBatchState.Preparing));
+            command.Parameters.AddWithValue("$prepared", ToDb(AgentArchiveBatchState.Prepared));
+            command.Parameters.AddWithValue("$commitPending", ToDb(AgentArchiveBatchState.CommitPending));
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) headers.Add(reader.GetString(0));
+        }
+
+        var result = new List<AgentArchiveBatch>(headers.Count);
+        foreach (var batchId in headers)
+        {
+            var batch = ReadArchiveBatch(connection, null, batchId);
+            if (batch is not null) result.Add(batch);
+        }
+
+        return result;
+    }
+
+    public void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(batchId);
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        AgentArchiveBatchState state;
+        using (var stateCommand = connection.CreateCommand())
+        {
+            stateCommand.Transaction = transaction;
+            stateCommand.CommandText = "SELECT state FROM agent_archive_batches WHERE batch_id=$batch";
+            stateCommand.Parameters.AddWithValue("$batch", batchId);
+            var value = stateCommand.ExecuteScalar();
+            if (value is null || value is DBNull)
+            {
+                throw new KeyNotFoundException($"Archive batch '{batchId}' was not found.");
+            }
+
+            state = FromDbArchiveState((string)value);
+        }
+
+        if (state == AgentArchiveBatchState.Completed)
+        {
+            transaction.Commit();
+            return;
+        }
+
+        if (state != AgentArchiveBatchState.CommitPending)
+        {
+            throw new InvalidOperationException($"Archive batch '{batchId}' is not commit-pending.");
+        }
+
+        var identities = new List<(string ExecutionId, string SourceType, string SourceInstance, string TaskId, long FinalSequence)>();
+        using (var items = connection.CreateCommand())
+        {
+            items.Transaction = transaction;
+            items.CommandText = "SELECT execution_id, source_type, source_instance, task_id, final_sequence FROM agent_archive_items WHERE batch_id=$batch";
+            items.Parameters.AddWithValue("$batch", batchId);
+            using var reader = items.ExecuteReader();
+            while (reader.Read())
+            {
+                identities.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4)));
+            }
+        }
+
+        foreach (var identity in identities)
+        {
+            using (var higher = connection.CreateCommand())
+            {
+                higher.Transaction = transaction;
+                higher.CommandText = "SELECT EXISTS(SELECT 1 FROM agent_event_receipts WHERE source_type=$source AND source_instance=$instance AND task_id=$task AND sequence>$sequence)";
+                higher.Parameters.AddWithValue("$source", identity.SourceType);
+                higher.Parameters.AddWithValue("$instance", identity.SourceInstance);
+                higher.Parameters.AddWithValue("$task", identity.TaskId);
+                higher.Parameters.AddWithValue("$sequence", identity.FinalSequence);
+                if (Convert.ToInt64(higher.ExecuteScalar(), CultureInfo.InvariantCulture) != 0)
+                {
+                    throw new InvalidOperationException($"Archive batch '{batchId}' has receipts beyond final sequence for {identity.SourceType}/{identity.SourceInstance}/{identity.TaskId}.");
+                }
+            }
+
+            using (var receipts = connection.CreateCommand())
+            {
+                receipts.Transaction = transaction;
+                receipts.CommandText = "DELETE FROM agent_event_receipts WHERE source_type=$source AND source_instance=$instance AND task_id=$task AND sequence<=$sequence";
+                receipts.Parameters.AddWithValue("$source", identity.SourceType);
+                receipts.Parameters.AddWithValue("$instance", identity.SourceInstance);
+                receipts.Parameters.AddWithValue("$task", identity.TaskId);
+                receipts.Parameters.AddWithValue("$sequence", identity.FinalSequence);
+                receipts.ExecuteNonQuery();
+            }
+
+            using (var execution = connection.CreateCommand())
+            {
+                execution.Transaction = transaction;
+                execution.CommandText = "DELETE FROM agent_executions WHERE execution_id=$execution";
+                execution.Parameters.AddWithValue("$execution", identity.ExecutionId);
+                execution.ExecuteNonQuery();
+            }
+        }
+
+        using (var complete = connection.CreateCommand())
+        {
+            complete.Transaction = transaction;
+            complete.CommandText = "UPDATE agent_archive_batches SET state=$state, completed_at_utc=$completed WHERE batch_id=$batch";
+            complete.Parameters.AddWithValue("$state", ToDb(AgentArchiveBatchState.Completed));
+            complete.Parameters.AddWithValue("$completed", completedAt.ToString("O"));
+            complete.Parameters.AddWithValue("$batch", batchId);
+            complete.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
     }
 
     public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent)
@@ -245,14 +465,14 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return result;
     }
 
-    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc FROM agent_executions";
+    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id FROM agent_executions";
 
     private static void EnsureNoOtherActiveExecution(SqliteConnection connection, SqliteTransaction transaction, AgentExecution execution)
     {
         if (!execution.IsNonTerminal) return;
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "SELECT COUNT(*) FROM agent_executions WHERE todo_id=$todo AND status IN ('dispatching','active','attention') AND execution_id<>$id";
+        command.CommandText = "SELECT COUNT(*) FROM agent_executions WHERE todo_id=$todo AND status IN ('dispatching','active','attention','dispatch_outcome_unknown') AND execution_id<>$id";
         command.Parameters.AddWithValue("$todo", execution.TodoId);
         command.Parameters.AddWithValue("$id", execution.Id);
         if ((long)command.ExecuteScalar()! > 0)
@@ -273,6 +493,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.Parameters.AddWithValue("$started", execution.StartedAt?.ToString("O") ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$updated", execution.UpdatedAt.ToString("O"));
         command.Parameters.AddWithValue("$ended", execution.EndedAt?.ToString("O") ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$previous", execution.PreviousExecutionId ?? (object)DBNull.Value);
     }
 
     private static AgentExecution? ReadExecution(SqliteConnection connection, SqliteTransaction transaction, string source, string instance, string task)
@@ -289,8 +510,9 @@ public sealed class SqliteAgentRepository : IAgentRepository
 
     private static AgentExecution ReadExecution(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5),
-        ParseUtc(reader.GetString(8)), Enum.Parse<AgentExecutionStatus>(reader.GetString(6), ignoreCase: true),
-        reader.IsDBNull(7) ? null : ParseUtc(reader.GetString(7)), reader.IsDBNull(9) ? null : ParseUtc(reader.GetString(9)));
+        ParseUtc(reader.GetString(8)), FromDb(reader.GetString(6)),
+        reader.IsDBNull(7) ? null : ParseUtc(reader.GetString(7)), reader.IsDBNull(9) ? null : ParseUtc(reader.GetString(9)),
+        reader.IsDBNull(10) ? null : reader.GetString(10));
 
     private static long ReadMaxSequence(SqliteConnection connection, SqliteTransaction transaction, AgentEvent agentEvent)
     {
@@ -314,7 +536,96 @@ public sealed class SqliteAgentRepository : IAgentRepository
         _ => execution.MarkUpdated(agentEvent.OccurredAt),
     };
 
-    private static string ToDb(AgentExecutionStatus status) => status.ToString().ToLowerInvariant();
+    private static AgentArchiveBatch? ReadArchiveBatch(SqliteConnection connection, SqliteTransaction? transaction, string batchId)
+    {
+        DateTimeOffset createdAt;
+        AgentArchiveBatchState state;
+        string batchSha256;
+        string? safeError;
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT created_at_utc, state, batch_sha256, safe_error, completed_at_utc FROM agent_archive_batches WHERE batch_id=$batch";
+            command.Parameters.AddWithValue("$batch", batchId);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) return null;
+            createdAt = ParseUtc(reader.GetString(0));
+            state = FromDbArchiveState(reader.GetString(1));
+            batchSha256 = reader.GetString(2);
+            safeError = reader.IsDBNull(3) ? null : reader.GetString(3);
+        }
+
+        var candidates = new List<AgentArchiveCandidate>();
+        using (var items = connection.CreateCommand())
+        {
+            items.Transaction = transaction;
+            items.CommandText = """
+                SELECT execution_id, source_type, source_instance, task_id, dispatch_request_id,
+                       final_sequence, final_status, ended_at_utc, summary_sha256
+                FROM agent_archive_items
+                WHERE batch_id=$batch
+                ORDER BY rowid
+                """;
+            items.Parameters.AddWithValue("$batch", batchId);
+            using var reader = items.ExecuteReader();
+            while (reader.Read())
+            {
+                candidates.Add(new AgentArchiveCandidate(
+                    reader.GetString(0),
+                    new AgentArchiveIdentity(
+                        reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                        reader.GetInt64(5), FromDb(reader.GetString(6))),
+                    ParseUtc(reader.GetString(7)), reader.GetString(8)));
+            }
+        }
+
+        return new AgentArchiveBatch(batchId, createdAt, state, candidates, batchSha256, safeError);
+    }
+
+    private static AgentExecutionStatus FromDb(string status) => status switch
+    {
+        "dispatching" => AgentExecutionStatus.Dispatching,
+        "active" => AgentExecutionStatus.Active,
+        "attention" => AgentExecutionStatus.Attention,
+        "dispatch_outcome_unknown" or "dispatchoutcomeunknown" => AgentExecutionStatus.DispatchOutcomeUnknown,
+        "completed" => AgentExecutionStatus.Completed,
+        "failed" => AgentExecutionStatus.Failed,
+        "cancelled" => AgentExecutionStatus.Cancelled,
+        _ => throw new InvalidOperationException($"Unknown Agent execution status '{status}'."),
+    };
+
+    private static string ToDb(AgentExecutionStatus status) => status switch
+    {
+        AgentExecutionStatus.Dispatching => "dispatching",
+        AgentExecutionStatus.Active => "active",
+        AgentExecutionStatus.Attention => "attention",
+        AgentExecutionStatus.DispatchOutcomeUnknown => "dispatch_outcome_unknown",
+        AgentExecutionStatus.Completed => "completed",
+        AgentExecutionStatus.Failed => "failed",
+        AgentExecutionStatus.Cancelled => "cancelled",
+        _ => throw new ArgumentOutOfRangeException(nameof(status)),
+    };
+
+    private static AgentArchiveBatchState FromDbArchiveState(string state) => state switch
+    {
+        "preparing" => AgentArchiveBatchState.Preparing,
+        "prepared" => AgentArchiveBatchState.Prepared,
+        "commit_pending" or "commitpending" => AgentArchiveBatchState.CommitPending,
+        "completed" => AgentArchiveBatchState.Completed,
+        "rejected" => AgentArchiveBatchState.Rejected,
+        _ => throw new InvalidOperationException($"Unknown Agent archive batch state '{state}'."),
+    };
+
+    private static string ToDb(AgentArchiveBatchState state) => state switch
+    {
+        AgentArchiveBatchState.Preparing => "preparing",
+        AgentArchiveBatchState.Prepared => "prepared",
+        AgentArchiveBatchState.CommitPending => "commit_pending",
+        AgentArchiveBatchState.Completed => "completed",
+        AgentArchiveBatchState.Rejected => "rejected",
+        _ => throw new ArgumentOutOfRangeException(nameof(state)),
+    };
+
     private static string ToDb(AgentEventType type) => type switch
     {
         AgentEventType.TaskDiscovered => "task_discovered",

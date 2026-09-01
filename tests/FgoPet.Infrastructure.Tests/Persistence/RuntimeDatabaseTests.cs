@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(6L, Scalar<long>(connection,
+        Assert.Equal(7L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
@@ -44,12 +44,50 @@ public sealed class RuntimeDatabaseTests : IDisposable
                      "memory_candidates", "memories", "content_bindings",
                      "todo_items", "agent_executions", "agent_event_receipts",
                      "agent_connections", "agent_project_targets", "work_archives", "work_archive_items",
-                     "long_work_archives",
+                     "long_work_archives", "agent_archive_batches", "agent_archive_items",
                  })
         {
             Assert.Equal(1L, Scalar<long>(connection,
                 $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{table}'"));
         }
+    }
+
+    [Fact]
+    public void Migrate_upgrades_the_prior_agent_schema_with_reconciliation_and_archive_tables()
+    {
+        var database = new RuntimeDatabase(_path);
+        using (var connection = database.Open())
+        {
+            Execute(connection, "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at_utc TEXT NOT NULL)");
+            Execute(connection, "INSERT INTO schema_migrations(version, applied_at_utc) VALUES(6, '2026-08-30T00:00:00Z')");
+            Execute(connection, """
+                CREATE TABLE agent_executions(
+                  execution_id TEXT PRIMARY KEY,
+                  todo_id TEXT NOT NULL,
+                  source_type TEXT NOT NULL,
+                  source_instance TEXT NOT NULL,
+                  task_id TEXT NOT NULL,
+                  dispatch_request_id TEXT NOT NULL UNIQUE,
+                  status TEXT NOT NULL CHECK(status IN ('dispatching','active','attention','completed','failed','cancelled')),
+                  started_at_utc TEXT NULL,
+                  updated_at_utc TEXT NOT NULL,
+                  ended_at_utc TEXT NULL,
+                  UNIQUE(source_type, source_instance, task_id));
+                CREATE INDEX ix_agent_executions_todo_current
+                  ON agent_executions(todo_id, updated_at_utc DESC);
+                """);
+        }
+
+        new RuntimeDatabaseMigrator(database).Migrate();
+
+        using var verify = database.Open();
+        Assert.Equal(7L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(1L, Scalar<long>(verify,
+            "SELECT COUNT(*) FROM pragma_table_info('agent_executions') WHERE name='previous_execution_id'"));
+        Assert.Equal(1L, Scalar<long>(verify,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_archive_batches'"));
+        Assert.Equal(1L, Scalar<long>(verify,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_archive_items'"));
     }
 
     [Fact]
