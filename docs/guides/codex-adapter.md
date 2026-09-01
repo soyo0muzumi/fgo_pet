@@ -1,5 +1,10 @@
 # FGO Pet Codex adapter
 
+> This is a source-build, development, diagnostics, and acceptance guide. The
+> Phase 5 Release user flow must install and manage the adapter through the GUI
+> installer and FGO Pet settings. Release users must not run the PowerShell or
+> CLI commands in this document.
+
 The adapter is an explicit, local bridge between Codex and the FGO Pet Agent
 Relay. It uses the existing current-user-only named-pipe boundary. Pairing is
 approved in FGO Pet; the plugin never receives or stores a Relay credential in
@@ -18,7 +23,7 @@ The repository package is `integrations/codex/fgo-pet-agent`:
 The adapter and Relay are installed side by side. The adapter resolves its
 sibling `FgoPet.AgentRelay.exe`; it does not search `PATH` for a Relay.
 
-## Install
+## Developer/acceptance install
 
 Run the installer explicitly from a PowerShell prompt. With no
 `-PublishedSource`, it publishes the Release adapter and Relay. A pre-published
