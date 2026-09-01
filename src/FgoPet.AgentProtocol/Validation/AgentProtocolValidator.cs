@@ -19,7 +19,8 @@ public static class AgentProtocolValidator
         "registration_approval", "registration_response", "registration_status",
         "authenticate", "connection_test", "pending_sources", "decide_registration",
         "list_sources", "update_permissions", "revoke_source", "status_check", "error",
-        "event_ack", "dispatch_ack",
+        "event_ack", "dispatch_ack", "maintenance_status", "archive_prepare", "archive_commit",
+        "maintenance_sync",
     };
 
     private static readonly HashSet<string> KnownRegistrationStatuses = new(StringComparer.Ordinal)
@@ -36,6 +37,16 @@ public static class AgentProtocolValidator
     private static readonly HashSet<string> KnownRegistrationDecisions = new(StringComparer.Ordinal)
     {
         "approve", "reject",
+    };
+
+    private static readonly HashSet<string> KnownTerminalStatuses = new(StringComparer.Ordinal)
+    {
+        "completed", "failed", "cancelled",
+    };
+
+    private static readonly HashSet<string> KnownAcknowledgementPhases = new(StringComparer.Ordinal)
+    {
+        "prepare", "commit",
     };
 
     /// <summary>
@@ -133,6 +144,25 @@ public static class AgentProtocolValidator
             case "revoke_source": ValidateRevoke(envelope.DeserializePayload<RevokeSourceRequest>()); break;
             case "event_ack": ValidateEventAcknowledgement(envelope.DeserializePayload<EventAcknowledgementRequest>()); break;
             case "dispatch_ack": ValidateDispatchAcknowledgement(envelope.DeserializePayload<DispatchAcknowledgementRequest>()); break;
+            case "maintenance_status":
+                if (HasAnyProperty(envelope.Payload, "result", "counters", "oldest_archivable_at", "active_batch_id", "safe_error"))
+                {
+                    throw new AgentProtocolValidationException("Maintenance status response was supplied where a request was expected.");
+                }
+
+                break;
+            case "archive_prepare":
+                RejectMaintenanceResponseFields(envelope.Payload);
+                ValidateArchivePrepare(envelope.DeserializePayload<AgentArchivePrepareRequest>());
+                break;
+            case "archive_commit":
+                RejectMaintenanceResponseFields(envelope.Payload);
+                ValidateArchiveCommit(envelope.DeserializePayload<AgentArchiveCommitRequest>());
+                break;
+            case "maintenance_sync":
+                RejectMaintenanceSyncResponseFields(envelope.Payload);
+                ValidateMaintenanceSync(envelope.DeserializePayload<AdapterMaintenanceSyncRequest>());
+                break;
             case "status_check": break;
         }
     }
@@ -187,6 +217,17 @@ public static class AgentProtocolValidator
             case "revoke_source": ValidateResult(envelope, "ok"); break;
             case "event_ack":
             case "dispatch_ack": ValidateResult(envelope, "acknowledged", "already_acknowledged", "unknown"); break;
+            case "maintenance_status":
+                ValidateResult(envelope, "status");
+                ValidateMaintenanceStatus(envelope);
+                break;
+            case "archive_prepare":
+                ValidateArchiveOperationResponse(envelope, "accepted", "already_prepared", "prepared", "rejected", "ok");
+                break;
+            case "archive_commit":
+                ValidateArchiveOperationResponse(envelope, "accepted", "already_committed", "committed", "rejected", "ok");
+                break;
+            case "maintenance_sync": ValidateMaintenanceSyncResponse(envelope); break;
             case "status_check":
                 ValidateResult(envelope, "status", "dispatches", "ok");
                 ValidateEmbeddedEnvelopes(envelope.Payload, "events", "agent_event");
@@ -431,6 +472,395 @@ public static class AgentProtocolValidator
             throw new AgentProtocolValidationException("Dispatch acknowledgement must contain a bounded non-empty collection.");
         foreach (var requestId in message.DispatchRequestIds)
             ValidateSafeIdentifier(requestId, nameof(requestId));
+    }
+
+    private static void RejectMaintenanceResponseFields(JsonElement payload)
+    {
+        if (HasAnyProperty(payload, "result", "error", "counters", "oldest_archivable_at", "active_batch_id", "safe_error"))
+        {
+            throw new AgentProtocolValidationException("Maintenance response fields cannot appear in a request.");
+        }
+    }
+
+    private static void RejectMaintenanceSyncResponseFields(JsonElement payload)
+    {
+        if (HasAnyProperty(payload, "result", "error", "batch_id", "items", "batch_sha256", "operation"))
+        {
+            throw new AgentProtocolValidationException("Maintenance sync response fields cannot appear in a request.");
+        }
+    }
+
+    private static void ValidateArchivePrepare(AgentArchivePrepareRequest message)
+    {
+        ValidateSafeIdentifier(message.BatchId, nameof(message.BatchId));
+        ValidateSha256(message.BatchSha256, nameof(message.BatchSha256));
+
+        if (message.Items is null || message.Items.Count is 0 or > 128)
+        {
+            throw new AgentProtocolValidationException("Archive prepare must contain between 1 and 128 items.");
+        }
+
+        var identities = new HashSet<(string SourceType, string SourceInstance, string TaskId, string DispatchRequestId)>();
+        foreach (var item in message.Items)
+        {
+            if (item is null)
+            {
+                throw new AgentProtocolValidationException("Archive prepare items cannot be null.");
+            }
+
+            ValidateArchiveItem(item);
+            var identity = (
+                item.SourceType.Trim(),
+                item.SourceInstance.Trim(),
+                item.TaskId.Trim(),
+                item.DispatchRequestId.Trim());
+            if (!identities.Add(identity))
+            {
+                throw new AgentProtocolValidationException("Archive prepare cannot contain duplicate identities.");
+            }
+        }
+    }
+
+    private static void ValidateArchiveItem(AgentArchiveProtocolItem item)
+    {
+        ValidateSafeIdentifier(item.SourceType, nameof(item.SourceType));
+        ValidateSafeIdentifier(item.SourceInstance, nameof(item.SourceInstance));
+        ValidateSafeIdentifier(item.TaskId, nameof(item.TaskId));
+        ValidateSafeIdentifier(item.DispatchRequestId, nameof(item.DispatchRequestId));
+        ValidateSafeIdentifier(item.ExecutionId, nameof(item.ExecutionId));
+        if (item.FinalSequence < 0)
+        {
+            throw new AgentProtocolValidationException("Archive item final sequence cannot be negative.");
+        }
+
+        RequireKnown(item.FinalStatus, KnownTerminalStatuses, nameof(item.FinalStatus));
+        if (item.EndedAt == default || item.EndedAt == DateTimeOffset.MinValue)
+        {
+            throw new AgentProtocolValidationException("Archive items require an ended-at timestamp.");
+        }
+
+        ValidateSha256(item.SummarySha256, nameof(item.SummarySha256));
+    }
+
+    private static void ValidateArchiveCommit(AgentArchiveCommitRequest message)
+    {
+        ValidateSafeIdentifier(message.BatchId, nameof(message.BatchId));
+        ValidateSha256(message.BatchSha256, nameof(message.BatchSha256));
+    }
+
+    private static void ValidateMaintenanceStatus(ProtocolEnvelope envelope)
+    {
+        var response = envelope.DeserializePayload<AgentMaintenanceStatusResponse>();
+        if (response.Counters is null)
+        {
+            throw new AgentProtocolValidationException("Maintenance status requires capacity counters.");
+        }
+
+        foreach (var counter in response.Counters)
+        {
+            ValidateCapacityCounter(counter);
+        }
+
+        ValidateOptionalIdentifier(envelope.Payload, "active_batch_id");
+        ValidateOptionalError(response.SafeError);
+        ValidateOptionalErrorFromPayload(envelope.Payload, "error");
+    }
+
+    private static void ValidateMaintenanceSync(AdapterMaintenanceSyncRequest message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstance, nameof(message.SourceInstance));
+        ValidateCapacityCounter(message.AdapterJournal);
+
+        var hasBatch = message.AcknowledgedBatchId is not null;
+        var hasPhase = message.AcknowledgedPhase is not null;
+        if (hasBatch != hasPhase)
+        {
+            throw new AgentProtocolValidationException("Acknowledged batch and phase must be supplied together.");
+        }
+
+        if (hasBatch)
+        {
+            ValidateSafeIdentifier(message.AcknowledgedBatchId, nameof(message.AcknowledgedBatchId));
+            RequireKnown(message.AcknowledgedPhase, KnownAcknowledgementPhases, nameof(message.AcknowledgedPhase));
+        }
+        else if (message.SafeError is not null)
+        {
+            throw new AgentProtocolValidationException("A maintenance error must acknowledge a batch and phase.");
+        }
+
+        ValidateOptionalError(message.SafeError);
+    }
+
+    private static void ValidateMaintenanceSyncResponse(ProtocolEnvelope envelope)
+    {
+        var result = ReadRequiredResult(envelope);
+        switch (result)
+        {
+            case "none":
+                RejectUnexpectedSyncCommandFields(envelope.Payload, requireBatch: false, requireItems: false);
+                ValidateOptionalSourceIdentity(envelope.Payload);
+                break;
+            case "prepare":
+                RequireProperties(envelope.Payload, "batch_id", "items", "batch_sha256");
+                var items = DeserializeRequiredArray(envelope, "items");
+                ValidateArchivePrepare(new AgentArchivePrepareRequest(
+                    ReadRequiredString(envelope.Payload, "batch_id"),
+                    items,
+                    ReadRequiredString(envelope.Payload, "batch_sha256")));
+                ValidateOptionalSyncSource(envelope.Payload, items);
+                RejectUnexpectedSyncCommandFields(envelope.Payload, requireBatch: true, requireItems: true);
+                break;
+            case "commit":
+                RequireProperties(envelope.Payload, "batch_id", "batch_sha256");
+                ValidateArchiveCommit(new AgentArchiveCommitRequest(
+                    ReadRequiredString(envelope.Payload, "batch_id"),
+                    ReadRequiredString(envelope.Payload, "batch_sha256")));
+                ValidateOptionalSourceIdentity(envelope.Payload);
+                RejectUnexpectedSyncCommandFields(envelope.Payload, requireBatch: true, requireItems: false);
+                break;
+            case "prepared":
+                ValidateMaintenanceAcknowledgementResult(envelope, "prepare", requireError: false);
+                break;
+            case "committed":
+                ValidateMaintenanceAcknowledgementResult(envelope, "commit", requireError: false);
+                break;
+            case "rejected":
+                ValidateMaintenanceAcknowledgementResult(envelope, phase: null, requireError: true);
+                break;
+            default:
+                throw new AgentProtocolValidationException("The maintenance sync result code is invalid.");
+        }
+    }
+
+    private static void ValidateMaintenanceAcknowledgementResult(
+        ProtocolEnvelope envelope,
+        string? phase,
+        bool requireError)
+    {
+        RequireProperties(envelope.Payload, "acknowledged_batch_id", "acknowledged_phase");
+        var acknowledgedPhase = ReadRequiredString(envelope.Payload, "acknowledged_phase");
+        RequireKnown(acknowledgedPhase, KnownAcknowledgementPhases, "acknowledged_phase");
+        if (phase is not null && !string.Equals(acknowledgedPhase, phase, StringComparison.Ordinal))
+        {
+            throw new AgentProtocolValidationException("The acknowledgement phase does not match the result.");
+        }
+
+        ValidateSafeIdentifier(ReadRequiredString(envelope.Payload, "acknowledged_batch_id"), "acknowledged_batch_id");
+        ValidateOptionalSourceIdentity(envelope.Payload);
+        var safeError = ReadOptionalString(envelope.Payload, "safe_error");
+        if (requireError && safeError is null)
+        {
+            throw new AgentProtocolValidationException("A rejected maintenance acknowledgement requires a safe error.");
+        }
+
+        if (!requireError && safeError is not null)
+        {
+            throw new AgentProtocolValidationException("A successful maintenance acknowledgement cannot carry a safe error.");
+        }
+
+        ValidateOptionalError(safeError);
+        ValidateOptionalErrorFromPayload(envelope.Payload, "error");
+    }
+
+    private static void ValidateOptionalMaintenanceBatchFields(JsonElement payload)
+    {
+        if (HasProperty(payload, "batch_id"))
+        {
+            ValidateOptionalIdentifier(payload, "batch_id");
+        }
+
+        if (HasProperty(payload, "batch_sha256"))
+        {
+            var hash = ReadRequiredString(payload, "batch_sha256");
+            ValidateSha256(hash, "batch_sha256");
+        }
+
+        if (HasProperty(payload, "safe_error"))
+        {
+            ValidateOptionalErrorFromPayload(payload, "safe_error");
+        }
+    }
+
+    private static void ValidateArchiveOperationResponse(ProtocolEnvelope envelope, params string[] allowedResults)
+    {
+        ValidateResult(envelope, allowedResults);
+        ValidateOptionalMaintenanceBatchFields(envelope.Payload);
+        var result = ReadRequiredResult(envelope);
+        var safeError = ReadOptionalString(envelope.Payload, "safe_error");
+        if (string.Equals(result, "rejected", StringComparison.Ordinal) && safeError is null)
+        {
+            throw new AgentProtocolValidationException("A rejected archive operation requires a safe error.");
+        }
+
+        if (!string.Equals(result, "rejected", StringComparison.Ordinal) && safeError is not null)
+        {
+            throw new AgentProtocolValidationException("A successful archive operation cannot carry a safe error.");
+        }
+    }
+
+    private static void ValidateCapacityCounter(AgentCapacityCounter? counter)
+    {
+        if (counter is null)
+        {
+            throw new AgentProtocolValidationException("Capacity counters cannot be null.");
+        }
+
+        ValidateSafeIdentifier(counter.Name, nameof(counter.Name));
+        if (counter.Used < 0 || counter.Archivable < 0)
+        {
+            throw new AgentProtocolValidationException("Capacity counters cannot be negative.");
+        }
+
+        if (counter.Limit <= 0 || counter.Used > counter.Limit || counter.Archivable > counter.Limit)
+        {
+            throw new AgentProtocolValidationException("Capacity counter values exceed their positive limit.");
+        }
+    }
+
+    private static void ValidateSha256(string? value, string fieldName)
+    {
+        if (value is null || value.Length != 64 || value.Any(character => character is not (>= '0' and <= '9' or >= 'A' and <= 'F')))
+        {
+            throw new AgentProtocolValidationException($"Protocol field '{fieldName}' must be an uppercase 64-character SHA-256 hash.");
+        }
+    }
+
+    private static void RejectUnexpectedSyncCommandFields(JsonElement payload, bool requireBatch, bool requireItems)
+    {
+        if (requireBatch && !HasAnyProperty(payload, "batch_id", "batch_sha256"))
+        {
+            throw new AgentProtocolValidationException("A maintenance command requires batch identity and hash.");
+        }
+
+        if (requireItems && !HasProperty(payload, "items"))
+        {
+            throw new AgentProtocolValidationException("A prepare command requires archive items.");
+        }
+
+        if (HasAnyProperty(payload, "acknowledged_batch_id", "acknowledged_phase"))
+        {
+            throw new AgentProtocolValidationException("A maintenance command cannot carry acknowledgement fields.");
+        }
+
+        if (HasAnyProperty(payload, "safe_error", "error"))
+        {
+            throw new AgentProtocolValidationException("A maintenance command cannot carry an error field.");
+        }
+
+        if (!requireBatch && HasAnyProperty(payload, "batch_id", "items", "batch_sha256"))
+        {
+            throw new AgentProtocolValidationException("A no-op maintenance command cannot carry batch or acknowledgement fields.");
+        }
+    }
+
+    private static void ValidateOptionalSyncSource(
+        JsonElement payload,
+        IReadOnlyList<AgentArchiveProtocolItem> items)
+    {
+        var hasSourceType = HasProperty(payload, "source_type");
+        var hasSourceInstance = HasProperty(payload, "source_instance");
+        if (hasSourceType != hasSourceInstance)
+        {
+            throw new AgentProtocolValidationException("A maintenance command source identity is incomplete.");
+        }
+
+        if (!hasSourceType) return;
+        var sourceType = ReadRequiredString(payload, "source_type");
+        var sourceInstance = ReadRequiredString(payload, "source_instance");
+        ValidateSafeIdentifier(sourceType, "source_type");
+        ValidateSafeIdentifier(sourceInstance, "source_instance");
+        if (items.Any(item => !string.Equals(item.SourceType, sourceType, StringComparison.Ordinal)
+            || !string.Equals(item.SourceInstance, sourceInstance, StringComparison.Ordinal)))
+        {
+            throw new AgentProtocolValidationException("A maintenance command source identity does not match its archive items.");
+        }
+    }
+
+    private static void ValidateOptionalSourceIdentity(JsonElement payload)
+    {
+        var hasSourceType = HasProperty(payload, "source_type");
+        var hasSourceInstance = HasProperty(payload, "source_instance");
+        if (hasSourceType != hasSourceInstance)
+        {
+            throw new AgentProtocolValidationException("A maintenance acknowledgement source identity is incomplete.");
+        }
+
+        if (hasSourceType)
+        {
+            ValidateSafeIdentifier(ReadRequiredString(payload, "source_type"), "source_type");
+            ValidateSafeIdentifier(ReadRequiredString(payload, "source_instance"), "source_instance");
+        }
+    }
+
+    private static string ReadRequiredResult(ProtocolEnvelope envelope)
+    {
+        if (!envelope.Payload.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.String)
+        {
+            throw new AgentProtocolValidationException("The maintenance sync response requires a result code.");
+        }
+
+        var value = result.GetString();
+        RequireText(value, "result");
+        return value!;
+    }
+
+    private static void RequireProperties(JsonElement payload, params string[] names)
+    {
+        if (names.Any(name => !HasProperty(payload, name)))
+        {
+            throw new AgentProtocolValidationException("A maintenance payload is missing required fields.");
+        }
+    }
+
+    private static string ReadRequiredString(JsonElement payload, string name)
+    {
+        if (!payload.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            throw new AgentProtocolValidationException($"Maintenance field '{name}' must be text.");
+        }
+
+        return value.GetString()!;
+    }
+
+    private static string? ReadOptionalString(JsonElement payload, string name)
+    {
+        if (!payload.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new AgentProtocolValidationException($"Maintenance field '{name}' must be text.");
+        }
+
+        return value.GetString();
+    }
+
+    private static IReadOnlyList<AgentArchiveProtocolItem> DeserializeRequiredArray(ProtocolEnvelope envelope, string name)
+    {
+        if (!envelope.Payload.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+        {
+            throw new AgentProtocolValidationException($"Maintenance field '{name}' must be an array.");
+        }
+
+        try
+        {
+            return value.Deserialize<IReadOnlyList<AgentArchiveProtocolItem>>(ProtocolEnvelope.JsonOptions)
+                ?? throw new AgentProtocolValidationException($"Maintenance field '{name}' cannot be null.");
+        }
+        catch (JsonException error)
+        {
+            throw new AgentProtocolValidationException($"Maintenance field '{name}' could not be decoded.", error);
+        }
+    }
+
+    private static void ValidateOptionalErrorFromPayload(JsonElement payload, string property)
+    {
+        if (!payload.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null) return;
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new AgentProtocolValidationException($"A relay response {property} must be text.");
+        }
+
+        ValidateOptionalError(value.GetString());
     }
 
     private static void ValidateApproval(PairingApprovalMessage message)
