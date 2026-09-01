@@ -68,29 +68,6 @@ public sealed record AgentArchiveProtocolItem
         SummarySha256 = summarySha256;
     }
 
-    // Kept as a source-compatible convenience for callers that only have the
-    // identity portion. Wire validation still requires the full item shape.
-    public AgentArchiveProtocolItem(
-        string sourceType,
-        string sourceInstance,
-        string taskId,
-        string dispatchRequestId,
-        long finalSequence,
-        string finalStatus,
-        string summarySha256)
-        : this(
-            sourceType,
-            sourceInstance,
-            taskId,
-            dispatchRequestId,
-            finalSequence,
-            finalStatus,
-            DateTimeOffset.UnixEpoch,
-            dispatchRequestId,
-            summarySha256)
-    {
-    }
-
     [JsonPropertyName("source_type")]
     public string SourceType { get; init; } = string.Empty;
 

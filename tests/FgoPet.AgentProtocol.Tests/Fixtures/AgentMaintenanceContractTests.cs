@@ -158,6 +158,72 @@ public sealed class AgentMaintenanceContractTests
         AgentProtocolValidator.Validate(ProtocolEnvelope.Parse(json));
     }
 
+    [Theory]
+    [InlineData("summary")]
+    [InlineData("title")]
+    [InlineData("description")]
+    [InlineData("user_text")]
+    public void Maintenance_payloads_reject_unknown_content_fields_recursively(string forbiddenField)
+    {
+        var nested = new Dictionary<string, object?> { [forbiddenField] = "must not cross the protocol" };
+        var request = ProtocolEnvelope.Create("content-request", "archive_prepare", new Dictionary<string, object?>
+        {
+            ["batch_id"] = "batch-1",
+            ["items"] = new[] { Item(endedAt: At, executionId: "execution-1") },
+            ["batch_sha256"] = Sha256,
+            ["metadata"] = nested,
+        });
+        var response = ProtocolEnvelope.Create("content-response", "maintenance_status", new Dictionary<string, object?>
+        {
+            ["result"] = "status",
+            ["counters"] = Array.Empty<AgentCapacityCounter>(),
+            ["metadata"] = nested,
+        });
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(request));
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.ValidateResponse(response));
+    }
+
+    [Fact]
+    public void Maintenance_sync_none_rejects_an_unknown_operation_field()
+    {
+        var noneWithUnknownOperation = ProtocolEnvelope.Create("none-invalid", "maintenance_sync", new
+        {
+            result = "none",
+            operation = "purge_everything",
+        });
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.ValidateResponse(noneWithUnknownOperation));
+    }
+
+    [Fact]
+    public void Archive_protocol_item_requires_an_explicit_ended_at_timestamp()
+    {
+        Assert.DoesNotContain(
+            typeof(AgentArchiveProtocolItem).GetConstructors(),
+            constructor => constructor.GetParameters().Length == 7);
+
+        var itemWithoutTimestamp = new Dictionary<string, object?>
+        {
+            ["source_type"] = "codex",
+            ["source_instance"] = "source-1",
+            ["task_id"] = "task-1",
+            ["dispatch_request_id"] = "dispatch-1",
+            ["final_sequence"] = 1,
+            ["final_status"] = "completed",
+            ["execution_id"] = "execution-1",
+            ["summary_sha256"] = Sha256,
+        };
+        var envelope = ProtocolEnvelope.Create("missing-ended-at", "archive_prepare", new Dictionary<string, object?>
+        {
+            ["batch_id"] = "batch-1",
+            ["items"] = new[] { itemWithoutTimestamp },
+            ["batch_sha256"] = Sha256,
+        });
+
+        Assert.Throws<AgentProtocolValidationException>(() => AgentProtocolValidator.Validate(ProtocolEnvelope.Parse(envelope.ToJson())));
+    }
+
     [Fact]
     public void Archive_prepare_round_trips_a_bounded_protocol_item()
     {

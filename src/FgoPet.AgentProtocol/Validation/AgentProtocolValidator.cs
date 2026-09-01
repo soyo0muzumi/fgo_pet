@@ -13,6 +13,11 @@ public static class AgentProtocolValidator
         "working_directory", "path", "local_path", "transcript", "stdout", "stderr",
     };
 
+    private static readonly HashSet<string> MaintenanceDenylistedFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "summary", "title", "description", "user_text",
+    };
+
     private static readonly HashSet<string> KnownMessageTypes = new(StringComparer.Ordinal)
     {
         "agent_event", "dispatch_task", "open_task", "registration_request",
@@ -80,7 +85,8 @@ public static class AgentProtocolValidator
 
         var allowsTopLevelCredential = !isResponse && envelope.MessageType == "authenticate"
             || isResponse && envelope.MessageType == "registration_status";
-        EnsureNoDenylistedFields(envelope.Payload, allowsTopLevelCredential);
+        var isMaintenanceMessage = envelope.MessageType is "maintenance_status" or "archive_prepare" or "archive_commit" or "maintenance_sync";
+        EnsureNoDenylistedFields(envelope.Payload, allowsTopLevelCredential, maintenancePayload: isMaintenanceMessage);
 
         if (isResponse)
         {
@@ -598,8 +604,7 @@ public static class AgentProtocolValidator
         switch (result)
         {
             case "none":
-                RejectUnexpectedSyncCommandFields(envelope.Payload, requireBatch: false, requireItems: false);
-                ValidateOptionalSourceIdentity(envelope.Payload);
+                RejectUnexpectedNoneFields(envelope.Payload);
                 break;
             case "prepare":
                 RequireProperties(envelope.Payload, "batch_id", "items", "batch_sha256");
@@ -754,6 +759,14 @@ public static class AgentProtocolValidator
         }
     }
 
+    private static void RejectUnexpectedNoneFields(JsonElement payload)
+    {
+        if (payload.EnumerateObject().Any(property => !string.Equals(property.Name, "result", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new AgentProtocolValidationException("A no-op maintenance command cannot carry additional fields.");
+        }
+    }
+
     private static void ValidateOptionalSyncSource(
         JsonElement payload,
         IReadOnlyList<AgentArchiveProtocolItem> items)
@@ -875,7 +888,11 @@ public static class AgentProtocolValidator
         if (message.Approved) RequireText(message.SourceInstance, nameof(message.SourceInstance));
     }
 
-    private static void EnsureNoDenylistedFields(JsonElement element, bool allowTopLevelCredential, int depth = 0)
+    private static void EnsureNoDenylistedFields(
+        JsonElement element,
+        bool allowTopLevelCredential,
+        int depth = 0,
+        bool maintenancePayload = false)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -883,17 +900,19 @@ public static class AgentProtocolValidator
             {
                 var isTopLevelCredential = depth == 0
                     && string.Equals(property.Name, "credential", StringComparison.OrdinalIgnoreCase);
-                if (DenylistedFields.Contains(property.Name) && !(allowTopLevelCredential && isTopLevelCredential))
+                var denylisted = DenylistedFields.Contains(property.Name)
+                    || maintenancePayload && MaintenanceDenylistedFields.Contains(property.Name);
+                if (denylisted && !(allowTopLevelCredential && isTopLevelCredential))
                 {
                     throw new AgentProtocolValidationException($"Payload field '{property.Name}' is not allowed.");
                 }
 
-                EnsureNoDenylistedFields(property.Value, allowTopLevelCredential, depth + 1);
+                EnsureNoDenylistedFields(property.Value, allowTopLevelCredential, depth + 1, maintenancePayload);
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
         {
-            foreach (var child in element.EnumerateArray()) EnsureNoDenylistedFields(child, allowTopLevelCredential, depth + 1);
+            foreach (var child in element.EnumerateArray()) EnsureNoDenylistedFields(child, allowTopLevelCredential, depth + 1, maintenancePayload);
         }
     }
 
