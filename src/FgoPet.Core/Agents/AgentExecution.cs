@@ -127,13 +127,23 @@ public sealed record AgentExecution
             throw new InvalidOperationException("A new Agent execution requires a terminal previous execution.");
         }
 
+        var normalizedExecutionId = AgentIdentityValidation.Id(executionId, nameof(executionId));
+        var normalizedTaskId = AgentIdentityValidation.Id(taskId, nameof(taskId));
+        var normalizedDispatchRequestId = AgentIdentityValidation.Id(dispatchRequestId, nameof(dispatchRequestId));
+        if (string.Equals(normalizedExecutionId, previous.Id, StringComparison.Ordinal)
+            || string.Equals(normalizedTaskId, previous.TaskId, StringComparison.Ordinal)
+            || string.Equals(normalizedDispatchRequestId, previous.DispatchRequestId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("A new Agent execution requires new execution, task, and dispatch request IDs.");
+        }
+
         return new AgentExecution(
-            executionId,
+            normalizedExecutionId,
             previous.TodoId,
             previous.SourceType,
             previous.SourceInstance,
-            taskId,
-            dispatchRequestId,
+            normalizedTaskId,
+            normalizedDispatchRequestId,
             updatedAt,
             previousExecutionId: previous.Id);
     }
