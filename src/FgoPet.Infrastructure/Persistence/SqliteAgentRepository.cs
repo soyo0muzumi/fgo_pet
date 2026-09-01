@@ -115,25 +115,35 @@ public sealed class SqliteAgentRepository : IAgentRepository
         ArgumentNullException.ThrowIfNull(batch);
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
+        var existing = ReadArchiveBatch(connection, transaction, batch.BatchId);
+        if (existing?.State is AgentArchiveBatchState.Completed or AgentArchiveBatchState.Rejected)
+        {
+            if (!ArchiveBatchContentMatches(existing, batch))
+            {
+                throw new InvalidOperationException($"Terminal archive batch '{batch.BatchId}' cannot be changed.");
+            }
+
+            transaction.Commit();
+            return;
+        }
+
         using (var header = connection.CreateCommand())
         {
             header.Transaction = transaction;
             header.CommandText = """
-                INSERT INTO agent_archive_batches(batch_id, created_at_utc, state, batch_sha256, safe_error, completed_at_utc)
-                VALUES($batch, $created, $state, $sha256, $error, $completed)
+                INSERT INTO agent_archive_batches(batch_id, created_at_utc, state, batch_sha256, safe_error)
+                VALUES($batch, $created, $state, $sha256, $error)
                 ON CONFLICT(batch_id) DO UPDATE SET
                   created_at_utc=excluded.created_at_utc,
                   state=excluded.state,
                   batch_sha256=excluded.batch_sha256,
-                  safe_error=excluded.safe_error,
-                  completed_at_utc=excluded.completed_at_utc
+                  safe_error=excluded.safe_error
                 """;
             header.Parameters.AddWithValue("$batch", batch.BatchId);
             header.Parameters.AddWithValue("$created", batch.CreatedAt.ToString("O"));
             header.Parameters.AddWithValue("$state", ToDb(batch.State));
             header.Parameters.AddWithValue("$sha256", batch.BatchSha256);
             header.Parameters.AddWithValue("$error", batch.SafeError ?? (object)DBNull.Value);
-            header.Parameters.AddWithValue("$completed", (object)DBNull.Value);
             header.ExecuteNonQuery();
         }
 
@@ -580,6 +590,37 @@ public sealed class SqliteAgentRepository : IAgentRepository
         }
 
         return new AgentArchiveBatch(batchId, createdAt, state, candidates, batchSha256, safeError);
+    }
+
+    private static bool ArchiveBatchContentMatches(AgentArchiveBatch existing, AgentArchiveBatch incoming)
+    {
+        if (existing.State != incoming.State
+            || !string.Equals(existing.BatchSha256, incoming.BatchSha256, StringComparison.Ordinal)
+            || !string.Equals(existing.SafeError, incoming.SafeError, StringComparison.Ordinal)
+            || existing.Candidates.Count != incoming.Candidates.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < existing.Candidates.Count; index++)
+        {
+            var left = existing.Candidates[index];
+            var right = incoming.Candidates[index];
+            if (!string.Equals(left.ExecutionId, right.ExecutionId, StringComparison.Ordinal)
+                || left.EndedAt != right.EndedAt
+                || !string.Equals(left.SummarySha256, right.SummarySha256, StringComparison.Ordinal)
+                || !string.Equals(left.Identity.SourceType, right.Identity.SourceType, StringComparison.Ordinal)
+                || !string.Equals(left.Identity.SourceInstance, right.Identity.SourceInstance, StringComparison.Ordinal)
+                || !string.Equals(left.Identity.TaskId, right.Identity.TaskId, StringComparison.Ordinal)
+                || !string.Equals(left.Identity.DispatchRequestId, right.Identity.DispatchRequestId, StringComparison.Ordinal)
+                || left.Identity.FinalSequence != right.Identity.FinalSequence
+                || left.Identity.FinalStatus != right.Identity.FinalStatus)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static AgentExecutionStatus FromDb(string status) => status switch

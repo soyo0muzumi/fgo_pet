@@ -213,6 +213,99 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
         Assert.Equal(AgentArchiveBatchState.CommitPending, Assert.IsType<AgentArchiveBatch>(agents.GetArchiveBatch("batch-1")).State);
     }
 
+    [Fact]
+    public void Identical_completed_batch_save_preserves_completion_timestamp_and_items()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var candidate = Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(1));
+        agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.CommitPending, candidate));
+        agents.CompleteArchiveBatch("batch-1", at.AddMinutes(3));
+        var before = ReadArchiveSnapshot(database, "batch-1");
+
+        agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.Completed, candidate));
+
+        var after = ReadArchiveSnapshot(database, "batch-1");
+        Assert.Equal(before, after);
+        Assert.Equal(candidate, Assert.Single(Assert.IsType<AgentArchiveBatch>(agents.GetArchiveBatch("batch-1")).Candidates));
+    }
+
+    [Fact]
+    public void Completed_batch_rejects_nonterminal_or_changed_content_without_mutation()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var candidate = Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(1));
+        agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.CommitPending, candidate));
+        agents.CompleteArchiveBatch("batch-1", at.AddMinutes(3));
+        var before = ReadArchiveSnapshot(database, "batch-1");
+
+        Assert.Throws<InvalidOperationException>(() => agents.SaveArchiveBatch(
+            Batch("batch-1", AgentArchiveBatchState.Prepared, candidate)));
+        Assert.Throws<InvalidOperationException>(() => agents.SaveArchiveBatch(
+            Batch("batch-1", AgentArchiveBatchState.Completed,
+                Candidate("execution-2", "task-2", "dispatch-2", at.AddMinutes(2)))));
+
+        Assert.Equal(before, ReadArchiveSnapshot(database, "batch-1"));
+    }
+
+    [Fact]
+    public void Identical_rejected_batch_save_is_idempotent()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var batch = Batch("batch-1", AgentArchiveBatchState.Rejected,
+            new[] { Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(1)) }, "safe");
+        agents.SaveArchiveBatch(batch);
+        var before = ReadArchiveSnapshot(database, "batch-1");
+
+        agents.SaveArchiveBatch(batch);
+
+        Assert.Equal(before, ReadArchiveSnapshot(database, "batch-1"));
+        Assert.Equal("safe", Assert.IsType<AgentArchiveBatch>(agents.GetArchiveBatch("batch-1")).SafeError);
+    }
+
+    [Fact]
+    public void Rejected_batch_rejects_other_state_or_changed_content_without_mutation()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var candidate = Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(1));
+        agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.Rejected, new[] { candidate }, "safe"));
+        var before = ReadArchiveSnapshot(database, "batch-1");
+
+        Assert.Throws<InvalidOperationException>(() => agents.SaveArchiveBatch(
+            Batch("batch-1", AgentArchiveBatchState.Prepared, new[] { candidate }, "safe")));
+        Assert.Throws<InvalidOperationException>(() => agents.SaveArchiveBatch(
+            Batch("batch-1", AgentArchiveBatchState.Rejected,
+                new[] { candidate }, "changed")));
+
+        Assert.Equal(before, ReadArchiveSnapshot(database, "batch-1"));
+    }
+
+    [Fact]
+    public void Terminal_batch_rejection_is_transactional_and_keeps_all_items()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var candidate = Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(1));
+        agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.CommitPending, candidate));
+        agents.CompleteArchiveBatch("batch-1", at.AddMinutes(3));
+        var before = ReadArchiveSnapshot(database, "batch-1");
+
+        Assert.Throws<InvalidOperationException>(() => agents.SaveArchiveBatch(
+            Batch("batch-1", AgentArchiveBatchState.Completed,
+                Candidate("execution-2", "task-2", "dispatch-2", at.AddMinutes(2)))));
+
+        Assert.Equal(before, ReadArchiveSnapshot(database, "batch-1"));
+        Assert.Equal("execution-1", Assert.Single(Assert.IsType<AgentArchiveBatch>(agents.GetArchiveBatch("batch-1")).Candidates).ExecutionId);
+    }
+
     private static AgentExecution Terminal(string executionId, string taskId, DateTimeOffset endedAt) =>
         new(executionId, $"todo-{taskId}", "codex", "source-1", taskId, $"dispatch-{taskId}", endedAt,
             AgentExecutionStatus.Completed, endedAt, endedAt);
@@ -227,6 +320,28 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
     private static AgentArchiveBatch Batch(string batchId, AgentArchiveBatchState state, IReadOnlyList<AgentArchiveCandidate> candidates, string? safeError) =>
         new(batchId, DateTimeOffset.Parse("2026-08-30T08:00:00Z"), state, candidates,
             "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF", safeError);
+
+    private static ArchiveSnapshot ReadArchiveSnapshot(RuntimeDatabase database, string batchId)
+    {
+        using var connection = database.Open();
+        using var header = connection.CreateCommand();
+        header.CommandText = "SELECT state, completed_at_utc FROM agent_archive_batches WHERE batch_id=$batch";
+        header.Parameters.AddWithValue("$batch", batchId);
+        using var reader = header.ExecuteReader();
+        Assert.True(reader.Read());
+        var state = reader.GetString(0);
+        var completedAt = reader.IsDBNull(1) ? null : reader.GetString(1);
+        reader.Close();
+
+        using var items = connection.CreateCommand();
+        items.CommandText = "SELECT COUNT(*), COALESCE(MIN(execution_id), '') FROM agent_archive_items WHERE batch_id=$batch";
+        items.Parameters.AddWithValue("$batch", batchId);
+        using var itemReader = items.ExecuteReader();
+        Assert.True(itemReader.Read());
+        return new ArchiveSnapshot(state, completedAt, itemReader.GetInt32(0), itemReader.GetString(1));
+    }
+
+    private sealed record ArchiveSnapshot(string State, string? CompletedAt, int ItemCount, string FirstExecutionId);
 
     public void Dispose()
     {
