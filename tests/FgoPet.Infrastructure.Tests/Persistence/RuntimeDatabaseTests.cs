@@ -75,6 +75,28 @@ public sealed class RuntimeDatabaseTests : IDisposable
                   UNIQUE(source_type, source_instance, task_id));
                 CREATE INDEX ix_agent_executions_todo_current
                   ON agent_executions(todo_id, updated_at_utc DESC);
+                CREATE TABLE agent_event_receipts(
+                  source_type TEXT NOT NULL,
+                  source_instance TEXT NOT NULL,
+                  task_id TEXT NOT NULL,
+                  sequence INTEGER NOT NULL CHECK(sequence > 0),
+                  event_type TEXT NOT NULL,
+                  occurred_at_utc TEXT NOT NULL,
+                  is_private INTEGER NOT NULL CHECK(is_private IN (0,1)),
+                  PRIMARY KEY(source_type, source_instance, task_id, sequence));
+                CREATE INDEX ix_agent_event_receipts_task
+                  ON agent_event_receipts(source_type, source_instance, task_id, sequence DESC);
+                """);
+            Execute(connection, """
+                INSERT INTO agent_executions(
+                  execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
+                  status, started_at_utc, updated_at_utc, ended_at_utc)
+                VALUES(
+                  'legacy-execution', 'legacy-todo', 'codex', 'legacy-instance', 'legacy-task', 'legacy-dispatch',
+                  'failed', '2026-08-30T08:01:00.0000000+00:00', '2026-08-30T08:03:00.0000000+00:00', '2026-08-30T08:03:00.0000000+00:00');
+                INSERT INTO agent_event_receipts(
+                  source_type, source_instance, task_id, sequence, event_type, occurred_at_utc, is_private)
+                VALUES('codex', 'legacy-instance', 'legacy-task', 2, 'task_failed', '2026-08-30T08:03:00.0000000+00:00', 0);
                 """);
         }
 
@@ -88,6 +110,55 @@ public sealed class RuntimeDatabaseTests : IDisposable
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_archive_batches'"));
         Assert.Equal(1L, Scalar<long>(verify,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_archive_items'"));
+        using (var execution = verify.CreateCommand())
+        {
+            execution.CommandText = """
+                SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
+                       status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id
+                FROM agent_executions
+                WHERE execution_id='legacy-execution'
+                """;
+            using var reader = execution.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal("legacy-execution", reader.GetString(0));
+            Assert.Equal("legacy-todo", reader.GetString(1));
+            Assert.Equal("codex", reader.GetString(2));
+            Assert.Equal("legacy-instance", reader.GetString(3));
+            Assert.Equal("legacy-task", reader.GetString(4));
+            Assert.Equal("legacy-dispatch", reader.GetString(5));
+            Assert.Equal("failed", reader.GetString(6));
+            Assert.Equal("2026-08-30T08:01:00.0000000+00:00", reader.GetString(7));
+            Assert.Equal("2026-08-30T08:03:00.0000000+00:00", reader.GetString(8));
+            Assert.Equal("2026-08-30T08:03:00.0000000+00:00", reader.GetString(9));
+            Assert.True(reader.IsDBNull(10));
+        }
+        using (var receipt = verify.CreateCommand())
+        {
+            receipt.CommandText = """
+                SELECT source_type, source_instance, task_id, sequence, event_type, occurred_at_utc, is_private
+                FROM agent_event_receipts
+                WHERE source_type='codex' AND source_instance='legacy-instance' AND task_id='legacy-task' AND sequence=2
+                """;
+            using var reader = receipt.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal("codex", reader.GetString(0));
+            Assert.Equal("legacy-instance", reader.GetString(1));
+            Assert.Equal("legacy-task", reader.GetString(2));
+            Assert.Equal(2L, reader.GetInt64(3));
+            Assert.Equal("task_failed", reader.GetString(4));
+            Assert.Equal("2026-08-30T08:03:00.0000000+00:00", reader.GetString(5));
+            Assert.Equal(0, reader.GetInt32(6));
+        }
+        foreach (var column in new[] { "batch_id", "created_at_utc", "state", "batch_sha256", "safe_error", "completed_at_utc" })
+        {
+            Assert.Equal(1L, Scalar<long>(verify,
+                $"SELECT COUNT(*) FROM pragma_table_info('agent_archive_batches') WHERE name='{column}'"));
+        }
+        foreach (var column in new[] { "batch_id", "execution_id", "source_type", "source_instance", "task_id", "dispatch_request_id", "final_sequence", "final_status", "ended_at_utc", "summary_sha256" })
+        {
+            Assert.Equal(1L, Scalar<long>(verify,
+                $"SELECT COUNT(*) FROM pragma_table_info('agent_archive_items') WHERE name='{column}'"));
+        }
     }
 
     [Fact]

@@ -154,6 +154,7 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
         agents.ApplyEvent(new AgentEvent("codex", "source-1", "task-1", 1, AgentEventType.TaskStarted, at.AddMinutes(1), TodoId: "todo-1"));
         agents.ApplyEvent(new AgentEvent("codex", "source-1", "task-1", 2, AgentEventType.TaskCompleted, at.AddMinutes(2), TodoId: "todo-1"));
         agents.SaveExecution(new AgentExecution("execution-2", "todo-2", "codex", "source-1", "task-2", "dispatch-2", at));
+        agents.ApplyEvent(new AgentEvent("codex", "source-1", "task-2", 1, AgentEventType.TaskStarted, at.AddMinutes(1), TodoId: "todo-2"));
 
         agents.SaveArchiveBatch(Batch("batch-1", AgentArchiveBatchState.CommitPending,
             Candidate("execution-1", "task-1", "dispatch-1", at.AddMinutes(2))));
@@ -161,6 +162,8 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
 
         Assert.Null(agents.GetExecution("execution-1"));
         Assert.False(agents.HasEventReceipt("codex", "source-1", "task-1", 1));
+        Assert.False(agents.HasEventReceipt("codex", "source-1", "task-1", 2));
+        Assert.True(agents.HasEventReceipt("codex", "source-1", "task-2", 1));
         Assert.True(agents.GetExecution("execution-2") is not null);
         var completed = Assert.IsType<AgentArchiveBatch>(agents.GetArchiveBatch("batch-1"));
         Assert.Equal(AgentArchiveBatchState.Completed, completed.State);
