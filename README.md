@@ -1,167 +1,169 @@
 # FGO Pet
 
-FGO Pet 是面向 Windows 11 的 FGO 从者桌面伴侣。它把专注计时、今日记录、Todo、Codex/Agent 进度、对话和记忆整合到桌宠与附着面板中。
+**English** | [简体中文](README.zh-CN.md)
 
-程序使用 WPF/.NET 8。角色图片、台词、人格 Prompt 和知识资源不嵌入程序安装包，而是通过纯数据 `.fgopetpack` 角色包单独安装。首个角色为玛修·基列莱特。
+FGO Pet is a Windows 11 desktop companion based on Fate/Grand Order servants. It brings focus sessions, daily activity, Todo items, Codex/Agent progress, dialogue, and memory into a desktop pet and its attached panel.
 
-## 发布状态
+The application uses WPF and .NET 8. Servant images, dialogue, persona prompts, and knowledge resources are not embedded in the program installer. They are distributed separately as data-only `.fgopetpack` role packages. The first supported servant is Mash Kyrielight.
 
-Phase 1–4 已完成主要 Windows 环境的实现与验收：桌宠与角色包、专注与时间线、对话与记忆、Todo 与 Codex Agent 集成均已进入本地 `main`。Phase 5 正在完成备份恢复、配置引导、正式角色包、GUI 安装包和首版发行门禁。
+## Release status
 
-仓库目前还没有面向普通用户的最终 Release 安装包。源代码中的 PowerShell、CLI 和 `dotnet` 命令仅供开发、诊断与验收，不是最终用户安装方式。
+Phases 1–4 are implemented and accepted on the primary Windows environment: the desktop pet and role-package runtime, focus and timeline, dialogue and memory, Todo items, and Codex Agent integration are all on local `main`. Phase 5 covers backup and restore, guided configuration, the production role package, the GUI installer, and the first-release gate.
 
-Phase 5 Release 必须提供：
+The repository does not yet provide a final installer for regular users. PowerShell, CLI, and `dotnet` commands in the source tree are for development, diagnostics, and acceptance only. They are not the end-user installation path.
 
-- 一个 Windows x64 用户级 GUI 安装包；
-- 至少一个经过审核的独立 `.fgopetpack` 角色包；
-- 安装、升级、回滚和卸载入口；
-- 应用内的角色包导入、模型配置和 Agent 配置；
-- 不要求用户打开终端、修改 PATH、运行脚本或复制不透明项目 ID。
+The Phase 5 Release must provide:
 
-程序安装包和角色包保持分离，但二者共同构成可用的首次安装。
+- one Windows x64 per-user GUI installer;
+- at least one reviewed, separately distributed `.fgopetpack`;
+- install, upgrade, rollback, and uninstall flows;
+- in-app role-package import, model configuration, and Agent configuration;
+- no requirement for users to open a terminal, edit `PATH`, run scripts, or copy opaque project IDs.
 
-## 安装与首次启动
+The program installer and role package remain separate artifacts, but both are required for a usable first installation.
 
-最终 Release 的用户流程如下：
+## Installation and first launch
 
-1. 双击 FGO Pet GUI 安装包，按安装界面完成程序安装。
-2. 启动 FGO Pet。首次启动会进入角色包引导。
-3. 选择发行页面提供的 `.fgopetpack`，完成校验与安装。
-4. 选择角色外观并设为当前从者。完成这一步后才进入桌宠主界面。
-5. AI 模型和 Agent 都可以跳过；桌宠与专注功能可在安装角色包后离线使用。
+The final Release user flow is:
 
-角色包不能跳过。当前程序在缺少角色包时只能显示角色库/导入界面，无法显示从者画像，因此 Release 首次引导必须停留在角色包步骤，不能进入空白桌宠。
+1. Double-click the FGO Pet GUI installer and complete the installation wizard.
+2. Start FGO Pet. First launch opens the role-package setup flow.
+3. Select the `.fgopetpack` supplied on the release page and let FGO Pet validate and install it.
+4. Select an appearance and set it as the current servant. The desktop-pet UI opens only after this step.
+5. AI model and Agent setup may be skipped. Once a role package is active, the pet and focus features work offline.
 
-## 日常使用
+The role-package step cannot be skipped. Without a role package, the current application can only show its package library/import UI and has no servant portrait to display. The Release onboarding flow must therefore remain on package setup instead of opening an empty desktop pet.
 
-点击桌宠画像可打开或收起附着面板。面板包含四个入口：
+## Everyday use
 
-- **专注**：使用 `25/5 × 4`、`50/10 × 2` 或自定义番茄钟。可暂停、继续和退出；异常退出后恢复为暂停状态，离线时间不会自动推进。
-- **今日**：查看当天专注、事件和羁绊进度。专注时间按开始阶段时的从者计入，最高为 Lv.10。
-- **TODO**：创建、确认和查看任务；可选择已授权的 Agent 目标派发，并在时间线中查看执行状态和历史。
-- **对话**：安装角色包后使用角色人格和知识；配置模型后可发送消息。没有模型时会提示前往设置，但不影响桌宠和专注。
+Click the servant portrait to open or close the attached panel. The panel has four sections:
 
-画像点击关闭面板，`Esc` 按层级返回。系统托盘菜单可重新显示桌宠、打开设置或退出程序。
+- **Focus (`专注`)** — start `25/5 × 4`, `50/10 × 2`, or custom Pomodoro sessions. Sessions can be paused, resumed, or stopped. After an unexpected exit, the latest session is restored in a paused state; offline time never advances it.
+- **Today (`今日`)** — inspect today's focus time, events, and bond progress. Focus credit belongs to the servant active when the focus stage started and is capped at Lv.10.
+- **Todo (`TODO`)** — create, confirm, and review tasks. An approved Agent target can receive a task, and its progress appears on the execution timeline and in history.
+- **Dialogue (`对话`)** — use the active role package's persona and knowledge. A configured model enables messages; without a model, the panel points to settings while the pet and focus features keep working.
 
-## 设置与功能配置
+Clicking the portrait closes the panel, and `Esc` steps back through the current UI level. The system-tray menu can show the pet again, open settings, or exit the application.
 
-从系统托盘或桌宠菜单进入 **设置**。所有用户配置都在图形界面中完成。
+## Settings and feature configuration
 
-### 用户资料
+Open **Settings (`设置`)** from the system tray or the portrait menu. All regular-user configuration is performed through the GUI.
 
-在 **设置 → 用户资料** 中配置全局显示名称。它只用于应用资料，不会自动成为角色对用户的称呼。
+### User profile
 
-每个角色的称呼单独保存在角色包设置中，并按稳定的 `servant_id` 区分。
+Use **Settings → User Profile (`用户资料`)** to set an optional global display name. This field belongs to the application profile and does not automatically become the name used by a servant when addressing the user.
 
-### 个性化
+Each servant's form of address is configured separately in its role package and is stored by stable `servant_id`.
 
-在 **设置 → 个性化** 中配置：
+### Personalization
 
-- 桌宠缩放：50%、60% 或 75%；
-- 桌宠窗口始终置顶；
-- 展开面板无操作时自动收起；
-- 恢复默认个性化设置。
+Use **Settings → Personalization (`个性化`)** to configure:
 
-窗口位置和有效设置会自动保存。恢复默认个性化设置不会修改主题。
+- portrait scale: 50%, 60%, or 75%;
+- always-on-top behavior;
+- automatic collapse of an inactive expanded panel;
+- restoration of the default personalization values.
 
-### 角色包
+Window placement and valid settings are persisted automatically. Restoring personalization defaults does not change the selected theme.
 
-角色包是显示桌宠的必需内容。在 **设置 → 角色包** 中：
+### Role packages
 
-1. 点击 **选择文件**，选择 `.fgopetpack`；
-2. 点击 **安装**；
-3. 打开已安装角色包；
-4. 在 **从者与外观** 中选择外观并点击 **设为当前从者**。
+A role package is required to display the desktop pet. In **Settings → Role Packages (`角色包`)**:
 
-角色包详情还提供：
+1. select **Choose file (`选择文件`)** and choose a `.fgopetpack`;
+2. select **Install (`安装`)**;
+3. open the installed package;
+4. under **Servant and appearance (`从者与外观`)**, choose an appearance and select **Set as current servant (`设为当前从者`)**.
 
-- **称呼设置**：使用角色包默认称呼，或填写自定义称呼；
-- **角色包信息**：查看版本、兼容性和来源；
-- **角色包声明设置**：调整包允许公开的开关、选项和文本字段；
-- **卸载此版本**：删除所选版本；当前版本卸载或升级失败时必须保留可恢复路径。
+The package detail page also provides:
 
-程序不会执行角色包中的代码。安装器会校验清单、版本、路径和文件哈希。
+- **Form of address (`称呼设置`)** — use the package default or enter a custom name;
+- **Package information (`角色包信息`)** — inspect version, compatibility, and source;
+- **Package-declared settings (`角色包声明设置`)** — edit only the switches, choices, and text fields allowed by the application contract;
+- **Uninstall this version (`卸载此版本`)** — remove the selected version; uninstall and failed upgrades must preserve a recovery path for the active version.
 
-### AI 模型与连接
+FGO Pet never executes code from a role package. The installer validates the manifest, compatibility, paths, and file hashes.
 
-模型是可选能力，只影响对话等需要模型的功能。在 **设置 → AI 模型与连接** 中：
+### AI model and connection
 
-1. 选择模型供应商；
-2. 输入 API Key；
-3. 检查或填写 Base URL；
-4. 点击模型列表的 **刷新**，选择模型，或直接填写模型 ID；
-5. 点击 **测试连接**；
-6. 测试成功后点击 **保存连接**。
+Model configuration is optional and affects only features such as dialogue. In **Settings → AI Model and Connection (`AI 模型与连接`)**:
 
-API Key 只保存到 Windows Credential Manager，不写入 `settings.json`、导出文件或角色包。点击 **跳过，离线使用** 可暂不配置模型。
+1. select a provider;
+2. enter the API key;
+3. review or enter the Base URL;
+4. refresh the available-model list and choose a model, or enter the model ID directly;
+5. select **Test connection (`测试连接`)**;
+6. after a successful test, select **Save connection (`保存连接`)**.
 
-### Agent 连接
+API keys are stored only in Windows Credential Manager. They are not written to `settings.json`, exports, or role packages. Select **Skip and use offline (`跳过，离线使用`)** to leave model setup for later.
 
-Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载荷随 GUI 安装包提供，安装、修复和注册必须由安装界面或应用设置完成，不要求用户运行命令。
+### Agent connection
 
-在 **设置 → Agent 连接** 中：
+Agent integration is optional. The Phase 5 Release includes the Relay, Adapter, and Codex plugin payload in the GUI installer. Installation, repair, and registration must be handled by the installer or FGO Pet settings; regular users do not run commands.
 
-1. 开启 **启用 Agent 集成**；
-2. 启动 Codex 后，在 **待批准来源** 中核对名称、实例和版本；
-3. 点击 **批准**；
-4. 从图形界面选择允许的项目目标；
-5. 启用来源并保存权限；
-6. 点击 **测试连接**，确认 Relay、App 和 Adapter 均在线。
+In **Settings → Agent Connection (`Agent 连接`)**:
 
-权限默认拒绝。没有显式批准来源和项目时不能派发任务。撤销授权立即生效，重启后不会自动恢复。最终 Release 不让用户复制项目 ID、修改 PATH 或运行 `target add` 等命令；当前仓库中的相关命令仅供开发和验收。
+1. enable **Agent integration (`启用 Agent 集成`)**;
+2. start Codex and inspect the name, instance, and version under **Pending sources (`待批准来源`)**;
+3. select **Approve (`批准`)**;
+4. select allowed project targets through the GUI;
+5. enable the source and save its permissions;
+6. select **Test connection (`测试连接`)** and confirm that Relay, App, and Adapter are online.
 
-### 对话与记忆
+Permissions are deny-by-default. Tasks cannot be dispatched until both the source and target are explicitly approved. Revocation takes effect immediately and remains revoked after restart. The final Release must not ask users to copy project IDs, modify `PATH`, or run commands such as `target add`; commands currently present in the repository are development and acceptance tools only.
 
-在 **设置 → 对话与记忆** 中：
+### Dialogue and memory
 
-- 开启或关闭记忆功能；
-- 查看待审核候选记忆；
-- 编辑、确认或拒绝候选；
-- 编辑、停用或删除已确认记忆。
+In **Settings → Dialogue and Memory (`对话与记忆`)** you can:
 
-候选记忆不会自动进入后续对话，只有用户明确确认的内容才会保存。记忆按从者保存，切换同一从者的外观不会移动记忆。
+- enable or disable memory;
+- inspect pending memory candidates;
+- edit, approve, or reject a candidate;
+- edit, disable, or delete an approved memory.
 
-### 数据与隐私
+Candidates do not enter later conversations automatically. Only memories explicitly approved by the user are stored. Memory belongs to the servant, so switching appearances for the same servant does not move it.
 
-当前 **设置 → 数据与隐私** 提供可分享的脱敏导出、会话删除和用户数据清理。脱敏导出包含允许的对话、摘要、记忆和安全元数据，不包含 API Key、完整 Prompt、原始剧情或角色包资产。
+### Data and privacy
 
-脱敏导出不是完整备份，不能用于恢复。Phase 5.2 将增加独立的私有备份与恢复：覆盖专注、时间线、羁绊、对话、记忆、Todo、工作归档和设置，同时排除模型密钥与 Agent 配对凭据。
+The current **Settings → Data and Privacy (`数据与隐私`)** page provides a safe sharing export, conversation deletion, and local user-data controls. The safe export contains allowed dialogue, summaries, memories, and bounded metadata. It excludes API keys, full prompts, raw story data, and role-package assets.
 
-删除操作具有不同范围，请在确认框中核对说明；卸载程序默认保留用户数据，完整清除必须由用户单独确认。
+The safe export is not a complete backup and cannot be restored. Phase 5.2 adds a separate private backup and restore flow covering focus, timeline, bond, dialogue, memory, Todo, work archives, and settings while excluding model credentials and Agent pairing secrets.
 
-### 主题
+Deletion actions have different scopes; review the confirmation text before continuing. Uninstall preserves user data by default, and a complete data removal requires separate confirmation.
 
-在 **设置 → 主题** 中选择：
+### Theme
 
-- **Modern Gray**：中性灰色与 Windows 风格蓝色强调；
-- **FGO Light**：海军蓝导航与柔和金色强调。
+Use **Settings → Theme (`主题`)** to choose:
 
-主题当前只影响设置窗口，桌宠与对话面板继续使用既有深色终端配色。
+- **Modern Gray** — neutral gray surfaces with restrained Windows-style blue accents;
+- **FGO Light** — navy navigation with soft gold accents.
 
-## 数据与隐私边界
+Themes currently affect only the settings window. The desktop pet and dialogue panel retain the existing dark terminal-inspired appearance.
 
-- 运行数据保存在当前 Windows 用户的本地应用数据目录；
-- API Key 保存于 Windows Credential Manager；
-- Relay/Adapter 配对凭据使用受保护的本机状态，不进入用户备份；
-- 角色包只允许数据与资源，不允许可执行代码；
-- Agent 协议拒绝 Prompt、推理、工具调用、终端输出、凭据和文件路径；
-- 没有用户确认时，不写入候选记忆、Todo 派发或工作归档。
+## Data and privacy boundaries
 
-## 当前阶段状态
+- Runtime data is stored under the current Windows user's local application-data directory.
+- API keys are stored in Windows Credential Manager.
+- Relay and Adapter pairing credentials use protected machine-local state and are excluded from user backups.
+- Role packages contain data and assets only; executable code is rejected.
+- The Agent protocol rejects prompts, reasoning, tool calls, terminal output, credentials, and file paths.
+- Memory candidates, Todo dispatches, and work archives require explicit user confirmation.
 
-- **Phase 1**：桌宠、角色包安装、画像、托盘和附着面板已实现。
-- **Phase 2**：专注、恢复、今日时间线和羁绊已在主要 Release 环境验收。
-- **Phase 3**：模型配置、对话、记忆、设置和隐私控制已验收。
-- **Phase 4**：Todo、Agent Relay/Adapter、Codex 集成、重启恢复和撤销已验收并合入本地 `main`。
-- **Phase 5**：方向已确定为任务运行安全、备份恢复、GUI 配置、正式角色包与 Release 打包；功能实现尚未开始。
+## Current phase status
 
-Phase 4 证据见 [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md)。Phase 5 设计见 [Phase 5 产品化设计](docs/superpowers/specs/2026-09-01-phase5-productization-design.md)。
+- **Phase 1** — desktop pet, role-package installation, portrait rendering, tray, and attached panel are implemented.
+- **Phase 2** — focus, recovery, today's timeline, and bond progression are accepted in the primary Release environment.
+- **Phase 3** — model setup, dialogue, memory, settings, and privacy controls are accepted.
+- **Phase 4** — Todo, Agent Relay/Adapter, Codex integration, restart recovery, and revocation are accepted and merged into local `main`.
+- **Phase 5** — the approved direction covers task-operation safety, backup and restore, GUI configuration, the production role package, and Release packaging; feature implementation has not started.
 
-## 开发者构建与测试
+See the [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md) and the [Phase 5 productization design](docs/superpowers/specs/2026-09-01-phase5-productization-design.md).
 
-以下命令仅供从源码开发和验证，不是最终用户安装步骤。
+## Developer build and test
 
-环境要求：Windows、.NET SDK 8.0.x。
+The following commands are for source development and verification only. They are not end-user installation steps.
+
+Requirements: Windows and .NET SDK 8.0.x.
 
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
@@ -172,10 +174,10 @@ pwsh -File scripts/test-phase3-settings.ps1
 pwsh -File scripts/test-phase4.ps1
 ```
 
-开发者可使用无角色包 smoke test 验证程序壳启动；它不代表最终用户可以跳过角色包：
+Developers may use the packless smoke test to verify the application shell. This does not mean that end users may skip the required role-package step:
 
 ```powershell
 dotnet run --project src/FgoPet.App/FgoPet.App.csproj -c Release -- --smoke-test
 ```
 
-FGO 美术与提取后的 Atlas 资源不存储在本仓库中。
+FGO artwork and extracted Atlas assets are not stored in this repository.
