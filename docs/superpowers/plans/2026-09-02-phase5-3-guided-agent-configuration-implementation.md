@@ -215,7 +215,7 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
                 return new(AgentTargetCatalogStatus.AdapterNotInstalled, [], "adapter_not_installed");
             var result = await _runner(cancellationToken).ConfigureAwait(false);
             if (result.ExitCode != 0)
-                return new(AgentTargetCatalogStatus.AdapterUnavailable, [], "adapter_query_failed");
+                return new(AgentTargetCatalogStatus.AdapterUnavailable, [], "adapter_unavailable");
             return new(AgentTargetCatalogStatus.Available, Parse(result.Stdout));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
