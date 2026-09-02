@@ -267,6 +267,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     private readonly IAgentRelayAdministration? _administration;
     private readonly IAgentRelayRuntime? _runtime;
     private readonly AgentArchiveService? _archive;
+    private readonly IAgentTargetCatalog? _targetCatalog;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private bool _disposed;
     private AgentRelaySnapshot _currentSnapshot = AgentRelaySnapshot.Disabled;
@@ -275,6 +276,10 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     private DateTimeOffset? _oldestArchiveCandidateAt;
     private bool _hasIncompleteArchiveBatch;
     private bool _hasActiveAgentWork;
+    private AgentTargetCatalogResult _lastTargetCatalog = new(
+        AgentTargetCatalogStatus.AdapterNotInstalled,
+        [],
+        "adapter_not_installed");
 
     public AgentConnectionSettingsViewModel(
         IAppSettingsStore settings,
@@ -283,7 +288,8 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         IAgentGateway? gateway = null,
         IAgentRelayAdministration? administration = null,
         IAgentRelayRuntime? runtime = null,
-        AgentArchiveService? archive = null)
+        AgentArchiveService? archive = null,
+        IAgentTargetCatalog? targetCatalog = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _agents = agents ?? throw new ArgumentNullException(nameof(agents));
@@ -292,6 +298,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         _administration = administration;
         _runtime = runtime;
         _archive = archive;
+        _targetCatalog = targetCatalog;
         if (_runtime is not null)
         {
             _runtime.SnapshotChanged += OnRuntimeSnapshotChanged;
@@ -383,7 +390,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     public string ArchiveActionText => HasIncompleteArchiveBatch ? "继续归档" : "归档安全候选";
 
     public string InstallationGuidanceText =>
-        "开启连接后会启动随应用附带的适配器；本页不会修改用户 PATH 或安装 Codex 插件。请先批准配对，再启用来源并填写允许的项目 ID。项目需通过适配器 target add 命令显式登记；Codex 插件安装步骤见 codex-adapter 指南。";
+        "Agent 仅会访问你明确选择的项目。请先批准来源，再从已登记的项目名称中选择并保存；未选择项目时不会派发任务。组件安装和插件注册将在后续安装流程提供。";
 
     public void Reload()
     {
@@ -416,8 +423,9 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             }
 
             ApplySnapshot(await _administration.GetSnapshotAsync(cancellationToken).ConfigureAwait(true));
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
             await RefreshMaintenanceStatusAsync(cancellationToken).ConfigureAwait(true);
-            StatusText = BuildSnapshotStatus(CurrentSnapshot);
+            StatusText = BuildConnectionStatus();
         }, cancellationToken);
     }
 
@@ -432,8 +440,17 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             }
 
             ApplySnapshot(await _administration.TestConnectionAsync(cancellationToken).ConfigureAwait(true));
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
             await RefreshMaintenanceStatusAsync(cancellationToken).ConfigureAwait(true);
-            StatusText = BuildSnapshotStatus(CurrentSnapshot);
+            StatusText = BuildConnectionStatus();
+        }, cancellationToken);
+    }
+
+    public Task RefreshTargetsAsync(CancellationToken cancellationToken = default)
+    {
+        return RunOperationAsync("正在刷新已登记项目…", async () =>
+        {
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
         }, cancellationToken);
     }
 
@@ -492,6 +509,35 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             await RefreshSnapshotAsync(cancellationToken).ConfigureAwait(true);
             StatusText = $"已撤销来源“{source.DisplayName}”的授权。旧凭据立即失效。";
         }, cancellationToken);
+    }
+
+    public Task RePairSourceAsync(AgentApprovedSourceViewModel source, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (_administration is null)
+        {
+            StatusText = "当前连接模式不支持重新配对来源。";
+            return Task.CompletedTask;
+        }
+
+        return RunOperationAsync("正在撤销旧授权并准备重新配对…", async () =>
+        {
+            await _administration.RevokeSourceAsync(source.SourceType, source.SourceInstanceId, cancellationToken)
+                .ConfigureAwait(true);
+            if (Enabled && _runtime is not null)
+            {
+                await _runtime.SetEnabledAsync(false, cancellationToken).ConfigureAwait(true);
+                await _runtime.SetEnabledAsync(true, cancellationToken).ConfigureAwait(true);
+            }
+
+            await RefreshSnapshotAsync(cancellationToken).ConfigureAwait(true);
+            StatusText = "旧授权已失效，等待适配器重新发起配对。";
+        }, cancellationToken);
+    }
+
+    public string BuildDiagnosticText()
+    {
+        return AgentDiagnosticSummary.Build(CurrentSnapshot, _lastTargetCatalog, DateTimeOffset.UtcNow);
     }
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -613,6 +659,48 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             ApplySnapshot(await _administration.GetSnapshotAsync(cancellationToken).ConfigureAwait(true));
         }
     }
+
+    private async Task RefreshTargetCatalogCoreAsync(CancellationToken cancellationToken)
+    {
+        var result = _targetCatalog is null
+            ? new AgentTargetCatalogResult(AgentTargetCatalogStatus.AdapterNotInstalled, [], "adapter_not_installed")
+            : await _targetCatalog.ListAsync(cancellationToken).ConfigureAwait(true);
+        ApplyTargetCatalog(result);
+        StatusText = result.IsAvailable
+            ? "已刷新已登记项目。"
+            : $"项目列表暂不可用（{GetCatalogErrorCode(result.Status)}）";
+    }
+
+    private void ApplyTargetCatalog(AgentTargetCatalogResult result)
+    {
+        _lastTargetCatalog = result ?? throw new ArgumentNullException(nameof(result));
+        if (result.IsAvailable)
+        {
+            foreach (var source in ApprovedSources)
+            {
+                source.ApplyCatalog(result.Targets);
+            }
+        }
+
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    private string BuildConnectionStatus()
+    {
+        var snapshotStatus = BuildSnapshotStatus(CurrentSnapshot);
+        return _lastTargetCatalog.IsAvailable
+            ? snapshotStatus
+            : $"{snapshotStatus}；项目列表暂不可用（{GetCatalogErrorCode(_lastTargetCatalog.Status)}）";
+    }
+
+    private static string GetCatalogErrorCode(AgentTargetCatalogStatus status) => status switch
+    {
+        AgentTargetCatalogStatus.AdapterNotInstalled => "adapter_not_installed",
+        AgentTargetCatalogStatus.AdapterUnavailable => "adapter_unavailable",
+        AgentTargetCatalogStatus.TimedOut => "adapter_timeout",
+        AgentTargetCatalogStatus.InvalidResponse => "adapter_invalid_response",
+        _ => "unknown_error",
+    };
 
     private async Task RefreshMaintenanceStatusAsync(CancellationToken cancellationToken)
     {

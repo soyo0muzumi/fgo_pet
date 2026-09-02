@@ -123,6 +123,103 @@ public sealed class AgentConnectionSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_loads_catalog_and_applies_project_names()
+    {
+        var source = new AgentApprovedSource("codex", "instance-1", "Codex", "1", true, ["target-1"], true);
+        var snapshot = Snapshot(approved: source);
+        var catalog = new FakeTargetCatalog(new AgentTargetCatalogResult(
+            AgentTargetCatalogStatus.Available,
+            [new AgentTargetDescriptor("target-1", "Project A", false)]));
+        using var viewModel = new AgentConnectionSettingsViewModel(
+            new FakeSettingsStore(),
+            new FakeAgentRepository(),
+            administration: new FakeAdministration(snapshot),
+            runtime: new FakeRuntime(snapshot),
+            targetCatalog: catalog);
+
+        await viewModel.RefreshAsync();
+
+        var target = Assert.Single(Assert.Single(viewModel.ApprovedSources).Targets);
+        Assert.Equal("Project A", target.DisplayName);
+        Assert.True(target.IsSelected);
+        Assert.Equal(1, catalog.Calls);
+    }
+
+    [Fact]
+    public async Task Catalog_failure_does_not_clear_existing_authorization()
+    {
+        var source = new AgentApprovedSource("codex", "instance-1", "Codex", "1", true, ["target-1"], true);
+        var snapshot = Snapshot(approved: source);
+        var catalog = new FakeTargetCatalog(new AgentTargetCatalogResult(
+            AgentTargetCatalogStatus.AdapterUnavailable,
+            []));
+        using var viewModel = new AgentConnectionSettingsViewModel(
+            new FakeSettingsStore(),
+            new FakeAgentRepository(),
+            administration: new FakeAdministration(snapshot),
+            runtime: new FakeRuntime(snapshot),
+            targetCatalog: catalog);
+
+        await viewModel.RefreshTargetsAsync();
+
+        Assert.Equal(new[] { "target-1" }, Assert.Single(viewModel.ApprovedSources).AllowedTargetIds);
+        Assert.Contains("adapter_unavailable", viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task RePair_revokes_and_restarts_enabled_runtime_in_order()
+    {
+        var source = new AgentApprovedSource("codex", "instance-1", "Codex", "1", true, [], true);
+        var snapshot = Snapshot(approved: source);
+        var events = new List<string>();
+        var administration = new FakeAdministration(snapshot, events);
+        var runtime = new FakeRuntime(snapshot, events);
+        using var viewModel = new AgentConnectionSettingsViewModel(
+            new FakeSettingsStore(),
+            new FakeAgentRepository(),
+            administration: administration,
+            runtime: runtime,
+            targetCatalog: new FakeTargetCatalog(null));
+        viewModel.Enabled = true;
+
+        await viewModel.RePairSourceAsync(Assert.Single(viewModel.ApprovedSources));
+
+        Assert.Equal(new[] { "revoke", "disable", "enable" }, events);
+        Assert.Equal(("codex", "instance-1"), Assert.Single(administration.Revocations));
+        Assert.Contains("旧授权已失效，等待适配器重新发起配对", viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task Diagnostic_text_redacts_target_and_source_identifiers()
+    {
+        var source = new AgentApprovedSource(
+            "codex",
+            "instance-secret",
+            "Codex",
+            "1",
+            true,
+            ["target-secret"],
+            true);
+        var snapshot = Snapshot(approved: source);
+        using var viewModel = new AgentConnectionSettingsViewModel(
+            new FakeSettingsStore(),
+            new FakeAgentRepository(),
+            administration: new FakeAdministration(snapshot),
+            runtime: new FakeRuntime(snapshot),
+            targetCatalog: new FakeTargetCatalog(new AgentTargetCatalogResult(
+                AgentTargetCatalogStatus.Available,
+                [new AgentTargetDescriptor("target-secret", "Project", false)])));
+
+        await viewModel.RefreshTargetsAsync();
+        var diagnostic = viewModel.BuildDiagnosticText();
+
+        Assert.DoesNotContain("target-secret", diagnostic);
+        Assert.DoesNotContain("instance-secret", diagnostic);
+        Assert.Contains("source_instance_hashes=", diagnostic);
+        Assert.Contains("target_count=1", diagnostic);
+    }
+
+    [Fact]
     public void Runtime_snapshot_subscription_is_removed_when_view_model_is_disposed()
     {
         var runtime = new FakeRuntime(AgentRelaySnapshot.Disabled);
@@ -266,11 +363,37 @@ public sealed class AgentConnectionSettingsViewModelTests
         }
     }
 
+    private sealed class FakeTargetCatalog : IAgentTargetCatalog
+    {
+        private readonly AgentTargetCatalogResult _result;
+
+        public FakeTargetCatalog(AgentTargetCatalogResult? result)
+        {
+            _result = result ?? new AgentTargetCatalogResult(
+                AgentTargetCatalogStatus.AdapterNotInstalled,
+                [],
+                "adapter_not_installed");
+        }
+
+        public int Calls { get; private set; }
+
+        public Task<AgentTargetCatalogResult> ListAsync(CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(_result);
+        }
+    }
+
     private sealed class FakeAdministration : IAgentRelayAdministration
     {
         private AgentRelaySnapshot _snapshot;
+        private readonly List<string>? _events;
 
-        public FakeAdministration(AgentRelaySnapshot snapshot) => _snapshot = snapshot;
+        public FakeAdministration(AgentRelaySnapshot snapshot, List<string>? events = null)
+        {
+            _snapshot = snapshot;
+            _events = events;
+        }
         public List<(string RequestId, bool Approve)> Decisions { get; } = new();
         public List<(string SourceType, string SourceInstanceId, IReadOnlyList<string> TargetIds, bool Enabled)> PermissionUpdates { get; } = new();
         public List<(string SourceType, string SourceInstanceId)> Revocations { get; } = new();
@@ -288,6 +411,7 @@ public sealed class AgentConnectionSettingsViewModelTests
         }
         public Task RevokeSourceAsync(string sourceType, string sourceInstanceId, CancellationToken cancellationToken = default)
         {
+            _events?.Add("revoke");
             Revocations.Add((sourceType, sourceInstanceId));
             return Task.CompletedTask;
         }
@@ -295,12 +419,19 @@ public sealed class AgentConnectionSettingsViewModelTests
 
     private sealed class FakeRuntime : IAgentRelayRuntime
     {
-        public FakeRuntime(AgentRelaySnapshot current) => Current = current;
+        private readonly List<string>? _events;
+
+        public FakeRuntime(AgentRelaySnapshot current, List<string>? events = null)
+        {
+            Current = current;
+            _events = events;
+        }
         public AgentRelaySnapshot Current { get; private set; }
         public event Action<AgentRelaySnapshot>? SnapshotChanged;
         public List<bool> EnabledCalls { get; } = new();
         public Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
         {
+            _events?.Add(enabled ? "enable" : "disable");
             EnabledCalls.Add(enabled);
             return Task.CompletedTask;
         }
