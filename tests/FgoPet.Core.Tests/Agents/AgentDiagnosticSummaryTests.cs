@@ -22,6 +22,7 @@ public sealed class AgentDiagnosticSummaryTests
         var text = AgentDiagnosticSummary.Build(snapshot, catalog,
             DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
 
+        Assert.Contains("protocol_version=1", text, StringComparison.Ordinal);
         Assert.Contains("Connected", text, StringComparison.Ordinal);
         Assert.Contains("target_count=1", text, StringComparison.Ordinal);
         Assert.DoesNotContain("target-secret", text, StringComparison.Ordinal);
@@ -40,5 +41,57 @@ public sealed class AgentDiagnosticSummaryTests
 
         Assert.Contains("target_count=0", text, StringComparison.Ordinal);
         Assert.DoesNotContain("adapter_query_failed", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Relay_offline_state_takes_precedence_over_safe_error_text()
+    {
+        var text = AgentDiagnosticSummary.Build(
+            new AgentRelaySnapshot(
+                AgentRelayConnectionState.RelayOffline, false, false, false,
+                DateTimeOffset.Parse("2026-09-02T00:00:00Z"), [], [], "relay_offline"),
+            new AgentTargetCatalogResult(AgentTargetCatalogStatus.Available, []),
+            DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
+
+        Assert.Contains("safe_error=relay_offline", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Version_mismatch_state_takes_precedence_over_safe_error_text()
+    {
+        var text = AgentDiagnosticSummary.Build(
+            new AgentRelaySnapshot(
+                AgentRelayConnectionState.VersionMismatch, true, false, false,
+                DateTimeOffset.Parse("2026-09-02T00:00:00Z"), [], [], "version_mismatch"),
+            new AgentTargetCatalogResult(AgentTargetCatalogStatus.Available, []),
+            DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
+
+        Assert.Contains("safe_error=version_mismatch", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Adapter_offline_state_maps_to_adapter_unavailable_without_error()
+    {
+        var text = AgentDiagnosticSummary.Build(
+            new AgentRelaySnapshot(
+                AgentRelayConnectionState.AdapterOffline, true, true, false,
+                DateTimeOffset.Parse("2026-09-02T00:00:00Z"), [], []),
+            new AgentTargetCatalogResult(AgentTargetCatalogStatus.Available, []),
+            DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
+
+        Assert.Contains("safe_error=adapter_unavailable", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Authentication_failed_state_maps_to_unknown_error_without_error()
+    {
+        var text = AgentDiagnosticSummary.Build(
+            new AgentRelaySnapshot(
+                AgentRelayConnectionState.AuthenticationFailed, true, true, true,
+                DateTimeOffset.Parse("2026-09-02T00:00:00Z"), [], []),
+            new AgentTargetCatalogResult(AgentTargetCatalogStatus.Available, []),
+            DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
+
+        Assert.Contains("safe_error=unknown_error", text, StringComparison.Ordinal);
     }
 }

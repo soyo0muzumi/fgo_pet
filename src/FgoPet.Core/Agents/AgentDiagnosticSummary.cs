@@ -65,19 +65,19 @@ public static class AgentDiagnosticSummary
             };
         }
 
-        if (!string.IsNullOrWhiteSpace(snapshot.SafeError)
-            || !string.IsNullOrWhiteSpace(catalog.SafeError))
-        {
-            return "unknown_error";
-        }
-
         return snapshot.State switch
         {
             AgentRelayConnectionState.RelayOffline => "relay_offline",
             AgentRelayConnectionState.VersionMismatch => "version_mismatch",
-            _ => "none",
+            AgentRelayConnectionState.AdapterOffline => "adapter_unavailable",
+            AgentRelayConnectionState.AuthenticationFailed => "unknown_error",
+            _ => HasRawError(snapshot, catalog) ? "unknown_error" : "none",
         };
     }
+
+    private static bool HasRawError(AgentRelaySnapshot snapshot, AgentTargetCatalogResult catalog) =>
+        !string.IsNullOrWhiteSpace(snapshot.SafeError)
+        || !string.IsNullOrWhiteSpace(catalog.SafeError);
 
     private static string Bool(bool value) => value ? "true" : "false";
 }
