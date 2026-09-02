@@ -20,6 +20,8 @@
             <Button Content="保存连接设置" Style="{StaticResource SettingsPrimaryButtonStyle}" HorizontalAlignment="Left" Click="OnSaveClick" IsEnabled="{Binding CanInteract}"/>
             <Button Content="刷新状态" Margin="8,0,0,0" Click="OnRefreshClick" IsEnabled="{Binding CanInteract}"/>
             <Button Content="测试连接" Margin="8,0,0,0" Click="OnTestConnectionClick" IsEnabled="{Binding CanInteract}"/>
+            <Button Content="刷新项目" Margin="8,0,0,0" Click="OnRefreshTargetsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="刷新项目"/>
+            <Button Content="复制诊断信息" Margin="8,0,0,0" Click="OnCopyDiagnosticsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="复制诊断信息"/>
           </StackPanel>
           <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
             <TextBlock Text="状态：" Style="{StaticResource SettingsStatusStyle}"/>
@@ -88,7 +90,7 @@
       <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
         <StackPanel>
           <TextBlock Text="已授权来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
-          <TextBlock Text="权限按来源实例保存。项目 ID 是由适配器提供的不透明标识，每行一个；不要填写项目名称代替 ID。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <TextBlock Text="权限按来源实例保存。Agent 仅会访问你明确选择的项目；请从下方已登记的项目名称中选择并保存。未选择项目时不会派发任务。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
           <TextBlock Text="当前没有已授权来源。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>
           <ItemsControl ItemsSource="{Binding ApprovedSources}" Visibility="{Binding HasApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}">
             <ItemsControl.ItemTemplate>
@@ -102,11 +104,70 @@
                     <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap"/>
                     <TextBlock Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap"><Run Text="类型："/><Run Text="{Binding SourceType, Mode=OneWay}"/><Run Text="  实例："/><Run Text="{Binding SourceInstanceId, Mode=OneWay}"/></TextBlock>
                     <TextBlock Style="{StaticResource SettingsStatusStyle}"><Run Text="适配器版本："/><Run Text="{Binding AdapterVersion, Mode=OneWay}"/></TextBlock>
-                    <TextBlock Text="允许的项目 ID" Foreground="{DynamicResource TextBrush}" Margin="0,8,0,4"/>
-                    <TextBox Text="{Binding TargetIdsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="允许的项目 ID，每行一个" AcceptsReturn="True" MinHeight="52" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                    <TextBlock Text="允许访问的项目" Foreground="{DynamicResource TextBrush}" Margin="0,8,0,4"/>
+                    <ItemsControl ItemsSource="{Binding Targets}" Visibility="{Binding HasTargets, Converter={StaticResource BooleanToVisibilityConverter}}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" AutomationProperties.Name="{Binding DisplayName}" Margin="0,2,0,2">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}"/>
+                              <TextBlock Text="（只读）" Foreground="{DynamicResource MutedTextBrush}" Margin="6,0,0,0">
+                                <TextBlock.Style>
+                                  <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </TextBlock.Style>
+                              </TextBlock>
+                            </StackPanel>
+                          </CheckBox>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="当前没有已登记的可配置项目，请先刷新项目。" TextWrapping="Wrap">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsStatusStyle}">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasTargets}" Value="False">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="已有项目授权暂无法匹配，仍会保留；如需删除请使用下方明确操作。" TextWrapping="Wrap">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource SettingsStatusStyle}">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasUnresolvedTargets}" Value="True">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                    <Button Content="移除未解析授权" Click="OnRemoveUnresolvedTargetsClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" AutomationProperties.Name="移除未解析授权" MinWidth="120">
+                      <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SettingsDangerButtonStyle}">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasUnresolvedTargets}" Value="True">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                       <Button Content="保存权限" Click="OnSaveSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
                       <Button Content="撤销授权" Margin="8,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}" Click="OnRevokeSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
+                      <Button Content="重新配对" Margin="8,0,0,0" Click="OnRePairSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" AutomationProperties.Name="重新配对" MinWidth="88"/>
                     </StackPanel>
                   </StackPanel>
                 </Border>

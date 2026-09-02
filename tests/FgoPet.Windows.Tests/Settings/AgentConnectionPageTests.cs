@@ -29,12 +29,16 @@ public sealed class AgentConnectionPageTests
                 var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
                 services.AddSingleton<IAppSettingsStore>(new MemorySettings());
                 services.AddSingleton<IAgentRepository>(new EmptyAgents());
+                services.AddSingleton<IAgentTargetCatalog>(new FakeTargetCatalog(new AgentTargetCatalogResult(
+                    AgentTargetCatalogStatus.Available,
+                    [new AgentTargetDescriptor("project-1", "Project A", true)])));
                 using var provider = services.BuildServiceProvider();
                 var viewModel = provider.GetRequiredService<AgentConnectionSettingsViewModel>();
                 viewModel.PendingSources.Add(new AgentPendingSourceViewModel(new AgentPendingSource("request-1", "codex",
                     "instance-pending", "Pending Codex", "1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10))));
                 viewModel.ApprovedSources.Add(new AgentApprovedSourceViewModel(new AgentApprovedSource("codex", "instance-approved",
-                    "Approved Codex", "1", false, ["project-1"], false)));
+                    "Approved Codex", "1", false, ["project-1", "unresolved-secret"], false)));
+                WaitForCompletion(viewModel.RefreshTargetsAsync());
                 var page = provider.GetRequiredService<AgentConnectionSettingsView>();
                 Assert.Same(viewModel, page.DataContext);
                 Assert.True(viewModel.IsAdministrationAvailable);
@@ -52,6 +56,16 @@ public sealed class AgentConnectionPageTests
                 Assert.Contains("批准", buttons);
                 Assert.Contains("保存权限", buttons);
                 Assert.Contains("撤销授权", buttons);
+                Assert.Contains("刷新项目", buttons);
+                Assert.Contains("复制诊断信息", buttons);
+                Assert.Contains("重新配对", buttons);
+                var textBlocks = Descendants(page).OfType<TextBlock>().Select(item => item.Text).ToArray();
+                Assert.Contains("Project A", textBlocks);
+                Assert.Contains("（只读）", textBlocks);
+                Assert.Contains("已有项目授权暂无法匹配，仍会保留；如需删除请使用下方明确操作。", textBlocks);
+                Assert.DoesNotContain("允许的项目 ID", textBlocks);
+                Assert.DoesNotContain("unresolved-secret", textBlocks);
+                Assert.Empty(Descendants(page).OfType<TextBox>());
                 var archiveButton = Descendants(page).OfType<Button>().Single(button => button.Content?.ToString() == "归档安全候选");
                 Assert.False(archiveButton.IsEnabled);
                 Assert.Equal("执行 Agent 安全归档", AutomationProperties.GetName(archiveButton));
@@ -121,6 +135,8 @@ public sealed class AgentConnectionPageTests
         }
     }
 
+    private static void WaitForCompletion(Task operation) => operation.GetAwaiter().GetResult();
+
     private sealed class MemorySettings : IAppSettingsStore
     {
         public string Location => "memory";
@@ -143,5 +159,15 @@ public sealed class AgentConnectionPageTests
         public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent) => AgentEventApplyResult.Applied;
         public void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets) => throw new NotSupportedException();
         public IReadOnlyList<PersistedAgentConnection> ListConnections() => [];
+    }
+
+    private sealed class FakeTargetCatalog : IAgentTargetCatalog
+    {
+        private readonly AgentTargetCatalogResult _result;
+
+        public FakeTargetCatalog(AgentTargetCatalogResult result) => _result = result;
+
+        public Task<AgentTargetCatalogResult> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(_result);
     }
 }

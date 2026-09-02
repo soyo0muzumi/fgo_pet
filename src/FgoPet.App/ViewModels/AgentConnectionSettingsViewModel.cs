@@ -641,6 +641,14 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         }
     }
 
+    public void ReportDiagnosticCopied()
+    {
+        if (!IsBusy)
+        {
+            StatusText = "诊断信息已复制；其中不包含目标 ID 或本地路径。";
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
