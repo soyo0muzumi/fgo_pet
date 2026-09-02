@@ -70,7 +70,7 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
             timeout.Cancel();
             return new(AgentTargetCatalogStatus.TimedOut, [], "adapter_timeout");
         }
-        catch (Exception error) when (error is InvalidDataException or JsonException or DecoderFallbackException)
+        catch (Exception error) when (error is InvalidDataException or JsonException or DecoderFallbackException or EncoderFallbackException)
         {
             return new(AgentTargetCatalogStatus.InvalidResponse, [], "adapter_invalid_response");
         }
@@ -128,7 +128,7 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
         {
             throw InvalidResponse(error);
         }
-        catch (DecoderFallbackException error)
+        catch (Exception error) when (error is DecoderFallbackException or EncoderFallbackException)
         {
             throw InvalidResponse(error);
         }

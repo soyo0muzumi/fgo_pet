@@ -41,6 +41,12 @@ public sealed class CodexTargetCatalogClientTests
     }
 
     [Fact]
+    public void Parse_rejects_unpaired_surrogates_as_invalid_response()
+    {
+        Assert.Throws<InvalidDataException>(() => CodexTargetCatalogClient.Parse("\uD800"));
+    }
+
+    [Fact]
     public async Task ListAsync_maps_nonzero_adapter_exit_to_safe_unavailable_status()
     {
         using var environment = TestEnvironment.CreateInstalled();
