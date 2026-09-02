@@ -44,7 +44,14 @@ public sealed class AgentConnectionSettingsViewModelTests
         Assert.Single(viewModel.PendingSources);
         Assert.Equal("instance-1", viewModel.PendingSources.Single().SourceInstanceId);
         Assert.Single(viewModel.ApprovedSources);
-        Assert.Equal("project-a" + Environment.NewLine + "project-b", viewModel.ApprovedSources.Single().TargetIdsText);
+        var approved = viewModel.ApprovedSources.Single();
+        approved.ApplyCatalog(new[]
+        {
+            new AgentTargetDescriptor("project-a", "Project A", false),
+            new AgentTargetDescriptor("project-b", "Project B", false),
+        });
+        Assert.Equal(new[] { "Project A", "Project B" }, approved.Targets.Select(target => target.DisplayName));
+        Assert.All(approved.Targets, target => Assert.True(target.IsSelected));
         Assert.Equal("已连接", viewModel.StateText);
     }
 
@@ -60,8 +67,16 @@ public sealed class AgentConnectionSettingsViewModelTests
 
         await viewModel.DecideRegistrationAsync("request-1", approve: true);
         var approved = viewModel.ApprovedSources.Single();
+        approved.ApplyCatalog(new[]
+        {
+            new AgentTargetDescriptor("project-a", "Project A", false),
+            new AgentTargetDescriptor("project-z", "Project Z", false),
+            new AgentTargetDescriptor("project-y", "Project Y", false),
+        });
+        Assert.All(approved.Targets, target => target.IsSelected = false);
+        approved.Targets.Single(target => target.TargetId == "project-z").IsSelected = true;
+        approved.Targets.Single(target => target.TargetId == "project-y").IsSelected = true;
         approved.IsEnabled = false;
-        approved.TargetIdsText = "project-z\nproject-z\nproject-y";
         await viewModel.SaveSourceAsync(approved);
         await viewModel.RevokeSourceAsync(approved);
 
@@ -131,7 +146,13 @@ public sealed class AgentConnectionSettingsViewModelTests
             administration: new FakeAdministration(Snapshot(approved: source)));
 
         var editor = Assert.Single(viewModel.ApprovedSources);
-        editor.TargetIdsText = "unsaved-target";
+        editor.ApplyCatalog(new[]
+        {
+            new AgentTargetDescriptor("server-target", "Server project", false),
+            new AgentTargetDescriptor("unsaved-target", "Unsaved project", false),
+        });
+        editor.Targets.Single(target => target.TargetId == "server-target").IsSelected = false;
+        editor.Targets.Single(target => target.TargetId == "unsaved-target").IsSelected = true;
         runtime.Publish(new AgentRelaySnapshot(
             AgentRelayConnectionState.RelayOffline,
             RelayOnline: false,
@@ -143,7 +164,47 @@ public sealed class AgentConnectionSettingsViewModelTests
             "relay_offline"));
 
         Assert.Same(editor, Assert.Single(viewModel.ApprovedSources));
-        Assert.Equal("unsaved-target", editor.TargetIdsText);
+        Assert.Equal("Unsaved project", Assert.Single(editor.Targets.Where(target => target.IsSelected)).DisplayName);
+        Assert.Equal(new[] { "unsaved-target" }, editor.AllowedTargetIds);
+    }
+
+    [Fact]
+    public void Applying_catalog_maps_saved_ids_to_names_and_preserves_unknown_ids()
+    {
+        var editor = new AgentApprovedSourceViewModel(
+            new AgentApprovedSource("codex", "instance-1", "Codex", "1", true,
+                new[] { "known-id", "missing-id" }, true));
+
+        editor.ApplyCatalog(new[] { new AgentTargetDescriptor("known-id", "Project A", false) });
+
+        Assert.Equal("Project A", Assert.Single(editor.Targets).DisplayName);
+        Assert.True(Assert.Single(editor.Targets).IsSelected);
+        Assert.True(editor.HasUnresolvedTargets);
+        Assert.Equal(new[] { "known-id", "missing-id" }, editor.AllowedTargetIds);
+    }
+
+    [Fact]
+    public void Unchecking_a_project_does_not_clear_unresolved_authorization()
+    {
+        var editor = new AgentApprovedSourceViewModel(
+            new AgentApprovedSource("codex", "instance-1", "Codex", "1", true,
+                new[] { "known-id", "missing-id" }, true));
+        editor.ApplyCatalog(new[] { new AgentTargetDescriptor("known-id", "Project A", false) });
+        Assert.Single(editor.Targets).IsSelected = false;
+
+        Assert.Equal(new[] { "missing-id" }, editor.AllowedTargetIds);
+    }
+
+    [Fact]
+    public void Removing_unresolved_authorizations_is_explicit()
+    {
+        var editor = new AgentApprovedSourceViewModel(
+            new AgentApprovedSource("codex", "instance-1", "Codex", "1", true,
+                new[] { "missing-id" }, true));
+        editor.ApplyCatalog(Array.Empty<AgentTargetDescriptor>());
+
+        Assert.True(editor.RemoveUnresolvedTargets());
+        Assert.Empty(editor.AllowedTargetIds);
     }
 
     private static AgentRelaySnapshot Snapshot(AgentPendingSource? pending = null, AgentApprovedSource? approved = null)

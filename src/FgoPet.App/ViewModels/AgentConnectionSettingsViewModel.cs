@@ -75,6 +75,10 @@ public sealed class AgentMaintenanceCounterViewModel
 public sealed partial class AgentApprovedSourceViewModel : ObservableObject
 {
     private AgentApprovedSource _source;
+    private readonly HashSet<string> _unresolvedTargetIds = new(StringComparer.Ordinal);
+    private readonly List<string> _unresolvedTargetOrder = new();
+    private IReadOnlyList<AgentTargetDescriptor> _catalog = Array.Empty<AgentTargetDescriptor>();
+    private bool _hasCatalog;
     private bool _isDirty;
     private bool _suppressDirtyTracking;
 
@@ -82,7 +86,7 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _isEnabled = source.Enabled;
-        _targetIdsText = string.Join(Environment.NewLine, source.AllowedTargetIds);
+        SetUnresolvedTargets(source.AllowedTargetIds);
     }
 
     public AgentApprovedSource Source => _source;
@@ -90,7 +94,22 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
     public string SourceInstanceId => _source.SourceInstanceId;
     public string DisplayName => _source.DisplayName;
     public string AdapterVersion => _source.AdapterVersion;
-    public IReadOnlyList<string> AllowedTargetIds => ParseTargetIds(TargetIdsText);
+    public ObservableCollection<AgentTargetOptionViewModel> Targets { get; } = new();
+    public bool HasTargets => Targets.Count > 0;
+    public bool HasUnresolvedTargets => _unresolvedTargetIds.Count > 0;
+    public IReadOnlyList<string> AllowedTargetIds
+    {
+        get
+        {
+            var targetIds = Targets
+                .Where(target => target.IsSelected)
+                .Select(target => target.TargetId)
+                .Concat(_unresolvedTargetOrder)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return targetIds;
+        }
+    }
     public string OnlineText => _source.IsOnline ? "在线" : "离线";
 
     public void UpdateStatus(AgentApprovedSource source)
@@ -99,9 +118,23 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
         if (!_isDirty)
         {
             _suppressDirtyTracking = true;
-            IsEnabled = source.Enabled;
-            TargetIdsText = string.Join(Environment.NewLine, source.AllowedTargetIds);
-            _suppressDirtyTracking = false;
+            try
+            {
+                IsEnabled = source.Enabled;
+                if (_hasCatalog)
+                {
+                    ApplyCatalog(_catalog);
+                }
+                else
+                {
+                    ClearTargets();
+                    SetUnresolvedTargets(source.AllowedTargetIds);
+                }
+            }
+            finally
+            {
+                _suppressDirtyTracking = false;
+            }
         }
 
         OnPropertyChanged(nameof(Source));
@@ -110,32 +143,118 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(AdapterVersion));
         OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasTargets));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
         OnPropertyChanged(nameof(OnlineText));
+    }
+
+    public void ApplyCatalog(IReadOnlyList<AgentTargetDescriptor> catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (_isDirty) return;
+
+        _catalog = catalog.ToArray();
+        _hasCatalog = true;
+        var persistedTargetIds = _source.AllowedTargetIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToArray();
+        var matchedTargetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var catalogTargetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        _suppressDirtyTracking = true;
+        try
+        {
+            ClearTargets();
+            _unresolvedTargetIds.Clear();
+            _unresolvedTargetOrder.Clear();
+
+            foreach (var target in _catalog)
+            {
+                if (string.IsNullOrWhiteSpace(target.TargetId)
+                    || !catalogTargetIds.Add(target.TargetId))
+                {
+                    continue;
+                }
+
+                var isSelected = persistedTargetIds.Any(id =>
+                    string.Equals(id, target.TargetId, StringComparison.OrdinalIgnoreCase));
+                if (isSelected)
+                {
+                    matchedTargetIds.Add(target.TargetId);
+                }
+
+                var option = new AgentTargetOptionViewModel(target, isSelected);
+                option.PropertyChanged += OnTargetPropertyChanged;
+                Targets.Add(option);
+            }
+
+            foreach (var targetId in persistedTargetIds)
+            {
+                if (!matchedTargetIds.Contains(targetId) && _unresolvedTargetIds.Add(targetId))
+                {
+                    _unresolvedTargetOrder.Add(targetId);
+                }
+            }
+        }
+        finally
+        {
+            _suppressDirtyTracking = false;
+        }
+
+        OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasTargets));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
+    }
+
+    public bool RemoveUnresolvedTargets()
+    {
+        if (_unresolvedTargetIds.Count == 0) return false;
+
+        _unresolvedTargetIds.Clear();
+        _unresolvedTargetOrder.Clear();
+        _isDirty = true;
+        OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
+        return true;
     }
 
     [ObservableProperty]
     private bool _isEnabled;
-
-    [ObservableProperty]
-    private string _targetIdsText;
 
     partial void OnIsEnabledChanged(bool value)
     {
         if (!_suppressDirtyTracking) _isDirty = true;
     }
 
-    partial void OnTargetIdsTextChanged(string value)
+    private void OnTargetPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName != nameof(AgentTargetOptionViewModel.IsSelected)) return;
+
         if (!_suppressDirtyTracking) _isDirty = true;
+        OnPropertyChanged(nameof(AllowedTargetIds));
     }
 
-    private static IReadOnlyList<string> ParseTargetIds(string? value)
+    private void ClearTargets()
     {
-        return (value ?? string.Empty)
-            .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(id => id.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        foreach (var target in Targets)
+        {
+            target.PropertyChanged -= OnTargetPropertyChanged;
+        }
+
+        Targets.Clear();
+    }
+
+    private void SetUnresolvedTargets(IEnumerable<string> targetIds)
+    {
+        _unresolvedTargetIds.Clear();
+        _unresolvedTargetOrder.Clear();
+        foreach (var targetId in targetIds)
+        {
+            if (!string.IsNullOrWhiteSpace(targetId) && _unresolvedTargetIds.Add(targetId))
+            {
+                _unresolvedTargetOrder.Add(targetId);
+            }
+        }
     }
 }
 
