@@ -1,7 +1,7 @@
 # Phase 5.2 私有备份与事务恢复验收
 
-日期：2026-09-02  
-工作区：`phase5-2-agent-visible`  
+日期：2026-09-02
+工作区：`phase5-2-agent-visible`
 分支：`phase5-2-agent-visible`
 
 ## 结论

@@ -1,7 +1,7 @@
 # Phase 5.1 Agent 任务运行安全验收
 
-日期：2026-09-02  
-工作区：`phase5-2-agent-visible`  
+日期：2026-09-02
+工作区：`phase5-2-agent-visible`
 分支：`phase5-2-agent-visible`
 
 ## 结论
