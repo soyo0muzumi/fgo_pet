@@ -273,7 +273,7 @@ public sealed partial class ConversationViewModel : ObservableObject
                 {
                     completedTurn.IsStreaming = false;
                 }
-                TryLoadTodoProposals(update.TextDelta);
+                TryLoadTodoProposals(update.StructuredResponse);
                 break;
             case ConversationUpdateType.Cancelled:
                 RemoveStreamingTurns();

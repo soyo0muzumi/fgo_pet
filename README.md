@@ -112,6 +112,12 @@ In **Settings → Agent Connection (`Agent 连接`)**:
 
 Permissions are deny-by-default. Tasks cannot be dispatched until both the source and target are explicitly approved. Revocation takes effect immediately and remains revoked after restart. The final Release must not ask users to copy project IDs, modify `PATH`, or run commands such as `target add`; commands currently present in the repository are development and acceptance tools only.
 
+When Codex requests command or file approval during a dispatch, FGO Pet marks the task as awaiting acceptance and opens a visible `codex resume` session for the same remote thread. The attention action in the App reopens that existing thread; it never creates a duplicate task. Only the opaque thread ID is retained—prompts, tool arguments, terminal output, and local paths stay outside the Agent protocol.
+
+If the App loses the transport boundary after a dispatch may have started, the execution is shown as **outcome unknown** (`待核对`) with its original source, instance, task, and dispatch identifiers. The App does not retry it automatically. The user can open the original task, copy its bounded diagnostic identifier, and explicitly confirm **completed**, **still running**, **failed**, or **cancelled** locally. A later retry is a new dispatch with a new request/execution ID linked to the previous execution; it is never mistaken for a replay of the old request.
+
+The Agent Connection settings page also shows Relay/Adapter capacity, archivable records, and incomplete archive batches. Safety archive candidates are terminal records older than 30 days with an exact final receipt. Archiving is disabled while any Agent work is active or awaiting confirmation, while maintenance status is unavailable, or when replay-protection tombstones are full. After an explicit irreversible-action confirmation, the Relay and Adapter coordinate prepare/commit before deleting full records; compact tombstones remain to reject stale replays.
+
 ### Dialogue and memory
 
 In **Settings → Dialogue and Memory (`对话与记忆`)** you can:
@@ -125,9 +131,9 @@ Candidates do not enter later conversations automatically. Only memories explici
 
 ### Data and privacy
 
-The current **Settings → Data and Privacy (`数据与隐私`)** page provides a safe sharing export, conversation deletion, and local user-data controls. The safe export contains allowed dialogue, summaries, memories, and bounded metadata. It excludes API keys, full prompts, raw story data, and role-package assets.
+The current **Settings → Data and Privacy (`数据与隐私`)** page provides a safe sharing export, a separate private backup and restore flow, conversation deletion, and local user-data controls. The safe export contains allowed dialogue, summaries, memories, and bounded metadata. It excludes API keys, full prompts, raw story data, and role-package assets.
 
-The safe export is not a complete backup and cannot be restored. Phase 5.2 adds a separate private backup and restore flow covering focus, timeline, bond, dialogue, memory, Todo, work archives, and settings while excluding model credentials and Agent pairing secrets.
+The safe export is not a complete backup and cannot be restored. A private `.fgopetbackup` is a four-member, versioned archive covering focus, timeline, bond, dialogue, memory, Todo, Agent executions/receipts, work archives, settings, and role-package references. It excludes API keys, Credential Manager/Relay/Adapter pairing state, prompts, logs, absolute paths, and role-package assets. Before replacement, restore validates archive paths, sizes, hashes, SQLite integrity, and schema in an isolated directory and retains a rollback copy. `dispatching`, `active`, and `attention` Agent executions become explicit unknown/interrupted outcomes and are never automatically re-dispatched. Missing role packages produce install guidance without failing the data restore; Agent credentials are not restored, so pairing must be repeated before enabling Agent again.
 
 Deletion actions have different scopes; review the confirmation text before continuing. Uninstall preserves user data by default, and a complete data removal requires separate confirmation.
 
@@ -155,9 +161,9 @@ Themes currently affect only the settings window. The desktop pet and dialogue p
 - **Phase 2** — focus, recovery, today's timeline, and bond progression are accepted in the primary Release environment.
 - **Phase 3** — model setup, dialogue, memory, settings, and privacy controls are accepted.
 - **Phase 4** — Todo, Agent Relay/Adapter, Codex integration, restart recovery, and revocation are accepted and merged into local `main`.
-- **Phase 5** — the approved direction covers task-operation safety, backup and restore, GUI configuration, the production role package, and Release packaging; feature implementation has not started.
+- **Phase 5** — the approved direction covers task-operation safety, backup and restore, GUI configuration, the production role package, and Release packaging. S2 agent-visible approval/resume, Phase 5.1 task-operation safety, and Phase 5.2 private backup/restore are implemented in the isolated worktree; final unified integration is still pending and local `main` remains unaffected.
 
-See the [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md) and the [Phase 5 productization design](docs/superpowers/specs/2026-09-01-phase5-productization-design.md).
+See the [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md), the [Phase 5.1 Agent safety acceptance](docs/reports/2026-09-02-phase5-1-agent-safety-acceptance.md), and the [Phase 5 productization design](docs/superpowers/specs/2026-09-01-phase5-productization-design.md).
 
 ## Developer build and test
 

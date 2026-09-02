@@ -97,6 +97,43 @@ approves the source. Completion and goal reports also require explicit user
 confirmation; stopping, asking a question, or reaching a milestone is not
 completion.
 
+When a dispatched Codex run requests command or file approval, the adapter emits
+an `attention_required` event and opens a visible `codex resume <thread-id>`
+session. The original dispatch remains `awaiting_acceptance` until the resumed
+session reports its lifecycle result. FGO Pet stores the thread as an opaque
+`remote_task_id` and passes the original dispatch context in
+`FGO_PET_AGENT_TASK`; no prompt, tool arguments, terminal output, or local path
+is sent through the Relay.
+
+## Maintenance and archive safety
+
+The worker reports bounded journal capacity during its maintenance poll. Relay
+archive commands are handled as a two-phase protocol: the worker first verifies
+that each candidate is terminal, has the expected source identity, sequence,
+status, timestamp, and content-free hash, then persists a prepared marker. On
+commit it writes compact replay-protection tombstones before pruning the local
+dispatch journal. Restart recovery resumes a prepared or committed batch
+idempotently; an unknown network result never causes blind pruning.
+
+The App only offers archive when maintenance status is available and no Agent
+execution is active or awaiting outcome confirmation. Candidates are terminal
+records older than 30 days with an exact final receipt. The user must confirm
+the irreversible full-record deletion. A transport timeout leaves the durable
+batch in place for a later explicit resume, and stale events are rejected by
+Relay tombstones after completion.
+
+For release troubleshooting, the worker writes best-effort stage diagnostics to
+`<FGO_PET state root>\CodexAdapter\worker-diagnostics.log`. Entries contain only
+the stage, outcome, safe error code, and a short dispatch hash. They can show
+whether polling, target resolution, Codex executable resolution, process start,
+RPC initialization, task start, or visible resume failed; prompts, credentials,
+and full paths are never written. A failure to write this file does not affect
+dispatch behavior.
+
+Codex executable lookup checks `FGO_PET_CODEX_EXE`, then `PATH`, then the
+per-user installation root `%LOCALAPPDATA%\OpenAI\Codex\bin\<version>\codex.exe`.
+The version directory is discovered at runtime and is not hard-coded.
+
 For isolated tests only, `FGO_PET_PIPE_SUFFIX` and `FGO_PET_STATE_ROOT` may
 override the pipe suffix and state root. Use a unique temporary value for each
 run. These variables are not a credential channel and must never contain a

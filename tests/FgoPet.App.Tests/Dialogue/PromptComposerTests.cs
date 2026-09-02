@@ -9,6 +9,27 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class PromptComposerTests
 {
     [Fact]
+    public void Compose_includes_the_todo_proposal_protocol_without_granting_direct_agent_control()
+    {
+        var contextKey = new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0");
+        var context = new PromptContext(
+            contextKey,
+            new PersonaBundle("800100", "test-persona", "1.0.0", "2.1.0", "稳定回应。", []),
+            [],
+            [],
+            string.Empty,
+            [],
+            "帮我安排今天的工作。");
+
+        var texts = new PromptComposer().Compose(context).Messages.Select(message => message.Text).ToArray();
+
+        Assert.Contains(texts, text => text.Contains("todo_protocol", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("todos", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("不得直接向 Codex", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Compose_orders_safety_content_state_memory_history_and_user_data()
     {
         var contextKey = new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0");

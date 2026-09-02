@@ -13,6 +13,7 @@ public static partial class AgentPayloadSanitizer
         EnsureSafeText(message.TaskId, nameof(message.TaskId));
         EnsureSafeText(message.TodoId, nameof(message.TodoId));
         EnsureSafeText(message.DispatchRequestId, nameof(message.DispatchRequestId));
+        EnsureSafeText(message.RemoteTaskId, nameof(message.RemoteTaskId));
         foreach (var coveredTaskKey in message.CoveredTaskKeys ?? Array.Empty<string>())
         {
             EnsureSafeText(coveredTaskKey, nameof(message.CoveredTaskKeys));

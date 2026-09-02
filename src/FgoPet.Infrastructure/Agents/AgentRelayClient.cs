@@ -233,7 +233,8 @@ public sealed class AgentRelayClient : IAgentGateway
                 message.IsPrivate,
                 message.TodoId,
                 message.DispatchRequestId,
-                message.CoveredTaskKeys));
+                message.CoveredTaskKeys,
+                message.RemoteTaskId));
         }
 
         return result;

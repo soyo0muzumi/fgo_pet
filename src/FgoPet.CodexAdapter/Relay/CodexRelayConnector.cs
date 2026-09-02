@@ -172,6 +172,47 @@ public sealed class CodexRelayConnector : ICodexRelayConnector
         return response.Payload.TryGetProperty("dispatch_allowed", out var allowed) && allowed.ValueKind == JsonValueKind.True;
     }
 
+    public async Task<AdapterMaintenanceSyncResult> SyncMaintenanceAsync(
+        string? acknowledgedBatchId,
+        string? acknowledgedPhase,
+        string? safeError,
+        AgentCapacityCounter adapterJournal,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(adapterJournal);
+        var response = await SendOperationAsync(
+            ProtocolEnvelope.Create(NewId(), "maintenance_sync", new AdapterMaintenanceSyncRequest(
+                "codex", SourceInstanceId, acknowledgedBatchId, acknowledgedPhase, safeError, adapterJournal)),
+            cancellationToken).ConfigureAwait(false);
+        AgentProtocolValidator.ValidateResponse(response);
+        var result = ReadResult(response) ?? throw new InvalidDataException("Missing maintenance sync result.");
+        if (result == "none") return new AdapterMaintenanceSyncResult("none");
+
+        if (result == "prepare")
+        {
+            var prepare = response.DeserializePayload<AgentArchivePrepareRequest>();
+            return new AdapterMaintenanceSyncResult(
+                result, prepare.BatchId, prepare.Items, prepare.BatchSha256);
+        }
+
+        if (result == "commit")
+        {
+            var commit = response.DeserializePayload<AgentArchiveCommitRequest>();
+            return new AdapterMaintenanceSyncResult(result, commit.BatchId, BatchSha256: commit.BatchSha256);
+        }
+
+        if (result is "prepared" or "committed" or "rejected")
+        {
+            return new AdapterMaintenanceSyncResult(
+                result,
+                AcknowledgedBatchId: ReadOptionalString(response, "acknowledged_batch_id"),
+                AcknowledgedPhase: ReadOptionalString(response, "acknowledged_phase"),
+                SafeError: ReadOptionalString(response, "safe_error"));
+        }
+
+        throw new InvalidDataException("Unknown maintenance sync result.");
+    }
+
     private async Task<ProtocolEnvelope> SendOperationAsync(ProtocolEnvelope request, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -241,6 +282,10 @@ public sealed class CodexRelayConnector : ICodexRelayConnector
 
     private static string? ReadResult(ProtocolEnvelope response) => response.Payload.ValueKind == JsonValueKind.Object
         && response.Payload.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String ? result.GetString() : null;
+    private static string? ReadOptionalString(ProtocolEnvelope response, string property) =>
+        response.Payload.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
     private static string NewId() => Guid.NewGuid().ToString("N");
     private static bool IsRecoverable(Exception error) => error is IOException or InvalidDataException or UnauthorizedAccessException or CryptographicException
         or JsonException or AgentProtocolValidationException or DecoderFallbackException or TimeoutException;

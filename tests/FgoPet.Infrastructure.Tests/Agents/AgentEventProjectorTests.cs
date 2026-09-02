@@ -13,8 +13,9 @@ public sealed class AgentEventProjectorTests
         var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
 
         projector.Apply(new AgentEvent("codex", "source-1", "task-1", 1, AgentEventType.TaskStarted, at, TodoId: "todo-1"));
-        projector.Apply(new AgentEvent("codex", "source-1", "task-1", 2, AgentEventType.AttentionRequired, at.AddMinutes(1), TodoId: "todo-1"));
+        projector.Apply(new AgentEvent("codex", "source-1", "task-1", 2, AgentEventType.AttentionRequired, at.AddMinutes(1), TodoId: "todo-1", RemoteTaskId: "thread-1"));
         Assert.True(projector.Current.Single().AttentionRequired);
+        Assert.Equal("thread-1", projector.Current.Single().RemoteTaskId);
 
         projector.Apply(new AgentEvent("codex", "source-1", "task-1", 3, AgentEventType.TaskResumed, at.AddMinutes(2), TodoId: "todo-1"));
         var current = Assert.Single(projector.Current);

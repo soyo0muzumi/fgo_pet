@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -15,6 +16,8 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\FgoPet.App\FgoPet.App.csproj" />
+    <ProjectReference Include="..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />

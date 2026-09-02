@@ -1,11 +1,13 @@
 using System.IO;
 using FgoPet.App.Dialogue;
+using FgoPet.App.Services;
 using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Todo;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -82,6 +84,29 @@ public sealed class ConversationOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Structured_envelope_is_buffered_and_todo_proposals_are_transient()
+    {
+        var provider = new FakeProvider([new ChatStreamChunk(
+            "{\"text\":\"安排好了。\",\"todos\":[{\"title\":\"写回归测试\"}]}",
+            IsComplete: true)]);
+        var todoService = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+        var orchestrator = CreateOrchestrator(provider, todoService);
+        var updates = new List<ConversationUpdate>();
+        orchestrator.Updated += updates.Add;
+
+        var result = await orchestrator.SendAsync("800100", "请安排测试", CancellationToken.None);
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        var assistantDelta = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantDelta));
+        Assert.Equal("安排好了。", assistantDelta.TextDelta);
+        Assert.DoesNotContain("{", assistantDelta.TextDelta, StringComparison.Ordinal);
+        var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
+        Assert.NotNull(completed.StructuredResponse);
+        var persisted = CreateConversationRepository().LoadMessages(result.ConversationId, "800100");
+        Assert.Equal("安排好了。", persisted.Single(message => message.Role == ChatMessageRole.Assistant).Text);
+    }
+
+    [Fact]
     public async Task Conversation_view_model_exposes_bounded_turns_and_send_state()
     {
         var provider = new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]);
@@ -139,7 +164,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         }
     }
 
-    private ConversationOrchestrator CreateOrchestrator(IChatProvider provider)
+    private ConversationOrchestrator CreateOrchestrator(IChatProvider provider, TodoProposalService? todoProposals = null)
     {
         var binding = new ContentBinding(
             new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0"),
@@ -154,7 +179,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
             CreateConversationRepository(),
             CreateMemoryRepository(),
             new PromptComposer(),
-            TimeProvider.System);
+            TimeProvider.System,
+            todoProposals: todoProposals);
     }
 
     [Fact]
@@ -252,5 +278,15 @@ public sealed class ConversationOrchestratorTests : IDisposable
         public void Save(AppSettings settings)
         {
         }
+    }
+
+    private sealed class FakeTodoRepository : ITodoRepository
+    {
+        public void Save(TodoItem todo) { }
+        public TodoItem? Get(string id) => null;
+        public IReadOnlyList<TodoItem> List(TodoStatus? status = null) => Array.Empty<TodoItem>();
+        public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
+        public void Delete(string id) { }
+        public void ClearAgentTodoData() { }
     }
 }

@@ -22,7 +22,9 @@ public sealed record AgentTaskProjection(
     bool GoalCompleted,
     IReadOnlyList<string> CoveredTaskKeys,
     long LastSequence,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? RemoteTaskId = null,
+    string? ExecutionId = null);
 
 public sealed class AgentEventProjector
 {
@@ -66,7 +68,36 @@ public sealed class AgentEventProjector
             GoalCompleted: false,
             CoveredTaskKeys: Array.Empty<string>(),
             LastSequence: 0,
-            UpdatedAt: execution.UpdatedAt);
+            UpdatedAt: execution.UpdatedAt,
+            RemoteTaskId: execution.RemoteTaskId,
+            ExecutionId: execution.Id);
+        ExecutionRestored?.Invoke(execution);
+    }
+
+    /// <summary>Refreshes a persisted non-terminal execution after a local boundary update.</summary>
+    public void Synchronize(AgentExecution execution)
+    {
+        ArgumentNullException.ThrowIfNull(execution);
+        if (execution.IsTerminal) return;
+        var identity = $"{execution.SourceType}/{execution.SourceInstance}/{execution.TaskId}";
+        if (_projections.TryGetValue(identity, out var existing))
+        {
+            _projections[identity] = existing with
+            {
+                TodoId = execution.TodoId,
+                Status = execution.Status,
+                AttentionRequired = execution.Status == AgentExecutionStatus.Attention,
+                UpdatedAt = execution.UpdatedAt,
+                RemoteTaskId = execution.RemoteTaskId,
+                ExecutionId = execution.Id,
+            };
+        }
+        else
+        {
+            Restore(execution);
+            return;
+        }
+
         ExecutionRestored?.Invoke(execution);
     }
 
@@ -161,7 +192,9 @@ public sealed class AgentEventProjector
             goalCompleted,
             coveredTaskKeys,
             agentEvent.Sequence,
-            agentEvent.OccurredAt);
+            agentEvent.OccurredAt,
+            agentEvent.RemoteTaskId ?? existing?.RemoteTaskId,
+            existing?.ExecutionId);
         EventApplied?.Invoke(agentEvent, AgentProjectionApplyResult.Applied);
         return AgentProjectionApplyResult.Applied;
     }

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using FgoPet.App.Services;
 using FgoPet.Core.Agents;
 using FgoPet.Infrastructure.Agents;
 
@@ -7,11 +8,16 @@ namespace FgoPet.App.ViewModels;
 public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 {
     private readonly AgentEventProjector _projector;
+    private readonly AgentReconciliationService? _reconciliation;
 
-    public AgentCurrentTaskViewModel(AgentEventProjector projector, TimeProvider time)
+    public AgentCurrentTaskViewModel(
+        AgentEventProjector projector,
+        TimeProvider time,
+        AgentReconciliationService? reconciliation = null)
     {
         _projector = projector ?? throw new ArgumentNullException(nameof(projector));
         _ = time ?? throw new ArgumentNullException(nameof(time));
+        _reconciliation = reconciliation;
         _projector.EventApplied += OnProjectorEventApplied;
         _projector.ExecutionRestored += OnExecutionRestored;
         Refresh();
@@ -30,6 +36,9 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _attentionRequired;
+
+    [ObservableProperty]
+    private bool _outcomeUnknown;
 
     [ObservableProperty]
     private string _attentionText = string.Empty;
@@ -77,22 +86,51 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
         ArchiveRequested?.Invoke(CurrentProjection);
     }
 
+    public async Task<bool> ReconcileAsync(
+        AgentExecutionStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        if (_reconciliation is null || CurrentProjection is null || !OutcomeUnknown)
+        {
+            return false;
+        }
+
+        var result = await _reconciliation.ConfirmAsync(CurrentProjection, status, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Applied)
+        {
+            Refresh();
+            return true;
+        }
+
+        AttentionText = $"待核对未更新（{result.SafeError ?? "unknown"}）";
+        return false;
+    }
+
     private void Refresh()
     {
         var active = _projector.Current
-            .Where(item => item.Status is AgentExecutionStatus.Dispatching or AgentExecutionStatus.Active or AgentExecutionStatus.Attention)
+            .Where(item => item.Status is AgentExecutionStatus.Dispatching
+                or AgentExecutionStatus.Active
+                or AgentExecutionStatus.Attention
+                or AgentExecutionStatus.DispatchOutcomeUnknown)
             .OrderByDescending(item => item.UpdatedAt)
             .ToArray();
         CurrentProjection = active.FirstOrDefault();
         CurrentTaskId = CurrentProjection?.TaskId ?? string.Empty;
         CurrentTaskText = CurrentProjection is null
             ? "暂无 Agent 任务"
-            : CurrentProjection.Summary ?? CurrentProjection.TaskId;
+            : CurrentProjection.Status == AgentExecutionStatus.DispatchOutcomeUnknown
+                ? "待核对 · " + (CurrentProjection.Summary ?? CurrentProjection.TaskId)
+                : CurrentProjection.Summary ?? CurrentProjection.TaskId;
         OtherActiveCount = Math.Max(0, active.Length - 1);
         OnPropertyChanged(nameof(HasOtherActiveTasks));
         var attention = active.FirstOrDefault(item => item.AttentionRequired);
-        AttentionRequired = attention is not null;
-        AttentionText = attention is null ? string.Empty : "需要你的确认 · 点击打开任务";
+        OutcomeUnknown = CurrentProjection?.Status == AgentExecutionStatus.DispatchOutcomeUnknown;
+        AttentionRequired = attention is not null || OutcomeUnknown;
+        AttentionText = OutcomeUnknown
+            ? "待核对 · 点击打开任务；不会自动再次派发"
+            : attention is null ? string.Empty : "需要你的确认 · 点击打开任务";
         OnPropertyChanged(nameof(CurrentProjection));
     }
 

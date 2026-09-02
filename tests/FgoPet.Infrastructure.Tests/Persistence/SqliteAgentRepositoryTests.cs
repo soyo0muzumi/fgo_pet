@@ -66,6 +66,25 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Remote_task_id_round_trips_and_is_attached_from_events()
+    {
+        var database = CreateDatabase();
+        var agents = new SqliteAgentRepository(database);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        agents.SaveExecution(new AgentExecution(
+            "execution-remote", "todo-remote", "codex", "source-1", "task-remote", "dispatch-remote", at,
+            remoteTaskId: "thread-remote"));
+
+        var restored = Assert.IsType<AgentExecution>(agents.GetExecution("execution-remote"));
+        Assert.Equal("thread-remote", restored.RemoteTaskId);
+
+        agents.ApplyEvent(new AgentEvent(
+            "codex", "source-1", "task-remote", 1, AgentEventType.AttentionRequired, at.AddMinutes(1),
+            TodoId: "todo-remote", RemoteTaskId: "thread-updated"));
+        Assert.Equal("thread-updated", Assert.IsType<AgentExecution>(agents.GetExecution("execution-remote")).RemoteTaskId);
+    }
+
+    [Fact]
     public void Terminal_listing_is_ordered_by_end_time_then_execution_id_and_limited()
     {
         var database = CreateDatabase();

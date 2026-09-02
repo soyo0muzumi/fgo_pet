@@ -22,6 +22,18 @@ public partial class AgentConnectionSettingsView : UserControl
 
     private async void OnClearClick(object sender, RoutedEventArgs e) => await RunUiOperationAsync(() => ViewModel?.ClearAgentTodoDataAsync());
 
+    private async void OnArchiveClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null || !ViewModel.CanArchive || !Confirm(
+                "执行 Agent 安全归档",
+                "归档会在 Relay、适配器和本地数据库完成最终核对后删除符合条件的历史执行记录。删除不可恢复；未知结果不会自动重试。确定继续吗？"))
+        {
+            return;
+        }
+
+        await RunUiOperationAsync(() => ViewModel.RunArchiveAsync());
+    }
+
     private async void OnApprovePendingClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is AgentPendingSourceViewModel pending)

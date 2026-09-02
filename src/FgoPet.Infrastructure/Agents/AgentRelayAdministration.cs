@@ -98,8 +98,101 @@ public sealed class AgentRelayAdministration : IAgentRelayAdministration
         }).ConfigureAwait(false);
     }
 
+    public async Task<AgentMaintenanceStatus> GetMaintenanceStatusAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await SendAsync("maintenance_status", new { }, cancellationToken).ConfigureAwait(false);
+            var payload = response.DeserializePayload<AgentMaintenanceStatusResponse>();
+            return new(
+                payload.Counters.Select(counter => new AgentMaintenanceCounter(
+                    counter.Name, counter.Used, counter.Limit, counter.Archivable)).ToArray(),
+                payload.OldestArchivableAt,
+                payload.ActiveBatchId,
+                payload.SafeError);
+        }
+        catch (AgentRelayException error)
+        {
+            return AgentMaintenanceStatus.Empty with { SafeError = error.SafeError };
+        }
+    }
+
+    public async Task<AgentArchivePrepareResult> PrepareArchiveAsync(
+        AgentArchiveBatch batch,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        try
+        {
+            var items = batch.Candidates.Select(candidate => new AgentArchiveProtocolItem(
+                candidate.Identity.SourceType,
+                candidate.Identity.SourceInstance,
+                candidate.Identity.TaskId,
+                candidate.Identity.DispatchRequestId,
+                candidate.Identity.FinalSequence,
+                ToWireStatus(candidate.Identity.FinalStatus),
+                candidate.EndedAt,
+                candidate.ExecutionId,
+                candidate.SummarySha256)).ToArray();
+            var response = await SendAsync(
+                "archive_prepare",
+                new AgentArchivePrepareRequest(batch.BatchId, items, batch.BatchSha256),
+                cancellationToken).ConfigureAwait(false);
+            return new(
+                ReadResult(response) ?? "rejected",
+                batch.BatchId,
+                batch.BatchSha256,
+                ReadOptionalString(response.Payload, "safe_error"));
+        }
+        catch (AgentRelayException error)
+        {
+            return new("rejected", batch.BatchId, batch.BatchSha256, error.SafeError);
+        }
+    }
+
+    public async Task<AgentArchiveCommitResult> CommitArchiveAsync(
+        string batchId,
+        string batchSha256,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await SendAsync(
+                "archive_commit",
+                new AgentArchiveCommitRequest(batchId, batchSha256),
+                cancellationToken).ConfigureAwait(false);
+            return new(
+                ReadResult(response) ?? "rejected",
+                batchId,
+                batchSha256,
+                ReadOptionalString(response.Payload, "safe_error"));
+        }
+        catch (AgentRelayException error)
+        {
+            return new("rejected", batchId, batchSha256, error.SafeError);
+        }
+    }
+
     private Task<ProtocolEnvelope> SendAsync(string type, object payload, CancellationToken cancellationToken) =>
         _client.SendAsync(ProtocolEnvelope.Create(Guid.NewGuid().ToString("N"), type, payload), cancellationToken);
+
+    private static string? ReadResult(ProtocolEnvelope response) =>
+        response.Payload.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String
+            ? result.GetString()
+            : null;
+
+    private static string? ReadOptionalString(JsonElement payload, string propertyName) =>
+        payload.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static string ToWireStatus(AgentExecutionStatus status) => status switch
+    {
+        AgentExecutionStatus.Completed => "completed",
+        AgentExecutionStatus.Failed => "failed",
+        AgentExecutionStatus.Cancelled => "cancelled",
+        _ => throw new ArgumentException("Archive batches require terminal executions.", nameof(status)),
+    };
 
     internal static AgentRelaySnapshot Failure(string error) => new(error switch
     {

@@ -306,7 +306,12 @@ public sealed class RuntimeDatabaseMigrator
                 FOREIGN KEY(batch_id) REFERENCES agent_archive_batches(batch_id) ON DELETE CASCADE
             );
             """),
+        new(8, """
+            ALTER TABLE agent_executions ADD COLUMN remote_task_id TEXT NULL;
+            """),
     };
+
+    public static long CurrentSchemaVersion => Migrations.Count;
 
     private readonly RuntimeDatabase _database;
 

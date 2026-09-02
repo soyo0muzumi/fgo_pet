@@ -24,7 +24,8 @@ public sealed record AgentExecution
         AgentExecutionStatus status = AgentExecutionStatus.Dispatching,
         DateTimeOffset? startedAt = null,
         DateTimeOffset? endedAt = null,
-        string? previousExecutionId = null)
+        string? previousExecutionId = null,
+        string? remoteTaskId = null)
     {
         Id = AgentIdentityValidation.Id(id, nameof(id));
         TodoId = AgentIdentityValidation.Id(todoId, nameof(todoId));
@@ -35,6 +36,9 @@ public sealed record AgentExecution
         PreviousExecutionId = string.IsNullOrWhiteSpace(previousExecutionId)
             ? null
             : AgentIdentityValidation.Id(previousExecutionId, nameof(previousExecutionId));
+        RemoteTaskId = string.IsNullOrWhiteSpace(remoteTaskId)
+            ? null
+            : AgentIdentityValidation.Id(remoteTaskId, nameof(remoteTaskId));
         Status = status;
         StartedAt = startedAt;
         UpdatedAt = updatedAt;
@@ -58,6 +62,7 @@ public sealed record AgentExecution
     public string TaskId { get; }
     public string DispatchRequestId { get; }
     public string? PreviousExecutionId { get; }
+    public string? RemoteTaskId { get; init; }
     public AgentExecutionStatus Status { get; init; }
     public DateTimeOffset? StartedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -94,6 +99,12 @@ public sealed record AgentExecution
     {
         EnsureMutable();
         return this with { UpdatedAt = at };
+    }
+
+    public AgentExecution AttachRemoteTask(string remoteTaskId)
+    {
+        if (string.IsNullOrWhiteSpace(remoteTaskId)) throw new ArgumentException("Remote task ID is required.", nameof(remoteTaskId));
+        return this with { RemoteTaskId = AgentIdentityValidation.Id(remoteTaskId, nameof(remoteTaskId)) };
     }
 
     public AgentExecution MarkCompleted(DateTimeOffset at)

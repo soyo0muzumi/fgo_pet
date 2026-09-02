@@ -30,6 +30,20 @@ public sealed class ProtocolFixtureTests
     }
 
     [Fact]
+    public void Event_envelope_preserves_the_opaque_remote_task_id()
+    {
+        var message = new AgentEventMessage(
+            "codex", "source-1", "task-1", 1, "attention_required", DateTimeOffset.UtcNow,
+            RemoteTaskId: "thread-123");
+
+        var copy = ProtocolEnvelope.Create("message-remote", "agent_event", message)
+            .DeserializePayload<AgentEventMessage>();
+
+        Assert.Equal("thread-123", copy.RemoteTaskId);
+        AgentProtocolValidator.Validate(ProtocolEnvelope.Create("message-remote-validate", "agent_event", message));
+    }
+
+    [Fact]
     public void Unknown_protocol_version_is_rejected()
     {
         var json = "{\"protocol_version\":\"2\",\"message_id\":\"m1\",\"message_type\":\"agent_event\",\"sent_at\":\"2026-08-30T08:00:00Z\",\"payload\":{}}";

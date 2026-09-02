@@ -15,6 +15,7 @@ public sealed record ValidatedChatOutput(
 /// <summary>Accepts a small, bounded model envelope and ignores unsupported presentation values.</summary>
 public static class StructuredOutputValidator
 {
+    public const string InvalidResponseMessage = "无法解析模型回复，请重试。";
     private const int MaxTextLength = 12_000;
     private const int MaxMemoryLength = 2_000;
     private static readonly Regex TextFallback = new(
@@ -55,8 +56,9 @@ public static class StructuredOutputValidator
         string raw,
         IReadOnlySet<string> supportedExpressions)
     {
-        var text = ReadString(root, "text") ?? ExtractFallbackText(raw);
-        text = Bound(text, MaxTextLength);
+        var text = ReadString(root, "text");
+        var safeText = string.IsNullOrWhiteSpace(text) ? ExtractFallbackText(raw) : text;
+        safeText = Bound(safeText, MaxTextLength);
         var emotion = ReadString(root, "emotion");
         var expression = emotion is not null
             && supportedExpressions.Contains(emotion)
@@ -65,7 +67,7 @@ public static class StructuredOutputValidator
             : ExpressionSemantic.Neutral;
         var feedbackType = ReadSafeId(root, "feedback_type", 64);
         var memoryCandidate = ReadMemoryCandidate(root);
-        return new ValidatedChatOutput(text, expression, feedbackType, memoryCandidate);
+        return new ValidatedChatOutput(safeText, expression, feedbackType, memoryCandidate);
     }
 
     private static MemoryCandidateDraft? ReadMemoryCandidate(JsonElement root)
@@ -117,11 +119,11 @@ public static class StructuredOutputValidator
             }
             catch (JsonException)
             {
-                // Fall through to the bounded raw response.
+                // Fall through to the fixed safe message.
             }
         }
 
-        return Bound(raw, MaxTextLength);
+        return InvalidResponseMessage;
     }
 
     private static string Bound(string text, int maxLength) =>

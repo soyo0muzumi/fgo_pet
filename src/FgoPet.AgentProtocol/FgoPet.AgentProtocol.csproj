@@ -5,7 +5,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>FgoPet.AgentProtocol</RootNamespace>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
-  </ItemGroup>
 </Project>

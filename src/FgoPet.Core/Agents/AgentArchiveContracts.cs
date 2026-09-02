@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace FgoPet.Core.Agents;
 
 public enum AgentArchiveBatchState
@@ -143,5 +147,72 @@ internal static class AgentArchiveValidation
         }
 
         return value;
+    }
+}
+
+/// <summary>
+/// Stable, content-free hashes shared by the App and Adapter archive
+/// boundaries. The digest binds identity, terminal sequence/status, and time;
+/// it never includes a prompt, summary text, or local path.
+/// </summary>
+public static class AgentArchiveHashing
+{
+    public static string CandidateSha256(
+        string sourceType,
+        string sourceInstance,
+        string taskId,
+        string dispatchRequestId,
+        long finalSequence,
+        string finalStatus,
+        DateTimeOffset endedAt)
+    {
+        var canonical = string.Join('\u001f',
+            sourceType,
+            sourceInstance,
+            taskId,
+            dispatchRequestId,
+            finalSequence.ToString(CultureInfo.InvariantCulture),
+            finalStatus,
+            endedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    public static string CandidateSha256(AgentArchiveCandidate candidate) =>
+        CandidateSha256(
+            candidate.Identity.SourceType,
+            candidate.Identity.SourceInstance,
+            candidate.Identity.TaskId,
+            candidate.Identity.DispatchRequestId,
+            candidate.Identity.FinalSequence,
+            candidate.Identity.FinalStatus switch
+            {
+                AgentExecutionStatus.Completed => "completed",
+                AgentExecutionStatus.Failed => "failed",
+                AgentExecutionStatus.Cancelled => "cancelled",
+                _ => throw new ArgumentException("Archive candidates require a terminal status.", nameof(candidate)),
+            },
+            candidate.EndedAt);
+
+    public static string CandidateSha256(AgentArchiveIdentity identity, DateTimeOffset endedAt) =>
+        CandidateSha256(
+            identity.SourceType,
+            identity.SourceInstance,
+            identity.TaskId,
+            identity.DispatchRequestId,
+            identity.FinalSequence,
+            identity.FinalStatus switch
+            {
+                AgentExecutionStatus.Completed => "completed",
+                AgentExecutionStatus.Failed => "failed",
+                AgentExecutionStatus.Cancelled => "cancelled",
+                _ => throw new ArgumentException("Archive candidates require a terminal status.", nameof(identity)),
+            },
+            endedAt);
+
+    public static string BatchSha256(IEnumerable<string> candidateHashes)
+    {
+        ArgumentNullException.ThrowIfNull(candidateHashes);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join('\n', candidateHashes))));
     }
 }

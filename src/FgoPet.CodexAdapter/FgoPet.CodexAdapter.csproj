@@ -10,4 +10,7 @@
     <ProjectReference Include="..\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
     <ProjectReference Include="..\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.CodexAdapter.Tests" />
+  </ItemGroup>
 </Project>

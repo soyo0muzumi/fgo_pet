@@ -17,6 +17,10 @@ public sealed class TodoProposalService
         "path", "local_path", "command", "prompt", "reasoning", "tool_call", "tool_arguments",
         "execution", "agent_target", "target_id",
     };
+    private static readonly HashSet<string> AllowedProposalFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "title", "description", "priority", "due_at", "dueAt",
+    };
 
     private readonly TodoApplicationService _todos;
 
@@ -58,6 +62,39 @@ public sealed class TodoProposalService
         }
     }
 
+    /// <summary>Parses only a structured envelope that actually contains Todo proposals.</summary>
+    public IReadOnlyList<TodoProposal>? ParseEnvelope(string modelResponse)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelResponse);
+        var raw = modelResponse.Trim();
+        if (!raw.StartsWith('{') && !raw.StartsWith('['))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(raw, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+            });
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && !TryGetArray(root, "todos", out _)
+                && !TryGetArray(root, "proposals", out _))
+            {
+                return null;
+            }
+
+            return Parse(raw);
+        }
+        catch (JsonException error)
+        {
+            throw new FormatException("Todo proposal envelope JSON is invalid.", error);
+        }
+    }
+
     public TodoItem Confirm(TodoProposal proposal)
     {
         ArgumentNullException.ThrowIfNull(proposal);
@@ -77,6 +114,19 @@ public sealed class TodoProposalService
             .ToArray();
     }
 
+    public string BuildRuntimeState(string userMessage)
+    {
+        var context = string.Join('\n', BuildModelContext(userMessage));
+        if (context.Length <= FgoPet.Core.Dialogue.PromptContracts.MaxRuntimeStateChars)
+        {
+            return context;
+        }
+
+        const string marker = "…[已截断]";
+        var length = FgoPet.Core.Dialogue.PromptContracts.MaxRuntimeStateChars - marker.Length;
+        return length <= 0 ? marker[..FgoPet.Core.Dialogue.PromptContracts.MaxRuntimeStateChars] : context[..length] + marker;
+    }
+
     private static TodoProposal ParseOne(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Object)
@@ -89,6 +139,11 @@ public sealed class TodoProposalService
             if (DeniedFields.Contains(property.Name))
             {
                 throw new FormatException($"Todo proposals cannot contain '{property.Name}'.");
+            }
+
+            if (!AllowedProposalFields.Contains(property.Name))
+            {
+                throw new FormatException($"Todo proposals contain unsupported field '{property.Name}'.");
             }
         }
 

@@ -5,6 +5,7 @@ using FgoPet.AgentRelay.Registration;
 using FgoPet.AgentRelay.Routing;
 using FgoPet.AgentRelay.Storage;
 using System.Text.Json;
+using FgoPet.AgentProtocol.Validation;
 using Xunit;
 
 namespace FgoPet.AgentRelay.Tests;
@@ -152,5 +153,31 @@ public sealed class RelayPipeIntegrationTests
 
         router.TouchAdapterOnline(grant, at.AddMinutes(1));
         Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at.AddMinutes(1)).Result);
+    }
+
+    [Fact]
+    public async Task Maintenance_status_and_adapter_noop_use_the_directional_protocol_shapes()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var pending = registration.Request(new AdapterRegistrationRequest("codex", "Codex", "1.0"), at);
+        var grant = registration.Approve(pending.RequestId, at.AddSeconds(1));
+        var app = new AppPipeServer(router, "unused-app", registration);
+        var adapter = new AdapterPipeServer(router, "unused-adapter", registration);
+
+        var status = ProtocolEnvelope.Parse(await app.ProcessLineAsync(
+            ProtocolEnvelope.Create("maintenance-status", "maintenance_status", new { }, at).ToJson()));
+        AgentProtocolValidator.ValidateResponse(status);
+        Assert.Equal("status", status.Payload.GetProperty("result").GetString());
+
+        var noOp = ProtocolEnvelope.Parse(await adapter.ProcessLineAsync(
+            ProtocolEnvelope.Create("maintenance-sync", "maintenance_sync", new AdapterMaintenanceSyncRequest(
+                "codex", grant.SourceInstance, null, null, null,
+                new AgentCapacityCounter("adapter_journal", 0, 128, 0)), at).ToJson(), grant));
+        AgentProtocolValidator.ValidateResponse(noOp);
+        Assert.Equal("none", noOp.Payload.GetProperty("result").GetString());
+        Assert.Single(store.ListAdapterCapacityReports());
     }
 }

@@ -36,6 +36,7 @@ public sealed partial class TodoListViewModel : ObservableObject
     private readonly IAgentRelayAdministration? _administration;
     private readonly AgentDispatchService? _dispatchService;
     private readonly AgentEventProjector? _projector;
+    private readonly IAgentRepository? _agents;
 
     public TodoListViewModel(
         TodoApplicationService service,
@@ -43,7 +44,8 @@ public sealed partial class TodoListViewModel : ObservableObject
         IWorkArchiveRepository? archives = null,
         IAgentRelayAdministration? administration = null,
         AgentDispatchService? dispatchService = null,
-        AgentEventProjector? projector = null)
+        AgentEventProjector? projector = null,
+        IAgentRepository? agents = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _time = time ?? throw new ArgumentNullException(nameof(time));
@@ -51,6 +53,7 @@ public sealed partial class TodoListViewModel : ObservableObject
         _administration = administration;
         _dispatchService = dispatchService;
         _projector = projector;
+        _agents = agents;
         if (_projector is not null)
         {
             _projector.EventApplied += OnAgentEventApplied;
@@ -110,7 +113,7 @@ public sealed partial class TodoListViewModel : ObservableObject
         HasOverflow = materialized.Length > MaxVisibleRows;
         VisibleItems.Clear();
         var visible = materialized
-            .Select(item => new TodoItemViewModel(item, _time))
+            .Select(item => new TodoItemViewModel(item, _time, _agents?.GetLatestExecutionForTodo(item.Id)))
             .ToArray();
         foreach (var item in visible)
         {

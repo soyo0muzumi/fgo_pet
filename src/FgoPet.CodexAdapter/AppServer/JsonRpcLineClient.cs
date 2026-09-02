@@ -64,13 +64,23 @@ public sealed class JsonRpcLineClient : ICodexAppServerRpc, IAsyncDisposable
                     var name = method.GetString();
                     if (message.TryGetProperty("id", out var requestId))
                     {
-                        // No interactive approval UI here: never auto-approve tool or permission requests.
+                        // Approval requests are surfaced to the host so it can open a visible
+                        // Codex session. Never auto-approve or auto-cancel them: the child
+                        // app-server is intentionally torn down after the handoff.
                         if (name is "item/commandExecution/requestApproval" or "item/fileChange/requestApproval")
-                            await WriteAsync(new { id = requestId.Clone(), result = new { decision = "cancel" } }, _lifetime.Token).ConfigureAwait(false);
+                        {
+                            var approval = JsonSerializer.SerializeToElement(new
+                            {
+                                method = "fgo/approvalRequired",
+                                @params = new { method = name, requestId = requestId.Clone() },
+                            });
+                            if (!_notifications.Writer.TryWrite(approval))
+                                throw new InvalidDataException("codex_notifications_overflow");
+                        }
                         else
+                        {
                             await WriteAsync(new { id = requestId.Clone(), error = new { code = -32601, message = "interactive_approval_required" } }, _lifetime.Token).ConfigureAwait(false);
-                        if (!_notifications.Writer.TryWrite(JsonSerializer.SerializeToElement(new { method = "fgo/approvalDenied" })))
-                            throw new InvalidDataException("codex_notifications_overflow");
+                        }
                     }
                     else if (name is "turn/completed" or "turn/started" or "item/started" or "error")
                     {

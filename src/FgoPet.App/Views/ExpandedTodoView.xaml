@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="Segoe UI, Microsoft YaHei UI">
   <UserControl.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     <SolidColorBrush x:Key="Cyan" Color="#FF70E7F5"/>
     <SolidColorBrush x:Key="Mag" Color="#FFD242E8"/>
     <SolidColorBrush x:Key="Text" Color="#FFF0F5FF"/>
@@ -50,6 +51,13 @@
                       <TextBlock Text="{Binding Title}" Foreground="{StaticResource Text}" FontSize="11" TextWrapping="Wrap"/>
                       <TextBlock Text="{Binding Description}" Foreground="{StaticResource Muted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
                       <TextBlock Text="{Binding PriorityText}" Foreground="{StaticResource Muted}" FontSize="8" Margin="0,2,0,0"/>
+                      <StackPanel Visibility="{Binding Execution.IsOutcomeUnknown, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding Execution.DiagnosticBlock}" Foreground="{StaticResource Muted}" FontSize="8" TextWrapping="Wrap"/>
+                        <Button Content="复制核对标识" Tag="{Binding Execution.DiagnosticBlock}" Click="OnCopyDiagnosticClick"
+                                AutomationProperties.Name="复制待核对任务标识"
+                                Foreground="{StaticResource Cyan}" Background="Transparent" BorderThickness="0"
+                                Padding="0,3" HorizontalAlignment="Left" FontSize="8" Cursor="Hand"/>
+                      </StackPanel>
                       <Button Content="交给 Agent" Tag="{Binding Item}" Click="OnDispatchClick"
                               IsEnabled="{Binding CanDispatch}"
                               AutomationProperties.Name="交给 Agent"

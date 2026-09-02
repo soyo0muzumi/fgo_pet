@@ -33,6 +33,7 @@ using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Bond;
+using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Agents;
 using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.FileSystem;
@@ -90,6 +91,23 @@ public static class ServiceRegistration
         .AddSingleton<PortraitActivation>(provider => provider.GetRequiredService<PortraitController>().ActivateAsync)
         // Phase 2 runtime: one versioned database plus focus orchestration.
         .AddSingleton(provider => new RuntimeDatabase(provider.GetRequiredService<AppPaths>().RuntimeDatabasePath))
+        .AddSingleton<RuntimeDatabaseSnapshotService>(provider => new RuntimeDatabaseSnapshotService(
+            provider.GetRequiredService<RuntimeDatabase>(),
+            eventName => provider.GetRequiredService<ILogger<RuntimeDatabaseSnapshotService>>()
+                .LogInformation("{BackupEvent}", eventName)))
+        .AddSingleton<AppSettingsSnapshotCodec>()
+        .AddSingleton<BackupPackageReferencesCodec>()
+        .AddSingleton<PrivateBackupReader>()
+        .AddSingleton<PrivateBackupService>(provider => new PrivateBackupService(
+            provider.GetRequiredService<RuntimeDatabase>(),
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IPackIndexStore>(),
+            provider.GetRequiredService<RuntimeDatabaseSnapshotService>(),
+            provider.GetRequiredService<AppSettingsSnapshotCodec>(),
+            provider.GetRequiredService<TimeProvider>(),
+            FgoPetAppVersion.Current.ToString(),
+            eventName => provider.GetRequiredService<ILogger<PrivateBackupService>>()
+                .LogInformation("{BackupEvent}", eventName)))
         .AddSingleton<FgoPet.App.Bootstrap.IRuntimeDatabaseMigrator>(provider =>
             new SqliteRuntimeDatabaseMigrator(provider.GetRequiredService<RuntimeDatabase>()))
         .AddSingleton<IPhase2Availability, Phase2Availability>()
@@ -155,6 +173,14 @@ public static class ServiceRegistration
                 provider.GetRequiredService<AgentEventProjector>(),
                 action => dispatcher.InvokeAsync(action, DispatcherPriority.Background).Task);
         })
+        .AddSingleton<AgentArchiveService>(provider => new AgentArchiveService(
+            provider.GetRequiredService<IAgentRepository>(),
+            provider.GetRequiredService<IAgentRelayAdministration>(),
+            provider.GetRequiredService<TimeProvider>()))
+        .AddSingleton<AgentReconciliationService>(provider => new AgentReconciliationService(
+            provider.GetRequiredService<IAgentRepository>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<AgentEventProjector>()))
         .AddSingleton<IAgentRelayRuntime>(provider =>
         {
             var options = provider.GetRequiredService<RelayRuntimeOptions>();
@@ -177,8 +203,18 @@ public static class ServiceRegistration
                 }, DispatcherPriority.Background, token).Task);
         })
         .AddSingleton<AgentEventProjector>()
-        .AddSingleton<AgentCurrentTaskViewModel>()
-        .AddSingleton<AgentConnectionSettingsViewModel>()
+        .AddSingleton<AgentCurrentTaskViewModel>(provider => new AgentCurrentTaskViewModel(
+            provider.GetRequiredService<AgentEventProjector>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<AgentReconciliationService>()))
+        .AddSingleton<AgentConnectionSettingsViewModel>(provider => new AgentConnectionSettingsViewModel(
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IAgentRepository>(),
+            provider.GetRequiredService<DataClearService>(),
+            provider.GetRequiredService<IAgentGateway>(),
+            provider.GetRequiredService<IAgentRelayAdministration>(),
+            provider.GetRequiredService<IAgentRelayRuntime>(),
+            provider.GetRequiredService<AgentArchiveService>()))
         .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
         .AddSingleton<AgentReconnectService>(provider =>
         {
@@ -189,7 +225,10 @@ public static class ServiceRegistration
                 provider.GetRequiredService<AgentEventProjector>(),
                 action => dispatcher.InvokeAsync(action, DispatcherPriority.Background).Task);
         })
+        .AddSingleton<IAgentTaskLauncher, CodexTaskLauncher>()
         .AddSingleton<AgentTaskNavigationService>()
+        .AddSingleton<IAppMaintenanceCoordinator>(provider => new AppMaintenanceCoordinator(
+            provider.GetRequiredService<IAgentRelayRuntime>()))
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<HttpClient>()
@@ -234,12 +273,36 @@ public static class ServiceRegistration
         .AddSingleton<MemoryCandidateService>()
         .AddSingleton<UserDataExportService>()
         .AddSingleton<UserDataDeletionService>()
+        .AddSingleton<PrivateBackupRestoreService>(provider => new PrivateBackupRestoreService(
+            provider.GetRequiredService<RuntimeDatabase>(),
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IPackIndexStore>(),
+            provider.GetRequiredService<PrivateBackupService>(),
+            provider.GetRequiredService<PrivateBackupReader>(),
+            provider.GetRequiredService<IAppMaintenanceCoordinator>(),
+            paths.StorageRoot,
+            provider.GetRequiredService<TimeProvider>(),
+            packageRepository: provider.GetRequiredService<IArtPackageRepository>(),
+            safeLog: eventName => provider.GetRequiredService<ILogger<PrivateBackupRestoreService>>()
+                .LogInformation("{BackupEvent}", eventName)))
         .AddSingleton<MemoryViewModel>()
         .AddSingleton<ConversationMemoryPage>()
-        .AddSingleton<PrivacyPage>()
+        .AddSingleton<PrivacyPage>(provider => new PrivacyPage(
+            provider.GetRequiredService<MemoryViewModel>(),
+            provider.GetService<PrivateBackupService>(),
+            provider.GetService<PrivateBackupRestoreService>()))
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
-        .AddSingleton<ConversationOrchestrator>()
+        .AddSingleton(provider => new ConversationOrchestrator(
+            provider.GetRequiredService<IChatProviderResolver>(),
+            provider.GetRequiredService<IConversationContentResolver>(),
+            provider.GetRequiredService<SqliteConversationRepository>(),
+            provider.GetRequiredService<SqliteMemoryRepository>(),
+            provider.GetRequiredService<PromptComposer>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<ConversationSummaryService>(),
+            provider.GetRequiredService<TodoProposalService>()))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IAppSettingsStore>(),

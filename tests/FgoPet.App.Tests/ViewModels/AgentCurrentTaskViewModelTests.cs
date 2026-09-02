@@ -52,4 +52,20 @@ public sealed class AgentCurrentTaskViewModelTests
         Assert.Equal(4, viewModel.OtherActiveCount);
         Assert.True(viewModel.HasOtherActiveTasks);
     }
+
+    [Fact]
+    public void Unknown_dispatch_is_visible_for_reconciliation_and_opening_the_original_task()
+    {
+        var execution = new AgentExecution(
+            "execution-1", "todo-1", "codex", "instance-1", "task-1", "dispatch-1",
+            DateTimeOffset.UtcNow, AgentExecutionStatus.DispatchOutcomeUnknown);
+        var projector = new AgentEventProjector();
+        projector.Restore(execution);
+        var viewModel = new AgentCurrentTaskViewModel(projector, TimeProvider.System);
+
+        Assert.True(viewModel.OutcomeUnknown);
+        Assert.True(viewModel.AttentionRequired);
+        Assert.Contains("待核对", viewModel.AttentionText, StringComparison.Ordinal);
+        Assert.Equal("task-1", viewModel.CurrentTaskId);
+    }
 }

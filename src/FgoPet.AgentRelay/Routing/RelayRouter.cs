@@ -28,6 +28,17 @@ public sealed record RelayRouteReceipt(
 
 public sealed record RelayOpenReceipt(AgentOpenTaskStatus Status, string? Error = null);
 
+public sealed record RelayMaintenanceResponse(
+    string Result,
+    string? BatchId = null,
+    IReadOnlyList<AgentArchiveProtocolItem>? Items = null,
+    string? BatchSha256 = null,
+    string? AcknowledgedBatchId = null,
+    string? AcknowledgedPhase = null,
+    string? SafeError = null,
+    string? SourceType = null,
+    string? SourceInstance = null);
+
 public sealed class RelayRouter
 {
     private static readonly TimeSpan AdapterLease = TimeSpan.FromSeconds(10);
@@ -310,6 +321,151 @@ public sealed class RelayRouter
         }
     }
 
+    public AgentMaintenanceStatusResponse GetMaintenanceStatus(DateTimeOffset at)
+    {
+        lock (_stateGate)
+        {
+            var snapshot = _store.Snapshot;
+            var counters = new List<AgentCapacityCounter>
+            {
+                new("relay_dispatch_receipts", snapshot.DispatchReceipts.Count, RelayStore.MaxDispatchReceipts,
+                    snapshot.DispatchReceipts.Count(item => item.Acknowledged)),
+                new("relay_event_watermarks", snapshot.InboundEventWatermarks.Count, RelayStore.MaxInboundWatermarks, 0),
+                new("relay_inbound_queue", snapshot.Inbound.Count, RelayStore.MaxQueuedInboundEvents, 0),
+                new("relay_outbound_queue", snapshot.Outbound.Count, RelayStore.MaxQueuedDispatches, 0),
+                new("relay_archive_tombstones", snapshot.ArchiveTombstones.Count, RelayStore.MaxArchiveTombstones, 0),
+            };
+            var latestAdapter = _store.ListAdapterCapacityReports().FirstOrDefault();
+            if (latestAdapter is not null)
+            {
+                counters.Add(latestAdapter.Counter with { Name = "adapter_journal" });
+            }
+
+            var activeBatch = _store.ListArchiveBatches().FirstOrDefault(batch =>
+                batch.Phase is not (RelayArchiveBatchPhase.Completed or RelayArchiveBatchPhase.Rejected));
+            var oldestArchivableAt = activeBatch?.Items.Min(item => item.EndedAt);
+            return new AgentMaintenanceStatusResponse(counters, oldestArchivableAt, activeBatch?.BatchId, null);
+        }
+    }
+
+    public RelayMaintenanceResponse PrepareArchive(AgentArchivePrepareRequest request, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_stateGate)
+        {
+            try
+            {
+                var batch = _store.PrepareArchive(request, at);
+                return batch.Phase switch
+                {
+                    RelayArchiveBatchPhase.AwaitingAdapterPrepare => new RelayMaintenanceResponse(
+                        "accepted", batch.BatchId, batch.Items, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    RelayArchiveBatchPhase.Prepared => new RelayMaintenanceResponse(
+                        "already_prepared", batch.BatchId, null, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    RelayArchiveBatchPhase.AwaitingAdapterCommit => new RelayMaintenanceResponse(
+                        "already_prepared", batch.BatchId, null, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    RelayArchiveBatchPhase.Completed => new RelayMaintenanceResponse(
+                        "ok", batch.BatchId, null, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    _ => new RelayMaintenanceResponse(
+                        "rejected", batch.BatchId, null, batch.BatchSha256, SafeError: batch.SafeError ?? "archive_rejected",
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                };
+            }
+            catch (Exception error) when (error is InvalidOperationException or InvalidDataException)
+            {
+                return new RelayMaintenanceResponse("rejected", request.BatchId, null, request.BatchSha256,
+                    SafeError: SafeError(error.Message));
+            }
+        }
+    }
+
+    public RelayMaintenanceResponse CommitArchive(AgentArchiveCommitRequest request, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_stateGate)
+        {
+            try
+            {
+                var batch = _store.CommitArchive(request.BatchId, request.BatchSha256, at);
+                return batch.Phase switch
+                {
+                    RelayArchiveBatchPhase.AwaitingAdapterCommit => new RelayMaintenanceResponse(
+                        "accepted", batch.BatchId, null, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    RelayArchiveBatchPhase.Completed => new RelayMaintenanceResponse(
+                        "already_committed", batch.BatchId, null, batch.BatchSha256,
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                    _ => new RelayMaintenanceResponse(
+                        "rejected", batch.BatchId, null, batch.BatchSha256, SafeError: batch.SafeError ?? "archive_rejected",
+                        SourceType: batch.SourceType, SourceInstance: batch.SourceInstance),
+                };
+            }
+            catch (Exception error) when (error is InvalidOperationException or InvalidDataException)
+            {
+                return new RelayMaintenanceResponse("rejected", request.BatchId, null, request.BatchSha256,
+                    SafeError: SafeError(error.Message));
+            }
+        }
+    }
+
+    public RelayMaintenanceResponse SyncMaintenance(
+        string credential,
+        AdapterMaintenanceSyncRequest request,
+        DateTimeOffset at)
+    {
+        var grant = _registration.Authenticate(credential, at);
+        return SyncMaintenance(grant, request, at);
+    }
+
+    public RelayMaintenanceResponse SyncMaintenance(
+        RegistrationGrant grant,
+        AdapterMaintenanceSyncRequest request,
+        DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_stateGate)
+        {
+            var current = _registration.Authenticate(grant.SourceType, grant.SourceInstance, grant.Credential, at);
+            if (!string.Equals(request.SourceType, current.SourceType, StringComparison.Ordinal)
+                || !string.Equals(request.SourceInstance, current.SourceInstance, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("The maintenance source identity does not match the authenticated adapter.");
+
+            TouchAdapterOnline(current.SourceType, current.SourceInstance, at);
+            var acknowledgement = _store.AcknowledgeArchive(request, at);
+            if (acknowledgement.Result != "none")
+            {
+                return new RelayMaintenanceResponse(
+                    acknowledgement.Result,
+                    acknowledgement.Batch?.BatchId ?? request.AcknowledgedBatchId,
+                    BatchSha256: acknowledgement.Batch?.BatchSha256,
+                    AcknowledgedBatchId: request.AcknowledgedBatchId,
+                    AcknowledgedPhase: request.AcknowledgedPhase,
+                    SafeError: acknowledgement.SafeError,
+                    SourceType: current.SourceType,
+                    SourceInstance: current.SourceInstance);
+            }
+
+            var batch = _store.ListArchiveBatches().FirstOrDefault(item =>
+                item.SourceType == current.SourceType
+                && item.SourceInstance == current.SourceInstance
+                && (item.Phase is RelayArchiveBatchPhase.AwaitingAdapterPrepare
+                    or RelayArchiveBatchPhase.AwaitingAdapterCommit));
+            if (batch is null)
+                return new RelayMaintenanceResponse("none");
+
+            return batch.Phase == RelayArchiveBatchPhase.AwaitingAdapterPrepare
+                ? new RelayMaintenanceResponse("prepare", batch.BatchId, batch.Items, batch.BatchSha256,
+                    SourceType: batch.SourceType, SourceInstance: batch.SourceInstance)
+                : new RelayMaintenanceResponse("commit", batch.BatchId, null, batch.BatchSha256,
+                    SourceType: batch.SourceType, SourceInstance: batch.SourceInstance);
+        }
+    }
+
     public string AcknowledgeDispatches(
         RegistrationGrant grant,
         DispatchAcknowledgementRequest request,
@@ -347,6 +503,12 @@ public sealed class RelayRouter
     }
 
     private static bool IsTargetAllowed(RegistrationGrant grant, string targetId) => grant.Targets.Contains(targetId, StringComparer.Ordinal);
+
+    private static string SafeError(string value)
+    {
+        var compact = new string(value.Where(character => !char.IsControl(character)).ToArray()).Trim();
+        return compact.Length <= 512 ? compact : compact[..512];
+    }
 
     private static string SourceKey(string sourceType, string sourceInstance) => $"{sourceType}\u001f{sourceInstance}";
 }

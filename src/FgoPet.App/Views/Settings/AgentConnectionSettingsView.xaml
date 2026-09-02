@@ -39,6 +39,29 @@
 
       <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
         <StackPanel>
+          <DockPanel LastChildFill="False">
+            <TextBlock Text="运行安全与容量" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+            <Button DockPanel.Dock="Right" Content="{Binding ArchiveActionText}" Click="OnArchiveClick" IsEnabled="{Binding CanArchive}" AutomationProperties.Name="执行 Agent 安全归档"/>
+          </DockPanel>
+          <TextBlock Text="{Binding MaintenanceStatusText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding ArchiveCandidateText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <ItemsControl ItemsSource="{Binding MaintenanceCounters}" Visibility="{Binding HasMaintenanceCounters, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <DockPanel Margin="0,3,0,0" LastChildFill="False">
+                  <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextBrush}"/>
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding UsageText}" Foreground="{Binding CapacityAccent}" FontWeight="SemiBold"/>
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding ArchivableText}" Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,12,0"/>
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding CapacityText}" Foreground="{DynamicResource MutedTextBrush}" Margin="0,0,12,0"/>
+                </DockPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <StackPanel>
           <TextBlock Text="待批准来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
           <TextBlock Text="适配器首次连接会出现在这里。批准前不会获得任务或事件权限。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
           <TextBlock Text="当前没有待批准请求。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoPendingSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>

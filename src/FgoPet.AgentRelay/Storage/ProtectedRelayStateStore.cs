@@ -22,18 +22,19 @@ public sealed class ProtectedRelayStateStore : IRelayStateStore
 
     public RelayState Load() => _store.Load(
         () => RelayState.Empty,
-        IsValidState);
+        IsValidState).ToCurrentSchema();
 
     public void Save(RelayState state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        if (state.SchemaVersion != 1) throw new ArgumentException("Unsupported relay state schema.", nameof(state));
-        _store.Save(state);
+        if (state.SchemaVersion is not (1 or 2))
+            throw new ArgumentException("Unsupported relay state schema.", nameof(state));
+        _store.Save(state.ToCurrentSchema());
     }
 
     private static bool IsValidState(RelayState state)
     {
-        if (state.SchemaVersion != 1 || state.Pending is null || state.Grants is null) return false;
+        if (state.SchemaVersion is not (1 or 2) || state.Pending is null || state.Grants is null) return false;
         if (state.Inbound is null || state.Outbound is null || state.DispatchReceipts is null || state.InboundEventKeys is null
             || state.InboundEventWatermarks is null
             || state.Inbound.Count > RelayStore.MaxQueuedInboundEvents
@@ -41,6 +42,12 @@ public sealed class ProtectedRelayStateStore : IRelayStateStore
             || state.DispatchReceipts.Count > RelayStore.MaxDispatchReceipts
             || state.InboundEventKeys.Count > RelayStore.MaxInboundEventKeys
             || state.InboundEventWatermarks.Count > RelayStore.MaxInboundWatermarks)
+            return false;
+        if (state.SchemaVersion == 2 && (state.ArchiveBatches is null || state.ArchiveTombstones is null
+            || state.AdapterCapacityReports is null
+            || state.ArchiveBatches.Count > RelayStore.MaxArchiveBatches
+            || state.ArchiveTombstones.Count > RelayStore.MaxArchiveTombstones
+            || state.AdapterCapacityReports.Count > RelayStore.MaxAdapterCapacityReports))
             return false;
         if (state.Pending.Any(item => item is null
             || string.IsNullOrWhiteSpace(item.RequestId)
@@ -100,8 +107,78 @@ public sealed class ProtectedRelayStateStore : IRelayStateStore
                 && IsSafeText(item.SourceType)
                 && IsSafeText(item.SourceInstance)
                 && IsSafeText(item.TaskId)
-                && item.Sequence >= 1);
+                && item.Sequence >= 1)
+            && IsValidMaintenanceState(state);
     }
+
+    private static bool IsValidMaintenanceState(RelayState state)
+    {
+        if (state.SchemaVersion == 1) return true;
+
+        if (state.ArchiveBatches.Any(item => item is null
+            || !IsSafeText(item.BatchId)
+            || !IsSafeText(item.SourceType)
+            || !IsSafeText(item.SourceInstance)
+            || item.CreatedAt == default
+            || !Enum.IsDefined(item.Phase)
+            || item.Items is null or { Count: 0 or > 128 }
+            || item.Items.Any(IsInvalidArchiveItem)
+            || !IsSha256(item.BatchSha256)
+            || item.SafeError is not null && !IsSafeText(item.SafeError)))
+            return false;
+        if (state.ArchiveBatches.GroupBy(item => item.BatchId, StringComparer.Ordinal).Any(group => group.Count() != 1))
+            return false;
+        if (state.ArchiveBatches.SelectMany(item => item.Items)
+            .GroupBy(ArchiveIdentityKey, StringComparer.Ordinal).Any(group => group.Count() != 1))
+            return false;
+
+        if (state.ArchiveTombstones.Any(item => item is null
+            || !IsSafeText(item.SourceType)
+            || !IsSafeText(item.SourceInstance)
+            || !IsSafeText(item.TaskId)
+            || !IsSafeText(item.DispatchRequestId)
+            || item.FinalSequence < 0
+            || item.FinalStatus is not ("completed" or "failed" or "cancelled")
+            || !IsSafeText(item.BatchId)
+            || !IsSha256(item.BatchSha256)
+            || item.ArchivedAt == default))
+            return false;
+        if (state.ArchiveTombstones.GroupBy(ArchiveIdentityKey, StringComparer.Ordinal).Any(group => group.Count() != 1))
+            return false;
+
+        if (state.AdapterCapacityReports.Any(item => item is null
+            || !IsSafeText(item.SourceType)
+            || !IsSafeText(item.SourceInstance)
+            || item.Counter is null
+            || !IsSafeText(item.Counter.Name)
+            || item.Counter.Limit <= 0
+            || item.Counter.Used < 0 || item.Counter.Used > item.Counter.Limit
+            || item.Counter.Archivable < 0 || item.Counter.Archivable > item.Counter.Limit
+            || item.ObservedAt == default))
+            return false;
+        return state.AdapterCapacityReports.GroupBy(item => $"{item.SourceType}\u001f{item.SourceInstance}", StringComparer.Ordinal)
+            .All(group => group.Count() == 1);
+    }
+
+    private static bool IsInvalidArchiveItem(AgentArchiveProtocolItem? item) => item is null
+        || !IsSafeText(item.SourceType)
+        || !IsSafeText(item.SourceInstance)
+        || !IsSafeText(item.TaskId)
+        || !IsSafeText(item.DispatchRequestId)
+        || item.FinalSequence < 0
+        || item.FinalStatus is not ("completed" or "failed" or "cancelled")
+        || item.EndedAt == default
+        || !IsSafeText(item.ExecutionId)
+        || !IsSha256(item.SummarySha256);
+
+    private static string ArchiveIdentityKey(AgentArchiveProtocolItem item) =>
+        $"{item.SourceType}\u001f{item.SourceInstance}\u001f{item.TaskId}\u001f{item.DispatchRequestId}";
+
+    private static string ArchiveIdentityKey(AgentArchiveTombstone item) =>
+        $"{item.SourceType}\u001f{item.SourceInstance}\u001f{item.TaskId}\u001f{item.DispatchRequestId}";
+
+    private static bool IsSha256(string? value) => value is not null
+        && value.Length == 64 && value.All(character => character is >= 'A' and <= 'F' or >= '0' and <= '9');
 
     private static bool IsNonce(string? nonce) =>
         string.IsNullOrEmpty(nonce) || nonce.Length == 64 && nonce.All(IsHex);

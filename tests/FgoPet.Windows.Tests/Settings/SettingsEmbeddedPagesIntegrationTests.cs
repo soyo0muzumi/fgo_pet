@@ -104,6 +104,11 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             Assert.NotNull(page.ConversationsEmptyState);
             Assert.NotNull(page.ExportPathBox);
             Assert.NotNull(page.ExportButton);
+            Assert.NotNull(page.CreatePrivateBackupButton);
+            Assert.NotNull(page.RestorePrivateBackupButton);
+            Assert.NotNull(page.PrivateBackupStatusText);
+            Assert.Equal("创建私有备份", System.Windows.Automation.AutomationProperties.GetName(page.CreatePrivateBackupButton));
+            Assert.Equal("恢复私有备份", System.Windows.Automation.AutomationProperties.GetName(page.RestorePrivateBackupButton));
             Assert.NotNull(page.DeleteConversationButton);
             Assert.NotNull(page.DeleteAllButton);
             Assert.Equal("数据与隐私", PrivacyPage.SectionTitle);

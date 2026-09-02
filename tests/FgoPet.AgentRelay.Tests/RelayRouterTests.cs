@@ -217,9 +217,97 @@ public sealed class RelayRouterTests
         Assert.Equal(second.SourceInstance, remaining.SourceInstance);
     }
 
+    [Fact]
+    public void Archive_prepare_rejects_pending_delivery_without_mutating_relay_state()
+    {
+        var store = new RelayStore();
+        var registration = new RegistrationService(store);
+        var router = new RelayRouter(store, registration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(registration, at);
+        router.TouchAdapterOnline(grant, at);
+        router.SetAllowedTargets("codex", new[] { "opaque-project" });
+        var request = new DispatchTaskRequest("dispatch-1", "task-1", "Ship it", null, "normal", null, "opaque-project");
+        Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at).Result);
+        var before = store.Snapshot;
+
+        var result = router.PrepareArchive(new AgentArchivePrepareRequest(
+            "batch-1", new[] { Item(grant, request) }, Hash()), at);
+
+        Assert.Equal("rejected", result.Result);
+        Assert.Contains("pending", result.SafeError, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before.Outbound, store.Snapshot.Outbound);
+        Assert.Equal(before.DispatchReceipts, store.Snapshot.DispatchReceipts);
+        Assert.Empty(store.Snapshot.ArchiveBatches);
+    }
+
+    [Fact]
+    public void Archive_prepare_sync_commit_and_replay_are_idempotent_across_store_restart()
+    {
+        var state = new InMemoryRelayStateStore();
+        var firstStore = new RelayStore(state);
+        var firstRegistration = new RegistrationService(firstStore);
+        var router = new RelayRouter(firstStore, firstRegistration);
+        var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
+        var grant = Approve(firstRegistration, at);
+        firstStore.UpdatePermissions(grant.SourceType, grant.SourceInstance, new[] { "opaque-project" }, enabled: true);
+        router.TouchAdapterOnline(grant, at);
+        var request = new DispatchTaskRequest("dispatch-1", "task-1", "Ship it", null, "normal", null, "opaque-project");
+        Assert.Equal(RelayRouteResult.Accepted, router.RouteDispatch(grant.Credential, request, at).Result);
+        _ = router.DrainOutbound(grant.Credential, at);
+        Assert.Equal(RelayRouteResult.Queued, router.RouteAdapterEvent(grant.Credential,
+            ProtocolEnvelope.Create("event-1", "agent_event", new AgentEventMessage(
+                "codex", grant.SourceInstance, "task-1", 2, "task_completed", at)), at).Result);
+        Assert.Equal("acknowledged", router.AcknowledgeInbound(new EventAcknowledgementRequest(
+            "codex", grant.SourceInstance, new[] { new EventAcknowledgement("task-1", 2) }), at));
+
+        var item = Item(grant, request);
+        var prepared = router.PrepareArchive(new AgentArchivePrepareRequest("batch-1", new[] { item }, Hash()), at);
+        Assert.Equal("accepted", prepared.Result);
+        Assert.Equal(RelayArchiveBatchPhase.AwaitingAdapterPrepare, Assert.Single(firstStore.Snapshot.ArchiveBatches).Phase);
+
+        var restartedStore = new RelayStore(state);
+        var restartedRegistration = new RegistrationService(restartedStore);
+        var restartedRouter = new RelayRouter(restartedStore, restartedRegistration);
+        var sync = restartedRouter.SyncMaintenance(grant.Credential, new AdapterMaintenanceSyncRequest(
+            "codex", grant.SourceInstance, null, null, null,
+            new AgentCapacityCounter("adapter_journal", 1, 128, 1)), at);
+        Assert.Equal("prepare", sync.Result);
+        Assert.Equal("batch-1", sync.BatchId);
+
+        var preparedAck = restartedRouter.SyncMaintenance(grant.Credential, new AdapterMaintenanceSyncRequest(
+            "codex", grant.SourceInstance, "batch-1", "prepare", null,
+            new AgentCapacityCounter("adapter_journal", 1, 128, 1)), at);
+        Assert.Equal("prepared", preparedAck.Result);
+        Assert.Equal("accepted", restartedRouter.CommitArchive(new AgentArchiveCommitRequest("batch-1", Hash()), at).Result);
+
+        var committedAck = restartedRouter.SyncMaintenance(grant.Credential, new AdapterMaintenanceSyncRequest(
+            "codex", grant.SourceInstance, "batch-1", "commit", null,
+            new AgentCapacityCounter("adapter_journal", 0, 128, 1)), at);
+        Assert.Equal("committed", committedAck.Result);
+        Assert.Equal(RelayArchiveBatchPhase.Completed, Assert.Single(restartedStore.Snapshot.ArchiveBatches).Phase);
+        Assert.Single(restartedStore.Snapshot.ArchiveTombstones);
+        Assert.Empty(restartedStore.Snapshot.DispatchReceipts);
+        Assert.Empty(restartedStore.Snapshot.InboundEventWatermarks);
+
+        var replay = restartedRouter.RouteAdapterEvent(grant.Credential,
+            ProtocolEnvelope.Create("event-replay", "agent_event", new AgentEventMessage(
+                "codex", grant.SourceInstance, "task-1", 2, "task_completed", at.AddMinutes(1))), at.AddMinutes(1));
+        Assert.Equal(RelayRouteResult.AlreadyApplied, replay.Result);
+        Assert.Equal("committed", restartedRouter.SyncMaintenance(grant.Credential, new AdapterMaintenanceSyncRequest(
+            "codex", grant.SourceInstance, "batch-1", "commit", null,
+            new AgentCapacityCounter("adapter_journal", 0, 128, 1)), at).Result);
+    }
+
     private static RegistrationGrant Approve(RegistrationService service, DateTimeOffset at)
     {
         var pending = service.Request(new AdapterRegistrationRequest("codex", "Codex", "1.0"), at);
         return service.Approve(pending.RequestId, at.AddSeconds(1));
     }
+
+    private static AgentArchiveProtocolItem Item(RegistrationGrant grant, DispatchTaskRequest request) => new(
+        grant.SourceType, grant.SourceInstance, request.TodoId, request.DispatchRequestId, 2, "completed",
+        DateTimeOffset.Parse("2026-08-30T07:00:00Z"), "execution-1", Hash());
+
+    private static string Hash() => new('A', 64);
 }

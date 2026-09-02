@@ -14,7 +14,8 @@ public sealed record AgentEvent
         bool IsPrivate = false,
         string? TodoId = null,
         string? DispatchRequestId = null,
-        IReadOnlyList<string>? coveredTaskKeys = null)
+        IReadOnlyList<string>? coveredTaskKeys = null,
+        string? RemoteTaskId = null)
     {
         if (sequence < 1)
         {
@@ -34,6 +35,9 @@ public sealed record AgentEvent
         this.DispatchRequestId = string.IsNullOrWhiteSpace(DispatchRequestId)
             ? null
             : AgentIdentityValidation.Id(DispatchRequestId, nameof(DispatchRequestId));
+        this.RemoteTaskId = string.IsNullOrWhiteSpace(RemoteTaskId)
+            ? null
+            : AgentIdentityValidation.Id(RemoteTaskId, nameof(RemoteTaskId));
         CoveredTaskKeys = coveredTaskKeys?.ToArray() ?? Array.Empty<string>();
     }
 
@@ -48,6 +52,7 @@ public sealed record AgentEvent
     public bool IsPrivate { get; init; }
     public string? TodoId { get; init; }
     public string? DispatchRequestId { get; init; }
+    public string? RemoteTaskId { get; init; }
     public IReadOnlyList<string> CoveredTaskKeys { get; init; }
     public string Identity => $"{SourceType}/{SourceInstance}/{TaskId}/{Sequence}";
     public string TaskIdentity => $"{SourceType}/{SourceInstance}/{TaskId}";

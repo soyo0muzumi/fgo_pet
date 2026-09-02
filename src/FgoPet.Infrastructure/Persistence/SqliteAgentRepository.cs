@@ -23,8 +23,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.CommandText = """
             INSERT INTO agent_executions(
               execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
-              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id)
-            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended, $previous)
+              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id)
+            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended, $previous, $remote)
             ON CONFLICT(execution_id) DO UPDATE SET
               todo_id=excluded.todo_id,
               source_type=excluded.source_type,
@@ -35,7 +35,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
               started_at_utc=excluded.started_at_utc,
               updated_at_utc=excluded.updated_at_utc,
               ended_at_utc=excluded.ended_at_utc,
-              previous_execution_id=excluded.previous_execution_id
+              previous_execution_id=excluded.previous_execution_id,
+              remote_task_id=excluded.remote_task_id
             """;
         AddExecutionParameters(command, execution);
         command.ExecuteNonQuery();
@@ -60,6 +61,16 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.Parameters.AddWithValue("$source", sourceType);
         command.Parameters.AddWithValue("$instance", sourceInstance);
         command.Parameters.AddWithValue("$task", taskId);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadExecution(reader) : null;
+    }
+
+    public AgentExecution? GetLatestExecutionForTodo(string todoId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = SelectExecutionSql + " WHERE todo_id=$todo ORDER BY updated_at_utc DESC, execution_id DESC LIMIT 1";
+        command.Parameters.AddWithValue("$todo", todoId);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadExecution(reader) : null;
     }
@@ -108,6 +119,17 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.Parameters.AddWithValue("$task", taskId);
         command.Parameters.AddWithValue("$sequence", sequence);
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
+    }
+
+    public long GetLatestEventSequence(string sourceType, string sourceInstance, string taskId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(MAX(sequence), 0) FROM agent_event_receipts WHERE source_type=$source AND source_instance=$instance AND task_id=$task";
+        command.Parameters.AddWithValue("$source", sourceType);
+        command.Parameters.AddWithValue("$instance", sourceInstance);
+        command.Parameters.AddWithValue("$task", taskId);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
     public void SaveArchiveBatch(AgentArchiveBatch batch)
@@ -367,13 +389,15 @@ public sealed class SqliteAgentRepository : IAgentRepository
             update.Transaction = transaction;
             update.CommandText = """
                 UPDATE agent_executions
-                SET status=$status, started_at_utc=$started, updated_at_utc=$updated, ended_at_utc=$ended
+                SET status=$status, started_at_utc=$started, updated_at_utc=$updated, ended_at_utc=$ended,
+                    remote_task_id=$remote
                 WHERE execution_id=$id
                 """;
             update.Parameters.AddWithValue("$status", ToDb(updated.Status));
             update.Parameters.AddWithValue("$started", updated.StartedAt?.ToString("O") ?? (object)DBNull.Value);
             update.Parameters.AddWithValue("$updated", updated.UpdatedAt.ToString("O"));
             update.Parameters.AddWithValue("$ended", updated.EndedAt?.ToString("O") ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$remote", updated.RemoteTaskId ?? (object)DBNull.Value);
             update.Parameters.AddWithValue("$id", updated.Id);
             update.ExecuteNonQuery();
         }
@@ -475,7 +499,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return result;
     }
 
-    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id FROM agent_executions";
+    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id FROM agent_executions";
 
     private static void EnsureNoOtherActiveExecution(SqliteConnection connection, SqliteTransaction transaction, AgentExecution execution)
     {
@@ -504,6 +528,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.Parameters.AddWithValue("$updated", execution.UpdatedAt.ToString("O"));
         command.Parameters.AddWithValue("$ended", execution.EndedAt?.ToString("O") ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$previous", execution.PreviousExecutionId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$remote", execution.RemoteTaskId ?? (object)DBNull.Value);
     }
 
     private static AgentExecution? ReadExecution(SqliteConnection connection, SqliteTransaction transaction, string source, string instance, string task)
@@ -522,7 +547,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5),
         ParseUtc(reader.GetString(8)), FromDb(reader.GetString(6)),
         reader.IsDBNull(7) ? null : ParseUtc(reader.GetString(7)), reader.IsDBNull(9) ? null : ParseUtc(reader.GetString(9)),
-        reader.IsDBNull(10) ? null : reader.GetString(10));
+        reader.IsDBNull(10) ? null : reader.GetString(10),
+        reader.IsDBNull(11) ? null : reader.GetString(11));
 
     private static long ReadMaxSequence(SqliteConnection connection, SqliteTransaction transaction, AgentEvent agentEvent)
     {
@@ -535,16 +561,20 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return (long)command.ExecuteScalar()!;
     }
 
-    private static AgentExecution ApplyExecutionEvent(AgentExecution execution, AgentEvent agentEvent) => agentEvent.EventType switch
+    private static AgentExecution ApplyExecutionEvent(AgentExecution execution, AgentEvent agentEvent)
     {
-        AgentEventType.TaskStarted => execution.MarkStarted(agentEvent.OccurredAt),
-        AgentEventType.TaskResumed => execution.MarkResumed(agentEvent.OccurredAt),
-        AgentEventType.AttentionRequired => execution.MarkAttention(agentEvent.OccurredAt),
-        AgentEventType.TaskCompleted => execution.MarkCompleted(agentEvent.OccurredAt),
-        AgentEventType.TaskFailed => execution.MarkFailed(agentEvent.OccurredAt),
-        AgentEventType.TaskCancelled => execution.MarkCancelled(agentEvent.OccurredAt),
-        _ => execution.MarkUpdated(agentEvent.OccurredAt),
-    };
+        var updated = agentEvent.EventType switch
+        {
+            AgentEventType.TaskStarted => execution.MarkStarted(agentEvent.OccurredAt),
+            AgentEventType.TaskResumed => execution.MarkResumed(agentEvent.OccurredAt),
+            AgentEventType.AttentionRequired => execution.MarkAttention(agentEvent.OccurredAt),
+            AgentEventType.TaskCompleted => execution.MarkCompleted(agentEvent.OccurredAt),
+            AgentEventType.TaskFailed => execution.MarkFailed(agentEvent.OccurredAt),
+            AgentEventType.TaskCancelled => execution.MarkCancelled(agentEvent.OccurredAt),
+            _ => execution.MarkUpdated(agentEvent.OccurredAt),
+        };
+        return agentEvent.RemoteTaskId is null ? updated : updated.AttachRemoteTask(agentEvent.RemoteTaskId);
+    }
 
     private static AgentArchiveBatch? ReadArchiveBatch(SqliteConnection connection, SqliteTransaction? transaction, string batchId)
     {

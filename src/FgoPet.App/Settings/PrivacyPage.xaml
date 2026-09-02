@@ -66,6 +66,33 @@
 
         <Border Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
+                <TextBlock Text="私有备份与恢复" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,10"
+                           Text="私有备份使用 .fgopetbackup 保存可恢复的业务数据、非敏感设置和角色包引用；不包含 API Key、Agent 凭据、原始角色包资产或 Prompt。恢复会替换当前业务数据，进行中的 Agent 任务会标记为待核对，不会自动重新派发。"
+                           Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="CreatePrivateBackupButton"
+                            Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Content="创建私有备份"
+                            Click="OnCreatePrivateBackupClick"
+                            automation:AutomationProperties.Name="创建私有备份" />
+                    <Button Margin="8,0,0,0"
+                            x:Name="RestorePrivateBackupButton"
+                            Style="{StaticResource SettingsDangerButtonStyle}"
+                            Content="恢复私有备份"
+                            Click="OnRestorePrivateBackupClick"
+                            automation:AutomationProperties.Name="恢复私有备份" />
+                </StackPanel>
+                <TextBlock x:Name="PrivateBackupStatusText"
+                           Margin="0,10,0,0"
+                           Text=""
+                           Style="{StaticResource SettingsStatusStyle}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SettingsCardStyle}">
+            <StackPanel>
                 <TextBlock Text="删除全部用户数据" Foreground="{DynamicResource DangerBrush}" FontWeight="SemiBold" />
                 <TextBlock Margin="0,4,0,10"
                            Text="删除全部对话、记忆、称呼设置和模型连接元数据。此操作不可撤销，且不影响 Phase 2 专注与羁绊历史。"

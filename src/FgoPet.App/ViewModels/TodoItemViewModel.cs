@@ -26,14 +26,14 @@ public sealed class TodoItemViewModel
     public bool IsOverdue => Item.Status != TodoStatus.Completed
         && Item.DueAt is { } dueAt
         && dueAt <= _time.GetUtcNow();
-    public string StatusText => Item.Status switch
+    public string StatusText => Execution?.StatusText ?? (Item.Status switch
     {
         TodoStatus.Planned when IsOverdue => "已逾期 · 等待派发",
         TodoStatus.Planned => "等待派发",
         TodoStatus.Active => "Agent 执行中",
         TodoStatus.Completed => "已完成",
         _ => "未知状态",
-    };
+    });
     public string PriorityText => Item.Priority switch
     {
         TodoPriority.High => "高优先级",
@@ -43,5 +43,7 @@ public sealed class TodoItemViewModel
     public string DueText => Item.DueAt is { } dueAt
         ? dueAt.ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.CurrentCulture)
         : "无截止时间";
-    public string StatusAccent => Item.Status == TodoStatus.Active || IsOverdue ? "#FFD242E8" : "#FF70E7F5";
+    public string StatusAccent => Execution?.IsOutcomeUnknown == true
+        ? "#FFFFB84D"
+        : Item.Status == TodoStatus.Active || IsOverdue ? "#FFD242E8" : "#FF70E7F5";
 }

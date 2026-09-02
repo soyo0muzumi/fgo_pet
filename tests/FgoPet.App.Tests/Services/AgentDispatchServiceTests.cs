@@ -64,6 +64,28 @@ public sealed class AgentDispatchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Confirmed_retry_after_terminal_attempt_uses_new_ids_and_links_previous_execution()
+    {
+        var todos = new FakeTodoRepository();
+        var agents = new FakeAgentRepository();
+        var todo = new TodoApplicationService(todos, TimeProvider.System).Create("Ship", null, TodoPriority.High, null);
+        var previous = new AgentExecution(
+            "execution-old", todo.Id, "codex", "relay", "task-old", "dispatch-old",
+            DateTimeOffset.UtcNow, AgentExecutionStatus.Failed,
+            DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow);
+        agents.PreviousTerminalExecution = previous;
+        var gateway = new FakeGateway(AgentDispatchStatus.Accepted);
+        var service = new AgentDispatchService(todos, agents, gateway, TimeProvider.System);
+
+        var result = await service.DispatchAsync(todo, "codex", "project-1", confirmed: true);
+
+        Assert.Equal(AgentDispatchStatus.Accepted, result.Status);
+        Assert.NotEqual(previous.DispatchRequestId, result.DispatchRequestId);
+        Assert.NotEqual(previous.TaskId, gateway.LastRequest!.DispatchRequestId);
+        Assert.Equal(previous.Id, agents.SavedExecution!.PreviousExecutionId);
+    }
+
+    [Fact]
     public async Task Sqlite_dispatch_ack_cannot_reactivate_a_todo_completed_before_ack()
     {
         var database = new RuntimeDatabase(_databasePath);
@@ -119,7 +141,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Relay_io_failure_after_remote_start_preserves_the_authoritative_active_state()
+    public async Task Relay_io_failure_after_remote_start_marks_outcome_unknown_for_reconciliation()
     {
         var database = new RuntimeDatabase(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
@@ -139,7 +161,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
 
         Assert.Equal(AgentDispatchStatus.Offline, result.Status);
         Assert.Equal(TodoStatus.Active, todos.Get(todo.Id)!.Status);
-        Assert.Equal(AgentExecutionStatus.Active,
+        Assert.Equal(AgentExecutionStatus.DispatchOutcomeUnknown,
             agents.GetExecution("codex", "relay", result.DispatchRequestId)!.Status);
     }
 
@@ -159,7 +181,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
         Assert.Equal(AgentDispatchStatus.Offline, result.Status);
         Assert.Equal("dispatch_outcome_unknown", result.SafeError);
         Assert.Equal(TodoStatus.Active, todos.Get(todo.Id)!.Status);
-        Assert.Equal(AgentExecutionStatus.Dispatching,
+        Assert.Equal(AgentExecutionStatus.DispatchOutcomeUnknown,
             agents.GetExecution("codex", "relay", result.DispatchRequestId)!.Status);
     }
 
@@ -243,9 +265,13 @@ public sealed class AgentDispatchServiceTests : IDisposable
     private sealed class FakeAgentRepository : IAgentRepository
     {
         public AgentExecution? SavedExecution { get; private set; }
+        public AgentExecution? PreviousTerminalExecution { get; set; }
         public void SaveExecution(AgentExecution execution) => SavedExecution = execution;
         public AgentExecution? GetExecution(string id) => SavedExecution?.Id == id ? SavedExecution : null;
         public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) => SavedExecution;
+        public AgentExecution? GetLatestExecutionForTodo(string todoId) => PreviousTerminalExecution?.TodoId == todoId
+            ? PreviousTerminalExecution
+            : SavedExecution?.TodoId == todoId ? SavedExecution : null;
         public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => SavedExecution is { IsNonTerminal: true } ? new[] { SavedExecution } : Array.Empty<AgentExecution>();
         public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit) => Array.Empty<AgentExecution>();
         public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence) => false;

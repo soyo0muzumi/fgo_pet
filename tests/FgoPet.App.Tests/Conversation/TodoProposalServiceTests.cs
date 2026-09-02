@@ -1,5 +1,6 @@
 using FgoPet.App.Services;
 using FgoPet.App.Dialogue;
+using FgoPet.Core.Dialogue;
 using FgoPet.Core.Todo;
 using Xunit;
 
@@ -31,6 +32,26 @@ public sealed class TodoProposalServiceTests
     }
 
     [Fact]
+    public void ParseEnvelope_ignores_plain_chat_but_extracts_todos()
+    {
+        var service = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+
+        Assert.Null(service.ParseEnvelope("今天状态不错。"));
+        var proposals = service.ParseEnvelope("""{"text":"我整理一下。","todos":[{"title":"整理测试"}]}""");
+
+        Assert.NotNull(proposals);
+        Assert.Equal("整理测试", Assert.Single(proposals!).Title);
+    }
+
+    [Fact]
+    public void Rejects_unknown_proposal_fields_in_the_envelope()
+    {
+        var service = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+
+        Assert.Throws<FormatException>(() => service.ParseEnvelope("""{"todos":[{"title":"Inspect","metadata":"ignored"}]}"""));
+    }
+
+    [Fact]
     public void Builds_at_most_ten_redacted_todo_context_items_without_ids_or_paths()
     {
         var repository = new FakeTodoRepository();
@@ -45,6 +66,19 @@ public sealed class TodoProposalServiceTests
         Assert.Equal(10, context.Count);
         Assert.DoesNotContain(context, item => item.Contains("internal-", StringComparison.Ordinal));
         Assert.DoesNotContain(context, item => item.Contains("C:\\repo", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildRuntimeState_is_bounded_to_the_prompt_contract()
+    {
+        var repository = new FakeTodoRepository();
+        repository.Items.Add(new TodoItem("id", new string('标', 200), new string('描', 200), TodoPriority.High, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        var service = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+
+        var context = service.BuildRuntimeState("标题");
+
+        Assert.True(context.Length <= PromptContracts.MaxRuntimeStateChars);
+        Assert.Contains("[已截断]", context);
     }
 
     private sealed class FakeTodoRepository : ITodoRepository

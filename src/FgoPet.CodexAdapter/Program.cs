@@ -137,7 +137,10 @@ public static class Program
     {
         using var owner = RelaySingleInstance.TryAcquire(RelayPipeNames.ForCurrentUser(options).Mutex + ".Executor");
         if (!owner.IsOwner) return;
-        var worker = new CodexDispatchWorker(connector, new CodexTaskExecutor(new CodexTargetCatalog(options.StateRoot)), options.StateRoot);
+        var diagnostics = new CodexWorkerDiagnostics(options.StateRoot);
+        var worker = new CodexDispatchWorker(connector,
+            new CodexTaskExecutor(new CodexTargetCatalog(options.StateRoot), diagnostics: diagnostics),
+            options.StateRoot, diagnostics: diagnostics);
         await worker.RunAsync(cancellationToken).ConfigureAwait(false);
     }
 

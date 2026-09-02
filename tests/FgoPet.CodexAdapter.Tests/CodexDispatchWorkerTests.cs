@@ -9,6 +9,47 @@ namespace FgoPet.CodexAdapter.Tests;
 public sealed class CodexDispatchWorkerTests
 {
     [Fact]
+    public void Diagnostics_record_stage_and_safe_error_without_raw_dispatch_id()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fgo-diagnostics-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var diagnostics = new CodexWorkerDiagnostics(root);
+            diagnostics.Record("process.start", "failed", "codex_start_failed", "dispatch-secret");
+
+            var path = Path.Combine(root, "CodexAdapter", "worker-diagnostics.log");
+            var content = File.ReadAllText(path);
+            Assert.Contains("process.start", content);
+            Assert.Contains("codex_start_failed", content);
+            Assert.Contains("dispatch=", content);
+            Assert.DoesNotContain("dispatch-secret", content);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Worker_diagnostics_record_dispatch_lifecycle()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fgo-worker-diagnostics-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var connector = new Connector(stop);
+            var diagnostics = new RecordingDiagnostics();
+            var worker = new CodexDispatchWorker(connector, new Executor(), root, new Protector(), diagnostics);
+
+            try { await worker.RunAsync(stop.Token); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+
+            Assert.Contains(diagnostics.Entries, entry => entry.Stage == "dispatch.poll" && entry.Outcome == "received_1");
+            Assert.Contains(diagnostics.Entries, entry => entry.Stage == "dispatch.queue" && entry.Outcome == "ok");
+            Assert.Contains(diagnostics.Entries, entry => entry.Stage == "dispatch.execute" && entry.Outcome == "started");
+            Assert.Contains(diagnostics.Entries, entry => entry.Stage == "event.delivery" && entry.Outcome == "ok");
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task Completed_dispatch_is_not_executed_again_after_restart()
     {
         var root = Path.Combine(Path.GetTempPath(), "fgo-worker-" + Guid.NewGuid().ToString("N"));
@@ -152,19 +193,59 @@ public sealed class CodexDispatchWorkerTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task Approval_wait_is_persisted_without_emitting_a_terminal_event()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fgo-worker-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var executor = new Executor { Result = "awaiting_acceptance" };
+            var connector = new Connector(stop, stopWhenPolledAgain: true);
+            var worker = new CodexDispatchWorker(connector, executor, root, new Protector());
+
+            try { await worker.RunAsync(stop.Token); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+
+            Assert.Equal(1, executor.Calls);
+            Assert.Contains(connector.Events, e => e.EventType == "attention_required");
+            Assert.DoesNotContain(connector.Events, e => e.EventType is "task_cancelled" or "task_completed" or "task_failed");
+
+            var identityKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(connector.SourceInstanceId)));
+            var journal = new FgoPet.AgentRuntime.Storage.AtomicProtectedJsonStore<CodexDispatchRecord[]>(
+                Path.Combine(root, "CodexAdapter", "dispatches-" + identityKey + ".v1.json"), new Protector());
+            var saved = Assert.Single(journal.Load(() => [], _ => true));
+            Assert.Equal("awaiting_acceptance", saved.State);
+            Assert.Equal("thread-actual", saved.ThreadId);
+            Assert.Null(saved.TerminalEvent);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
     private sealed class Executor : ICodexTaskExecutor
     {
         public int Calls;
         public bool WaitForCancellation;
         public Action? Started;
+        public string Result = "task_completed";
         public async Task<string> ExecuteAsync(DispatchTaskRequest request, Func<string, string?, Task> report, CancellationToken token)
         {
             Calls++;
             await report("task_started", "thread-actual");
             Started?.Invoke();
             if (WaitForCancellation) await Task.Delay(Timeout.Infinite, token);
-            return "task_completed";
+            if (Result == "awaiting_acceptance") await report("attention_required", "thread-actual");
+            return Result;
         }
+    }
+
+    private sealed class RecordingDiagnostics : ICodexWorkerDiagnostics
+    {
+        public List<(string Stage, string Outcome, string? ErrorCode, string? DispatchRequestId)> Entries { get; } = [];
+
+        public void Record(string stage, string outcome, string? errorCode = null, string? dispatchRequestId = null)
+            => Entries.Add((stage, outcome, errorCode, dispatchRequestId));
     }
 
     private sealed class Connector(CancellationTokenSource stop, bool stopWhenPolledAgain = false,

@@ -3,6 +3,11 @@ using FgoPet.Core.Packs;
 
 namespace FgoPet.Core.Dialogue;
 
+public static class PromptContracts
+{
+    public const int MaxRuntimeStateChars = 250;
+}
+
 public sealed record PromptMessage
 {
     public PromptMessage(ChatMessageRole role, string text)
@@ -30,7 +35,7 @@ public sealed record PromptContext
         Persona = persona ?? throw new ArgumentNullException(nameof(persona));
         Knowledge = knowledge is null ? throw new ArgumentNullException(nameof(knowledge)) : knowledge.ToArray();
         Memories = memories is null ? throw new ArgumentNullException(nameof(memories)) : memories.ToArray();
-        RuntimeState = Phase3Validation.OptionalText(runtimeState, nameof(runtimeState), 250);
+        RuntimeState = Phase3Validation.OptionalText(runtimeState, nameof(runtimeState), PromptContracts.MaxRuntimeStateChars);
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
         UserMessage = Phase3Validation.Text(userMessage, nameof(userMessage), 12_000);
     }

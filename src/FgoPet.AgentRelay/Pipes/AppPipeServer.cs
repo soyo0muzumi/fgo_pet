@@ -219,6 +219,50 @@ public sealed class AppPipeServer
                 return Task.FromResult(Response(messageId, "revoke_source", new { result = "ok" }).ToJson());
             }
 
+            case "maintenance_status":
+            {
+                var status = _router.GetMaintenanceStatus(at);
+                return Task.FromResult(Response(messageId, "maintenance_status", new
+                {
+                    result = "status",
+                    counters = status.Counters,
+                    oldest_archivable_at = status.OldestArchivableAt,
+                    active_batch_id = status.ActiveBatchId,
+                    safe_error = status.SafeError,
+                }).ToJson());
+            }
+
+            case "archive_prepare":
+            {
+                var result = _router.PrepareArchive(
+                    envelope.DeserializePayload<AgentArchivePrepareRequest>(), at);
+                return Task.FromResult(Response(messageId, "archive_prepare", new
+                {
+                    result = result.Result,
+                    batch_id = result.BatchId,
+                    items = result.Items,
+                    batch_sha256 = result.BatchSha256,
+                    source_type = result.SourceType,
+                    source_instance = result.SourceInstance,
+                    safe_error = result.SafeError,
+                }).ToJson());
+            }
+
+            case "archive_commit":
+            {
+                var result = _router.CommitArchive(
+                    envelope.DeserializePayload<AgentArchiveCommitRequest>(), at);
+                return Task.FromResult(Response(messageId, "archive_commit", new
+                {
+                    result = result.Result,
+                    batch_id = result.BatchId,
+                    batch_sha256 = result.BatchSha256,
+                    source_type = result.SourceType,
+                    source_instance = result.SourceInstance,
+                    safe_error = result.SafeError,
+                }).ToJson());
+            }
+
             case "status_check":
                 return Task.FromResult(ProcessStatusCheck(envelope, at, consume));
 

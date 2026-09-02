@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(7L, Scalar<long>(connection,
+        Assert.Equal(8L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
@@ -103,7 +103,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var verify = database.Open();
-        Assert.Equal(7L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(8L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal(1L, Scalar<long>(verify,
             "SELECT COUNT(*) FROM pragma_table_info('agent_executions') WHERE name='previous_execution_id'"));
         Assert.Equal(1L, Scalar<long>(verify,

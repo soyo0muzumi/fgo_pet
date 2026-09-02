@@ -20,7 +20,8 @@ public sealed record AgentEventMessage
         bool IsPrivate = false,
         string? TodoId = null,
         string? DispatchRequestId = null,
-        IReadOnlyList<string>? CoveredTaskKeys = null)
+        IReadOnlyList<string>? CoveredTaskKeys = null,
+        string? RemoteTaskId = null)
     {
         SourceType = sourceType;
         SourceInstance = sourceInstance;
@@ -34,6 +35,7 @@ public sealed record AgentEventMessage
         this.TodoId = TodoId;
         this.DispatchRequestId = DispatchRequestId;
         this.CoveredTaskKeys = CoveredTaskKeys ?? Array.Empty<string>();
+        this.RemoteTaskId = RemoteTaskId;
     }
 
     [JsonPropertyName("source_type")]
@@ -68,6 +70,9 @@ public sealed record AgentEventMessage
 
     [JsonPropertyName("dispatch_request_id")]
     public string? DispatchRequestId { get; init; }
+
+    [JsonPropertyName("remote_task_id")]
+    public string? RemoteTaskId { get; init; }
 
     [JsonPropertyName("covered_task_keys")]
     public IReadOnlyList<string> CoveredTaskKeys { get; init; } = Array.Empty<string>();

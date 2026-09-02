@@ -25,6 +25,15 @@ public sealed record AdapterConnectionResult(AdapterConnectionStatus Status, str
     };
 }
 
+public sealed record AdapterMaintenanceSyncResult(
+    string Result,
+    string? BatchId = null,
+    IReadOnlyList<AgentArchiveProtocolItem>? Items = null,
+    string? BatchSha256 = null,
+    string? AcknowledgedBatchId = null,
+    string? AcknowledgedPhase = null,
+    string? SafeError = null);
+
 public interface ICodexRelayConnector : ICodexRelaySession
 {
     string SourceInstanceId { get; }
@@ -33,6 +42,13 @@ public interface ICodexRelayConnector : ICodexRelaySession
     Task<string> AcknowledgeDispatchesAsync(IReadOnlyList<string> dispatchRequestIds,
         CancellationToken cancellationToken = default) => Task.FromResult("acknowledged");
     Task<bool> IsDispatchAllowedAsync(string targetId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    Task<AdapterMaintenanceSyncResult> SyncMaintenanceAsync(
+        string? acknowledgedBatchId,
+        string? acknowledgedPhase,
+        string? safeError,
+        AgentCapacityCounter adapterJournal,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new AdapterMaintenanceSyncResult("none"));
 }
 
 public sealed class AdapterConnectionException(AdapterConnectionResult result) : IOException(result.StatusCode)

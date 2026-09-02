@@ -15,6 +15,9 @@
       <Button Content="{Binding AttentionText}" Click="OnOpenTaskClick" Foreground="#FFD242E8" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9">
         <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding AttentionRequired}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
       </Button>
+      <Button Content="人工核对结果" Click="OnReconcileClick" Foreground="#FFFFB84D" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9" AutomationProperties.Name="人工核对 Agent 执行结果">
+        <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding OutcomeUnknown}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
+      </Button>
       <Button Content="开始整理已完成工作" Click="OnArchiveClick" Foreground="#FFD242E8" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9">
         <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding WantsToTalk}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
       </Button>

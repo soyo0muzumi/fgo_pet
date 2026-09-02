@@ -91,6 +91,7 @@ public sealed class ConversationOrchestrator
     private readonly TimeProvider _time;
     private readonly IAppSettingsStore? _settings;
     private readonly ConversationSummaryService? _summaries;
+    private readonly TodoProposalService? _todoProposals;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
@@ -103,7 +104,8 @@ public sealed class ConversationOrchestrator
         PromptComposer composer,
         TimeProvider time,
         IAppSettingsStore? settings = null,
-        ConversationSummaryService? summaries = null)
+        ConversationSummaryService? summaries = null,
+        TodoProposalService? todoProposals = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -113,6 +115,7 @@ public sealed class ConversationOrchestrator
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _settings = settings;
         _summaries = summaries;
+        _todoProposals = todoProposals;
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -176,7 +179,7 @@ public sealed class ConversationOrchestrator
                 persona,
                 binding.Knowledge,
                 IsMemoryEnabled() ? _memories.ListEnabledMemories(servantId) : Array.Empty<StoredMemory>(),
-                string.Empty,
+                _todoProposals?.BuildRuntimeState(userText) ?? string.Empty,
                 existing.Select(message => new PromptMessage(message.Role, message.Text)).ToArray(),
                 userText));
             var request = new ChatRequest(servantId, conversationId, prompt.Messages, binding.Context);
@@ -189,12 +192,6 @@ public sealed class ConversationOrchestrator
                 if (!string.IsNullOrEmpty(chunk.TextDelta))
                 {
                     responseText.Append(chunk.TextDelta);
-                    Publish(new ConversationUpdate(
-                        ConversationUpdateType.AssistantDelta,
-                        conversationId,
-                        assistantId,
-                        chunk.TextDelta,
-                        ServantId: servantId));
                 }
 
                 if (chunk.IsComplete)
@@ -204,9 +201,28 @@ public sealed class ConversationOrchestrator
             }
 
             requestCancellation.Token.ThrowIfCancellationRequested();
+            IReadOnlyList<TodoProposal>? todoProposals = null;
+            if (_todoProposals is not null)
+            {
+                try
+                {
+                    todoProposals = _todoProposals.ParseEnvelope(responseText.ToString());
+                }
+                catch (FormatException)
+                {
+                    // Structured proposals are optional and must never fail an ordinary reply.
+                }
+            }
+
             var output = StructuredOutputValidator.Validate(
                 responseText.ToString(),
                 ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.AssistantDelta,
+                conversationId,
+                assistantId,
+                output.Text,
+                ServantId: servantId));
             var assistant = new ChatMessage(
                 assistantId,
                 conversationId,
@@ -247,7 +263,8 @@ public sealed class ConversationOrchestrator
                 conversationId,
                 assistant.MessageId,
                 output.Text,
-                ServantId: servantId));
+                ServantId: servantId,
+                StructuredResponse: todoProposals is { Count: > 0 } ? responseText.ToString() : null));
             return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, assistant.MessageId);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested)

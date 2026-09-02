@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using FgoPet.AgentProtocol;
 using FgoPet.AgentProtocol.Messages;

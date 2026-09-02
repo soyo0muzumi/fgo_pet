@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Runtime.InteropServices;
 using FgoPet.App.ViewModels;
 
 namespace FgoPet.App.Views;
@@ -44,6 +45,24 @@ public partial class ExpandedTodoView : UserControl
             && sender is FrameworkElement { Tag: FgoPet.Core.Todo.TodoItem todo })
         {
             model.RequestDispatch(todo);
+        }
+    }
+
+    private void OnCopyDiagnosticClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string diagnostic } || string.IsNullOrWhiteSpace(diagnostic))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(diagnostic);
+        }
+        catch (ExternalException)
+        {
+            // Clipboard ownership is transient on Windows; a failed copy must
+            // not affect the persisted execution or trigger a dispatch.
         }
     }
 }

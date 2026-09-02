@@ -21,9 +21,11 @@ public interface IAgentRepository
     void SaveExecution(AgentExecution execution);
     AgentExecution? GetExecution(string id);
     AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId);
+    AgentExecution? GetLatestExecutionForTodo(string todoId) => null;
     IReadOnlyList<AgentExecution> ListNonTerminalExecutions();
     IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit);
     bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence);
+    long GetLatestEventSequence(string sourceType, string sourceInstance, string taskId) => 0;
     void SaveArchiveBatch(AgentArchiveBatch batch);
     AgentArchiveBatch? GetArchiveBatch(string batchId);
     IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches();

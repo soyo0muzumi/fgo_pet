@@ -44,6 +44,27 @@ On reconnect, persisted non-terminal executions are queried through the gateway 
 applied using the same sequence and terminal-state guards as live events. Replayed
 or stale events never regress a terminal projection.
 
+## Running safety and maintenance
+
+If a dispatch transport times out after the remote side may have accepted the
+request, the App records `DispatchOutcomeUnknown` and keeps the original
+source/instance/task/request identifiers visible as bounded diagnostic data. It
+does not automatically retry or replace the execution. The user can explicitly
+confirm completed, still running, failed, or cancelled; this writes a local
+reconciliation event only and does not call the Relay. A subsequent dispatch is
+a new attempt with a new request and execution ID, linked by
+`PreviousExecutionId`.
+
+The Agent Connection settings page exposes Relay and Adapter capacity. Archive
+candidates are terminal executions older than 30 days whose final event receipt
+is present and exact. The App blocks archive while any execution is active or
+unknown, while maintenance status is unavailable, or while Relay replay-
+protection tombstones are full. After explicit confirmation, the App's durable
+archive batch coordinates Relay prepare/commit with the Adapter's local journal.
+Unknown network outcomes leave the batch resumable; they never create a
+replacement batch or delete records blindly. Completed batches delete full
+records and retain compact tombstones so stale events remain rejected.
+
 ## Adapter contract
 
 An adapter should implement the protocol and relay boundary rather than passing
@@ -59,3 +80,17 @@ Accepted app dispatches are held in the paired adapter outbox until the adapter
 polls `status_check` with `include_dispatches=true`. The adapter must then pass the
 opaque target to its own App Server resolver and emit lifecycle events through the
 same relay session.
+
+## Interactive approval and resume
+
+For Codex dispatches, the adapter starts a short-lived local App Server session.
+If Codex asks for command or file approval, the adapter does not auto-approve or
+cancel the request. It emits an `attention_required` event, persists the dispatch
+as `awaiting_acceptance`, and opens a visible `codex resume <thread-id>` session.
+The thread ID is carried only as the bounded opaque `remote_task_id`; prompts,
+tool arguments, terminal output, and file paths never enter the Agent protocol.
+
+The App attention button uses that same remote ID, so reopening a task targets the
+existing Codex thread rather than creating a second task. A resumed session keeps
+the original FGO Pet task context through `FGO_PET_AGENT_TASK` and lifecycle hooks
+continue to update the existing projection.

@@ -256,6 +256,43 @@ public sealed class AdapterPipeServer
             return Task.FromResult(Response(envelope.MessageId, "status_check", new { result = "status", dispatches, dispatch_allowed = allowed }).ToJson());
         }
 
+        if (string.Equals(envelope.MessageType, "maintenance_sync", StringComparison.Ordinal))
+        {
+            var request = envelope.DeserializePayload<AdapterMaintenanceSyncRequest>();
+            var result = _router.SyncMaintenance(grant, request, at);
+            object payload = result.Result switch
+            {
+                "none" => new { result = "none" },
+                "prepare" => new
+                {
+                    result = result.Result,
+                    batch_id = result.BatchId,
+                    items = result.Items,
+                    batch_sha256 = result.BatchSha256,
+                    source_type = result.SourceType,
+                    source_instance = result.SourceInstance,
+                },
+                "commit" => new
+                {
+                    result = result.Result,
+                    batch_id = result.BatchId,
+                    batch_sha256 = result.BatchSha256,
+                    source_type = result.SourceType,
+                    source_instance = result.SourceInstance,
+                },
+                _ => new
+                {
+                    result = result.Result,
+                    acknowledged_batch_id = result.AcknowledgedBatchId,
+                    acknowledged_phase = result.AcknowledgedPhase,
+                    safe_error = result.SafeError,
+                    source_type = result.SourceType,
+                    source_instance = result.SourceInstance,
+                },
+            };
+            return Task.FromResult(Response(envelope.MessageId, "maintenance_sync", payload).ToJson());
+        }
+
         if (string.Equals(envelope.MessageType, "dispatch_ack", StringComparison.Ordinal))
         {
             var request = envelope.DeserializePayload<DispatchAcknowledgementRequest>();

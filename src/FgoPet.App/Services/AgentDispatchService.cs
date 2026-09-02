@@ -75,6 +75,11 @@ public sealed class AgentDispatchService
         }
 
         var dispatchRequestId = CreateStableRequestId(todo.Id, sourceType, targetId, sourceInstanceId);
+        var previousExecution = _agents.GetLatestExecutionForTodo(todo.Id);
+        if (previousExecution is { IsTerminal: true })
+        {
+            dispatchRequestId = CreateNewAttemptId();
+        }
         var request = new AgentDispatchRequest(
             dispatchRequestId,
             todo.Id,
@@ -100,7 +105,8 @@ public sealed class AgentDispatchService
             sourceInstance,
             dispatchRequestId,
             dispatchRequestId,
-            now);
+            now,
+            previousExecutionId: previousExecution?.Id);
         _agents.SaveExecution(reservation);
         // Make the local Todo active before enqueueing. A very fast Adapter can
         // emit task_completed while DispatchAsync is still awaiting the relay
@@ -114,6 +120,7 @@ public sealed class AgentDispatchService
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            await MarkOutcomeUnknownAsync(reservation).ConfigureAwait(false);
             return new AgentDispatchResult(AgentDispatchStatus.Offline, dispatchRequestId, "dispatch_outcome_unknown");
         }
         catch (OperationCanceledException)
@@ -122,6 +129,7 @@ public sealed class AgentDispatchService
         }
         catch (IOException)
         {
+            await MarkOutcomeUnknownAsync(reservation).ConfigureAwait(false);
             return new AgentDispatchResult(AgentDispatchStatus.Offline, dispatchRequestId, "dispatch_outcome_unknown");
         }
 
@@ -131,6 +139,7 @@ public sealed class AgentDispatchService
         if (result.Status == AgentDispatchStatus.Offline
             || result.SafeError is "relay_offline" or "relay_timeout" or "dispatch_outcome_unknown")
         {
+            await MarkOutcomeUnknownAsync(reservation).ConfigureAwait(false);
             return result with { SafeError = "dispatch_outcome_unknown" };
         }
 
@@ -188,9 +197,27 @@ public sealed class AgentDispatchService
         catch (KeyNotFoundException) { }
     }
 
+    private Task MarkOutcomeUnknownAsync(AgentExecution reservation)
+    {
+        var current = _agents.GetExecution(
+            reservation.SourceType, reservation.SourceInstance, reservation.TaskId);
+        if (current is null || current.IsTerminal
+            || current.Status == AgentExecutionStatus.DispatchOutcomeUnknown)
+        {
+            return Task.CompletedTask;
+        }
+
+        var unknown = current.MarkDispatchOutcomeUnknown(_time.GetUtcNow());
+        _agents.SaveExecution(unknown);
+        _projector?.Synchronize(unknown);
+        return Task.CompletedTask;
+    }
+
     private static string CreateStableRequestId(string todoId, string sourceType, string targetId, string? sourceInstanceId)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{todoId}\n{sourceType}\n{sourceInstanceId}\n{targetId}"));
         return "dispatch-" + Convert.ToHexString(bytes)[..24].ToLowerInvariant();
     }
+
+    private static string CreateNewAttemptId() => "dispatch-" + Guid.NewGuid().ToString("N");
 }

@@ -60,6 +60,11 @@ public sealed record DispatchReceipt(
     bool Acknowledged = false);
 public sealed record QueuedDispatch(string SourceType, string SourceInstance, DispatchTaskRequest Request, DateTimeOffset EnqueuedAt);
 
+public sealed record RelayMaintenanceAcknowledgement(
+    string Result,
+    RelayArchiveBatchState? Batch = null,
+    string? SafeError = null);
+
 /// <summary>
 /// Relay state facade. Durable authorization changes are persisted before their in-memory
 /// snapshot is published; online flags remain transient while delivery queues and
@@ -73,6 +78,9 @@ public sealed class RelayStore
     public const int MaxDispatchReceipts = 4096;
     public const int MaxInboundEventKeys = 4096;
     public const int MaxInboundWatermarks = 4096;
+    public const int MaxArchiveBatches = 512;
+    public const int MaxArchiveTombstones = 16384;
+    public const int MaxAdapterCapacityReports = 512;
     private readonly object _gate = new();
     private readonly IRelayStateStore _stateStore;
     private Dictionary<string, PendingRegistration> _pending;
@@ -84,17 +92,23 @@ public sealed class RelayStore
     private Dictionary<string, InboundEventWatermark> _inboundWatermarks;
     private Dictionary<string, DispatchReceipt> _dispatchReceipts;
     private Queue<QueuedDispatch> _outbound;
+    private Dictionary<string, RelayArchiveBatchState> _archiveBatches;
+    private Dictionary<string, AgentArchiveTombstone> _archiveTombstones;
+    private Dictionary<string, AdapterCapacityReport> _adapterCapacityReports;
 
     public RelayStore(IRelayStateStore? stateStore = null)
     {
         _stateStore = stateStore ?? new InMemoryRelayStateStore();
-        var state = _stateStore.Load() ?? RelayState.Empty;
-        if (state.SchemaVersion != 1 || state.Pending is null || state.Grants is null
+        var state = (_stateStore.Load() ?? RelayState.Empty).ToCurrentSchema();
+        if (state.SchemaVersion != 2 || state.Pending is null || state.Grants is null
             || state.Inbound is null || state.Outbound is null || state.DispatchReceipts is null || state.InboundEventKeys is null
             || state.InboundEventWatermarks is null
             || state.Inbound.Count > MaxQueuedInboundEvents || state.Outbound.Count > MaxQueuedDispatches
             || state.DispatchReceipts.Count > MaxDispatchReceipts
-            || state.InboundEventWatermarks.Count > MaxInboundWatermarks)
+            || state.InboundEventWatermarks.Count > MaxInboundWatermarks
+            || state.ArchiveBatches is null || state.ArchiveBatches.Count > MaxArchiveBatches
+            || state.ArchiveTombstones is null || state.ArchiveTombstones.Count > MaxArchiveTombstones
+            || state.AdapterCapacityReports is null || state.AdapterCapacityReports.Count > MaxAdapterCapacityReports)
             throw new InvalidDataException("The relay state schema is invalid.");
 
         _pending = state.Pending.ToDictionary(item => item.RequestId, StringComparer.Ordinal);
@@ -105,6 +119,10 @@ public sealed class RelayStore
         if (persistedReceipts.Any(item => item is null || string.IsNullOrWhiteSpace(item.DispatchRequestId)))
             throw new InvalidDataException("The relay dispatch receipt state is invalid.");
         _dispatchReceipts = persistedReceipts.ToDictionary(item => item.DispatchRequestId, StringComparer.Ordinal);
+        _archiveBatches = state.ArchiveBatches.ToDictionary(item => item.BatchId, StringComparer.Ordinal);
+        _archiveTombstones = state.ArchiveTombstones.ToDictionary(item => ArchiveIdentityKey(item), StringComparer.Ordinal);
+        _adapterCapacityReports = state.AdapterCapacityReports.ToDictionary(
+            item => SourceKey(item.SourceType, item.SourceInstance), StringComparer.Ordinal);
         _inboundKeys = new HashSet<string>(StringComparer.Ordinal);
         _inboundWatermarks = new Dictionary<string, InboundEventWatermark>(StringComparer.Ordinal);
         foreach (var watermark in state.InboundEventWatermarks)
@@ -138,6 +156,15 @@ public sealed class RelayStore
             AgentProtocolValidator.Validate(ProtocolEnvelope.Create(
                 "dispatch-" + item.Request.DispatchRequestId, "dispatch_task", item.Request, item.EnqueuedAt));
         }
+
+        if (_archiveBatches.Values.Any(item => item.Items is null or { Count: 0 or > 128 }
+            || item.Items.Any(archiveItem => archiveItem is null)
+            || item.Phase is not (RelayArchiveBatchPhase.AwaitingAdapterPrepare
+                or RelayArchiveBatchPhase.Prepared
+                or RelayArchiveBatchPhase.AwaitingAdapterCommit
+                or RelayArchiveBatchPhase.Completed
+                or RelayArchiveBatchPhase.Rejected)))
+            throw new InvalidDataException("The relay archive batch state is invalid.");
     }
 
     public bool AcceptEvents { get; private set; } = true;
@@ -473,6 +500,8 @@ public sealed class RelayStore
                 key = EventKey(message);
             }
 
+            if (message is not null && IsArchivedReplay(message))
+                return false;
             if (_inboundKeys.Contains(key)
                 || message is not null
                     && _inboundWatermarks.TryGetValue(TaskKey(message), out var watermark)
@@ -556,6 +585,48 @@ public sealed class RelayStore
     public DispatchReceipt? GetDispatchReceipt(string requestId)
     {
         lock (_gate) return _dispatchReceipts.GetValueOrDefault(requestId);
+    }
+
+    public RelayArchiveBatchState? GetArchiveBatch(string batchId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(batchId);
+        lock (_gate) return _archiveBatches.GetValueOrDefault(batchId);
+    }
+
+    public IReadOnlyList<RelayArchiveBatchState> ListArchiveBatches()
+    {
+        lock (_gate)
+        {
+            return _archiveBatches.Values
+                .OrderBy(item => item.CreatedAt)
+                .ThenBy(item => item.BatchId, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
+    public AgentArchiveTombstone? GetArchiveTombstone(
+        string sourceType,
+        string sourceInstance,
+        string taskId,
+        string dispatchRequestId)
+    {
+        lock (_gate)
+        {
+            return _archiveTombstones.GetValueOrDefault(
+                ArchiveIdentityKey(sourceType, sourceInstance, taskId, dispatchRequestId));
+        }
+    }
+
+    public IReadOnlyList<AdapterCapacityReport> ListAdapterCapacityReports()
+    {
+        lock (_gate)
+        {
+            return _adapterCapacityReports.Values
+                .OrderByDescending(item => item.ObservedAt)
+                .ThenBy(item => item.SourceType, StringComparer.Ordinal)
+                .ThenBy(item => item.SourceInstance, StringComparer.Ordinal)
+                .ToArray();
+        }
     }
 
     public void SaveDispatchReceipt(DispatchReceipt receipt)
@@ -711,6 +782,221 @@ public sealed class RelayStore
         }
     }
 
+    public RelayArchiveBatchState PrepareArchive(AgentArchivePrepareRequest request, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items is null or { Count: 0 or > 128 })
+            throw new InvalidDataException("archive_items_invalid");
+
+        lock (_gate)
+        {
+            var sourceType = request.Items[0].SourceType;
+            var sourceInstance = request.Items[0].SourceInstance;
+            if (request.Items.Any(item => !string.Equals(item.SourceType, sourceType, StringComparison.Ordinal)
+                || !string.Equals(item.SourceInstance, sourceInstance, StringComparison.Ordinal)))
+                throw new InvalidOperationException("archive_source_mismatch");
+
+            if (_archiveBatches.TryGetValue(request.BatchId, out var existing))
+            {
+                if (!ArchiveBatchMatches(existing, sourceType, sourceInstance, request.Items, request.BatchSha256))
+                    throw new InvalidOperationException("archive_batch_conflict");
+                return existing;
+            }
+
+            if (!_grantsBySource.ContainsKey(SourceKey(sourceType, sourceInstance)))
+                throw new UnauthorizedAccessException("archive_source_unregistered");
+
+            foreach (var item in request.Items)
+            {
+                if (_outbound.Any(queued => queued.SourceType == sourceType
+                    && queued.SourceInstance == sourceInstance
+                    && queued.Request.DispatchRequestId == item.DispatchRequestId))
+                    throw new InvalidOperationException("archive_pending_dispatch");
+                if (_inbound.Any(queued =>
+                {
+                    var message = queued.Envelope.DeserializePayload<AgentEventMessage>();
+                    return message.SourceType == sourceType
+                        && message.SourceInstance == sourceInstance
+                        && message.TaskId == item.TaskId;
+                }))
+                    throw new InvalidOperationException("archive_pending_event");
+
+                if (!_dispatchReceipts.TryGetValue(item.DispatchRequestId, out var receipt)
+                    || !receipt.Acknowledged
+                    || !string.Equals(receipt.SourceType, sourceType, StringComparison.Ordinal)
+                    || !string.Equals(receipt.SourceInstance, sourceInstance, StringComparison.Ordinal))
+                    throw new InvalidOperationException("archive_receipt_not_acknowledged");
+
+                if (!_inboundWatermarks.TryGetValue(TaskKey(sourceType, sourceInstance, item.TaskId), out var watermark)
+                    || watermark.Sequence < item.FinalSequence)
+                    throw new InvalidOperationException("archive_watermark_incomplete");
+
+                if (_archiveBatches.Values.Any(batch => batch.Phase is not (RelayArchiveBatchPhase.Completed or RelayArchiveBatchPhase.Rejected)
+                    && batch.Items.Any(existingItem => ArchiveIdentityKey(existingItem) == ArchiveIdentityKey(item)))
+                    || _archiveTombstones.TryGetValue(ArchiveIdentityKey(item), out var tombstone)
+                        && !TombstoneMatches(tombstone, item, request.BatchId, request.BatchSha256))
+                    throw new InvalidOperationException("archive_identity_conflict");
+            }
+
+            var newTombstoneCount = request.Items.Count(item =>
+                !_archiveTombstones.ContainsKey(ArchiveIdentityKey(item)));
+            if (_archiveTombstones.Count + newTombstoneCount > MaxArchiveTombstones)
+                throw new InvalidDataException("relay_archive_tombstones_full");
+
+            var batch = new RelayArchiveBatchState(
+                request.BatchId,
+                sourceType,
+                sourceInstance,
+                at,
+                RelayArchiveBatchPhase.AwaitingAdapterPrepare,
+                request.Items.ToArray(),
+                request.BatchSha256);
+            var nextBatches = new Dictionary<string, RelayArchiveBatchState>(_archiveBatches, StringComparer.Ordinal)
+            {
+                [batch.BatchId] = batch,
+            };
+            CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts,
+                _inboundKeys, _inboundWatermarks, nextBatches, _archiveTombstones, _adapterCapacityReports);
+            return batch;
+        }
+    }
+
+    public RelayArchiveBatchState CommitArchive(string batchId, string batchSha256, DateTimeOffset at)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(batchId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(batchSha256);
+        lock (_gate)
+        {
+            if (!_archiveBatches.TryGetValue(batchId, out var batch))
+                throw new InvalidOperationException("archive_batch_missing");
+            if (!string.Equals(batch.BatchSha256, batchSha256, StringComparison.Ordinal))
+                throw new InvalidOperationException("archive_batch_hash_mismatch");
+            if (batch.Phase == RelayArchiveBatchPhase.AwaitingAdapterCommit
+                || batch.Phase == RelayArchiveBatchPhase.Completed)
+                return batch;
+            if (batch.Phase != RelayArchiveBatchPhase.Prepared)
+                throw new InvalidOperationException("archive_batch_not_prepared");
+
+            var nextBatches = new Dictionary<string, RelayArchiveBatchState>(_archiveBatches, StringComparer.Ordinal)
+            {
+                [batchId] = batch with { Phase = RelayArchiveBatchPhase.AwaitingAdapterCommit, CreatedAt = batch.CreatedAt },
+            };
+            CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts,
+                _inboundKeys, _inboundWatermarks, nextBatches, _archiveTombstones, _adapterCapacityReports);
+            return nextBatches[batchId];
+        }
+    }
+
+    public RelayMaintenanceAcknowledgement AcknowledgeArchive(
+        AdapterMaintenanceSyncRequest request,
+        DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            RecordAdapterCapacityUnsafe(request, at);
+            if (request.AcknowledgedBatchId is null)
+                return new RelayMaintenanceAcknowledgement("none");
+
+            if (!_archiveBatches.TryGetValue(request.AcknowledgedBatchId, out var batch)
+                || !string.Equals(batch.SourceType, request.SourceType, StringComparison.Ordinal)
+                || !string.Equals(batch.SourceInstance, request.SourceInstance, StringComparison.Ordinal))
+                return new RelayMaintenanceAcknowledgement("rejected", null, "archive_ack_identity_mismatch");
+
+            var phase = request.AcknowledgedPhase;
+            if (request.SafeError is not null)
+            {
+                if (batch.Phase is RelayArchiveBatchPhase.Completed or RelayArchiveBatchPhase.Rejected)
+                    return new RelayMaintenanceAcknowledgement(
+                        batch.Phase == RelayArchiveBatchPhase.Completed ? "committed" : "rejected",
+                        batch,
+                        batch.SafeError);
+                var rejected = batch with
+                {
+                    Phase = RelayArchiveBatchPhase.Rejected,
+                    SafeError = SafeError(request.SafeError),
+                };
+                var nextBatches = new Dictionary<string, RelayArchiveBatchState>(_archiveBatches, StringComparer.Ordinal)
+                {
+                    [batch.BatchId] = rejected,
+                };
+                CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts,
+                    _inboundKeys, _inboundWatermarks, nextBatches, _archiveTombstones, _adapterCapacityReports);
+                return new RelayMaintenanceAcknowledgement("rejected", rejected, rejected.SafeError);
+            }
+
+            if (phase == "prepare")
+            {
+                if (batch.Phase == RelayArchiveBatchPhase.Prepared)
+                    return new RelayMaintenanceAcknowledgement("prepared", batch);
+                if (batch.Phase != RelayArchiveBatchPhase.AwaitingAdapterPrepare)
+                    return new RelayMaintenanceAcknowledgement("rejected", null, "archive_prepare_ack_unexpected");
+                var prepared = batch with { Phase = RelayArchiveBatchPhase.Prepared };
+                var nextBatches = new Dictionary<string, RelayArchiveBatchState>(_archiveBatches, StringComparer.Ordinal)
+                {
+                    [batch.BatchId] = prepared,
+                };
+                CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts,
+                    _inboundKeys, _inboundWatermarks, nextBatches, _archiveTombstones, _adapterCapacityReports);
+                return new RelayMaintenanceAcknowledgement("prepared", prepared);
+            }
+
+            if (phase == "commit")
+            {
+                if (batch.Phase == RelayArchiveBatchPhase.Completed)
+                    return new RelayMaintenanceAcknowledgement("committed", batch);
+                if (batch.Phase != RelayArchiveBatchPhase.AwaitingAdapterCommit)
+                    return new RelayMaintenanceAcknowledgement("rejected", null, "archive_commit_ack_unexpected");
+
+                var nextTombstones = new Dictionary<string, AgentArchiveTombstone>(_archiveTombstones, StringComparer.Ordinal);
+                foreach (var item in batch.Items)
+                {
+                    var key = ArchiveIdentityKey(item);
+                    var tombstone = new AgentArchiveTombstone(
+                        item.SourceType,
+                        item.SourceInstance,
+                        item.TaskId,
+                        item.DispatchRequestId,
+                        item.FinalSequence,
+                        item.FinalStatus,
+                        batch.BatchId,
+                        batch.BatchSha256,
+                        at);
+                    if (nextTombstones.TryGetValue(key, out var existing)
+                        && !TombstoneMatches(existing, item, batch.BatchId, batch.BatchSha256))
+                        return new RelayMaintenanceAcknowledgement("rejected", null, "archive_tombstone_conflict");
+                    nextTombstones[key] = tombstone;
+                }
+
+                var nextReceipts = new Dictionary<string, DispatchReceipt>(_dispatchReceipts, StringComparer.Ordinal);
+                foreach (var item in batch.Items) nextReceipts.Remove(item.DispatchRequestId);
+                var nextWatermarks = new Dictionary<string, InboundEventWatermark>(_inboundWatermarks, StringComparer.Ordinal);
+                foreach (var item in batch.Items) nextWatermarks.Remove(TaskKey(item.SourceType, item.SourceInstance, item.TaskId));
+                var completed = batch with { Phase = RelayArchiveBatchPhase.Completed, SafeError = null };
+                var nextBatches = new Dictionary<string, RelayArchiveBatchState>(_archiveBatches, StringComparer.Ordinal)
+                {
+                    [batch.BatchId] = completed,
+                };
+                CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, nextReceipts,
+                    _inboundKeys, nextWatermarks, nextBatches, nextTombstones, _adapterCapacityReports);
+                return new RelayMaintenanceAcknowledgement("committed", completed);
+            }
+
+            return new RelayMaintenanceAcknowledgement("rejected", null, "archive_ack_phase_invalid");
+        }
+    }
+
+    private void RecordAdapterCapacityUnsafe(AdapterMaintenanceSyncRequest request, DateTimeOffset at)
+    {
+        var key = SourceKey(request.SourceType, request.SourceInstance);
+        var nextReports = new Dictionary<string, AdapterCapacityReport>(_adapterCapacityReports, StringComparer.Ordinal)
+        {
+            [key] = new AdapterCapacityReport(request.SourceType, request.SourceInstance, request.AdapterJournal, at),
+        };
+        CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts,
+            _inboundKeys, _inboundWatermarks, _archiveBatches, _archiveTombstones, nextReports);
+    }
+
     private RegistrationGrant? FindGrantByCredentialUnsafe(string? sourceType, string? sourceInstance, string credential)
     {
         byte[] supplied;
@@ -761,11 +1047,20 @@ public sealed class RelayStore
         IEnumerable<QueuedDispatch> outbound,
         IEnumerable<DispatchReceipt> dispatchReceipts,
         IEnumerable<string> inboundKeys,
-        IEnumerable<InboundEventWatermark> inboundWatermarks) =>
-        new(1,
+        IEnumerable<InboundEventWatermark> inboundWatermarks,
+        IReadOnlyDictionary<string, RelayArchiveBatchState>? archiveBatches = null,
+        IReadOnlyDictionary<string, AgentArchiveTombstone>? archiveTombstones = null,
+        IReadOnlyDictionary<string, AdapterCapacityReport>? adapterCapacityReports = null) =>
+        new(2,
             pending.Values.OrderBy(item => item.RequestedAt).ToArray(),
             grants.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ToArray(),
-            inbound.ToArray(), outbound.ToArray(), dispatchReceipts.ToArray(), inboundKeys.ToArray(), inboundWatermarks.ToArray());
+            inbound.ToArray(), outbound.ToArray(), dispatchReceipts.ToArray(), inboundKeys.ToArray(), inboundWatermarks.ToArray(),
+            archiveBatches?.Values.OrderBy(item => item.CreatedAt).ThenBy(item => item.BatchId, StringComparer.Ordinal).ToArray()
+                ?? _archiveBatches.Values.OrderBy(item => item.CreatedAt).ThenBy(item => item.BatchId, StringComparer.Ordinal).ToArray(),
+            archiveTombstones?.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ThenBy(item => item.TaskId, StringComparer.Ordinal).ToArray()
+                ?? _archiveTombstones.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ThenBy(item => item.TaskId, StringComparer.Ordinal).ToArray(),
+            adapterCapacityReports?.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance, StringComparer.Ordinal).ToArray()
+                ?? _adapterCapacityReports.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance, StringComparer.Ordinal).ToArray());
 
     private static string SourceKey(string sourceType, string sourceInstance) => $"{sourceType}\u001f{sourceInstance}";
 
@@ -776,7 +1071,10 @@ public sealed class RelayStore
         Queue<QueuedDispatch> nextOutbound,
         Dictionary<string, DispatchReceipt> nextReceipts,
         HashSet<string> nextInboundKeys,
-        Dictionary<string, InboundEventWatermark>? nextInboundWatermarks = null)
+        Dictionary<string, InboundEventWatermark>? nextInboundWatermarks = null,
+        IReadOnlyDictionary<string, RelayArchiveBatchState>? nextArchiveBatches = null,
+        IReadOnlyDictionary<string, AgentArchiveTombstone>? nextArchiveTombstones = null,
+        IReadOnlyDictionary<string, AdapterCapacityReport>? nextAdapterCapacityReports = null)
     {
         nextInboundWatermarks ??= _inboundWatermarks;
         if (nextInbound.Count > MaxQueuedInboundEvents) throw new InvalidDataException("relay_inbound_queue_full");
@@ -784,7 +1082,17 @@ public sealed class RelayStore
         if (nextReceipts.Count > MaxDispatchReceipts) throw new InvalidDataException("relay_dispatch_receipts_full");
         if (nextInboundKeys.Count > MaxInboundEventKeys) throw new InvalidDataException("relay_event_deduplication_full");
         if (nextInboundWatermarks.Count > MaxInboundWatermarks) throw new InvalidDataException("relay_event_watermarks_full");
-        _stateStore.Save(BuildState(nextPending, nextGrants, nextInbound, nextOutbound, nextReceipts.Values, nextInboundKeys, nextInboundWatermarks.Values));
+        var archiveBatches = nextArchiveBatches ?? _archiveBatches;
+        var archiveTombstones = nextArchiveTombstones ?? _archiveTombstones;
+        var adapterCapacityReports = nextAdapterCapacityReports ?? _adapterCapacityReports;
+        if (archiveBatches.Count > MaxArchiveBatches)
+            throw new InvalidDataException("relay_archive_batches_full");
+        if (archiveTombstones.Count > MaxArchiveTombstones)
+            throw new InvalidDataException("relay_archive_tombstones_full");
+        if (adapterCapacityReports.Count > MaxAdapterCapacityReports)
+            throw new InvalidDataException("relay_adapter_capacity_reports_full");
+        _stateStore.Save(BuildState(nextPending, nextGrants, nextInbound, nextOutbound, nextReceipts.Values,
+            nextInboundKeys, nextInboundWatermarks.Values, archiveBatches, archiveTombstones, adapterCapacityReports));
         _pending = nextPending;
         _grantsBySource = nextGrants;
         _inbound = nextInbound;
@@ -792,6 +1100,9 @@ public sealed class RelayStore
         _dispatchReceipts = nextReceipts;
         _inboundKeys = nextInboundKeys;
         _inboundWatermarks = nextInboundWatermarks;
+        _archiveBatches = new Dictionary<string, RelayArchiveBatchState>(archiveBatches, StringComparer.Ordinal);
+        _archiveTombstones = new Dictionary<string, AgentArchiveTombstone>(archiveTombstones, StringComparer.Ordinal);
+        _adapterCapacityReports = new Dictionary<string, AdapterCapacityReport>(adapterCapacityReports, StringComparer.Ordinal);
     }
 
     private static string EventKey(AgentEventMessage message) =>
@@ -805,6 +1116,50 @@ public sealed class RelayStore
 
     private static string TaskKey(string sourceType, string sourceInstance, string taskId) =>
         System.Text.Json.JsonSerializer.Serialize(new[] { sourceType, sourceInstance, taskId }, ProtocolEnvelope.JsonOptions);
+
+    private static string ArchiveIdentityKey(AgentArchiveProtocolItem item) =>
+        ArchiveIdentityKey(item.SourceType, item.SourceInstance, item.TaskId, item.DispatchRequestId);
+
+    private static string ArchiveIdentityKey(AgentArchiveTombstone item) =>
+        ArchiveIdentityKey(item.SourceType, item.SourceInstance, item.TaskId, item.DispatchRequestId);
+
+    private static string ArchiveIdentityKey(string sourceType, string sourceInstance, string taskId, string dispatchRequestId) =>
+        System.Text.Json.JsonSerializer.Serialize(
+            new[] { sourceType, sourceInstance, taskId, dispatchRequestId }, ProtocolEnvelope.JsonOptions);
+
+    private static bool ArchiveBatchMatches(
+        RelayArchiveBatchState existing,
+        string sourceType,
+        string sourceInstance,
+        IReadOnlyList<AgentArchiveProtocolItem> items,
+        string batchSha256) =>
+        string.Equals(existing.SourceType, sourceType, StringComparison.Ordinal)
+        && string.Equals(existing.SourceInstance, sourceInstance, StringComparison.Ordinal)
+        && string.Equals(existing.BatchSha256, batchSha256, StringComparison.Ordinal)
+        && existing.Items.SequenceEqual(items);
+
+    private static bool TombstoneMatches(
+        AgentArchiveTombstone existing,
+        AgentArchiveProtocolItem item,
+        string batchId,
+        string batchSha256) =>
+        string.Equals(existing.BatchId, batchId, StringComparison.Ordinal)
+        && string.Equals(existing.BatchSha256, batchSha256, StringComparison.Ordinal)
+        && existing.FinalSequence == item.FinalSequence
+        && string.Equals(existing.FinalStatus, item.FinalStatus, StringComparison.Ordinal);
+
+    private bool IsArchivedReplay(AgentEventMessage message) =>
+        _archiveTombstones.Values.Any(item =>
+            string.Equals(item.SourceType, message.SourceType, StringComparison.Ordinal)
+            && string.Equals(item.SourceInstance, message.SourceInstance, StringComparison.Ordinal)
+            && string.Equals(item.TaskId, message.TaskId, StringComparison.Ordinal)
+            && message.Sequence <= item.FinalSequence);
+
+    private static string SafeError(string value)
+    {
+        var compact = new string(value.Where(character => !char.IsControl(character)).ToArray()).Trim();
+        return compact.Length <= 512 ? compact : compact[..512];
+    }
 
     private static void SetWatermark(Dictionary<string, InboundEventWatermark> watermarks, AgentEventMessage message)
     {

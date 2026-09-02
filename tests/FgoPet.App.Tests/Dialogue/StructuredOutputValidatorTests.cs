@@ -32,4 +32,15 @@ public sealed class StructuredOutputValidatorTests
         Assert.Equal(ExpressionSemantic.Neutral, unsupported.Expression);
         Assert.Equal("仍然可以继续。", malformed.Text);
     }
+
+    [Fact]
+    public void Malformed_envelope_without_text_never_exposes_raw_json()
+    {
+        var output = StructuredOutputValidator.Validate(
+            "{\"todos\":[{\"title\":\"secret\"}]",
+            ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+
+        Assert.Equal(StructuredOutputValidator.InvalidResponseMessage, output.Text);
+        Assert.DoesNotContain("todos", output.Text, StringComparison.Ordinal);
+    }
 }

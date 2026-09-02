@@ -112,6 +112,12 @@ Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载�
 
 权限默认拒绝。没有显式批准来源和项目时不能派发任务。撤销授权立即生效，重启后不会自动恢复。最终 Release 不让用户复制项目 ID、修改 PATH 或运行 `target add` 等命令；当前仓库中的相关命令仅供开发和验收。
 
+派发过程中如果 Codex 请求命令或文件审批，FGO Pet 会将任务标记为“等待确认”，并为同一个远程线程打开可见的 `codex resume` 会话。应用中的确认入口会重新打开原线程，不会创建重复任务；只保存不透明的线程 ID，Prompt、工具参数、终端输出和本地路径不会进入 Agent 协议。
+
+如果派发后应用失去连接、但远端可能已经启动，任务会显示为“派发结果未知/待核对”，并保留原始来源、实例、任务和派发请求标识。应用不会自动重试。用户可以打开原任务、复制受限的核对标识，并明确确认“已完成”“仍在执行”“失败”或“已取消”；之后再次派发会生成新的请求 ID 和执行 ID，并通过 `PreviousExecutionId` 关联旧执行，不会被 Relay 当成旧请求重放。
+
+**设置 → Agent 连接** 还会显示 Relay/Adapter 容量、可归档记录和未完成归档批次。安全归档只选择超过 30 天、已结束且拥有精确最终回执的记录。存在任何执行中或待核对任务、维护状态尚未读取，或重放保护墓碑已满时，归档会被禁用。用户明确确认不可恢复操作后，Relay 与 Adapter 先完成 prepare/commit 协调，再删除完整记录，并保留精简墓碑拦截旧事件重放。
+
 ### 对话与记忆
 
 在 **设置 → 对话与记忆** 中：
@@ -125,9 +131,9 @@ Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载�
 
 ### 数据与隐私
 
-当前 **设置 → 数据与隐私** 提供可分享的脱敏导出、会话删除和用户数据清理。脱敏导出包含允许的对话、摘要、记忆和安全元数据，不包含 API Key、完整 Prompt、原始剧情或角色包资产。
+当前 **设置 → 数据与隐私** 提供可分享的脱敏导出、独立的私有备份与恢复、会话删除和用户数据清理。脱敏导出包含允许的对话、摘要、记忆和安全元数据，不包含 API Key、完整 Prompt、原始剧情或角色包资产。
 
-脱敏导出不是完整备份，不能用于恢复。Phase 5.2 将增加独立的私有备份与恢复：覆盖专注、时间线、羁绊、对话、记忆、Todo、工作归档和设置，同时排除模型密钥与 Agent 配对凭据。
+脱敏导出不是完整备份，不能用于恢复。私有 `.fgopetbackup` 是四成员的版本化归档，覆盖专注、时间线、羁绊、对话、记忆、Todo、Agent 执行/回执、工作归档、设置和角色包引用；它不包含 API Key、Credential Manager/Relay/Adapter 配对状态、Prompt、日志、绝对路径或角色包资产。恢复前会在隔离目录校验路径、大小、哈希、SQLite 完整性和 schema；恢复会替换当前业务状态并保留回滚副本。`dispatching`、`active` 和 `attention` Agent 执行会变为“派发结果未知/待核对”，不会自动重新派发。引用的角色包未安装时恢复仍可完成，但会提示重新安装；Agent 凭据不恢复，启用 Agent 前需要重新配对。
 
 删除操作具有不同范围，请在确认框中核对说明；卸载程序默认保留用户数据，完整清除必须由用户单独确认。
 
@@ -155,9 +161,9 @@ Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载�
 - **Phase 2**：专注、恢复、今日时间线和羁绊已在主要 Release 环境验收。
 - **Phase 3**：模型配置、对话、记忆、设置和隐私控制已验收。
 - **Phase 4**：Todo、Agent Relay/Adapter、Codex 集成、重启恢复和撤销已验收并合入本地 `main`。
-- **Phase 5**：方向已确定为任务运行安全、备份恢复、GUI 配置、正式角色包与 Release 打包；功能实现尚未开始。
+- **Phase 5**：方向已确定为任务运行安全、备份恢复、GUI 配置、正式角色包与 Release 打包。S2 Agent 可见审批/恢复、Phase 5.1 任务运行安全与 Phase 5.2 私有备份恢复已在隔离 worktree 实现，最终统一整合前仍不影响本地 `main`。
 
-Phase 4 证据见 [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md)。Phase 5 设计见 [Phase 5 产品化设计](docs/superpowers/specs/2026-09-01-phase5-productization-design.md)。
+Phase 4 证据见 [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md)，Phase 5.1 验收见 [Agent 任务运行安全验收](docs/reports/2026-09-02-phase5-1-agent-safety-acceptance.md)。Phase 5 设计见 [Phase 5 产品化设计](docs/superpowers/specs/2026-09-01-phase5-productization-design.md)。
 
 ## 开发者构建与测试
 
