@@ -31,3 +31,11 @@ The exact blocker is the absent App restore asset file (`src/FgoPet.App/obj/proj
 ## Fix
 
 Updated `scripts/publish-release.ps1` to pass `--no-restore` to the Task 1 profile publish invocation. Added a focused regression test asserting the release publisher uses prepared worktree assets without restoring user NuGet configuration. Existing staging, payload-boundary, manifest, hash, and atomic-output behavior is unchanged.
+
+## Release blocker follow-up
+
+The current release blocker was reproduced in this worktree: `dotnet publish src/FgoPet.App/FgoPet.App.csproj -c Release -r win-x64 --self-contained false --no-restore ...` failed with `NETSDK1047` because `src/FgoPet.App/obj/project.assets.json` had no `net8.0-windows/win-x64` target. The App project did not declare `RuntimeIdentifiers`.
+
+The minimal fix is `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>` in `src/FgoPet.App/FgoPet.App.csproj`, matching the release profile's `win-x64` RID and preserving existing behavior.
+
+Verification was limited as requested: the App project XML parsed successfully and `git diff --check` passed. A worktree-local restore using `NuGet.Temp.Config` was attempted but could not read `C:\Users\24139\AppData\Roaming\NuGet\NuGet.Config` due to access denial; network restore was then stopped. No publish or tests were run after the interruption.
