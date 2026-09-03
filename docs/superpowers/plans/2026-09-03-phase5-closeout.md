@@ -53,10 +53,10 @@ This section records only evidence obtained in the isolated `phase5-5-release-pr
 | PowerShell parser checks | Passed | `powershell.exe -NoProfile` AST parse completed successfully. |
 | App RID Release build | Passed | `dotnet build src/FgoPet.App/FgoPet.App.csproj -c Release -r win-x64 --no-restore`: 0 warnings / 0 errors. |
 | Publish / release verifier | Passed | Candidate `D:\fgo_unpack\release-candidate-20260903d`; `verify-release.ps1` returned `Release verification passed.` Manifest records version `0.1.0`, RID `win-x64`, TFM `net8.0-windows`, and `.NET 8 Desktop Runtime`. |
-| Isolated acceptance | Blocked by host environment | Extraction and preflight verification passed, but MCP smoke cannot create the current-user DPAPI identity state because the controlled runner has no loaded user profile. The adapter emits `adapter_start_or_connection_failed`; direct DPAPI probing reproduced the same host limitation. |
+| Isolated acceptance | Passed in normal Windows user session | User reran with `powershell.exe -NoProfile -ExecutionPolicy Bypass`: release verification, extraction, MCP `initialize`/`tools/list` smoke, repeated install/upgrade, uninstall, and isolated-state preservation all passed. |
 
 The candidate was produced and verified locally. Its archive SHA-256 and final public release authorization remain intentionally outside this task.
 
 ### Manual Windows evidence gaps
 
-GUI behavior, sleep/resume, DPI, multi-monitor, long-running operation, and final Windows runtime evidence remain outstanding. The candidate is not publicly release-authorized until acceptance is rerun on a normal Windows user session with the profile loaded.
+GUI behavior, sleep/resume, DPI, multi-monitor, long-running operation, and final Windows runtime evidence remain outstanding. The candidate is not publicly release-authorized until those manual checks and any release authorization are completed.
