@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw
 import pytest
 
+from fgo_pet_content.art.layout_spec import LayoutExpectation
 from fgo_pet_content.art.sheet import SheetLayoutError, analyze_sheet
 
 
@@ -34,3 +35,8 @@ def test_detects_full_body_and_row_major_expression_grid() -> None:
 def test_rejects_sheet_without_exactly_seven_expression_rows() -> None:
     with pytest.raises(SheetLayoutError, match="seven expression rows"):
         analyze_sheet(_sheet(row_count=6))
+
+
+def test_explicit_expectation_rejects_observed_row_mismatch() -> None:
+    with pytest.raises(SheetLayoutError, match="expected 3 expression rows"):
+        analyze_sheet(_sheet(row_count=2), LayoutExpectation(rows=3, columns=4))
