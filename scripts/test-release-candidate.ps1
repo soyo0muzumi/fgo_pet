@@ -76,7 +76,9 @@ try {
 
     $common = @('-InstallRoot', $installRoot, '-CodexHome', $codexHome, '-PublishedSource', $extract,
         '-SkipUserPath', '-SkipPluginRegistration')
-    $sentinel = Join-Path (Join-Path $stateRoot 'CodexAdapter') 'preserve.txt'
+    # Keep the assertion outside the installer-owned state directories, which
+    # uninstall-codex-adapter.ps1 deliberately removes.
+    $sentinel = Join-Path $stateRoot 'acceptance-preserve.txt'
     [IO.Directory]::CreateDirectory((Split-Path -Parent $sentinel)) | Out-Null
     Set-Content -LiteralPath $sentinel -Value 'acceptance-sentinel' -NoNewline
     $previousStateRoot = [Environment]::GetEnvironmentVariable('FGO_PET_STATE_ROOT', 'Process')
