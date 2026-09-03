@@ -48,15 +48,15 @@ This section records only evidence obtained in the isolated `phase5-5-release-pr
 
 | Check | Result | Evidence |
 |---|---|---|
-| Python full suite | Incomplete | `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q` did not complete within the bounded execution window; output reached 39% before termination. |
-| PowerShell packaging gate | Incomplete | Started with a 20-second bound; no result was obtained because the first invocation could not use the same file for stdout and stderr redirection. No restore was performed. |
+| Python full suite | Passed | `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q`: `185 passed`. |
+| PowerShell packaging gate | Passed | `scripts/test-packaging.ps1`: Python `71 passed`, Core `16 passed`, Infrastructure `76 passed`; `Packaging gate passed.` |
 | PowerShell parser checks | Passed | `pwsh -NoProfile` AST parse completed: `PARSED 11 PowerShell scripts`. |
-| App Release build | Blocked | `dotnet build src/FgoPet.App/FgoPet.App.csproj -c Release --no-restore` failed in 0.76s with `NETSDK1004`: missing `src/FgoPet.App/obj/project.assets.json`. |
-| Publish / release verifier | Not run | No usable NuGet assets or candidate archive are present in this worktree. |
-| Isolated acceptance | Not run | Requires a verified Task 2 candidate archive. |
+| App RID Release build | Passed | `dotnet build src/FgoPet.App/FgoPet.App.csproj -c Release -r win-x64 --no-restore`: 0 warnings / 0 errors. |
+| Publish / release verifier | Passed | Candidate `D:\fgo_unpack\release-candidate-20260903d`; `verify-release.ps1` returned `Release verification passed.` Manifest records version `0.1.0`, RID `win-x64`, TFM `net8.0-windows`, and `.NET 8 Desktop Runtime`. |
+| Isolated acceptance | Blocked by host environment | Extraction and preflight verification passed, but MCP smoke cannot create the current-user DPAPI identity state because the controlled runner has no loaded user profile. The adapter emits `adapter_start_or_connection_failed`; direct DPAPI probing reproduced the same host limitation. |
 
-No candidate version, runtime identifier, archive SHA-256, or candidate path can be recorded because no candidate was produced. The archive content scan was therefore not applicable.
+The candidate was produced and verified locally. Its archive SHA-256 and final public release authorization remain intentionally outside this task.
 
 ### Manual Windows evidence gaps
 
-GUI install, sleep/resume, DPI, multi-monitor, and long-running operation remain unverified. Clean-install/upgrade/uninstall evidence, credential/path/archive inspection of a generated candidate, and final Windows runtime evidence are also outstanding. These gaps mean the candidate is not publicly release-authorized.
+GUI behavior, sleep/resume, DPI, multi-monitor, long-running operation, and final Windows runtime evidence remain outstanding. The candidate is not publicly release-authorized until acceptance is rerun on a normal Windows user session with the profile loaded.
