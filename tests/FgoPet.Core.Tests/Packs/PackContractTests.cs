@@ -138,6 +138,29 @@ public sealed class PackContractTests
         Assert.Equal(PackErrorCode.ManifestMalformed, failure.Failure.Code);
     }
 
+    [Fact]
+    public void Shared_minimal_fixture_round_trips_capabilities_and_declared_files()
+    {
+        var json = File.ReadAllText(FixturePath("valid-minimal/package.json"));
+
+        var manifest = PackJson.DeserializeStrict<PackManifestV1>(json);
+
+        Assert.Equal(["art.v3"], manifest.Capabilities);
+        Assert.Contains("previews/library.png", manifest.Files);
+        Assert.Contains("appearances/default/manifest.json", manifest.Files);
+    }
+
+    [Fact]
+    public void Unknown_capability_in_shared_fixture_is_rejected()
+    {
+        var json = File.ReadAllText(FixturePath("invalid-cases/unknown-capability/package.json"));
+
+        var failure = Assert.Throws<PackFailureException>(() =>
+            PackJson.DeserializeStrict<PackManifestV1>(json));
+
+        Assert.Equal(PackErrorCode.ManifestMalformed, failure.Failure.Code);
+    }
+
     [Theory]
     [InlineData("1.0.0")]
     [InlineData("1.0.0-alpha.1")]

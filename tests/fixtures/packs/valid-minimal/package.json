@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "package_id": "fixture.minimal",
+  "package_version": "1.0.0",
+  "servant_id": "fixture_servant",
+  "display_name": "Fixture Minimal",
+  "publisher": "tests",
+  "min_app_version": "1.0.0",
+  "capabilities": ["art.v3"],
+  "preview_path": "previews/library.png",
+  "appearances": [
+    {"appearance_id": "default", "manifest_path": "appearances/default/manifest.json"}
+  ],
+  "files": [
+    "previews/library.png",
+    "appearances/default/manifest.json"
+  ]
+}

@@ -30,6 +30,30 @@ public sealed class PackManifestTests
     }
 
     [Fact]
+    public void Package_manifest_accepts_known_capabilities_and_declared_files()
+    {
+        var node = JsonNode.Parse(ManifestJson())!.AsObject();
+        node["capabilities"] = new JsonArray("art.v3", "persona.v1");
+        node["files"] = new JsonArray(
+            "previews/library.png",
+            "appearances/casual/manifest.json");
+
+        var manifest = PackJson.DeserializeStrict<PackManifestV1>(node.ToJsonString());
+
+        Assert.Equal(["art.v3", "persona.v1"], manifest.Capabilities);
+        Assert.Equal(2, manifest.Files.Count);
+    }
+
+    [Fact]
+    public void Package_manifest_rejects_unknown_capabilities()
+    {
+        var node = JsonNode.Parse(ManifestJson())!.AsObject();
+        node["capabilities"] = new JsonArray("shell.exec");
+
+        AssertManifestInvalid(node.ToJsonString());
+    }
+
+    [Fact]
     public void Package_settings_reject_more_than_32_definitions()
     {
         var definitions = Enumerable.Range(0, 33)

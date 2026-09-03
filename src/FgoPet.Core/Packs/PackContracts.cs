@@ -190,6 +190,18 @@ public sealed record PackAppearanceRef
     public required string ManifestPath { get; init; }
 }
 
+/// <summary>Versioned data capabilities understood by the current package reader.</summary>
+public static class PackCapabilityKeys
+{
+    public static IReadOnlySet<string> Known { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "art.v3",
+        "dialogue.v1",
+        "knowledge.v1",
+        "persona.v1",
+    };
+}
+
 /// <summary>Application-owned declarative field types permitted in package settings.</summary>
 public enum PackSettingType
 {
@@ -253,6 +265,9 @@ public sealed record PackManifestV1 : IStrictDeserializable
     [JsonPropertyName("min_app_version")]
     public string MinAppVersion { get; init; } = string.Empty;
 
+    [JsonPropertyName("capabilities")]
+    public IReadOnlyList<string> Capabilities { get; init; } = Array.Empty<string>();
+
     [JsonPropertyName("preview_path")]
     public string PreviewPath { get; init; } = string.Empty;
 
@@ -261,6 +276,9 @@ public sealed record PackManifestV1 : IStrictDeserializable
 
     [JsonPropertyName("settings")]
     public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = Array.Empty<PackSettingDefinition>();
+
+    [JsonPropertyName("files")]
+    public IReadOnlyList<string> Files { get; init; } = Array.Empty<string>();
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtraData { get; set; }
@@ -292,6 +310,9 @@ public sealed record PackManifestV1 : IStrictDeserializable
             throw new PackFailureException(new PackFailure(PackErrorCode.ManifestMalformed, "包必须声明至少一个外观。"));
         }
 
+        ValidateCapabilities();
+        ValidateFiles();
+
         var duplicates = Appearances
             .GroupBy(appearance => appearance.AppearanceId, StringComparer.Ordinal)
             .Where(group => group.Count() > 1)
@@ -303,6 +324,78 @@ public sealed record PackManifestV1 : IStrictDeserializable
         }
 
         ValidateSettings();
+    }
+
+    private void ValidateCapabilities()
+    {
+        if (Capabilities is null)
+        {
+            throw Malformed("capabilities 不能为 null。");
+        }
+        if (Capabilities.Distinct(StringComparer.Ordinal).Count() != Capabilities.Count)
+        {
+            throw Malformed("capabilities 不能重复。");
+        }
+        foreach (var capability in Capabilities)
+        {
+            if (!PackCapabilityKeys.Known.Contains(capability))
+            {
+                throw Malformed($"不支持的 capability: {capability}。");
+            }
+        }
+    }
+
+    private void ValidateFiles()
+    {
+        if (Files is null)
+        {
+            throw Malformed("files 不能为 null。");
+        }
+        if (Files.Count == 0)
+        {
+            return;
+        }
+        if (Files.Contains("package.json", StringComparer.Ordinal))
+        {
+            throw Malformed("files 不能包含 package.json。");
+        }
+        if (Files.Distinct(StringComparer.Ordinal).Count() != Files.Count)
+        {
+            throw Malformed("files 不能包含重复路径。");
+        }
+        foreach (var file in Files)
+        {
+            if (!IsSafeRelativePosixPath(file))
+            {
+                throw Malformed("files 只能包含安全的相对 POSIX 路径。");
+            }
+        }
+        var required = new HashSet<string>(StringComparer.Ordinal)
+        {
+            PreviewPath,
+        };
+        required.UnionWith(Appearances.Select(appearance => appearance.ManifestPath));
+        if (!required.IsSubsetOf(Files))
+        {
+            throw Malformed("files 必须声明预览图和全部外观 manifest。");
+        }
+    }
+
+    private static bool IsSafeRelativePosixPath(string? value)
+    {
+        if (string.IsNullOrEmpty(value)
+            || value.StartsWith("/", StringComparison.Ordinal)
+            || value.Contains('\\'))
+        {
+            return false;
+        }
+        if (value.Length >= 2 && char.IsAsciiLetter(value[0]) && value[1] == ':')
+        {
+            return false;
+        }
+        var segments = value.Split('/', StringSplitOptions.None);
+        return segments.All(segment => segment.Length > 0 && segment is not "." and not "..")
+               && string.Equals(string.Join("/", segments), value, StringComparison.Ordinal);
     }
 
     private void ValidateSettings()
