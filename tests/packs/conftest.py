@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 CORE_SEMANTICS = (
@@ -26,7 +26,12 @@ def _sha256(path: Path) -> str:
 
 def _write_png(path: Path, size: tuple[int, int], color: tuple[int, int, int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGBA", size, color).save(path, format="PNG")
+    image = Image.new("RGBA", size, (255, 255, 255, 0))
+    ImageDraw.Draw(image).rectangle(
+        (2, 2, size[0] - 3, size[1] - 3),
+        fill=color,
+    )
+    image.save(path, format="PNG")
 
 
 def _write_appearance(project: Path, *, fallback: dict[str, str] | None = None) -> None:
@@ -109,4 +114,3 @@ def pack_project(tmp_path: Path) -> Path:
         json.dumps(package, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return project
-

@@ -248,6 +248,21 @@ def _validate_appearance(
                         detail="asset has no visible alpha",
                     )
                 )
+            else:
+                visible = _visible_alpha_bbox(image)
+                if visible and (
+                    visible[0] == 0
+                    or visible[1] == 0
+                    or visible[2] == image.width
+                    or visible[3] == image.height
+                ):
+                    errors.append(
+                        PackValidationIssue(
+                            check_id="asset.foreground_edge",
+                            path=relative,
+                            detail="asset foreground touches the crop edge",
+                        )
+                    )
         except (OSError, ValueError):
             errors.append(
                 PackValidationIssue(
@@ -377,6 +392,11 @@ def _readable_image(path: Path) -> bool:
         return True
     except (OSError, ValueError):
         return False
+
+
+def _visible_alpha_bbox(image: Image.Image):
+    alpha = image.getchannel("A").point(lambda value: 255 if value >= 32 else 0)
+    return alpha.getbbox()
 
 
 def _sha256(path: Path) -> str:
