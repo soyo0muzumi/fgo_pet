@@ -15,6 +15,8 @@ $expectedProfileProperties = [ordered]@{
     Configuration = "Release"
     PublishSingleFile = "false"
     IncludeNativeLibrariesForSelfExtract = "false"
+    DebugSymbols = "false"
+    DebugType = "None"
 }
 foreach ($expectedProperty in $expectedProfileProperties.GetEnumerator()) {
     $actualValue = [string]$publishProfile.Project.PropertyGroup.($expectedProperty.Key)
