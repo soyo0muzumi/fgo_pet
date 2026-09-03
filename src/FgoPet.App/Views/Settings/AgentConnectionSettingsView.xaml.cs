@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Runtime.InteropServices;
 using FgoPet.App.ViewModels;
 
 namespace FgoPet.App.Views.Settings;
@@ -19,6 +20,22 @@ public partial class AgentConnectionSettingsView : UserControl
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RunUiOperationAsync(() => ViewModel?.RefreshAsync());
 
     private async void OnTestConnectionClick(object sender, RoutedEventArgs e) => await RunUiOperationAsync(() => ViewModel?.TestConnectionAsync());
+
+    private async void OnRefreshTargetsClick(object sender, RoutedEventArgs e) => await RunUiOperationAsync(() => ViewModel?.RefreshTargetsAsync());
+
+    private void OnCopyDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        try
+        {
+            Clipboard.SetText(ViewModel.BuildDiagnosticText());
+            ViewModel.ReportDiagnosticCopied();
+        }
+        catch (ExternalException)
+        {
+            ViewModel.ReportUiError();
+        }
+    }
 
     private async void OnClearClick(object sender, RoutedEventArgs e) => await RunUiOperationAsync(() => ViewModel?.ClearAgentTodoDataAsync());
 
@@ -72,6 +89,30 @@ public partial class AgentConnectionSettingsView : UserControl
         }
 
         await RunUiOperationAsync(() => ViewModel?.RevokeSourceAsync(source));
+    }
+
+    private async void OnRePairSourceClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not AgentApprovedSourceViewModel source || !Confirm(
+                "重新配对来源",
+                $"确定重新配对“{source.DisplayName}”吗？旧授权将失效，但不会删除 Todo、对话、记忆或执行历史等业务数据。"))
+        {
+            return;
+        }
+
+        await RunUiOperationAsync(() => ViewModel?.RePairSourceAsync(source));
+    }
+
+    private void OnRemoveUnresolvedTargetsClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not AgentApprovedSourceViewModel source || !Confirm(
+                "移除未解析授权",
+                $"确定移除“{source.DisplayName}”中当前无法匹配的项目授权吗？该操作只影响此来源的项目权限。"))
+        {
+            return;
+        }
+
+        source.RemoveUnresolvedTargets();
     }
 
     private async Task RunUiOperationAsync(Func<Task?> operation)

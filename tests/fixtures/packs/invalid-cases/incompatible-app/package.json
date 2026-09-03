@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "package_id": "fixture.invalid",
+  "package_version": "1.0.0",
+  "servant_id": "fixture_servant",
+  "display_name": "Future App",
+  "min_app_version": "99.0.0",
+  "preview_path": "previews/library.png",
+  "appearances": [
+    {"appearance_id": "default", "manifest_path": "appearances/default/manifest.json"}
+  ],
+  "files": [
+    "previews/library.png",
+    "appearances/default/manifest.json"
+  ]
+}

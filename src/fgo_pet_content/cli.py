@@ -5,11 +5,15 @@ from pathlib import Path
 
 import typer
 import httpx
+from PIL import Image
 
 from .atlas import AtlasClient
-from .art.export import export_art_bundle
+from .art.export import AppearanceExportMetadata, export_art_bundle, export_appearance_v3
 from .art.labels import load_expression_labels
+from .art.layout_spec import LayoutExpectation, LayoutProposal, LayoutSpec, confirm_layout
 from .art.qa import validate_art_bundle
+from .art.sheet import analyze_sheet
+from .art.models import Point, Rect, Size
 from .cache import atomic_write
 from .catalog import SourceCatalog
 from .compiler import compile_persona, load_evidence_cards, write_persona_bundle
@@ -31,6 +35,8 @@ from .scenario_evaluation import evaluate_scenarios
 from .ranking import measure_chapter, rank_chapters
 from .readiness import ReadinessInputs, evaluate_readiness
 from .retrieval import search_story_index
+from .packs.build import PackBuildError, build_pack
+from .packs.validate import validate_pack_project
 
 
 app = typer.Typer(help="FGO Pet content pipeline")
@@ -40,12 +46,14 @@ persona_app = typer.Typer(help="Compile approved persona data")
 knowledge_app = typer.Typer(help="Build and query Mash knowledge artifacts")
 art_app = typer.Typer(help="Process and validate local character art")
 readiness_app = typer.Typer(help="Evaluate character implementation readiness")
+pack_app = typer.Typer(help="Validate and build data-only role packages")
 app.add_typer(story_app, name="story")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(persona_app, name="persona")
 app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(art_app, name="art")
 app.add_typer(readiness_app, name="readiness")
+app.add_typer(pack_app, name="pack")
 
 
 @app.callback()
@@ -481,6 +489,191 @@ def validate_mash_art(
     typer.echo(report.model_dump_json())
     if report.status != "PASS":
         raise typer.Exit(1)
+
+
+@art_app.command("propose-layout")
+def propose_art_layout(
+    source: Path = typer.Option(..., exists=True, dir_okay=False),
+    output: Path = typer.Option(..., dir_okay=False),
+    rows: int | None = typer.Option(None, min=1),
+    columns: int | None = typer.Option(None, min=1),
+) -> None:
+    """Propose a checked sheet layout and require confirmation when ambiguous."""
+    try:
+        with Image.open(source) as opened:
+            proposal = analyze_sheet(
+                opened,
+                LayoutExpectation(rows=rows, columns=columns),
+            )
+        if not isinstance(proposal, LayoutProposal):
+            raise ValueError("layout proposal was not produced")
+        atomic_write(
+            output,
+            json.dumps(
+                _proposal_payload(proposal),
+                ensure_ascii=False,
+                indent=2,
+            ).encode("utf-8"),
+        )
+    except (OSError, ValueError):
+        typer.echo(json.dumps({"status": "FAIL", "detail": "layout proposal failed"}))
+        raise typer.Exit(1)
+
+    if proposal.status == "confirmation_required":
+        confirmation = output.with_name(output.stem + ".confirmation.json")
+        typer.echo(
+            json.dumps(
+                {
+                    "status": proposal.status,
+                    "proposal": str(output),
+                    "confirmation_file": str(confirmation),
+                },
+                ensure_ascii=False,
+            )
+        )
+        raise typer.Exit(2)
+    typer.echo(json.dumps({"status": "PASS", "layout": str(output)}, ensure_ascii=False))
+
+
+@art_app.command("confirm-layout")
+def confirm_art_layout(
+    proposal: Path = typer.Option(..., exists=True, dir_okay=False),
+    confirmation: Path = typer.Option(..., exists=True, dir_okay=False),
+    output: Path = typer.Option(..., dir_okay=False),
+) -> None:
+    """Turn a proposal and explicit confirmation into a frozen layout spec."""
+    try:
+        loaded = json.loads(proposal.read_text(encoding="utf-8"))
+        layout_proposal = LayoutProposal(
+            source_size=Size.model_validate(loaded["source_size"]),
+            full_body=Rect.model_validate(loaded["full_body"]),
+            expression_intervals=tuple(
+                (int(start), int(end)) for start, end in loaded["expression_intervals"]
+            ),
+            columns=loaded.get("columns"),
+            status=loaded["status"],
+        )
+        layout = confirm_layout(layout_proposal, confirmation)
+        atomic_write(
+            output,
+            layout.model_dump_json(indent=2).encode("utf-8"),
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        typer.echo(json.dumps({"status": "FAIL", "detail": "layout confirmation failed"}))
+        raise typer.Exit(1)
+    typer.echo(json.dumps({"status": "PASS", "layout": str(output)}, ensure_ascii=False))
+
+
+@art_app.command("export-appearance")
+def export_reviewed_appearance(
+    source: Path = typer.Option(..., exists=True, dir_okay=False),
+    layout: Path = typer.Option(..., exists=True, dir_okay=False),
+    metadata: Path = typer.Option(..., exists=True, dir_okay=False),
+    output: Path = typer.Option(..., file_okay=False),
+) -> None:
+    """Export one explicitly laid-out appearance and run visual QA."""
+    try:
+        layout_spec = json.loads(layout.read_text(encoding="utf-8"))
+        metadata_payload = json.loads(metadata.read_text(encoding="utf-8"))
+        export_metadata = AppearanceExportMetadata(
+            appearance_id=metadata_payload["appearance_id"],
+            expression_semantics=dict(metadata_payload["expression_semantics"]),
+            fallback=dict(metadata_payload.get("fallback", {})),
+            overlay_offset=Point.model_validate(metadata_payload["overlay_offset"]),
+            panel_anchor=Point.model_validate(metadata_payload["panel_anchor"]),
+            default_scale=float(metadata_payload["default_scale"]),
+            default_expression_id=metadata_payload.get("default_expression_id"),
+        )
+        manifest = export_appearance_v3(
+            source,
+            LayoutSpec.model_validate(layout_spec),
+            export_metadata,
+            output,
+        )
+        report = validate_art_bundle(output)
+    except (OSError, ValueError, KeyError, TypeError):
+        typer.echo(json.dumps({"status": "FAIL", "detail": "appearance export failed"}))
+        raise typer.Exit(1)
+    typer.echo(
+        json.dumps(
+            {
+                "status": report.status,
+                "appearance_id": manifest.appearance_id,
+                "asset_count": len(manifest.assets),
+            },
+            ensure_ascii=False,
+        )
+    )
+    if report.status != "PASS":
+        raise typer.Exit(1)
+
+
+@pack_app.command("validate")
+def validate_role_pack(project: Path = typer.Argument(..., exists=True, file_okay=False)) -> None:
+    """Validate a metadata-only role-package project without creating an archive."""
+    report = validate_pack_project(project)
+    typer.echo(report.model_dump_json(exclude={"manifest"}))
+    if report.status != "PASS":
+        raise typer.Exit(1)
+
+
+@pack_app.command("build")
+def build_role_pack(
+    project: Path = typer.Argument(..., exists=True, file_okay=False),
+    output: Path = typer.Option(..., file_okay=False),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Validate or build a deterministic data-only .fgopetpack release."""
+    if dry_run:
+        report = validate_pack_project(project)
+        payload = report.model_dump(exclude={"manifest"})
+        payload["dry_run"] = True
+        payload["required_inputs"] = list(report.declared_files)
+        if report.status == "PASS":
+            typer.echo(json.dumps(payload, ensure_ascii=False))
+            return
+        missing_only = report.errors and all(
+            issue.check_id in {
+                "file.missing",
+                "preview.missing",
+                "appearance.manifest_missing",
+                "asset.missing",
+            }
+            for issue in report.errors
+        )
+        if missing_only:
+            payload["status"] = "INPUTS_REQUIRED"
+            typer.echo(json.dumps(payload, ensure_ascii=False))
+            return
+        typer.echo(json.dumps(payload, ensure_ascii=False))
+        raise typer.Exit(1)
+
+    try:
+        result = build_pack(project, output)
+    except PackBuildError as error:
+        typer.echo(error.report.model_dump_json(exclude={"manifest"}))
+        raise typer.Exit(1)
+    typer.echo(
+        json.dumps(
+            {
+                "archive": str(result.archive),
+                "checksum": str(result.checksum),
+                "qa_report": str(result.qa_report),
+                "release_notes": str(result.release_notes),
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _proposal_payload(proposal: LayoutProposal) -> dict[str, object]:
+    return {
+        "source_size": proposal.source_size.model_dump(),
+        "full_body": proposal.full_body.model_dump(),
+        "expression_intervals": [list(interval) for interval in proposal.expression_intervals],
+        "columns": proposal.columns,
+        "status": proposal.status,
+    }
 
 
 @readiness_app.command("check-mash")

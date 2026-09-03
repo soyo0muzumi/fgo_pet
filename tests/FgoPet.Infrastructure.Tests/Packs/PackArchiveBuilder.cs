@@ -55,7 +55,9 @@ internal static class PackArchiveBuilder
         string packageVersion = "1.0.0",
         string? minAppVersion = "1.0.0",
         string? servantId = null,
-        string? displayName = null)
+        string? displayName = null,
+        bool includeCapabilities = false,
+        bool includeFiles = false)
     {
         var root = new JsonObject
         {
@@ -76,6 +78,18 @@ internal static class PackArchiveBuilder
                 },
             },
         };
+        if (includeCapabilities)
+        {
+            root["capabilities"] = new JsonArray("art.v3", "persona.v1");
+        }
+        if (includeFiles)
+        {
+            root["files"] = new JsonArray(
+                "previews/library.png",
+                "appearances/casual/manifest.json",
+                "appearances/casual/runtime/full_body.png",
+                "appearances/casual/runtime/expressions/r01c01.png");
+        }
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 }

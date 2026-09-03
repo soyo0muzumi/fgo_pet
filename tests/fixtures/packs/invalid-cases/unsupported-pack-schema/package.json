@@ -1,0 +1,15 @@
+{
+  "schema_version": 9,
+  "package_id": "fixture.invalid",
+  "package_version": "1.0.0",
+  "servant_id": "fixture_servant",
+  "display_name": "Invalid Schema",
+  "preview_path": "previews/library.png",
+  "appearances": [
+    {"appearance_id": "default", "manifest_path": "appearances/default/manifest.json"}
+  ],
+  "files": [
+    "previews/library.png",
+    "appearances/default/manifest.json"
+  ]
+}

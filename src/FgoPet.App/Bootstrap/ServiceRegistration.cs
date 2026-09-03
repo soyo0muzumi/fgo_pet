@@ -156,6 +156,8 @@ public static class ServiceRegistration
             return new RelayRuntimeOptions(Environment.GetEnvironmentVariable("FGO_PET_PIPE_SUFFIX") ?? defaults.PipeSuffix,
                 paths.StorageRoot, defaults.RelayExecutablePath, defaults.ConnectTimeout, defaults.StartupTimeout);
         })
+        .AddSingleton<IAgentTargetCatalog>(provider =>
+            new CodexTargetCatalogClient(provider.GetRequiredService<RelayRuntimeOptions>()))
         .AddSingleton<CodexWorkerProcess>()
         .AddSingleton(provider =>
         {
@@ -214,7 +216,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<IAgentGateway>(),
             provider.GetRequiredService<IAgentRelayAdministration>(),
             provider.GetRequiredService<IAgentRelayRuntime>(),
-            provider.GetRequiredService<AgentArchiveService>()))
+            provider.GetRequiredService<AgentArchiveService>(),
+            provider.GetRequiredService<IAgentTargetCatalog>()))
         .AddSingleton<AgentConnectionSettingsView>(provider => new AgentConnectionSettingsView(provider.GetRequiredService<AgentConnectionSettingsViewModel>()))
         .AddSingleton<AgentReconnectService>(provider =>
         {

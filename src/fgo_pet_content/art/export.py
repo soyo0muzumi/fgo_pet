@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PIL import Image
 
@@ -19,6 +22,19 @@ from .models import (
     SourceImage,
 )
 from .sheet import analyze_sheet
+from .v3_models import ArtAssetV3, ArtManifestV3, CompositionV3, CORE_EXPRESSION_SEMANTICS
+from .layout_spec import LayoutSpec
+
+
+@dataclass(frozen=True, slots=True)
+class AppearanceExportMetadata:
+    appearance_id: str
+    expression_semantics: dict[str, str]
+    fallback: dict[str, str]
+    overlay_offset: Point
+    panel_anchor: Point
+    default_scale: float
+    default_expression_id: str | None = None
 
 
 def _hash(path: Path) -> str:
@@ -29,6 +45,13 @@ def _save_png(image: Image.Image, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     image.save(temporary, format="PNG")
+    temporary.replace(destination)
+
+
+def _save_v3_png(image: Image.Image, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    image.save(temporary, format="PNG", optimize=False, compress_level=9)
     temporary.replace(destination)
 
 
@@ -112,3 +135,137 @@ def export_art_bundle(
         manifest.model_dump_json(indent=2).encode("utf-8"),
     )
     return manifest
+
+
+def export_appearance_v3(
+    source_path: Path,
+    layout: LayoutSpec,
+    metadata: AppearanceExportMetadata,
+    output_dir: Path,
+) -> ArtManifestV3:
+    """Export a confirmed layout as a path-relative, runtime-only art v3 bundle."""
+    with Image.open(source_path) as opened:
+        source = opened.convert("RGBA")
+    if source.size != (layout.source_size.width, layout.source_size.height):
+        raise ValueError("layout source size does not match input image")
+
+    expression_items = sorted(layout.expressions, key=lambda item: item.stable_id)
+    expression_ids = [item.stable_id for item in expression_items]
+    _validate_v3_layout(layout)
+    _validate_metadata(metadata, expression_ids)
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=output_dir.parent, prefix=f".{output_dir.name}-") as temporary:
+        staging = Path(temporary)
+        assets: list[ArtAssetV3] = []
+
+        body = source.crop(
+            (
+                layout.full_body.left,
+                layout.full_body.top,
+                layout.full_body.right,
+                layout.full_body.bottom,
+            )
+        )
+        body = remove_edge_background(body)
+        body_path = staging / "runtime" / "full_body.png"
+        _save_v3_png(body, body_path)
+        assets.append(
+            ArtAssetV3(
+                type="body",
+                stable_id="full_body",
+                path="runtime/full_body.png",
+                sha256=_hash(body_path),
+            )
+        )
+
+        expression_size: Size | None = None
+        for item in expression_items:
+            expression = source.crop(
+                (item.rect.left, item.rect.top, item.rect.right, item.rect.bottom)
+            )
+            expression = remove_edge_background(expression)
+            if expression_size is None:
+                expression_size = Size(width=expression.width, height=expression.height)
+            elif expression.size != (expression_size.width, expression_size.height):
+                raise ValueError("expression crops must have matching dimensions")
+            expression_path = staging / "runtime" / "expressions" / f"{item.stable_id}.png"
+            _save_v3_png(expression, expression_path)
+            assets.append(
+                ArtAssetV3(
+                    type="expression",
+                    stable_id=item.stable_id,
+                    path=f"runtime/expressions/{item.stable_id}.png",
+                    sha256=_hash(expression_path),
+                )
+            )
+
+        if expression_size is None or not expression_ids:
+            raise ValueError("confirmed layout must contain expression assets")
+        default_expression_id = metadata.default_expression_id or expression_ids[0]
+        manifest = ArtManifestV3(
+            schema_version=3,
+            appearance_id=metadata.appearance_id,
+            assets=tuple(assets),
+            composition=CompositionV3(
+                body_id="full_body",
+                default_expression_id=default_expression_id,
+                overlay_offset=metadata.overlay_offset,
+                overlay_size=expression_size,
+                panel_anchor=metadata.panel_anchor,
+                default_scale=metadata.default_scale,
+            ),
+            expression_semantics={
+                key: metadata.expression_semantics[key]
+                for key in sorted(metadata.expression_semantics)
+            },
+            fallback={key: metadata.fallback[key] for key in sorted(metadata.fallback)},
+        )
+        atomic_write(
+            staging / "manifest.json",
+            manifest.model_dump_json(indent=2, by_alias=True).encode("utf-8"),
+        )
+        _publish_staged_bundle(staging, output_dir)
+        return manifest
+
+
+_SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+
+
+def _validate_v3_layout(layout: LayoutSpec) -> None:
+    width, height = layout.source_size.width, layout.source_size.height
+    rectangles = [layout.full_body, *(item.rect for item in layout.expressions)]
+    if any(rect.right > width or rect.bottom > height for rect in rectangles):
+        raise ValueError("confirmed layout contains a rectangle outside source bounds")
+    if len({item.stable_id for item in layout.expressions}) != len(layout.expressions):
+        raise ValueError("confirmed layout contains duplicate expression IDs")
+
+
+def _validate_metadata(metadata: AppearanceExportMetadata, expression_ids: list[str]) -> None:
+    if not _SAFE_ID.fullmatch(metadata.appearance_id):
+        raise ValueError("appearance_id must be a safe identifier")
+    if set(metadata.expression_semantics) < set(CORE_EXPRESSION_SEMANTICS):
+        raise ValueError("expression semantic mapping is missing a core semantic")
+    for semantic, stable_id in metadata.expression_semantics.items():
+        if not _SAFE_ID.fullmatch(semantic) or not _SAFE_ID.fullmatch(stable_id):
+            raise ValueError("expression semantic mappings must use safe identifiers")
+        if stable_id not in expression_ids:
+            raise ValueError("expression semantic mapping references an unknown expression")
+    for semantic, target in metadata.fallback.items():
+        if not _SAFE_ID.fullmatch(semantic) or not _SAFE_ID.fullmatch(target):
+            raise ValueError("fallback mappings must use safe identifiers")
+    if metadata.default_expression_id is not None and not _SAFE_ID.fullmatch(
+        metadata.default_expression_id
+    ):
+        raise ValueError("default expression ID must be a safe identifier")
+
+
+def _publish_staged_bundle(staging: Path, output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for source in sorted(staging.rglob("*")):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(staging)
+        destination = output_dir / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(destination)

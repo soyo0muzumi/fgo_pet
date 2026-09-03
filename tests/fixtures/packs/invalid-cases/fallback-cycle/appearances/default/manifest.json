@@ -1,0 +1,27 @@
+{
+  "schema_version": 3,
+  "appearance_id": "default",
+  "assets": [
+    {"type": "body", "stable_id": "full_body", "path": "runtime/full_body.png", "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+    {"type": "expression", "stable_id": "neutral", "path": "runtime/expressions/neutral.png", "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "composition": {
+    "body_id": "full_body",
+    "default_expression_id": "neutral",
+    "overlay_offset": {"x": 0, "y": 0},
+    "overlay_size": {"width": 1, "height": 1},
+    "panel_anchor": {"x": 0, "y": 0},
+    "default_scale": 0.5
+  },
+  "expression_semantics": {
+    "neutral": "neutral",
+    "happy": "neutral",
+    "excited": "neutral",
+    "shy": "neutral",
+    "concerned": "neutral",
+    "sad": "neutral",
+    "surprised": "neutral",
+    "angry": "neutral"
+  },
+  "fallback": {"neutral": "happy", "happy": "neutral"}
+}

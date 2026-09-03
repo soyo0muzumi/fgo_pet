@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "package_id": "official.mash",
+  "package_version": "1.0.0",
+  "servant_id": "mash_kyrielight",
+  "display_name": "玛修·基列莱特",
+  "publisher": "FGO Pet",
+  "min_app_version": "1.0.0",
+  "capabilities": [
+    "art.v3",
+    "persona.v1"
+  ],
+  "preview_path": "previews/library.png",
+  "appearances": [
+    {
+      "appearance_id": "casual",
+      "manifest_path": "appearances/casual/manifest.json"
+    }
+  ],
+  "files": [
+    "previews/library.png",
+    "appearances/casual.json",
+    "appearances/casual/manifest.json",
+    "appearances/casual/runtime/full_body.png",
+    "appearances/casual/runtime/expressions/r01c01.png",
+    "appearances/casual/runtime/expressions/r01c02.png",
+    "appearances/casual/runtime/expressions/r01c03.png",
+    "appearances/casual/runtime/expressions/r01c04.png",
+    "appearances/casual/runtime/expressions/r02c01.png",
+    "appearances/casual/runtime/expressions/r02c02.png",
+    "appearances/casual/runtime/expressions/r02c03.png",
+    "appearances/casual/runtime/expressions/r02c04.png",
+    "appearances/casual/runtime/expressions/r03c01.png",
+    "appearances/casual/runtime/expressions/r03c02.png",
+    "appearances/casual/runtime/expressions/r03c03.png",
+    "appearances/casual/runtime/expressions/r03c04.png",
+    "appearances/casual/runtime/expressions/r04c01.png",
+    "appearances/casual/runtime/expressions/r04c02.png",
+    "appearances/casual/runtime/expressions/r04c03.png",
+    "appearances/casual/runtime/expressions/r04c04.png",
+    "appearances/casual/runtime/expressions/r05c01.png",
+    "appearances/casual/runtime/expressions/r05c02.png",
+    "appearances/casual/runtime/expressions/r05c03.png",
+    "appearances/casual/runtime/expressions/r05c04.png",
+    "appearances/casual/runtime/expressions/r06c01.png",
+    "appearances/casual/runtime/expressions/r06c02.png",
+    "appearances/casual/runtime/expressions/r06c03.png",
+    "appearances/casual/runtime/expressions/r06c04.png",
+    "appearances/casual/runtime/expressions/r07c01.png",
+    "appearances/casual/runtime/expressions/r07c02.png",
+    "appearances/casual/runtime/expressions/r07c03.png",
+    "appearances/casual/runtime/expressions/r07c04.png",
+    "expression-semantics.json",
+    "persona/README.md"
+  ]
+}

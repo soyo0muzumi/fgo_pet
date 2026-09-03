@@ -330,6 +330,12 @@ public sealed class FgoPetPackInstaller : IPackInstaller
     {
         var fullRoot = Path.GetFullPath(extractionRoot);
 
+        var declaredFilesFailure = ValidateDeclaredFiles(fullRoot, manifest);
+        if (declaredFilesFailure is not null)
+        {
+            return declaredFilesFailure;
+        }
+
         if (!string.IsNullOrWhiteSpace(manifest.PreviewPath))
         {
             var preview = Path.GetFullPath(Path.Combine(fullRoot, manifest.PreviewPath));
@@ -369,6 +375,41 @@ public sealed class FgoPetPackInstaller : IPackInstaller
             }
         }
 
+        return null;
+    }
+
+    private static PackInstallResult? ValidateDeclaredFiles(string fullRoot, PackManifestV1 manifest)
+    {
+        if (manifest.Files is null or { Count: 0 })
+        {
+            return null;
+        }
+
+        var declared = new HashSet<string>(manifest.Files, StringComparer.Ordinal)
+        {
+            "package.json",
+        };
+        foreach (var relative in manifest.Files)
+        {
+            var path = Path.GetFullPath(Path.Combine(fullRoot, relative));
+            if (!IsWithin(path, fullRoot))
+            {
+                return Failed(PackErrorCode.PackagePathEscapesRoot, "声明文件路径越出包根目录。", relative);
+            }
+            if (!File.Exists(path))
+            {
+                return Failed(PackErrorCode.AssetMissing, "声明文件缺失。", relative);
+            }
+        }
+
+        foreach (var path in Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(fullRoot, path).Replace('\\', '/');
+            if (!declared.Contains(relative))
+            {
+                return Failed(PackErrorCode.PackageArchiveInvalid, "存在未声明的包文件。", relative);
+            }
+        }
         return null;
     }
 

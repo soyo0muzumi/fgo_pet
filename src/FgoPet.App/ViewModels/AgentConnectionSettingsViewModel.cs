@@ -75,6 +75,10 @@ public sealed class AgentMaintenanceCounterViewModel
 public sealed partial class AgentApprovedSourceViewModel : ObservableObject
 {
     private AgentApprovedSource _source;
+    private readonly HashSet<string> _unresolvedTargetIds = new(StringComparer.Ordinal);
+    private readonly List<string> _unresolvedTargetOrder = new();
+    private IReadOnlyList<AgentTargetDescriptor> _catalog = Array.Empty<AgentTargetDescriptor>();
+    private bool _hasCatalog;
     private bool _isDirty;
     private bool _suppressDirtyTracking;
 
@@ -82,7 +86,7 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _isEnabled = source.Enabled;
-        _targetIdsText = string.Join(Environment.NewLine, source.AllowedTargetIds);
+        SetUnresolvedTargets(source.AllowedTargetIds);
     }
 
     public AgentApprovedSource Source => _source;
@@ -90,7 +94,22 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
     public string SourceInstanceId => _source.SourceInstanceId;
     public string DisplayName => _source.DisplayName;
     public string AdapterVersion => _source.AdapterVersion;
-    public IReadOnlyList<string> AllowedTargetIds => ParseTargetIds(TargetIdsText);
+    public ObservableCollection<AgentTargetOptionViewModel> Targets { get; } = new();
+    public bool HasTargets => Targets.Count > 0;
+    public bool HasUnresolvedTargets => _unresolvedTargetIds.Count > 0;
+    public IReadOnlyList<string> AllowedTargetIds
+    {
+        get
+        {
+            var targetIds = Targets
+                .Where(target => target.IsSelected)
+                .Select(target => target.TargetId)
+                .Concat(_unresolvedTargetOrder)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return targetIds;
+        }
+    }
     public string OnlineText => _source.IsOnline ? "在线" : "离线";
 
     public void UpdateStatus(AgentApprovedSource source)
@@ -99,9 +118,23 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
         if (!_isDirty)
         {
             _suppressDirtyTracking = true;
-            IsEnabled = source.Enabled;
-            TargetIdsText = string.Join(Environment.NewLine, source.AllowedTargetIds);
-            _suppressDirtyTracking = false;
+            try
+            {
+                IsEnabled = source.Enabled;
+                if (_hasCatalog)
+                {
+                    ApplyCatalog(_catalog);
+                }
+                else
+                {
+                    ClearTargets();
+                    SetUnresolvedTargets(source.AllowedTargetIds);
+                }
+            }
+            finally
+            {
+                _suppressDirtyTracking = false;
+            }
         }
 
         OnPropertyChanged(nameof(Source));
@@ -110,32 +143,118 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(AdapterVersion));
         OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasTargets));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
         OnPropertyChanged(nameof(OnlineText));
+    }
+
+    public void ApplyCatalog(IReadOnlyList<AgentTargetDescriptor> catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (_isDirty) return;
+
+        _catalog = catalog.ToArray();
+        _hasCatalog = true;
+        var persistedTargetIds = _source.AllowedTargetIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToArray();
+        var matchedTargetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var catalogTargetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        _suppressDirtyTracking = true;
+        try
+        {
+            ClearTargets();
+            _unresolvedTargetIds.Clear();
+            _unresolvedTargetOrder.Clear();
+
+            foreach (var target in _catalog)
+            {
+                if (string.IsNullOrWhiteSpace(target.TargetId)
+                    || !catalogTargetIds.Add(target.TargetId))
+                {
+                    continue;
+                }
+
+                var isSelected = persistedTargetIds.Any(id =>
+                    string.Equals(id, target.TargetId, StringComparison.OrdinalIgnoreCase));
+                if (isSelected)
+                {
+                    matchedTargetIds.Add(target.TargetId);
+                }
+
+                var option = new AgentTargetOptionViewModel(target, isSelected);
+                option.PropertyChanged += OnTargetPropertyChanged;
+                Targets.Add(option);
+            }
+
+            foreach (var targetId in persistedTargetIds)
+            {
+                if (!matchedTargetIds.Contains(targetId) && _unresolvedTargetIds.Add(targetId))
+                {
+                    _unresolvedTargetOrder.Add(targetId);
+                }
+            }
+        }
+        finally
+        {
+            _suppressDirtyTracking = false;
+        }
+
+        OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasTargets));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
+    }
+
+    public bool RemoveUnresolvedTargets()
+    {
+        if (_unresolvedTargetIds.Count == 0) return false;
+
+        _unresolvedTargetIds.Clear();
+        _unresolvedTargetOrder.Clear();
+        _isDirty = true;
+        OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(HasUnresolvedTargets));
+        return true;
     }
 
     [ObservableProperty]
     private bool _isEnabled;
-
-    [ObservableProperty]
-    private string _targetIdsText;
 
     partial void OnIsEnabledChanged(bool value)
     {
         if (!_suppressDirtyTracking) _isDirty = true;
     }
 
-    partial void OnTargetIdsTextChanged(string value)
+    private void OnTargetPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName != nameof(AgentTargetOptionViewModel.IsSelected)) return;
+
         if (!_suppressDirtyTracking) _isDirty = true;
+        OnPropertyChanged(nameof(AllowedTargetIds));
     }
 
-    private static IReadOnlyList<string> ParseTargetIds(string? value)
+    private void ClearTargets()
     {
-        return (value ?? string.Empty)
-            .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(id => id.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        foreach (var target in Targets)
+        {
+            target.PropertyChanged -= OnTargetPropertyChanged;
+        }
+
+        Targets.Clear();
+    }
+
+    private void SetUnresolvedTargets(IEnumerable<string> targetIds)
+    {
+        _unresolvedTargetIds.Clear();
+        _unresolvedTargetOrder.Clear();
+        foreach (var targetId in targetIds)
+        {
+            if (!string.IsNullOrWhiteSpace(targetId) && _unresolvedTargetIds.Add(targetId))
+            {
+                _unresolvedTargetOrder.Add(targetId);
+            }
+        }
     }
 }
 
@@ -148,6 +267,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     private readonly IAgentRelayAdministration? _administration;
     private readonly IAgentRelayRuntime? _runtime;
     private readonly AgentArchiveService? _archive;
+    private readonly IAgentTargetCatalog? _targetCatalog;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private bool _disposed;
     private AgentRelaySnapshot _currentSnapshot = AgentRelaySnapshot.Disabled;
@@ -156,6 +276,10 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     private DateTimeOffset? _oldestArchiveCandidateAt;
     private bool _hasIncompleteArchiveBatch;
     private bool _hasActiveAgentWork;
+    private AgentTargetCatalogResult _lastTargetCatalog = new(
+        AgentTargetCatalogStatus.AdapterNotInstalled,
+        [],
+        "adapter_not_installed");
 
     public AgentConnectionSettingsViewModel(
         IAppSettingsStore settings,
@@ -164,7 +288,8 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         IAgentGateway? gateway = null,
         IAgentRelayAdministration? administration = null,
         IAgentRelayRuntime? runtime = null,
-        AgentArchiveService? archive = null)
+        AgentArchiveService? archive = null,
+        IAgentTargetCatalog? targetCatalog = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _agents = agents ?? throw new ArgumentNullException(nameof(agents));
@@ -173,6 +298,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         _administration = administration;
         _runtime = runtime;
         _archive = archive;
+        _targetCatalog = targetCatalog;
         if (_runtime is not null)
         {
             _runtime.SnapshotChanged += OnRuntimeSnapshotChanged;
@@ -264,7 +390,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     public string ArchiveActionText => HasIncompleteArchiveBatch ? "继续归档" : "归档安全候选";
 
     public string InstallationGuidanceText =>
-        "开启连接后会启动随应用附带的适配器；本页不会修改用户 PATH 或安装 Codex 插件。请先批准配对，再启用来源并填写允许的项目 ID。项目需通过适配器 target add 命令显式登记；Codex 插件安装步骤见 codex-adapter 指南。";
+        "Agent 仅会访问你明确选择的项目。请先批准来源，再从已登记的项目名称中选择并保存；未选择项目时不会派发任务。组件安装和插件注册将在后续安装流程提供。";
 
     public void Reload()
     {
@@ -297,8 +423,9 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             }
 
             ApplySnapshot(await _administration.GetSnapshotAsync(cancellationToken).ConfigureAwait(true));
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
             await RefreshMaintenanceStatusAsync(cancellationToken).ConfigureAwait(true);
-            StatusText = BuildSnapshotStatus(CurrentSnapshot);
+            StatusText = BuildConnectionStatus();
         }, cancellationToken);
     }
 
@@ -313,8 +440,17 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             }
 
             ApplySnapshot(await _administration.TestConnectionAsync(cancellationToken).ConfigureAwait(true));
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
             await RefreshMaintenanceStatusAsync(cancellationToken).ConfigureAwait(true);
-            StatusText = BuildSnapshotStatus(CurrentSnapshot);
+            StatusText = BuildConnectionStatus();
+        }, cancellationToken);
+    }
+
+    public Task RefreshTargetsAsync(CancellationToken cancellationToken = default)
+    {
+        return RunOperationAsync("正在刷新已登记项目…", async () =>
+        {
+            await RefreshTargetCatalogCoreAsync(cancellationToken).ConfigureAwait(true);
         }, cancellationToken);
     }
 
@@ -373,6 +509,35 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             await RefreshSnapshotAsync(cancellationToken).ConfigureAwait(true);
             StatusText = $"已撤销来源“{source.DisplayName}”的授权。旧凭据立即失效。";
         }, cancellationToken);
+    }
+
+    public Task RePairSourceAsync(AgentApprovedSourceViewModel source, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (_administration is null)
+        {
+            StatusText = "当前连接模式不支持重新配对来源。";
+            return Task.CompletedTask;
+        }
+
+        return RunOperationAsync("正在撤销旧授权并准备重新配对…", async () =>
+        {
+            await _administration.RevokeSourceAsync(source.SourceType, source.SourceInstanceId, cancellationToken)
+                .ConfigureAwait(true);
+            if (Enabled && _runtime is not null)
+            {
+                await _runtime.SetEnabledAsync(false, cancellationToken).ConfigureAwait(true);
+                await _runtime.SetEnabledAsync(true, cancellationToken).ConfigureAwait(true);
+            }
+
+            await RefreshSnapshotAsync(cancellationToken).ConfigureAwait(true);
+            StatusText = "旧授权已失效，等待适配器重新发起配对。";
+        }, cancellationToken);
+    }
+
+    public string BuildDiagnosticText()
+    {
+        return AgentDiagnosticSummary.Build(CurrentSnapshot, _lastTargetCatalog, DateTimeOffset.UtcNow);
     }
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -476,6 +641,14 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         }
     }
 
+    public void ReportDiagnosticCopied()
+    {
+        if (!IsBusy)
+        {
+            StatusText = "诊断信息已复制；其中不包含目标 ID 或本地路径。";
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -494,6 +667,48 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
             ApplySnapshot(await _administration.GetSnapshotAsync(cancellationToken).ConfigureAwait(true));
         }
     }
+
+    private async Task RefreshTargetCatalogCoreAsync(CancellationToken cancellationToken)
+    {
+        var result = _targetCatalog is null
+            ? new AgentTargetCatalogResult(AgentTargetCatalogStatus.AdapterNotInstalled, [], "adapter_not_installed")
+            : await _targetCatalog.ListAsync(cancellationToken).ConfigureAwait(true);
+        ApplyTargetCatalog(result);
+        StatusText = result.IsAvailable
+            ? "已刷新已登记项目。"
+            : $"项目列表暂不可用（{GetCatalogErrorCode(result.Status)}）";
+    }
+
+    private void ApplyTargetCatalog(AgentTargetCatalogResult result)
+    {
+        _lastTargetCatalog = result ?? throw new ArgumentNullException(nameof(result));
+        if (result.IsAvailable)
+        {
+            foreach (var source in ApprovedSources)
+            {
+                source.ApplyCatalog(result.Targets);
+            }
+        }
+
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    private string BuildConnectionStatus()
+    {
+        var snapshotStatus = BuildSnapshotStatus(CurrentSnapshot);
+        return _lastTargetCatalog.IsAvailable
+            ? snapshotStatus
+            : $"{snapshotStatus}；项目列表暂不可用（{GetCatalogErrorCode(_lastTargetCatalog.Status)}）";
+    }
+
+    private static string GetCatalogErrorCode(AgentTargetCatalogStatus status) => status switch
+    {
+        AgentTargetCatalogStatus.AdapterNotInstalled => "adapter_not_installed",
+        AgentTargetCatalogStatus.AdapterUnavailable => "adapter_unavailable",
+        AgentTargetCatalogStatus.TimedOut => "adapter_timeout",
+        AgentTargetCatalogStatus.InvalidResponse => "adapter_invalid_response",
+        _ => "unknown_error",
+    };
 
     private async Task RefreshMaintenanceStatusAsync(CancellationToken cancellationToken)
     {

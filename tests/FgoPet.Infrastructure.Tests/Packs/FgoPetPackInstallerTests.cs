@@ -308,6 +308,21 @@ public sealed class FgoPetPackInstallerTests : IDisposable
     }
 
     [Fact]
+    public void Install_accepts_versioned_capabilities_and_closed_file_declarations()
+    {
+        var archive = Upload("declared-files.fgopetpack");
+        PackArchiveBuilder.WriteFullPack(
+            archive,
+            packageJson: PackArchiveBuilder.PackManifestJson(
+                includeCapabilities: true,
+                includeFiles: true));
+
+        var result = Install(archive);
+
+        Assert.True(result.Installed, result.Failure?.ToString());
+    }
+
+    [Fact]
     public void Install_rejects_an_incompatible_app_version()
     {
         var archive = Upload("future.fgopetpack");
