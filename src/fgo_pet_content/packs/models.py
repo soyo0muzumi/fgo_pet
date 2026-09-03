@@ -18,8 +18,7 @@ KNOWN_CAPABILITIES = frozenset(
 _ID_PATTERN = r"^[a-z0-9][a-z0-9_.-]{0,63}$"
 _SEMVER_PATTERN = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 
 
@@ -50,6 +49,39 @@ class PackAppearanceRef(BaseModel):
         return value
 
 
+class PackSettingDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    label: str = Field(min_length=1, max_length=80)
+    type: Literal["toggle", "choice", "text"]
+    default: str = Field(max_length=256)
+    options: tuple[str, ...] | None = None
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, value: str) -> str:
+        if value != value.strip():
+            raise ValueError("setting label cannot have surrounding whitespace")
+        return value
+
+    @model_validator(mode="after")
+    def validate_value(self) -> PackSettingDefinition:
+        if self.type == "toggle":
+            if self.default not in {"true", "false"} or self.options is not None:
+                raise ValueError("toggle settings require a boolean default and no options")
+        elif self.type == "choice":
+            if self.options is None or not 2 <= len(self.options) <= 20:
+                raise ValueError("choice settings require 2 to 20 options")
+            if any(not option or len(option) > 64 for option in self.options):
+                raise ValueError("choice options must contain 1 to 64 characters")
+            if len(self.options) != len(set(self.options)) or self.default not in self.options:
+                raise ValueError("choice default must be one of the unique options")
+        elif self.options is not None:
+            raise ValueError("text settings cannot contain options")
+        return self
+
+
 class PackManifestV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -63,6 +95,7 @@ class PackManifestV1(BaseModel):
     capabilities: tuple[str, ...] = ()
     preview_path: str = Field(min_length=1)
     appearances: tuple[PackAppearanceRef, ...] = Field(min_length=1)
+    settings: tuple[PackSettingDefinition, ...] = ()
     files: tuple[str, ...] = Field(default=())
 
     @field_validator("package_version", "min_app_version")
@@ -96,6 +129,11 @@ class PackManifestV1(BaseModel):
         appearance_ids = [item.appearance_id for item in self.appearances]
         if len(appearance_ids) != len(set(appearance_ids)):
             raise ValueError("appearances cannot contain duplicate appearance_id")
+        if len(self.settings) > 32:
+            raise ValueError("a package cannot declare more than 32 settings")
+        setting_keys = [setting.key for setting in self.settings]
+        if len(setting_keys) != len(set(setting_keys)):
+            raise ValueError("settings cannot contain duplicate keys")
         if "package.json" in self.files:
             raise ValueError("files must not include package.json")
         if len(self.files) != len(set(self.files)):

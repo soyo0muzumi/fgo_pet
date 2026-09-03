@@ -76,9 +76,7 @@ def build_pack(project_dir: Path, output_dir: Path) -> PackBuildResult:
 
 def _write_archive(project: Path, manifest: PackManifestV1, destination: Path) -> None:
     members = {"package.json", *manifest.files}
-    contents: dict[str, bytes] = {
-        "package.json": _canonical_json(manifest.model_dump(mode="json")),
-    }
+    contents: dict[str, bytes] = {"package.json": _canonical_json(_canonical_manifest(manifest))}
     for relative in manifest.files:
         contents[relative] = (project / _native_path(relative)).read_bytes()
 
@@ -116,6 +114,21 @@ def _canonical_json(value: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def _canonical_manifest(manifest: PackManifestV1) -> dict[str, object]:
+    value = manifest.model_dump(mode="json")
+    value["capabilities"] = sorted(manifest.capabilities)
+    value["appearances"] = [
+        item.model_dump(mode="json")
+        for item in sorted(manifest.appearances, key=lambda item: item.appearance_id)
+    ]
+    value["settings"] = [
+        item.model_dump(mode="json")
+        for item in sorted(manifest.settings, key=lambda item: item.key)
+    ]
+    value["files"] = sorted(manifest.files)
+    return value
 
 
 def _native_path(relative: str) -> Path:

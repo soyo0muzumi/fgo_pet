@@ -103,20 +103,45 @@ def validate_pack_project(project_dir: Path) -> PackValidationReport:
                     detail="file exceeds the per-entry size limit",
                 )
             )
-    if len(actual_files) + 1 > MAX_ENTRIES:
+    if len(actual_files) > MAX_ENTRIES:
         errors.append(
             PackValidationIssue(
                 check_id="project.entry_count",
                 detail="project exceeds the package entry-count limit",
             )
         )
-    if total_bytes + _size_if_file(package_path) > MAX_EXPANDED_BYTES:
+    if total_bytes > MAX_EXPANDED_BYTES:
         errors.append(
             PackValidationIssue(
                 check_id="project.expanded_size",
                 detail="project exceeds the expanded-size limit",
             )
         )
+
+    for relative in actual_files:
+        if PurePosixPath(relative).name != "qa-report.json":
+            continue
+        try:
+            qa_payload = json.loads(
+                (project / _native_path(relative)).read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            errors.append(
+                PackValidationIssue(
+                    check_id="qa.invalid",
+                    path=relative,
+                    detail="QA report is not valid JSON",
+                )
+            )
+            continue
+        if not isinstance(qa_payload, dict) or qa_payload.get("status") != "PASS":
+            errors.append(
+                PackValidationIssue(
+                    check_id="qa.failed",
+                    path=relative,
+                    detail="role package requires a passing QA report",
+                )
+            )
 
     preview = _safe_project_path(project, manifest.preview_path)
     if preview is None or not preview.is_file():

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -32,6 +34,21 @@ def test_build_is_byte_for_byte_deterministic_and_contains_only_declared_data(
         assert all("project" not in name for name in names)
 
 
+def test_build_canonicalizes_manifest_sequence_order(pack_project: Path, tmp_path: Path) -> None:
+    reordered = tmp_path / "reordered-project"
+    shutil.copytree(pack_project, reordered)
+    package_path = reordered / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["capabilities"] = list(reversed(package["capabilities"]))
+    package["files"] = list(reversed(package["files"]))
+    package_path.write_text(json.dumps(package), encoding="utf-8")
+
+    first = build_pack(pack_project, tmp_path / "first")
+    second = build_pack(reordered, tmp_path / "second")
+
+    assert first.archive.read_bytes() == second.archive.read_bytes()
+
+
 def test_build_refuses_invalid_project_without_writing_release_archive(
     pack_project: Path, tmp_path: Path
 ) -> None:
@@ -42,4 +59,3 @@ def test_build_refuses_invalid_project_without_writing_release_archive(
 
     assert caught.value.report.status == "FAIL"
     assert not (tmp_path / "release").exists()
-
