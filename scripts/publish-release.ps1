@@ -81,7 +81,8 @@ try {
     $projectXml = [xml](Get-Content -LiteralPath $appProject -Raw)
     $targetFramework = [string]$projectXml.Project.PropertyGroup.TargetFramework
     if ($targetFramework -ne 'net8.0-windows') { throw "Application target framework must be net8.0-windows." }
-    $version = [string]$projectXml.Project.PropertyGroup.Version
+    $versionNode = $projectXml.SelectSingleNode('/Project/PropertyGroup/Version')
+    $version = if ($null -eq $versionNode) { '0.1.0' } else { [string]$versionNode.InnerText }
     if ([string]::IsNullOrWhiteSpace($version)) { $version = '0.1.0' }
     if ($version -notmatch '^[0-9A-Za-z.-]+$') { throw "Application version contains unsupported characters." }
 

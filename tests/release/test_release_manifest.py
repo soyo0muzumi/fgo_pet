@@ -24,6 +24,13 @@ def test_release_publisher_filters_pdb_files_before_manifest_generation() -> Non
     assert "Remove-Item" in script
 
 
+def test_release_publisher_uses_explicit_version_fallback_for_missing_xml_node() -> None:
+    script = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+    assert "SelectSingleNode('/Project/PropertyGroup/Version')" in script
+    assert "if ($null -eq $versionNode) { '0.1.0' }" in script
+    assert ".Project.PropertyGroup.Version" not in script
+
+
 def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[dict] | None = None) -> None:
     archive = root / "app" / "FgoPet-win-x64-0.1.0.zip"
     archive.parent.mkdir(parents=True, exist_ok=True)
