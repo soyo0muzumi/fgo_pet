@@ -39,3 +39,24 @@ Phase 5 的已批准开发切片已合并到本地 `main`，合并提交为 `1d3
 2. 完成正式素材人工确认并重跑资源 QA。
 3. 执行干净环境安装、升级、恢复、卸载重装和隐私检查。
 4. 生成 release notes、已知限制和最终候选构建；公开上传/发布另行授权。
+
+## 5. Phase 5.5 Task 4 verification (2026-09-03)
+
+This section records only evidence obtained in the isolated `phase5-5-release-prep` worktree. It does not authorize public release.
+
+### Automated evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Python full suite | Incomplete | `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q` did not complete within the bounded execution window; output reached 39% before termination. |
+| PowerShell packaging gate | Incomplete | Started with a 20-second bound; no result was obtained because the first invocation could not use the same file for stdout and stderr redirection. No restore was performed. |
+| PowerShell parser checks | Passed | `pwsh -NoProfile` AST parse completed: `PARSED 11 PowerShell scripts`. |
+| App Release build | Blocked | `dotnet build src/FgoPet.App/FgoPet.App.csproj -c Release --no-restore` failed in 0.76s with `NETSDK1004`: missing `src/FgoPet.App/obj/project.assets.json`. |
+| Publish / release verifier | Not run | No usable NuGet assets or candidate archive are present in this worktree. |
+| Isolated acceptance | Not run | Requires a verified Task 2 candidate archive. |
+
+No candidate version, runtime identifier, archive SHA-256, or candidate path can be recorded because no candidate was produced. The archive content scan was therefore not applicable.
+
+### Manual Windows evidence gaps
+
+GUI install, sleep/resume, DPI, multi-monitor, and long-running operation remain unverified. Clean-install/upgrade/uninstall evidence, credential/path/archive inspection of a generated candidate, and final Windows runtime evidence are also outstanding. These gaps mean the candidate is not publicly release-authorized.
