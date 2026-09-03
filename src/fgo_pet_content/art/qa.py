@@ -254,9 +254,9 @@ def _validate_v3_bundle(bundle: Path, payload: dict) -> ArtQaReport:
             if image.getchannel("A").getbbox() is None:
                 errors.append(ArtCheck(check_id="asset.visible_alpha", asset_id=asset.stable_id, detail="asset has no visible alpha"))
             else:
-                box = image.getchannel("A").getbbox()
+                box = _visible_alpha_bbox(image)
                 if box and (box[0] == 0 or box[1] == 0 or box[2] == image.width or box[3] == image.height):
-                    warnings.append(ArtCheck(check_id="asset.foreground_touches_edge", asset_id=asset.stable_id, detail="review possible clipping or residual background"))
+                    errors.append(ArtCheck(check_id="asset.foreground_touches_edge", asset_id=asset.stable_id, detail="foreground touches the crop edge"))
         except OSError:
             errors.append(
                 ArtCheck(
@@ -321,6 +321,11 @@ def _resolve_v3_asset(root: Path, relative: str) -> Path | None:
         return None
     candidate = (root / path).resolve()
     return candidate if candidate.is_relative_to(root) else None
+
+
+def _visible_alpha_bbox(image: Image.Image):
+    alpha = image.getchannel("A").point(lambda value: 255 if value >= 32 else 0)
+    return alpha.getbbox()
 
 
 def _write_v3_report(bundle: Path, report: ArtQaReport) -> ArtQaReport:
