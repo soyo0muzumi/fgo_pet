@@ -81,6 +81,8 @@ def test_verifier_rejects_duplicate_manifest_path(candidate: Path) -> None:
         "pairing-state/config.json",
         "secrets.pfx",
         "credentials/config.json",
+        "settings.json",
+        ".env",
         "source/README.md",
         ".git/config",
         ".vs/state",

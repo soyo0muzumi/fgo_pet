@@ -44,3 +44,18 @@
 ### Remaining concern
 
 - `scripts/test-packaging.ps1` still reaches its existing .NET restore-assets blocker after its publish-profile and Python stages pass; no restore was performed.
+
+## Fix round 2
+
+### Fixed regression
+
+- Restored explicit `settings.json` and `.env` rejection in both the publish-time and verification-time forbidden-payload rules.
+- Added real verifier regression cases for each filename.
+
+### Fix validation
+
+| Command | Result |
+| --- | --- |
+| `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q tests/release/test_release_manifest.py -k forbidden` | Passed: `15 passed, 10 deselected in 24.14s`. |
+| `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q tests/release/test_release_manifest.py -k "not forbidden"` | Passed: `10 passed, 15 deselected in 15.94s`. |
+| PowerShell parser check for both release scripts | Passed. |
