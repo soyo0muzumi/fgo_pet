@@ -9,7 +9,14 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Fail([string]$Message) { throw "Release verification failed: $Message" }
-function Get-Sha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+function Get-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $hash = [Security.Cryptography.SHA256]::Create().ComputeHash($stream)
+        return ([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
+    }
+    finally { $stream.Dispose() }
+}
 function Test-ForbiddenPayloadPath([string]$RelativePath) {
     $normalized = $RelativePath.Replace('\\', '/').ToLowerInvariant()
     $segments = $normalized.Split('/')
