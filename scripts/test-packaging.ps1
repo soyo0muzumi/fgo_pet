@@ -3,6 +3,27 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$publishProfilePath = Join-Path $PSScriptRoot "..\src\FgoPet.App\Properties\PublishProfiles\win-x64-release.pubxml"
+if (-not (Test-Path -LiteralPath $publishProfilePath -PathType Leaf)) {
+    throw "Required publish profile does not exist: $publishProfilePath"
+}
+
+[xml]$publishProfile = Get-Content -LiteralPath $publishProfilePath -Raw
+$expectedProfileProperties = [ordered]@{
+    RuntimeIdentifier = "win-x64"
+    SelfContained = "false"
+    Configuration = "Release"
+    PublishSingleFile = "false"
+    IncludeNativeLibrariesForSelfExtract = "false"
+}
+foreach ($expectedProperty in $expectedProfileProperties.GetEnumerator()) {
+    $actualValue = [string]$publishProfile.Project.PropertyGroup.($expectedProperty.Key)
+    if ($actualValue -ne $expectedProperty.Value) {
+        throw "Publish profile property $($expectedProperty.Key) must be '$($expectedProperty.Value)', but was '$actualValue'."
+    }
+}
+Write-Output "Publish profile contract passed."
+
 $pythonCandidates = @(
     (Join-Path $PSScriptRoot "..\.venv-phase5-4a\Scripts\python.exe"),
     (Join-Path $PSScriptRoot "..\..\.venv-phase5-4a\Scripts\python.exe"),
