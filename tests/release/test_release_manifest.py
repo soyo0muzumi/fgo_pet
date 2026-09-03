@@ -8,7 +8,14 @@ import pytest
 
 
 VERIFY_SCRIPT = Path(__file__).parents[2] / "scripts" / "verify-release.ps1"
+PUBLISH_SCRIPT = Path(__file__).parents[2] / "scripts" / "publish-release.ps1"
 REQUIRED_EXECUTABLES = ["FgoPet.App.exe", "FgoPet.AgentRelay.exe", "FgoPet.CodexAdapter.exe"]
+
+
+def test_release_publisher_uses_prepared_assets_without_restore() -> None:
+    script = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+    publish_line = next(line for line in script.splitlines() if "dotnet publish" in line)
+    assert "--no-restore" in publish_line
 
 
 def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[dict] | None = None) -> None:

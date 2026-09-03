@@ -56,7 +56,7 @@ try {
     $payloadRoot = Join-Path $stage 'payload'
     New-Item -ItemType Directory -Path $payloadRoot -Force | Out-Null
     $appProject = Join-Path $repoRoot 'src\FgoPet.App\FgoPet.App.csproj'
-    & dotnet publish $appProject -c Release -p:PublishProfile=win-x64-release -o $payloadRoot --nologo
+    & dotnet publish $appProject -c Release -p:PublishProfile=win-x64-release -o $payloadRoot --nologo --no-restore
     if ($LASTEXITCODE -ne 0) { throw "Application publish failed." }
 
     $files = @(Get-ChildItem -LiteralPath $payloadRoot -File -Recurse | Sort-Object FullName)

@@ -27,3 +27,7 @@ Inspection found no usable Release publish output, NuGet assets, candidate archi
 ## Concerns and remaining gaps
 
 The exact blocker is the absent App restore asset file (`src/FgoPet.App/obj/project.assets.json`). A bounded, worktree-local restore may be required before repeating the build and packaging gates. Manual Windows evidence remains absent for GUI install, sleep/resume, DPI, multi-monitor, and long-running operation. Public release readiness must not be claimed. No remote publication, signing, upload, user-state, PATH, Codex configuration, or agent spawning was performed.
+
+## Fix
+
+Updated `scripts/publish-release.ps1` to pass `--no-restore` to the Task 1 profile publish invocation. Added a focused regression test asserting the release publisher uses prepared worktree assets without restoring user NuGet configuration. Existing staging, payload-boundary, manifest, hash, and atomic-output behavior is unchanged.
