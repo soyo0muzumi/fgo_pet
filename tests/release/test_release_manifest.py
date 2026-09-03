@@ -18,6 +18,12 @@ def test_release_publisher_uses_prepared_assets_without_restore() -> None:
     assert "--no-restore" in publish_line
 
 
+def test_release_publisher_filters_pdb_files_before_manifest_generation() -> None:
+    script = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+    assert "-Filter '*.pdb'" in script
+    assert "Remove-Item" in script
+
+
 def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[dict] | None = None) -> None:
     archive = root / "app" / "FgoPet-win-x64-0.1.0.zip"
     archive.parent.mkdir(parents=True, exist_ok=True)
@@ -94,6 +100,7 @@ def test_verifier_rejects_duplicate_manifest_path(candidate: Path) -> None:
         ".git/config",
         ".vs/state",
         "screenshots/image.png",
+        "FgoPet.AgentProtocol.pdb",
     ],
 )
 def test_verifier_rejects_forbidden_payload_files(candidate: Path, path: str) -> None:

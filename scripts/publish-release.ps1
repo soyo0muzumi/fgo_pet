@@ -59,6 +59,11 @@ try {
     & dotnet publish $appProject -c Release -p:PublishProfile=win-x64-release -o $payloadRoot --nologo --no-restore
     if ($LASTEXITCODE -ne 0) { throw "Application publish failed." }
 
+    # Project-reference publish output can include PDBs despite the profile;
+    # development symbols must never enter the release payload.
+    Get-ChildItem -LiteralPath $payloadRoot -Filter '*.pdb' -File -Recurse |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+
     $files = @(Get-ChildItem -LiteralPath $payloadRoot -File -Recurse | Sort-Object FullName)
     if ($files.Count -eq 0) { throw "Published application payload is empty." }
     $entries = foreach ($file in $files) {
