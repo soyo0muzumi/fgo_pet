@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "appearance_id": "casual",
+  "neutral": "r01c04",
+  "happy": "r01c01",
+  "excited": "r01c02",
+  "shy": "r07c01",
+  "concerned": "r06c04",
+  "sad": "r05c02",
+  "surprised": "r04c02",
+  "angry": "r02c01"
+}

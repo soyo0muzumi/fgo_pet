@@ -106,3 +106,43 @@ API Key 只从命令参数或 `FGO_LLM_API_KEY` 环境变量读取，不写入�
 - 删除 LLM 候选卡不会影响原始正文和结构化剧情。
 - 上游正文哈希变化时，新旧版本并存；审核人员根据差异报告决定是否重新生成证据。
 - 不要直接修改 `raw` 文件；需要修正映射时修改配置或解析器并重建派生数据。
+
+## 外观审核与角色包构建
+
+Phase 5.4A 的角色包工具只处理声明式数据和已审核素材，不执行包内脚本，
+也不把原始图片路径写入发布物。外观流程固定为：
+
+```text
+propose-layout -> inspect preview -> confirm-layout -> export-appearance
+-> fill expression-semantics -> pack validate -> pack build
+```
+
+对布局不明确的素材，`propose-layout` 会以退出码 2 返回建议文件和确认文件
+位置；必须填写人工确认后才能导出。示例：
+
+```powershell
+& $FgoPython -m fgo_pet_content.cli art propose-layout `
+  --source D:\fgo_unpack\fgo_assets\mash-sheet.png `
+  --output D:\fgo_unpack\fgo_assets\mash-layout.json
+
+& $FgoPython -m fgo_pet_content.cli art confirm-layout `
+  --proposal D:\fgo_unpack\fgo_assets\mash-layout.json `
+  --confirmation D:\fgo_unpack\fgo_assets\mash-layout.confirmation.json `
+  --output D:\fgo_unpack\fgo_assets\mash-layout.confirmed.json
+```
+
+确认后的布局和显式语义映射传给 `art export-appearance`。导出结果必须通过
+哈希、Alpha、尺寸、合成边界和八类核心语义校验；边缘前景、越界和缺失映射
+会阻止通过。
+
+角色包项目以 `package.json` 声明身份、版本、能力、外观引用和所有待归档文件：
+
+```powershell
+& $FgoPython -m fgo_pet_content.cli pack validate content/packs/official.mash
+& $FgoPython -m fgo_pet_content.cli pack build content/packs/official.mash `
+  --output D:\fgo_unpack\fgo_assets\releases
+```
+
+`pack build` 产生 `.fgopetpack`、外部 `.sha256`、脱敏 QA 报告和变更说明。
+`--dry-run` 只验证项目并列出尚未生成的素材，不写入归档。`official.mash` 在
+Git 中只保留元数据和配置；PNG 等生成素材需在仓库外生成并单独审核。

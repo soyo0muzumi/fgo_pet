@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "appearance_id": "casual",
+  "art_schema_version": 3,
+  "layout": {
+    "source_size": {
+      "width": 1024,
+      "height": 2443
+    },
+    "approval": "human_confirmation_required",
+    "columns": 4,
+    "rows": 7
+  },
+  "runtime": {
+    "overlay_offset": {
+      "x": 13,
+      "y": 0
+    },
+    "panel_anchor": {
+      "x": 151,
+      "y": 360
+    },
+    "default_scale": 0.5
+  }
+}
