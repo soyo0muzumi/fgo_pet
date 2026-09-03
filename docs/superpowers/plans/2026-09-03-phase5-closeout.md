@@ -50,7 +50,7 @@ This section records only evidence obtained in the isolated `phase5-5-release-pr
 |---|---|---|
 | Python full suite | Passed | `D:\fgo_unpack\.venv-phase5-4a\Scripts\python.exe -m pytest -q`: `185 passed`. |
 | PowerShell packaging gate | Passed | `scripts/test-packaging.ps1`: Python `71 passed`, Core `16 passed`, Infrastructure `76 passed`; `Packaging gate passed.` |
-| PowerShell parser checks | Passed | `pwsh -NoProfile` AST parse completed: `PARSED 11 PowerShell scripts`. |
+| PowerShell parser checks | Passed | `powershell.exe -NoProfile` AST parse completed successfully. |
 | App RID Release build | Passed | `dotnet build src/FgoPet.App/FgoPet.App.csproj -c Release -r win-x64 --no-restore`: 0 warnings / 0 errors. |
 | Publish / release verifier | Passed | Candidate `D:\fgo_unpack\release-candidate-20260903d`; `verify-release.ps1` returned `Release verification passed.` Manifest records version `0.1.0`, RID `win-x64`, TFM `net8.0-windows`, and `.NET 8 Desktop Runtime`. |
 | Isolated acceptance | Blocked by host environment | Extraction and preflight verification passed, but MCP smoke cannot create the current-user DPAPI identity state because the controlled runner has no loaded user profile. The adapter emits `adapter_start_or_connection_failed`; direct DPAPI probing reproduced the same host limitation. |

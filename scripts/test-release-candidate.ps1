@@ -48,7 +48,7 @@ try {
     $verify = Join-Path $PSScriptRoot 'verify-release.ps1'
     $install = Join-Path $PSScriptRoot 'install-codex-adapter.ps1'
     $uninstall = Join-Path $PSScriptRoot 'uninstall-codex-adapter.ps1'
-    & pwsh -NoProfile -File $verify -CandidateRoot $candidate
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verify -CandidateRoot $candidate
     if ($LASTEXITCODE -ne 0) { throw 'Release verification failed.' }
 
     $archive = @(Get-ChildItem -LiteralPath (Join-Path $candidate 'app') -Filter 'FgoPet-win-x64-*.zip' -File)
@@ -86,13 +86,13 @@ try {
     try {
         [Environment]::SetEnvironmentVariable('FGO_PET_STATE_ROOT', $stateRoot, 'Process')
         [Environment]::SetEnvironmentVariable('FGO_PET_PIPE_SUFFIX', 'release-acceptance-' + [guid]::NewGuid().ToString('N'), 'Process')
-        & pwsh -NoProfile -File $install @common
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $install @common
         if ($LASTEXITCODE -ne 0) { throw 'Isolated adapter install and MCP smoke failed.' }
         if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) { throw 'Upgrade sentinel disappeared after first install.' }
-        & pwsh -NoProfile -File $install @common
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $install @common
         if ($LASTEXITCODE -ne 0) { throw 'Upgrade simulation failed.' }
         if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) { throw 'Upgrade simulation did not preserve isolated state.' }
-        & pwsh -NoProfile -File $uninstall -InstallRoot $installRoot -CodexHome $codexHome -StateRoot $stateRoot
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $uninstall -InstallRoot $installRoot -CodexHome $codexHome -StateRoot $stateRoot
         if ($LASTEXITCODE -ne 0) { throw 'Isolated adapter uninstall failed.' }
         if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) { throw 'Uninstall did not preserve isolated state.' }
     }

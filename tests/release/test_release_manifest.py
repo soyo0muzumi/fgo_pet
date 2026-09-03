@@ -63,7 +63,7 @@ def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[d
 
 def _verify(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["pwsh", "-NoProfile", "-File", str(VERIFY_SCRIPT), "-CandidateRoot", str(root)],
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(VERIFY_SCRIPT), "-CandidateRoot", str(root)],
         text=True,
         capture_output=True,
         check=False,
