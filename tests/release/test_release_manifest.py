@@ -1,6 +1,5 @@
 import hashlib
 import json
-import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -28,6 +27,8 @@ def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[d
                 "schema_version": 1,
                 "runtime_identifier": "win-x64",
                 "framework_dependent": True,
+                "target_framework": "net8.0-windows",
+                "runtime_requirement": ".NET 8 Desktop Runtime",
                 "application_version": "0.1.0",
                 "required_executables": REQUIRED_EXECUTABLES,
                 "files": entries,
@@ -68,15 +69,52 @@ def test_verifier_rejects_duplicate_manifest_path(candidate: Path) -> None:
     assert _verify(candidate).returncode != 0
 
 
-@pytest.mark.parametrize("path", ["logs/app.log", "role.fgopetpack", "source/Program.cs"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "logs/app.log",
+        "role.fgopetpack",
+        "source/Program.cs",
+        "user-data.db",
+        "user-data/profile.json",
+        "pairing-state.json",
+        "pairing-state/config.json",
+        "secrets.pfx",
+        "credentials/config.json",
+        "source/README.md",
+        ".git/config",
+        ".vs/state",
+        "screenshots/image.png",
+    ],
+)
 def test_verifier_rejects_forbidden_payload_files(candidate: Path, path: str) -> None:
     _write_candidate(candidate, {name: b"binary" for name in REQUIRED_EXECUTABLES} | {path: b"forbidden"})
     assert _verify(candidate).returncode != 0
 
 
-def test_verifier_rejects_missing_or_uppercase_hash(candidate: Path) -> None:
+@pytest.mark.parametrize("hash_value", [None, "", "A" * 64])
+def test_verifier_rejects_missing_empty_or_uppercase_hash(candidate: Path, hash_value: str | None) -> None:
     manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
-    manifest["files"][0]["sha256"] = "A" * 64
+    if hash_value is None:
+        del manifest["files"][0]["sha256"]
+    else:
+        manifest["files"][0]["sha256"] = hash_value
+    (candidate / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    assert _verify(candidate).returncode != 0
+
+
+@pytest.mark.parametrize("path", ["./FgoPet.App.exe", "data/./config.json"])
+def test_verifier_rejects_noncanonical_relative_posix_paths(candidate: Path, path: str) -> None:
+    manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"][0]["path"] = path
+    (candidate / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    assert _verify(candidate).returncode != 0
+
+
+@pytest.mark.parametrize("field", ["target_framework", "runtime_requirement"])
+def test_verifier_requires_explicit_net8_desktop_runtime_contract(candidate: Path, field: str) -> None:
+    manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
+    del manifest[field]
     (candidate / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     assert _verify(candidate).returncode != 0
 

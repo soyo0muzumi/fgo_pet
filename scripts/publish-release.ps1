@@ -17,12 +17,19 @@ function Get-RelativePosixPath([string]$Root, [string]$Path) {
 }
 
 function Test-ForbiddenPayloadPath([string]$RelativePath) {
-    $leaf = [System.IO.Path]::GetFileName($RelativePath).ToLowerInvariant()
+    $normalized = $RelativePath.Replace('\\', '/').ToLowerInvariant()
+    $segments = $normalized.Split('/')
+    $leaf = $segments[-1]
     $extension = [System.IO.Path]::GetExtension($leaf).ToLowerInvariant()
-    $forbiddenExtensions = @('.fgopetpack', '.cs', '.csproj', '.sln', '.py', '.ps1', '.pdb', '.log')
-    $forbiddenNames = @('credentials.json', 'pairing.json', 'settings.json', 'runtime.sqlite', '.git', '.env')
-    return $forbiddenExtensions -contains $extension -or $forbiddenNames -contains $leaf -or
-        $RelativePath.ToLowerInvariant().Contains('/screenshots/')
+    $forbiddenExtensions = @('.fgopetpack', '.cs', '.csproj', '.sln', '.py', '.ps1', '.pdb', '.log', '.db', '.db3', '.pfx', '.pem', '.key', '.snk', '.md')
+    $forbiddenDirectories = @('.git', '.vs', '.idea', 'source', 'src', 'tests', 'test', 'docs', 'doc', 'scripts', 'screenshots', 'screenshot', 'logs', 'log')
+    $sensitiveNamePatterns = @('*credential*', '*secret*', '*password*', '*token*', '*pairing*', '*user-data*', '*userdata*', '*user_data*')
+    if ($forbiddenExtensions -contains $extension -or $extension -like '.sqlite*' -or
+        @($segments | Where-Object { $forbiddenDirectories -contains $_ }).Count -gt 0) { return $true }
+    foreach ($segment in $segments) {
+        if (@($sensitiveNamePatterns | Where-Object { $segment -like $_ }).Count -gt 0) { return $true }
+    }
+    return $false
 }
 
 function Get-Sha256([string]$Path) {
@@ -66,6 +73,8 @@ try {
     }
 
     $projectXml = [xml](Get-Content -LiteralPath $appProject -Raw)
+    $targetFramework = [string]$projectXml.Project.PropertyGroup.TargetFramework
+    if ($targetFramework -ne 'net8.0-windows') { throw "Application target framework must be net8.0-windows." }
     $version = [string]$projectXml.Project.PropertyGroup.Version
     if ([string]::IsNullOrWhiteSpace($version)) { $version = '0.1.0' }
     if ($version -notmatch '^[0-9A-Za-z.-]+$') { throw "Application version contains unsupported characters." }
@@ -92,6 +101,8 @@ try {
         schema_version = 1
         runtime_identifier = 'win-x64'
         framework_dependent = $true
+        target_framework = $targetFramework
+        runtime_requirement = '.NET 8 Desktop Runtime'
         application_version = $version
         required_executables = $requiredExecutables
         files = @($entries | Sort-Object path)

@@ -11,15 +11,24 @@ Set-StrictMode -Version Latest
 function Fail([string]$Message) { throw "Release verification failed: $Message" }
 function Get-Sha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Test-ForbiddenPayloadPath([string]$RelativePath) {
-    $leaf = [System.IO.Path]::GetFileName($RelativePath).ToLowerInvariant()
+    $normalized = $RelativePath.Replace('\\', '/').ToLowerInvariant()
+    $segments = $normalized.Split('/')
+    $leaf = $segments[-1]
     $extension = [System.IO.Path]::GetExtension($leaf).ToLowerInvariant()
-    return @('.fgopetpack', '.cs', '.csproj', '.sln', '.py', '.ps1', '.pdb', '.log') -contains $extension -or
-        @('credentials.json', 'pairing.json', 'settings.json', 'runtime.sqlite', '.git', '.env') -contains $leaf -or
-        $RelativePath.ToLowerInvariant().Contains('/screenshots/')
+    $forbiddenExtensions = @('.fgopetpack', '.cs', '.csproj', '.sln', '.py', '.ps1', '.pdb', '.log', '.db', '.db3', '.pfx', '.pem', '.key', '.snk', '.md')
+    $forbiddenDirectories = @('.git', '.vs', '.idea', 'source', 'src', 'tests', 'test', 'docs', 'doc', 'scripts', 'screenshots', 'screenshot', 'logs', 'log')
+    $sensitiveNamePatterns = @('*credential*', '*secret*', '*password*', '*token*', '*pairing*', '*user-data*', '*userdata*', '*user_data*')
+    if ($forbiddenExtensions -contains $extension -or $extension -like '.sqlite*' -or
+        @($segments | Where-Object { $forbiddenDirectories -contains $_ }).Count -gt 0) { return $true }
+    foreach ($segment in $segments) {
+        if (@($sensitiveNamePatterns | Where-Object { $segment -like $_ }).Count -gt 0) { return $true }
+    }
+    return $false
 }
 function Test-SafePosixPath([string]$Path) {
     return -not [string]::IsNullOrWhiteSpace($Path) -and $Path -notmatch '\\' -and $Path -notmatch '^[A-Za-z]:' -and
-        -not $Path.StartsWith('/') -and $Path.Split('/') -notcontains '..' -and -not $Path.Split('/') -contains ''
+        -not $Path.StartsWith('/') -and $Path.Split('/') -notcontains '..' -and $Path.Split('/') -notcontains '.' -and
+        -not ($Path.Split('/') -contains '')
 }
 
 try {
@@ -29,7 +38,8 @@ try {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { Fail 'manifest.json is missing.' }
     if (-not (Test-Path -LiteralPath $sumsPath -PathType Leaf)) { Fail 'SHA256SUMS is missing.' }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.schema_version -ne 1 -or $manifest.runtime_identifier -ne 'win-x64' -or $manifest.framework_dependent -ne $true) { Fail 'manifest runtime contract is invalid.' }
+    if ($manifest.schema_version -ne 1 -or $manifest.runtime_identifier -ne 'win-x64' -or $manifest.framework_dependent -ne $true -or
+        $manifest.target_framework -ne 'net8.0-windows' -or $manifest.runtime_requirement -ne '.NET 8 Desktop Runtime') { Fail 'manifest runtime contract is invalid.' }
     if (@($manifest.files).Count -eq 0) { Fail 'manifest file list is empty.' }
     $archiveMatches = @(Get-ChildItem -LiteralPath (Join-Path $root 'app') -Filter 'FgoPet-win-x64-*.zip' -File)
     if ($archiveMatches.Count -ne 1) { Fail 'exactly one application archive is required.' }
