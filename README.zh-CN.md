@@ -8,7 +8,9 @@ FGO Pet 是面向 Windows 11 的 FGO 从者桌面伴侣。它把专注计时、�
 
 ## 发布状态
 
-Phase 1–4 已完成主要 Windows 环境的实现与验收：桌宠与角色包、专注与时间线、对话与记忆、Todo 与 Codex Agent 集成均已进入本地 `main`。Phase 5 正在完成备份恢复、配置引导、正式角色包、GUI 安装包和首版发行门禁。
+Phase 1–5 的主要开发切片已整合到本地 `main`。当前工作是首版发布准备：完成 Windows 人工验收、确认正式角色包并整理发布文档。
+
+请先查看[当前路线图](docs/roadmap.md)和[候选版本流程](docs/release/README.md)。
 
 仓库目前还没有面向普通用户的最终 Release 安装包。源代码中的 PowerShell、CLI 和 `dotnet` 命令仅供开发、诊断与验收，不是最终用户安装方式。
 
@@ -161,9 +163,9 @@ Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载�
 - **Phase 2**：专注、恢复、今日时间线和羁绊已在主要 Release 环境验收。
 - **Phase 3**：模型配置、对话、记忆、设置和隐私控制已验收。
 - **Phase 4**：Todo、Agent Relay/Adapter、Codex 集成、重启恢复和撤销已验收并合入本地 `main`。
-- **Phase 5**：方向已确定为任务运行安全、备份恢复、GUI 配置、正式角色包与 Release 打包。S2 Agent 可见审批/恢复、Phase 5.1 任务运行安全与 Phase 5.2 私有备份恢复已在隔离 worktree 实现，最终统一整合前仍不影响本地 `main`。
+- **Phase 5**：任务运行安全、备份恢复、配置引导、角色包发布流程和 Release candidate 准备已整合到本地 `main`。公开发布仍等待文档中列出的 Windows 人工证据和最终发布授权。
 
-Phase 4 证据见 [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md)，Phase 5.1 验收见 [Agent 任务运行安全验收](docs/reports/2026-09-02-phase5-1-agent-safety-acceptance.md)。Phase 5 设计见 [Phase 5 产品化设计](docs/superpowers/specs/2026-09-01-phase5-productization-design.md)。
+开发阶段的详细计划、规格和验收记录仅在本地维护；当前公开状态请以[路线图](docs/roadmap.md)和[发布说明](docs/release/README.md)为准。
 
 ## 开发者构建与测试
 

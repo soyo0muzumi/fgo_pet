@@ -29,6 +29,7 @@ story_cache/
 .vs/
 .vscode/
 .idea/
+.obsidian/
 .worktrees/
 .DS_Store
 Thumbs.db
@@ -53,3 +54,7 @@ backups/
 .learnings/
 .superpowers/
 artifacts/
+
+# Local internal development records
+docs/internal/superpowers/
+docs/internal/reports/

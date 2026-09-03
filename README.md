@@ -8,7 +8,9 @@ The application uses WPF and .NET 8. Servant images, dialogue, persona prompts, 
 
 ## Release status
 
-Phases 1–4 are implemented and accepted on the primary Windows environment: the desktop pet and role-package runtime, focus and timeline, dialogue and memory, Todo items, and Codex Agent integration are all on local `main`. Phase 5 covers backup and restore, guided configuration, the production role package, the GUI installer, and the first-release gate.
+Phases 1–5 development slices are integrated into local `main`. The current work is first-release preparation: final Windows manual checks, production role-package confirmation, and release documentation.
+
+See the [current roadmap](docs/roadmap.md) and [release candidate workflow](docs/release/README.md).
 
 The repository does not yet provide a final installer for regular users. PowerShell, CLI, and `dotnet` commands in the source tree are for development, diagnostics, and acceptance only. They are not the end-user installation path.
 
@@ -161,9 +163,9 @@ Themes currently affect only the settings window. The desktop pet and dialogue p
 - **Phase 2** — focus, recovery, today's timeline, and bond progression are accepted in the primary Release environment.
 - **Phase 3** — model setup, dialogue, memory, settings, and privacy controls are accepted.
 - **Phase 4** — Todo, Agent Relay/Adapter, Codex integration, restart recovery, and revocation are accepted and merged into local `main`.
-- **Phase 5** — the approved direction covers task-operation safety, backup and restore, GUI configuration, the production role package, and Release packaging. S2 agent-visible approval/resume, Phase 5.1 task-operation safety, and Phase 5.2 private backup/restore are implemented in the isolated worktree; final unified integration is still pending and local `main` remains unaffected.
+- **Phase 5** — task-operation safety, backup and restore, guided configuration, role-package release workflow, and Release candidate preparation are integrated into local `main`. Public release remains blocked only by the documented manual Windows evidence and final release authorization.
 
-See the [Phase 4 closeout](docs/reports/2026-09-01-phase4-closeout.md), the [Phase 5.1 Agent safety acceptance](docs/reports/2026-09-02-phase5-1-agent-safety-acceptance.md), and the [Phase 5 productization design](docs/superpowers/specs/2026-09-01-phase5-productization-design.md).
+Historical implementation plans and acceptance reports remain available as internal development records; they are not the primary user documentation.
 
 ## Developer build and test
 
