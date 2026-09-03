@@ -21,4 +21,3 @@ __all__ = [
     "build_pack",
     "validate_pack_project",
 ]
-

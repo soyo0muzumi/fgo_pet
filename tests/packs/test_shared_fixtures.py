@@ -51,4 +51,3 @@ def test_shared_fallback_cycle_is_rejected_by_art_contract() -> None:
 
     with pytest.raises(ValidationError):
         ArtManifestV3.model_validate(payload)
-

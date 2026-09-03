@@ -4,7 +4,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $pythonCandidates = @(
+    (Join-Path $PSScriptRoot "..\.venv-phase5-4a\Scripts\python.exe"),
     (Join-Path $PSScriptRoot "..\..\.venv-phase5-4a\Scripts\python.exe"),
+    (Join-Path $PSScriptRoot "..\..\..\..\.venv-phase5-4a\Scripts\python.exe"),
     "python"
 )
 $python = $pythonCandidates | Where-Object {
