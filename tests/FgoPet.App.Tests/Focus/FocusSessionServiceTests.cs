@@ -1,5 +1,6 @@
 using System.IO;
 using FgoPet.App.Focus;
+using FgoPet.App.Runtime;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Events;
 using FgoPet.Core.Focus;
@@ -193,6 +194,18 @@ public sealed class FocusSessionServiceTests : IDisposable
         _service.Stop();
 
         Assert.True(changes >= 4);
+    }
+
+    [Fact]
+    public void FocusChanged_publishes_the_current_focus_snapshot()
+    {
+        FocusSnapshot? published = null;
+        _service.FocusChanged += (_, args) => published = args.State;
+
+        _service.Start(FocusPreset.Create(25, 5, 4), "servant-mash");
+
+        Assert.NotNull(published);
+        Assert.Equal(_service.Current, published!.Session);
     }
 
     [Fact]

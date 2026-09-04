@@ -5,6 +5,7 @@ using FgoPet.App.Feedback;
 using FgoPet.App.Focus;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
+using FgoPet.App.Runtime;
 using FgoPet.Core.Events;
 using FgoPet.Core.Focus;
 using FgoPet.Core.Packs;
@@ -28,11 +29,11 @@ public sealed class ServantFocusConnector
     private readonly PortraitController _controller;
     private readonly EventFeedbackSelector _selector;
     private readonly IPhase2Availability _availability;
+    private readonly AppRuntime _runtime;
     private readonly ILogger<ServantFocusConnector>? _logger;
     private readonly CultureInfo _locale = CultureInfo.CurrentUICulture;
     private DialogueBundle? _bundle;
     private bool _bundleLoaded;
-    private string? _activeServantId;
 
     public ServantFocusConnector(
         IArtPackageRepository repository,
@@ -41,6 +42,7 @@ public sealed class ServantFocusConnector
         PortraitController controller,
         EventFeedbackSelector selector,
         IPhase2Availability availability,
+        AppRuntime runtime,
         ILogger<ServantFocusConnector>? logger = null)
     {
         _repository = repository;
@@ -49,6 +51,7 @@ public sealed class ServantFocusConnector
         _controller = controller;
         _selector = selector;
         _availability = availability;
+        _runtime = runtime;
         _logger = logger;
         _focus.SnapshotChanged += OnFocusChanged;
     }
@@ -65,15 +68,25 @@ public sealed class ServantFocusConnector
                     appearance.AppearanceId == selection.AppearanceId
                     && appearance.PackageVersion == selection.PackageVersion))
                 ?? servants.FirstOrDefault(servant => servant.PackageId == selection.PackageId);
-            _activeServantId = match?.ServantId ?? selection.PackageId;
-            _panel.DispatcherInvoke(() => _panel.SetActiveServant(_activeServantId));
+            var servantId = match?.ServantId ?? selection.PackageId;
+            _runtime.SetActiveRole(new ActiveRoleState(
+                selection.PackageId,
+                selection.AppearanceId,
+                selection.PackageVersion ?? string.Empty,
+                servantId));
+            _panel.DispatcherInvoke(() => _panel.SetActiveServant(servantId));
         }
         catch (Exception error)
         {
             // Identity is best-effort: fall back to the package ID and keep going.
             _logger?.LogWarning(error, "Servant identity resolution failed; using package id.");
-            _activeServantId = selection.PackageId;
-            _panel.DispatcherInvoke(() => _panel.SetActiveServant(_activeServantId));
+            var servantId = selection.PackageId;
+            _runtime.SetActiveRole(new ActiveRoleState(
+                selection.PackageId,
+                selection.AppearanceId,
+                selection.PackageVersion ?? string.Empty,
+                servantId));
+            _panel.DispatcherInvoke(() => _panel.SetActiveServant(servantId));
         }
     }
 
@@ -100,7 +113,7 @@ public sealed class ServantFocusConnector
                 session.UpdatedAtUtc,
                 session.CurrentCycle,
                 session.Phase,
-                _activeServantId ?? session.ServantId,
+                _runtime.ActiveRole?.ServantId ?? session.ServantId,
                 session.PhaseElapsedSeconds,
                 EffectiveSeconds: 0,
                 Priority: 0);

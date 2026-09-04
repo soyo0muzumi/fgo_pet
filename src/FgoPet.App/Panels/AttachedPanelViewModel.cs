@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Focus;
@@ -10,6 +11,7 @@ using FgoPet.Core.Focus;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Timeline;
 using FgoPet.App.ViewModels;
+using FgoPet.App.Runtime;
 
 namespace FgoPet.App.Panels;
 
@@ -29,6 +31,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     private readonly TimeProvider _time;
     private readonly IFocusSessionService? _focus;
+    private readonly AppRuntime? _runtime;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
@@ -43,14 +46,24 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         IFocusSessionService? focus,
         ConversationViewModel? conversation = null,
         TodoListViewModel? todoList = null,
-        AgentCurrentTaskViewModel? currentAgentTask = null)
+        AgentCurrentTaskViewModel? currentAgentTask = null,
+        AppRuntime? runtime = null)
     {
         _time = time;
         _focus = focus;
         Conversation = conversation;
         TodoList = todoList;
         CurrentAgentTask = currentAgentTask;
+        _runtime = runtime;
         _lastInteraction = time.GetUtcNow();
+        if (_runtime?.ActiveRole is { } activeRole)
+        {
+            _activeServantId = activeRole.ServantId;
+        }
+        if (_runtime is not null)
+        {
+            _runtime.ActiveRoleChanged += OnActiveRoleChanged;
+        }
         if (focus is not null)
         {
             focus.SnapshotChanged += (_, _) => OnFocusChanged();
@@ -265,6 +278,18 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         ActiveServantId = servantId;
         Conversation?.SetActiveServant(servantId);
         OnPropertyChanged(nameof(CanStartFocus));
+    }
+
+    private void OnActiveRoleChanged(object? sender, AppStateChangedEventArgs<ActiveRoleState> args)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => SetActiveServant(args.State.ServantId));
+            return;
+        }
+
+        SetActiveServant(args.State.ServantId);
     }
 
     /// <summary>Refreshes the Today projection; time formatting happens here.</summary>
