@@ -55,6 +55,10 @@ backups/
 .superpowers/
 artifacts/
 
+# Root-level temporary acceptance and task reports
+/s2-visual-acceptance.txt
+/task-*-report.md
+
 # Local internal development records
 docs/internal/superpowers/
 docs/internal/reports/
