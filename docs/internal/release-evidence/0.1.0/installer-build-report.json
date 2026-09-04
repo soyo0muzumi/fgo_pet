@@ -1,0 +1,16 @@
+{
+  "status": "READY_FOR_MANUAL_LIFECYCLE",
+  "installer": "D:\\fgo_unpack\\release-candidate-20260904b\\installer\\FgoPet-0.1.0-win-x64.msi",
+  "sha256": "F696CB4294D03A21971565CD13847B64F7029A9B799F0D64E1CD14622494B7F1",
+  "bytes": 2166784,
+  "install_steps": [
+    "Install the MSI as the current Windows user and launch FgoPet.App.exe.",
+    "Choose a non-default install directory and confirm the application launches from it.",
+    "Run the MSI again as a separate upgrade test and confirm user data remains."
+  ],
+  "uninstall_steps": [
+    "Open Windows Settings > Apps > Installed apps as a separate uninstall test.",
+    "Uninstall FGO Pet and confirm installed program files are removed.",
+    "Confirm user data remains after uninstall."
+  ]
+}

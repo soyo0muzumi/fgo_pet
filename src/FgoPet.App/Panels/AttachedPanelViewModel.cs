@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Focus;
@@ -32,6 +33,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     private readonly TimeProvider _time;
     private readonly IFocusSessionService? _focus;
     private readonly AppRuntime? _runtime;
+    private readonly Dispatcher _dispatcher;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
@@ -55,6 +57,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         TodoList = todoList;
         CurrentAgentTask = currentAgentTask;
         _runtime = runtime;
+        _dispatcher = Dispatcher.CurrentDispatcher;
         _lastInteraction = time.GetUtcNow();
         if (_runtime?.ActiveRole is { } activeRole)
         {
@@ -282,10 +285,9 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
 
     private void OnActiveRoleChanged(object? sender, AppStateChangedEventArgs<ActiveRoleState> args)
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess())
+        if (!_dispatcher.CheckAccess())
         {
-            dispatcher.BeginInvoke(() => SetActiveServant(args.State.ServantId));
+            _dispatcher.BeginInvoke(() => SetActiveServant(args.State.ServantId));
             return;
         }
 

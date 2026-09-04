@@ -51,6 +51,9 @@
     "appearances/casual/runtime/expressions/r07c03.png",
     "appearances/casual/runtime/expressions/r07c04.png",
     "expression-semantics.json",
-    "persona/README.md"
+    "persona/README.md",
+    "persona/core_persona.json",
+    "persona/speech_style.json",
+    "persona/support.json"
   ]
 }

@@ -353,7 +353,8 @@ public static class ServiceRegistration
                 provider.GetRequiredService<IFocusSessionService>(),
                 conversation,
                 provider.GetRequiredService<TodoListViewModel>(),
-                currentAgentTask);
+                currentAgentTask,
+                provider.GetRequiredService<AppRuntime>());
         })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
