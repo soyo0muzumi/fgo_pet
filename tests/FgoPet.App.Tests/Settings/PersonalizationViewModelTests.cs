@@ -1,4 +1,6 @@
 using FgoPet.App.Settings;
+using FgoPet.Core.Geometry;
+using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using Xunit;
 
@@ -6,6 +8,17 @@ namespace FgoPet.App.Tests.Settings;
 
 public sealed class PersonalizationViewModelTests
 {
+    [Fact]
+    public void Changing_scale_applies_to_active_portrait()
+    {
+        var portrait = new FakePortraitController();
+        var viewModel = new PersonalizationViewModel(new FakeSettingsStore(), portrait);
+
+        viewModel.Scale = 0.75;
+
+        Assert.Equal(0.75, portrait.LastScale);
+    }
+
     [Fact]
     public void Initial_status_is_empty_until_an_action_produces_feedback()
     {
@@ -111,5 +124,14 @@ public sealed class PersonalizationViewModelTests
         public AppSettings Load() => Current;
 
         public void Save(AppSettings settings) => Current = settings;
+    }
+
+    private sealed class FakePortraitController : IPortraitController
+    {
+        public double? LastScale { get; private set; }
+        public Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.CompletedTask;
+        public void SetExpression(ExpressionSemantic semantic) { }
+        public void SetScale(double scale) => LastScale = scale;
+        public void ApplyDpi(Dpi2 dpi) { }
     }
 }
