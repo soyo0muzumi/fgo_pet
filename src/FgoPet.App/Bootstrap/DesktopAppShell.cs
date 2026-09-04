@@ -31,6 +31,7 @@ public sealed class DesktopAppShell : IAppShell
     private readonly IFocusRestorer? _restorer;
     private readonly IPhase2Availability? _phase2;
     private readonly Func<ServantFocusConnector>? _connectorFactory;
+    private readonly IRoleActivationService? _activation;
 
     public DesktopAppShell(
         IArtPackageRepository repository,
@@ -43,7 +44,8 @@ public sealed class DesktopAppShell : IAppShell
         Func<ServantFocusConnector>? connectorFactory = null,
         ILogger<DesktopAppShell>? logger = null,
         AgentReconnectService? agentReconnect = null,
-        IAgentRelayRuntime? agentRuntime = null)
+        IAgentRelayRuntime? agentRuntime = null,
+        IRoleActivationService? activation = null)
     {
         _repository = repository;
         _controller = controller;
@@ -53,6 +55,7 @@ public sealed class DesktopAppShell : IAppShell
         _restorer = restorer;
         _phase2 = phase2;
         _connectorFactory = connectorFactory;
+        _activation = activation;
         _logger = logger;
         _agentReconnect = agentReconnect;
         _agentRuntime = agentRuntime;
@@ -104,6 +107,21 @@ public sealed class DesktopAppShell : IAppShell
         if (offeredPack is not null)
         {
             _ui.ShowLibrary(offeredPack);
+            return;
+        }
+
+        if (_activation is not null)
+        {
+            var restored = await _activation.RestoreAsync(cancellationToken).ConfigureAwait(true);
+            if (restored.Succeeded)
+            {
+                _ui.ShowPortrait();
+            }
+            else
+            {
+                _ui.ShowLibrary();
+            }
+
             return;
         }
 

@@ -26,7 +26,14 @@ public sealed record RoleActivationResult(
 }
 
 /// <summary>Runs the complete role activation use case for every entry point.</summary>
-public sealed class RoleActivationService
+public interface IRoleActivationService
+{
+    Task<RoleActivationResult> ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken);
+
+    Task<RoleActivationResult> RestoreAsync(CancellationToken cancellationToken);
+}
+
+public sealed class RoleActivationService : IRoleActivationService
 {
     private readonly IArtPackageRepository _repository;
     private readonly IPortraitController _portrait;

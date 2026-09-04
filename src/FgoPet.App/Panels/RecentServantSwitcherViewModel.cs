@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using FgoPet.App.Servants;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Portraits;
 
@@ -10,10 +11,12 @@ public sealed partial class RecentServantSwitcherViewModel : ObservableObject
     private const int Capacity = 5;
 
     private readonly IPortraitController _controller;
+    private readonly IRoleActivationService? _activation;
 
-    public RecentServantSwitcherViewModel(IPortraitController controller)
+    public RecentServantSwitcherViewModel(IPortraitController controller, IRoleActivationService? activation = null)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+        _activation = activation;
     }
 
     [ObservableProperty]
@@ -35,6 +38,19 @@ public sealed partial class RecentServantSwitcherViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasEnough;
 
-    public async Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) =>
+    public async Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken)
+    {
+        if (_activation is not null)
+        {
+            var result = await _activation.ActivateAsync(selection, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(result.Error ?? "角色包激活失败。");
+            }
+
+            return;
+        }
+
         await _controller.ActivateAsync(selection, cancellationToken).ConfigureAwait(false);
+    }
 }

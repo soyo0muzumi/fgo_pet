@@ -150,6 +150,7 @@ public static class ServiceRegistration
         .AddSingleton<EventFeedbackSelector>()
         .AddSingleton<AppRuntime>()
         .AddSingleton<RoleActivationService>()
+        .AddSingleton<IRoleActivationService>(provider => provider.GetRequiredService<RoleActivationService>())
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
