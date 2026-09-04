@@ -44,7 +44,7 @@ ViewModel 或基础设施适配器
         |
         +--> 领域服务
         |
-        +--> AppSessionState（当前事实）
+        +--> AppRuntime 状态切片（当前事实）
         |
         v
 明确的状态变化事件 / 快照
@@ -56,29 +56,105 @@ ViewModel 或基础设施适配器
 窗口、托盘和其他界面
 ```
 
-### AppSessionState
+### AppRuntime 与状态切片
 
-应用级状态只保存当前运行所需的事实，不承担业务动作：
+应用级运行时只负责组合各模块状态和生命周期，不承担所有业务状态的集中写入。每个模块拥有自己的状态切片，避免形成无法维护的“上帝状态对象”：
 
 ```text
-AppSessionState
-├── ActiveRole
-│   ├── PackageId
-│   ├── AppearanceId
-│   ├── PackageVersion
-│   └── ServantId
-├── Portrait
-│   ├── IsActivated
-│   ├── Scale
-│   ├── Expression
-│   └── Geometry
-├── Focus
-├── Conversation
-├── AgentRuntime
-└── AppLifecycle
+AppRuntime
+├── RoleState
+├── PortraitState
+├── FocusState
+├── ConversationState
+├── AgentState
+├── VoiceState
+├── FileState
+└── AppLifecycleState
 ```
 
-`AppSessionState` 是当前会话的唯一事实来源。持久化设置仍由 `IAppSettingsStore` 管理；持久化设置不是实时运行状态，不能替代 `AppSessionState`。
+`AppRuntime` 是当前会话状态的组合入口；每个状态切片的唯一写入者仍是对应模块。持久化设置仍由 `IAppSettingsStore` 管理；持久化设置不是实时运行状态，不能替代运行时状态。
+
+## 可扩展模块
+
+功能按“模块 + 适配器”扩展，不把新能力直接塞进现有 ViewModel：
+
+```text
+FgoPet.App
+├── Core
+│   ├── AppRuntime
+│   ├── Command / Result
+│   ├── Event / Snapshot
+│   └── Module contracts
+├── Modules
+│   ├── Role
+│   ├── Focus
+│   ├── Portrait
+│   ├── Conversation
+│   ├── Todo
+│   ├── Agent
+│   ├── Voice
+│   └── Files
+├── Adapters
+│   ├── Windows audio
+│   ├── File system
+│   ├── Relay / MCP
+│   └── Model providers
+└── UI
+```
+
+每个模块至少有自己的状态、命令、服务和事件边界：
+
+```text
+Voice
+├── VoiceState
+├── VoiceCommands
+├── VoiceService
+└── VoiceEvents
+```
+
+新增模块必须满足：
+
+1. 不直接修改其他模块状态；
+2. 不直接依赖其他模块的 ViewModel；
+3. 外部设备、文件系统和网络服务通过 Adapter 隔离；
+4. 能力不可用时只让本模块进入不可用状态，不阻塞应用启动；
+5. 模块状态和服务可以在没有 WPF 窗口的测试环境中运行。
+
+第一阶段只支持编译时注册的可选模块，不实现动态插件加载。模块契约可以预留为：
+
+```csharp
+public interface IFeatureModule
+{
+    string ModuleId { get; }
+    void Register(IServiceCollection services);
+    Task StartAsync(CancellationToken cancellationToken);
+    Task StopAsync(CancellationToken cancellationToken);
+}
+```
+
+## 新能力接入示例
+
+语音模块的边界：
+
+```text
+ConversationService
+  → SpeechSynthesisService.Speak(text)
+  → VoiceState
+  → VoiceChanged / PlaybackCompleted
+  → UI 更新播放状态
+```
+
+文件管理模块的边界：
+
+```text
+FileApplicationService
+  → 导入 / 导出 / 打开 / 清理
+  → FileOperationResult
+  → FileChanged
+  → 相关模块刷新自己的状态
+```
+
+文件系统适配器不能直接通知角色包页面，音频适配器也不能直接通知对话面板；中间必须经过所属模块服务。
 
 ## 目标组件职责
 
@@ -88,7 +164,7 @@ AppSessionState
 
 - 根据 `PortraitSelection` 解析角色包和 `servant_id`；
 - 调用立绘控制器完成激活；
-- 更新 `AppSessionState.ActiveRole` 和 `Portrait`；
+- 更新 `AppRuntime` 中的 `RoleState` 和 `PortraitState`；
 - 保存最后选择；
 - 向调用方返回成功或结构化失败结果。
 
@@ -130,7 +206,7 @@ FocusSnapshot + ActiveRole
 
 只负责面板交互和展示：
 
-- 从 `AppSessionState` 读取当前角色和专注状态；
+- 从 `AppRuntime` 读取当前角色和专注状态；
 - 根据状态计算 `CanStartFocus`、`CanPause` 等界面属性；
 - 调用 `FocusApplicationService`；
 - 将状态变化转换成本 ViewModel 的 `PropertyChanged`。
@@ -149,6 +225,17 @@ FocusSnapshot + ActiveRole
 - 应用服务将外部快照投影为应用状态；
 - 对话服务只负责对话会话和消息流；
 - Todo 提案、Agent 派发和用户确认分别使用明确的命令与结果，不通过隐式事件串联。
+
+## 模块间通信规则
+
+```text
+模块内部：直接调用 + 本地事件
+模块之间：应用服务接口 + 类型化事件/快照
+UI 内部：INotifyPropertyChanged
+外部系统：Adapter Snapshot → 模块 State
+```
+
+跨模块事件只表达稳定的业务事实，例如 `ActiveRoleChanged`、`FocusChanged` 或 `PlaybackCompleted`。按钮点击、窗口显示和临时错误优先使用命令返回值，不新增全局事件。
 
 ## 事件分类
 
@@ -191,7 +278,7 @@ FocusSnapshot + ActiveRole
 ```text
 AppStartup
   -> RoleActivationService.RestoreAsync
-  -> AppSessionState.ActiveRole / Portrait
+  -> AppRuntime.RoleState / PortraitState
   -> AppLifecycleChanged
   -> DesktopAppUi.ShowPortrait
 ```
@@ -221,7 +308,7 @@ AttachedPanelViewModel
 ```text
 PersonalizationViewModel
   -> PersonalizationService.SaveScale
-  -> AppSessionState / PortraitController
+  -> AppRuntime.PortraitState / PortraitController
   -> PortraitChanged
   -> PortraitWindowCoordinator 更新布局
 ```
@@ -243,7 +330,7 @@ ConversationViewModel
 Relay / Adapter
   -> AgentRuntimeSnapshot
   -> AgentRuntimeApplicationService
-  -> AppSessionState.AgentRuntime
+  -> AppRuntime.AgentState
   -> 连接设置、任务面板、托盘状态
 ```
 
@@ -251,7 +338,7 @@ Relay / Adapter
 
 ### Phase 1：定义状态模型
 
-- 增加 `ActiveRoleSnapshot`、`PortraitSnapshot` 和 `AppSessionState`；
+- 增加 `ActiveRoleSnapshot`、`PortraitSnapshot` 和 `AppRuntime` 状态切片入口；
 - 明确每个状态的唯一写入者；
 - 保留现有事件作为兼容层；
 - 不改变用户可见行为。
@@ -266,7 +353,7 @@ Relay / Adapter
 ### Phase 3：收敛专注和立绘事件
 
 - 将 `SnapshotChanged` 转为完整 `FocusSnapshot`；
-- 将立绘状态统一投影到 `AppSessionState`；
+- 将立绘状态统一投影到 `AppRuntime.PortraitState`；
 - 拆分 `FocusFeedbackCoordinator`；
 - 面板不再暴露业务性的 `SetActiveServant`。
 
@@ -276,7 +363,14 @@ Relay / Adapter
 - 用应用服务结果替代隐式事件链；
 - 后续接入工具调用/MCP 时保持命令边界，不让模型输出直接驱动外部执行。
 
-### Phase 5：清理兼容层
+### Phase 5：加入可选能力模块
+
+- 建立编译时模块注册入口；
+- 增加 `Voice` 和 `Files` 模块的状态与适配器边界；
+- 验证模块不可用时核心功能仍可启动；
+- 暂不实现动态插件发现、下载和热加载。
+
+### Phase 6：清理兼容层
 
 - 删除重复身份缓存和无参数状态事件；
 - 删除只为转发事件而存在的 ViewModel 方法；
