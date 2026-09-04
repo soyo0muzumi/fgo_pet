@@ -13,6 +13,7 @@ using FgoPet.App.Main;
 using FgoPet.App.Memory;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
+using FgoPet.App.Runtime;
 using FgoPet.App.Privacy;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
@@ -147,6 +148,8 @@ public static class ServiceRegistration
         .AddSingleton<IFocusSessionService>(provider => provider.GetRequiredService<FocusSessionService>())
         .AddSingleton<IFocusRestorer>(provider => new FocusServiceRestorer(provider.GetRequiredService<FocusSessionService>()))
         .AddSingleton<EventFeedbackSelector>()
+        .AddSingleton<AppRuntime>()
+        .AddSingleton<RoleActivationService>()
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
