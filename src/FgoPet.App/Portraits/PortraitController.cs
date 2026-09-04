@@ -2,6 +2,7 @@ using System.IO;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
+using FgoPet.App.Runtime;
 using FgoPet.Infrastructure.Packs;
 
 namespace FgoPet.App.Portraits;
@@ -19,6 +20,7 @@ public sealed class PortraitController : IPortraitController
     private readonly IArtPackageRepository _repository;
     private readonly IExpressionResolver _resolver;
     private readonly PortraitSnapshotCache _cache;
+    private readonly AppRuntime? _runtime;
     private Dpi2 _dpi;
     private long _operationVersion;
     private AppearanceManifestV3? _appearance;
@@ -28,11 +30,13 @@ public sealed class PortraitController : IPortraitController
         IArtPackageRepository repository,
         IExpressionResolver resolver,
         PortraitSnapshotCache cache,
-        Dpi2 dpi)
+        Dpi2 dpi,
+        AppRuntime? runtime = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _runtime = runtime;
         _dpi = dpi;
     }
 
@@ -62,6 +66,7 @@ public sealed class PortraitController : IPortraitController
         CurrentState = state;
         _appearance = appearance;
         _cache.Put(selection, state.Snapshot);
+        _runtime?.SetPortrait(state);
         StateChanged?.Invoke(this, EventArgs.Empty);
 
         try
@@ -146,6 +151,7 @@ public sealed class PortraitController : IPortraitController
     private void Publish(PortraitState state)
     {
         CurrentState = state;
+        _runtime?.SetPortrait(state);
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 }

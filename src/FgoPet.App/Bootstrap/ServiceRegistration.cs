@@ -87,7 +87,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<IArtPackageRepository>(),
             provider.GetRequiredService<IExpressionResolver>(),
             provider.GetRequiredService<PortraitSnapshotCache>(),
-            new Dpi2(1, 1)))
+            new Dpi2(1, 1),
+            provider.GetRequiredService<AppRuntime>()))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<PortraitController>())
         .AddSingleton<PortraitActivation>(provider => provider.GetRequiredService<PortraitController>().ActivateAsync)
         // Phase 2 runtime: one versioned database plus focus orchestration.

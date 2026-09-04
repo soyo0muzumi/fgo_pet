@@ -1,5 +1,6 @@
 using System.IO;
 using FgoPet.App.Portraits;
+using FgoPet.App.Runtime;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -48,6 +49,19 @@ public sealed class PortraitControllerTests : IDisposable
         Assert.True(state.Snapshot.Body.IsFrozen);
         Assert.Equal(1, changes);
         Assert.Single(_repository.LastKnownGoods);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_projects_the_published_state_to_app_runtime()
+    {
+        var bundle = WriteBundle("runtime-state");
+        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "runtime-state", bundle.Root));
+        var runtime = new AppRuntime();
+        var controller = new PortraitController(_repository, new ExpressionResolver(), _cache, new Dpi2(2.0, 2.0), runtime);
+
+        await controller.ActivateAsync(new PortraitSelection("pkg", "runtime-state"), CancellationToken.None);
+
+        Assert.Same(controller.CurrentState, runtime.Portrait);
     }
 
     [Fact]
