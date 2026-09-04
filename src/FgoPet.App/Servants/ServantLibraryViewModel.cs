@@ -19,6 +19,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     private readonly IAppSettingsStore _settings;
     private readonly ServantPreferenceService _preferences;
     private readonly Action<string> _openFolder;
+    private readonly IRoleActivationService? _activation;
 
     [ObservableProperty]
     private IReadOnlyList<ServantCardViewModel> _servants = Array.Empty<ServantCardViewModel>();
@@ -67,7 +68,8 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         IPackInstaller installer,
         IPortraitController controller,
         IAppSettingsStore settings,
-        Action<string>? openFolder = null)
+        Action<string>? openFolder = null,
+        IRoleActivationService? activation = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _installer = installer ?? throw new ArgumentNullException(nameof(installer));
@@ -75,6 +77,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _preferences = new ServantPreferenceService(_settings);
         _openFolder = openFolder ?? (path => Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true }));
+        _activation = activation;
 
         RescanCommand = new AsyncRelayCommand(LoadAsync);
         InstallCommand = new AsyncRelayCommand(() => InstallAsync(PackFilePath));
@@ -215,7 +218,21 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
 
         try
         {
-            await _controller.ActivateAsync(selection, CancellationToken.None);
+            if (_activation is not null)
+            {
+                var result = await _activation.ActivateAsync(selection, CancellationToken.None);
+                if (!result.Succeeded)
+                {
+                    Diagnostic = new PackageDiagnosticViewModel(new PackFailure(
+                        PackErrorCode.PackageArchiveInvalid,
+                        result.Error ?? "角色包激活失败。"));
+                    return;
+                }
+            }
+            else
+            {
+                await _controller.ActivateAsync(selection, CancellationToken.None);
+            }
         }
         catch (PackFailureException error)
         {

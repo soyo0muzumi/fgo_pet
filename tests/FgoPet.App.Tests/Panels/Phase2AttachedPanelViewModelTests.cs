@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using FgoPet.App.Focus;
 using FgoPet.App.Panels;
+using FgoPet.App.Runtime;
 using FgoPet.Core.Bond;
 using FgoPet.Core.Events;
 using FgoPet.Core.Focus;
@@ -36,6 +37,18 @@ public sealed class Phase2AttachedPanelViewModelTests
         Assert.Equal("第 1 / 4 轮", _vm.CycleText);
         Assert.Equal("本轮 25:00 · 已完成 3%", _vm.TimerMetaText);
         Assert.Equal(2.8, _vm.ProgressPercent, 1);
+    }
+
+    [Fact]
+    public void Active_role_state_enables_focus_without_a_role_library_event()
+    {
+        var runtime = new AppRuntime();
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), _focus, runtime: runtime);
+
+        runtime.SetActiveRole(new ActiveRoleState("pack", "casual", "1.0.0", "servant-mash"));
+
+        Assert.True(vm.CanStartFocus);
+        Assert.Equal("servant-mash", vm.ActiveServantId);
     }
 
     [Fact]

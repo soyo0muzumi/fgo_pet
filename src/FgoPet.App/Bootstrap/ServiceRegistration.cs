@@ -13,6 +13,7 @@ using FgoPet.App.Main;
 using FgoPet.App.Memory;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
+using FgoPet.App.Runtime;
 using FgoPet.App.Privacy;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
@@ -86,7 +87,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<IArtPackageRepository>(),
             provider.GetRequiredService<IExpressionResolver>(),
             provider.GetRequiredService<PortraitSnapshotCache>(),
-            new Dpi2(1, 1)))
+            new Dpi2(1, 1),
+            provider.GetRequiredService<AppRuntime>()))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<PortraitController>())
         .AddSingleton<PortraitActivation>(provider => provider.GetRequiredService<PortraitController>().ActivateAsync)
         // Phase 2 runtime: one versioned database plus focus orchestration.
@@ -147,6 +149,9 @@ public static class ServiceRegistration
         .AddSingleton<IFocusSessionService>(provider => provider.GetRequiredService<FocusSessionService>())
         .AddSingleton<IFocusRestorer>(provider => new FocusServiceRestorer(provider.GetRequiredService<FocusSessionService>()))
         .AddSingleton<EventFeedbackSelector>()
+        .AddSingleton<AppRuntime>()
+        .AddSingleton<RoleActivationService>()
+        .AddSingleton<IRoleActivationService>(provider => provider.GetRequiredService<RoleActivationService>())
         .AddSingleton<ServantFocusConnector>()
         .AddSingleton<ServantPreferenceService>()
         .AddSingleton<ServantLibraryViewModel>()
@@ -348,7 +353,8 @@ public static class ServiceRegistration
                 provider.GetRequiredService<IFocusSessionService>(),
                 conversation,
                 provider.GetRequiredService<TodoListViewModel>(),
-                currentAgentTask);
+                currentAgentTask,
+                provider.GetRequiredService<AppRuntime>());
         })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),

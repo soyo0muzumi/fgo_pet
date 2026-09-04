@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-当前版本处于首版发布准备阶段。自动化测试和 Windows x64 Release candidate 验证已通过；GUI 安装、睡眠/唤醒、DPI、多显示器和长时间运行等人工证据仍待补齐。
+当前版本处于首版发布准备阶段。自动化测试、独立 Release acceptance gate、WiX 5.0.2 MSI 构建、Mash 正式角色包构建和用户人工生命周期验收已完成；最终发布授权仍待收口。
 
 ## 0.1.0（候选版本）
 
@@ -17,5 +17,11 @@
 已知限制：
 
 - 尚未完成公开发布授权。
+- 同时提供 Windows x64 ZIP 和 WiX per-user GUI MSI；MSI 已完成真实安装、启动、升级数据保留和卸载验收。
 - 角色包与应用是分开的 Release artifact。
+- 正式 Mash 角色包为 `official.mash-1.0.0.fgopetpack`，保留 28 个视觉表情，LLM 仅使用 Phase 3 八个核心语义键。
 - Agent 和模型能力需要用户单独配置；离线桌宠和专注功能不依赖它们。
+
+## 0.1.1 计划
+
+- 历史对话查看：会话列表、打开会话、加载消息，以及重启后的最近会话恢复。

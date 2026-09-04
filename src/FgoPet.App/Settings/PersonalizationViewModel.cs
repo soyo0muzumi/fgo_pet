@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Settings;
@@ -13,6 +14,7 @@ public sealed class PersonalizationViewModel : ObservableObject
     private static readonly IReadOnlyList<double> SupportedScaleValues = [0.50, 0.60, 0.75];
 
     private readonly IAppSettingsStore _settings;
+    private readonly IPortraitController? _portrait;
     private double _scale;
     private bool _topmost;
     private bool _autoCollapseExpandedPanel;
@@ -20,9 +22,10 @@ public sealed class PersonalizationViewModel : ObservableObject
     private string _statusText = string.Empty;
     private string _errorText = string.Empty;
 
-    public PersonalizationViewModel(IAppSettingsStore settings)
+    public PersonalizationViewModel(IAppSettingsStore settings, IPortraitController? portrait = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _portrait = portrait;
         var saved = settings.Load();
         _scale = IsSupportedScale(saved.Scale) ? saved.Scale : AppSettings.Defaults.Scale;
         _topmost = saved.Topmost;
@@ -50,6 +53,7 @@ public sealed class PersonalizationViewModel : ObservableObject
             if (SetProperty(ref _scale, value))
             {
                 PersistIfEnabled();
+                ApplyToActivePortrait();
             }
         }
     }
@@ -146,6 +150,18 @@ public sealed class PersonalizationViewModel : ObservableObject
         {
             ErrorText = "个性化设置保存失败，请稍后重试。";
             StatusText = "保存失败";
+        }
+    }
+
+    private void ApplyToActivePortrait()
+    {
+        try
+        {
+            _portrait?.SetScale(_scale);
+        }
+        catch (InvalidOperationException)
+        {
+            // No portrait is active yet; the persisted value will apply on activation.
         }
     }
 

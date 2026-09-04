@@ -2,6 +2,8 @@ using System.IO;
 using System.Xml.Linq;
 using System.Windows;
 using FgoPet.App.Bootstrap;
+using FgoPet.App.Panels;
+using FgoPet.App.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -73,6 +75,23 @@ public sealed class ArchitectureTests
             });
 
             Assert.IsType<DesktopAppShell>(provider.GetRequiredService<IAppShell>());
+        });
+    }
+
+    [Fact]
+    public void Production_container_wires_runtime_role_state_to_the_focus_panel()
+    {
+        StaTest.Run(() =>
+        {
+            _ = Application.Current ?? new Application();
+            using var provider = new ServiceCollection().AddFgoPet([]).BuildServiceProvider();
+            var runtime = provider.GetRequiredService<AppRuntime>();
+            var panel = provider.GetRequiredService<AttachedPanelViewModel>();
+
+            runtime.SetActiveRole(new ActiveRoleState("pack", "casual", "1.0.0", "servant-mash"));
+
+            Assert.Equal("servant-mash", panel.ActiveServantId);
+            Assert.True(panel.CanStartFocus);
         });
     }
 

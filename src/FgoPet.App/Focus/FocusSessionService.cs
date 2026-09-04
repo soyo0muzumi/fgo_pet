@@ -1,4 +1,5 @@
 using FgoPet.App.Focus;
+using FgoPet.App.Runtime;
 using FgoPet.Core.Events;
 using FgoPet.Core.Focus;
 using FgoPet.Infrastructure.Focus;
@@ -34,6 +35,8 @@ public sealed class FocusSessionService : IFocusSessionService
     public FocusSession Current { get; private set; }
 
     public event EventHandler? SnapshotChanged;
+
+    public event EventHandler<AppStateChangedEventArgs<FocusSnapshot>>? FocusChanged;
 
     public event EventHandler? PersistenceFailed;
 
@@ -96,7 +99,7 @@ public sealed class FocusSessionService : IFocusSessionService
         {
             Current = stored.RestorePaused();
         }
-        SnapshotChanged?.Invoke(this, EventArgs.Empty);
+        PublishSnapshot();
     }
 
     private void ApplyUserCommand(FocusCommand command)
@@ -124,7 +127,7 @@ public sealed class FocusSessionService : IFocusSessionService
                 PauseInMemoryAfterPersistenceFailure();
             }
 
-            SnapshotChanged?.Invoke(this, EventArgs.Empty);
+            PublishSnapshot();
             return;
         }
 
@@ -132,7 +135,7 @@ public sealed class FocusSessionService : IFocusSessionService
         var shouldSave = isUserCommand || !isRunning || _secondsSinceSnapshot >= SnapshotCadenceSeconds;
         if (!shouldSave)
         {
-            SnapshotChanged?.Invoke(this, EventArgs.Empty);
+            PublishSnapshot();
             return;
         }
 
@@ -146,12 +149,18 @@ public sealed class FocusSessionService : IFocusSessionService
             PauseInMemoryAfterPersistenceFailure();
         }
 
-        SnapshotChanged?.Invoke(this, EventArgs.Empty);
+        PublishSnapshot();
     }
 
     private void PauseInMemoryAfterPersistenceFailure()
     {
         Current = Current.RestorePaused();
         PersistenceFailed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void PublishSnapshot()
+    {
+        SnapshotChanged?.Invoke(this, EventArgs.Empty);
+        FocusChanged?.Invoke(this, new AppStateChangedEventArgs<FocusSnapshot>(new FocusSnapshot(Current)));
     }
 }

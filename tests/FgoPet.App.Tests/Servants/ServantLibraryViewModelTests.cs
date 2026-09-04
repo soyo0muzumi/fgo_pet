@@ -1,4 +1,5 @@
 using System.IO;
+using FgoPet.App.Runtime;
 using FgoPet.App.Servants;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -65,6 +66,19 @@ public sealed class ServantLibraryViewModelTests
         Assert.Single(controller.Activations);
         Assert.Equal("1.1.0", controller.Activations[0].PackageVersion);
         Assert.Equal(new PortraitSelection("official.mash", "casual", "1.1.0"), settings.Saved.Last().Selection);
+    }
+
+    [Fact]
+    public async Task Activating_a_selected_appearance_uses_the_application_activation_service()
+    {
+        var activation = new FakeRoleActivationService();
+        var (vm, _, _, controller, _) = CreateViewModel(activation: activation);
+        await vm.LoadAsync();
+
+        await vm.ActivateAsync();
+
+        Assert.Single(activation.Selections);
+        Assert.Empty(controller.Activations);
     }
 
     [Fact]
@@ -205,13 +219,14 @@ public sealed class ServantLibraryViewModelTests
     }
 
     private static (ServantLibraryViewModel Vm, FakeArtRepository Repository, FakeInstaller Installer, FakePortraitController Controller, FakeSettingsStore Settings) CreateViewModel(
-        Action<string>? openFolder = null)
+        Action<string>? openFolder = null,
+        IRoleActivationService? activation = null)
     {
         var repository = new FakeArtRepository();
         var installer = new FakeInstaller();
         var controller = new FakePortraitController();
         var settings = new FakeSettingsStore();
-        var vm = new ServantLibraryViewModel(repository, installer, controller, settings, openFolder ?? (_ => { }));
+        var vm = new ServantLibraryViewModel(repository, installer, controller, settings, openFolder ?? (_ => { }), activation);
         return (vm, repository, installer, controller, settings);
     }
 
@@ -224,6 +239,21 @@ public sealed class ServantLibraryViewModelTests
             Calls++;
             return Task.FromResult(new PackInstallResult(true, new PackIdentity("official.mash", "1.0.0"), null));
         }
+    }
+
+    private sealed class FakeRoleActivationService : IRoleActivationService
+    {
+        public List<PortraitSelection> Selections { get; } = [];
+
+        public Task<RoleActivationResult> ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken)
+        {
+            Selections.Add(selection);
+            return Task.FromResult(RoleActivationResult.Success(new ActiveRoleState(
+                selection.PackageId, selection.AppearanceId, selection.PackageVersion ?? "1.0.0", "mash_kyrielight")));
+        }
+
+        public Task<RoleActivationResult> RestoreAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(RoleActivationResult.Failed(RoleActivationFailure.NoSelection));
     }
 
     private sealed class FakeArtRepository : IArtPackageRepository

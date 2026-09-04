@@ -1,0 +1,216 @@
+{
+  "schema_version": 3,
+  "appearance_id": "casual",
+  "assets": [
+    {
+      "type": "body",
+      "stable_id": "full_body",
+      "path": "runtime/full_body.png",
+      "sha256": "sha256:9e277baa6d4b498a7f351fbac6ca0185c7a30075868ab1e0ab70930045c236f6"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c01",
+      "path": "runtime/expressions/r01c01.png",
+      "sha256": "sha256:6d587a0187ea4e84dbaaea478a79a49538238ab0943f1620daaa1a908c529e20"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c02",
+      "path": "runtime/expressions/r01c02.png",
+      "sha256": "sha256:1afb495db9bb3be16337427fd6a0787e0afc1d8a9cb717a18a2ce8130ffe7676"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c03",
+      "path": "runtime/expressions/r01c03.png",
+      "sha256": "sha256:902b66c945c61bb4cc1b7d633ad1611eefe4101a186b720b6f5904d5b63ea07e"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r01c04",
+      "path": "runtime/expressions/r01c04.png",
+      "sha256": "sha256:34a776fa8c388cc88abb5a0898e1707e06b0b6016b26525d6ab422c9e1218034"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c01",
+      "path": "runtime/expressions/r02c01.png",
+      "sha256": "sha256:84e35412ba0ff0502bc1e2ab0a00d0749fc7da393813d8185e7b3d1b22e334cf"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c02",
+      "path": "runtime/expressions/r02c02.png",
+      "sha256": "sha256:cdfdcb6a698a8a7929ebff5e795f67efe3bc65e2308f0e04a483fd0737a9cff9"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c03",
+      "path": "runtime/expressions/r02c03.png",
+      "sha256": "sha256:9167d3137677d2a33581917ddc954bd5290867ec31d02a2411b0cf9648780815"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r02c04",
+      "path": "runtime/expressions/r02c04.png",
+      "sha256": "sha256:16357b9937f41a478678115ae5cc0a68f7d0a38763f988d25e569357f9563ad3"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c01",
+      "path": "runtime/expressions/r03c01.png",
+      "sha256": "sha256:564427e29586f7027b6e9df19f102c9c91c9f2691ee109d4e8bd7379e1117463"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c02",
+      "path": "runtime/expressions/r03c02.png",
+      "sha256": "sha256:e87ee3bf886e4b5d3998c2418bfab997a3b2e0e5ba2b7c40c49e2577133963c2"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c03",
+      "path": "runtime/expressions/r03c03.png",
+      "sha256": "sha256:a054847bd0ca2753585348e6830a1cc6d56ae2c69f3dd9201c6ea8def48f593a"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r03c04",
+      "path": "runtime/expressions/r03c04.png",
+      "sha256": "sha256:5dc7eb6713e6e44a2bd7b9418c73d71c0e83286cbfb892a635ec49a303fcedfd"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c01",
+      "path": "runtime/expressions/r04c01.png",
+      "sha256": "sha256:0452cdb1a0a1a46ce9252e05e86dc7a14e16ce0a31ce808641b82b0e7bdb630a"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c02",
+      "path": "runtime/expressions/r04c02.png",
+      "sha256": "sha256:530d7939eeb38e3bd82a400e90313da2825a4c18571872f87f3c0f2f82c4861d"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c03",
+      "path": "runtime/expressions/r04c03.png",
+      "sha256": "sha256:f9a87d0d77da242179f6f26ce473ca9fc093b96ccf11526a7c3b8a067f1bdd0d"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r04c04",
+      "path": "runtime/expressions/r04c04.png",
+      "sha256": "sha256:4e097471b172a4a5d56172238652f18cf25f9cea32460480454603e297fd4351"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c01",
+      "path": "runtime/expressions/r05c01.png",
+      "sha256": "sha256:a780373fbe0189e16c0d32929b03a32b1fe8a458ee855304dd381f47104e3d2a"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c02",
+      "path": "runtime/expressions/r05c02.png",
+      "sha256": "sha256:5d30dbcdef9c9e2c0e2b463e2743286621cde00120111eeaa9dd4d4ead52e3c1"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c03",
+      "path": "runtime/expressions/r05c03.png",
+      "sha256": "sha256:45d6b7457110972143653d10db197889741a04a91109169906f73978950337a2"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r05c04",
+      "path": "runtime/expressions/r05c04.png",
+      "sha256": "sha256:4971033261fc4460c12ff1618c2c1d5000ac54ad277275377134c296f6e0fb1b"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c01",
+      "path": "runtime/expressions/r06c01.png",
+      "sha256": "sha256:ca9a602977c8f054e436df56c6e24b177d6249d26eb6096a2b35ed80f92b8860"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c02",
+      "path": "runtime/expressions/r06c02.png",
+      "sha256": "sha256:690f7fafa48610617fe26c3a6cf78aa72aa164b3eddf3fa021bf495ad733a3f6"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c03",
+      "path": "runtime/expressions/r06c03.png",
+      "sha256": "sha256:3a1b77954b8a45dee25a41504307a3b4e79f0ae888c1c4646b0967d67ea7d33f"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r06c04",
+      "path": "runtime/expressions/r06c04.png",
+      "sha256": "sha256:8385ca0f99be1fa9506ed6600aa58eaae10907ccc5909b5ac8385051de4f8711"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c01",
+      "path": "runtime/expressions/r07c01.png",
+      "sha256": "sha256:cc0939f0b2275215c14d84b1bdfb497b1eaa5a79d22233214a527cf57d1f0fc3"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c02",
+      "path": "runtime/expressions/r07c02.png",
+      "sha256": "sha256:a9283fa03ff171ccbfa9f4b5b37e7ab3d1da98cc9267f05584f8b689c411b074"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c03",
+      "path": "runtime/expressions/r07c03.png",
+      "sha256": "sha256:f4cdf9465afb10ec6396f81ce2e76b57616f4053438d545fc2baba9d5bc7d004"
+    },
+    {
+      "type": "expression",
+      "stable_id": "r07c04",
+      "path": "runtime/expressions/r07c04.png",
+      "sha256": "sha256:2f99063eb255324251e3a8dd27a16a32c04f456ff0bb80f3282540f4172493e9"
+    }
+  ],
+  "composition": {
+    "body_id": "full_body",
+    "default_expression_id": "r01c01",
+    "overlay_offset": {
+      "x": 13,
+      "y": 0
+    },
+    "overlay_size": {
+      "width": 256,
+      "height": 240
+    },
+    "panel_anchor": {
+      "x": 151,
+      "y": 360
+    },
+    "default_scale": 0.5
+  },
+  "expression_semantics": {
+    "neutral": "r01c04",
+    "happy": "r01c01",
+    "excited": "r01c02",
+    "shy": "r07c01",
+    "concerned": "r06c04",
+    "sad": "r05c02",
+    "surprised": "r04c02",
+    "angry": "r02c01"
+  },
+  "fallback": {
+    "happy": "neutral",
+    "excited": "neutral",
+    "shy": "neutral",
+    "concerned": "neutral",
+    "sad": "neutral",
+    "surprised": "neutral",
+    "angry": "neutral"
+  }
+}

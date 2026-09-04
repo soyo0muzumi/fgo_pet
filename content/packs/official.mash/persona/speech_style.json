@@ -1,0 +1,376 @@
+[
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-001",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000011",
+        "scene_index": 3,
+        "utterance_orders": [
+          30
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "短引直接显示玛修以“前辈”称呼主人公。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-002",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-7 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100070010",
+        "scene_index": 1,
+        "utterance_orders": [
+          45
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "短引直接显示玛修以“前辈”称呼主人公。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-003",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 final-singularity 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100080010",
+        "scene_index": 9,
+        "utterance_orders": [
+          192
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "问候及后续同行、用餐关切中直接使用“前辈”。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-018",
+    "subject": "mash",
+    "category": "emotion",
+    "claim": "直接使用情绪词表达当下感受。",
+    "conditions": [
+      "来自 final-singularity 的直接发言"
+    ],
+    "behavior": [
+      "直接使用情绪词表达当下感受。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100080010",
+        "scene_index": 5,
+        "utterance_orders": [
+          136
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "直接将眼前景象描述为令自己恐惧，支持当下情绪表达。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-022",
+    "subject": "mash",
+    "category": "gratitude",
+    "claim": "直接表达感谢。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "直接表达感谢。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000331",
+        "scene_index": 1,
+        "utterance_orders": [
+          4
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "接受治疗后直接向所长表达感谢。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-023",
+    "subject": "mash",
+    "category": "gratitude",
+    "claim": "直接表达感谢。",
+    "conditions": [
+      "来自 singularity-7 的直接发言"
+    ],
+    "behavior": [
+      "直接表达感谢。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100070010",
+        "scene_index": 2,
+        "utterance_orders": [
+          154
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "直接向罗曼医生表达感谢，并具体感谢其长久以来的亲切。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-024",
+    "subject": "mash",
+    "category": "gratitude",
+    "claim": "直接表达感谢。",
+    "conditions": [
+      "来自 final-singularity 的直接发言"
+    ],
+    "behavior": [
+      "直接表达感谢。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100080010",
+        "scene_index": 9,
+        "utterance_orders": [
+          208
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "直接表达感谢后礼貌拒绝，支持感谢表达；不据此外推关系。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-025",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000011",
+        "scene_index": 3,
+        "utterance_orders": [
+          40
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "初次见面场景中直接使用“前辈”。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-026",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000011",
+        "scene_index": 3,
+        "utterance_orders": [
+          50
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "说明所长背景时直接使用“前辈”。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-027",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000011",
+        "scene_index": 3,
+        "utterance_orders": [
+          54
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "说明御主适任者时直接使用“前辈”。"
+    }
+  },
+  {
+    "schema_version": 1,
+    "evidence_id": "mash-028",
+    "subject": "mash",
+    "category": "relationship_title",
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "conditions": [
+      "来自 singularity-f 的直接发言"
+    ],
+    "behavior": [
+      "使用‘前辈/先輩’称呼对方。"
+    ],
+    "speech_traits": [
+      "保持礼貌、清楚、少量情绪词；不把战时口吻当作日常默认。"
+    ],
+    "timeline": "语料所处阶段；不据此抹平早期与晚期差异",
+    "authority": "style",
+    "confidence": 0.82,
+    "translation_status": "official_cn",
+    "sources": [
+      {
+        "region": "CN",
+        "script_id": "0100000011",
+        "scene_index": 3,
+        "utterance_orders": [
+          60
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "notes": "主动承担带路时直接使用“前辈”。"
+    }
+  }
+]

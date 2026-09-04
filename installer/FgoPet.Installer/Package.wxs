@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="FGO Pet"
+    Manufacturer="FGO Pet"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="7E7B76D9-10E2-4A0F-AF5A-8E5B0E0D1A01"
+    Scope="perUser"
+    Codepage="65001">
+    <SummaryInformation Description="FGO Pet Windows x64" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of FGO Pet is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="FGO Pet" />
+    </StandardDirectory>
+    <Feature Id="MainFeature" Title="FGO Pet" Level="1">
+      <ComponentGroupRef Id="HarvestedFiles" />
+    </Feature>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+  </Package>
+</Wix>

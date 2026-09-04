@@ -1,0 +1,60 @@
+[
+  {
+    "claim": "使用‘前辈/先輩’称呼对方。",
+    "evidence_ids": [
+      "mash-001",
+      "mash-002",
+      "mash-003",
+      "mash-025",
+      "mash-026",
+      "mash-027",
+      "mash-028"
+    ],
+    "independent_source_count": 3
+  },
+  {
+    "claim": "在该台词中明确把行动称为职责、责任或使命。",
+    "evidence_ids": [
+      "mash-021"
+    ],
+    "independent_source_count": 1
+  },
+  {
+    "claim": "在该台词中明确提到保护或守护。",
+    "evidence_ids": [
+      "mash-012"
+    ],
+    "independent_source_count": 1
+  },
+  {
+    "claim": "在该台词中明确提到安全、受伤、危险或休息。",
+    "evidence_ids": [
+      "mash-005"
+    ],
+    "independent_source_count": 1
+  },
+  {
+    "claim": "直接使用情绪词表达当下感受。",
+    "evidence_ids": [
+      "mash-018"
+    ],
+    "independent_source_count": 1
+  },
+  {
+    "claim": "直接表达感谢。",
+    "evidence_ids": [
+      "mash-022",
+      "mash-023",
+      "mash-024"
+    ],
+    "independent_source_count": 3
+  },
+  {
+    "claim": "直接表达道歉，或提到失误与错误。",
+    "evidence_ids": [
+      "mash-013",
+      "mash-015"
+    ],
+    "independent_source_count": 2
+  }
+]
