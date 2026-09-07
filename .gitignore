@@ -62,3 +62,13 @@ artifacts/
 # Local internal development records
 docs/internal/superpowers/
 docs/internal/reports/
+
+# Keep only the maintained public documentation remotely tracked.
+# Historical decisions, previews, references, test matrices, internal notes,
+# and local superpowers plans remain available in the working tree only.
+docs/decisions/
+docs/design/
+docs/references/
+docs/testing/
+docs/internal/
+docs/superpowers/
