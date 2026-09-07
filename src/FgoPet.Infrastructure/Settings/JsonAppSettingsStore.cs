@@ -50,6 +50,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             {
                 ModelConnection = dto.ModelConnection?.ToModel(),
                 MemoryEnabled = dto.MemoryEnabled ?? true,
+                ShowReasoning = dto.ShowReasoning ?? true,
                 ServantPreferences = ParseServantPreferences(dto.ServantPreferences),
                 Theme = ParseTheme(dto.Theme),
                 UserProfile = dto.UserProfile?.ToModel(),
@@ -76,6 +77,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             AutoCollapseExpandedPanel = settings.AutoCollapseExpandedPanel,
             ModelConnection = ModelConnectionDto.FromModel(settings.ModelConnection),
             MemoryEnabled = settings.MemoryEnabled,
+            ShowReasoning = settings.ShowReasoning,
             ServantPreferences = settings.ServantPreferences.ToDictionary(
                 pair => pair.Key,
                 pair => ServantPreferenceDto.FromModel(pair.Value),
@@ -119,6 +121,9 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
         [JsonPropertyName("memory_enabled")]
         public bool? MemoryEnabled { get; init; }
+
+        [JsonPropertyName("show_reasoning")]
+        public bool? ShowReasoning { get; init; }
 
         [JsonPropertyName("servant_preferences")]
         public Dictionary<string, ServantPreferenceDto>? ServantPreferences { get; init; }

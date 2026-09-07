@@ -52,6 +52,8 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                 {
                     PackageVersion = best.PackageVersion,
                     MinAppVersion = best.MinAppVersion,
+                    DefaultAddress = PersonaManifestReader.ReadOptional(best.PackRoot, best.ServantId)?.DefaultAddress,
+                    Capabilities = best.Capabilities,
                     Settings = best.Settings,
                 };
             })
@@ -213,6 +215,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                     slots)
                 {
                     MinAppVersion = string.IsNullOrWhiteSpace(manifest.MinAppVersion) ? null : manifest.MinAppVersion,
+                    Capabilities = manifest.Capabilities,
                     Settings = manifest.Settings,
                 });
             }

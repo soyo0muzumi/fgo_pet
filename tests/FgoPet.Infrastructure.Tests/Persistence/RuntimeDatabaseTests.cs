@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(8L, Scalar<long>(connection,
+        Assert.Equal(9L, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
@@ -50,6 +50,21 @@ public sealed class RuntimeDatabaseTests : IDisposable
             Assert.Equal(1L, Scalar<long>(connection,
                 $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{table}'"));
         }
+    }
+
+    [Fact]
+    public void Migrate_archives_a_corrupt_database_before_recreating_it()
+    {
+        File.WriteAllText(_path, "not a sqlite database");
+        var database = new RuntimeDatabase(_path);
+
+        new RuntimeDatabaseMigrator(database).Migrate();
+
+        Assert.True(File.Exists(_path));
+        Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(_path)!, Path.GetFileName(_path) + ".corrupt-*"));
+        using var connection = database.Open();
+        Assert.Equal(9L, Scalar<long>(connection,
+            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
     }
 
     [Fact]
@@ -103,7 +118,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var verify = database.Open();
-        Assert.Equal(8L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(9L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal(1L, Scalar<long>(verify,
             "SELECT COUNT(*) FROM pragma_table_info('agent_executions') WHERE name='previous_execution_id'"));
         Assert.Equal(1L, Scalar<long>(verify,

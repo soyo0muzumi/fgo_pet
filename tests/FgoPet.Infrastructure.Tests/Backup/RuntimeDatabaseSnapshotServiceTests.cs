@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseSnapshotServiceTests : IDisposable
         }.ToString());
         snapshot.Open();
         Assert.Equal("ok", Scalar<string>(snapshot, "PRAGMA integrity_check"));
-        Assert.Equal(8L, Scalar<long>(snapshot, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(9L, Scalar<long>(snapshot, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal("remote-1", Scalar<string>(snapshot, "SELECT remote_task_id FROM agent_executions WHERE execution_id='execution-1'"));
         Assert.Equal(1L, Scalar<long>(snapshot, "SELECT COUNT(*) FROM focus_presets WHERE preset_id='short'"));
     }

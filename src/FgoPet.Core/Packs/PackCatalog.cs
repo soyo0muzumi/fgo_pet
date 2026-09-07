@@ -16,6 +16,8 @@ public sealed record InstalledPack(
 {
     public string? MinAppVersion { get; init; }
 
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
+
     public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = [];
 }
 

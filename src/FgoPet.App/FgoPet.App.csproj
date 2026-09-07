@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <Version>0.1.1</Version>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>

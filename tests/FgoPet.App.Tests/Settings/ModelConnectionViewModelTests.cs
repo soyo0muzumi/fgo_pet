@@ -92,7 +92,29 @@ public sealed class ModelConnectionViewModelTests
 
         Assert.Equal(string.Empty, viewModel.ErrorText);
         Assert.Equal("Bearer new-key", handler.AuthorizationHeader);
-        Assert.Empty(credentials.Values);
+        Assert.Equal("new-key", credentials.Values["fgo-pet/provider/openai"]);
+    }
+
+    [Fact]
+    public async Task Successful_test_activates_the_connection_for_dialogue_when_metadata_was_not_saved()
+    {
+        var settings = new FakeSettings { Current = AppSettings.Defaults with { ModelConnection = null } };
+        var credentials = new FakeCredentials();
+        var handler = new RespondingHandler();
+        var catalog = new ProviderCatalog();
+        var factory = new ChatProviderFactory(catalog, credentials, new HttpClient(handler));
+        var viewModel = new ModelConnectionViewModel(settings, credentials, catalog, factory)
+        {
+            SelectedProviderId = "deepseek",
+            BaseUrl = "https://api.deepseek.com/v1",
+            ModelId = "deepseek-chat",
+        };
+        viewModel.SetApiKey("new-key");
+
+        await viewModel.TestCommand.ExecuteAsync(null);
+
+        Assert.Equal("deepseek", settings.Saved!.ModelConnection!.ProviderId);
+        Assert.Equal("deepseek-chat", settings.Saved.ModelConnection.ModelId);
     }
 
     [Fact]
@@ -123,7 +145,7 @@ public sealed class ModelConnectionViewModelTests
     private sealed class FakeSettings : IAppSettingsStore
     {
         public string Location => "memory";
-        public AppSettings Current { get; private set; } = AppSettings.Defaults with
+        public AppSettings Current { get; set; } = AppSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
         };

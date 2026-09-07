@@ -73,4 +73,29 @@ public sealed class WindowPlacementTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal("\\\\.\\DISPLAY2", loaded!.MonitorId);
     }
+
+    [Fact]
+    public void Dialogue_slot_roundtrips_in_its_own_file()
+    {
+        _store.Save(WindowPlacementSlots.Dialogue, new WindowPlacement("\\\\.\\DISPLAY1", 320.0, 140.0, 1.25, 1.25, 760.0, 560.0));
+
+        var loaded = _store.Load(WindowPlacementSlots.Dialogue);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(320.0, loaded!.OffsetX);
+        Assert.Equal(760.0, loaded.WindowWidthDip);
+        Assert.True(File.Exists(Path.Combine(_storage, "window-placement.dialogue.json")));
+        Assert.Null(_store.Load());
+    }
+
+    [Fact]
+    public void Dialogue_slot_corrupt_json_quarantines_and_returns_null()
+    {
+        _store.Save(WindowPlacementSlots.Dialogue, new WindowPlacement(null, 1, 2, 1, 1, 760, 560));
+        var path = Path.Combine(_storage, "window-placement.dialogue.json");
+        File.WriteAllText(path, "{ not json");
+
+        Assert.Null(_store.Load(WindowPlacementSlots.Dialogue));
+        Assert.False(File.Exists(path));
+    }
 }

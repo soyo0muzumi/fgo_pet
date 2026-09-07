@@ -9,7 +9,7 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class PromptComposerTests
 {
     [Fact]
-    public void Compose_includes_the_todo_proposal_protocol_without_granting_direct_agent_control()
+    public void Compose_includes_the_todo_tool_usage_without_granting_direct_agent_control()
     {
         var contextKey = new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0");
         var context = new PromptContext(
@@ -23,10 +23,10 @@ public sealed class PromptComposerTests
 
         var texts = new PromptComposer().Compose(context).Messages.Select(message => message.Text).ToArray();
 
-        Assert.Contains(texts, text => text.Contains("todo_protocol", StringComparison.Ordinal));
-        Assert.Contains(texts, text => text.Contains("todos", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("submit_todo_proposals", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
-        Assert.Contains(texts, text => text.Contains("不得直接向 Codex", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, text => text.Contains("todo_protocol", StringComparison.Ordinal));
+        Assert.DoesNotContain(texts, text => text.Contains("JSON 信封", StringComparison.Ordinal));
     }
 
     [Fact]

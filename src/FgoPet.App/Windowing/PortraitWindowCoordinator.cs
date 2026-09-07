@@ -99,6 +99,21 @@ public sealed class PortraitWindowCoordinator : IDisposable
         _source?.RemoveHook(OnWindowMessage);
     }
 
+    /// <summary>Current portrait pixel bounds on screen; used for dialogue placement.</summary>
+    internal DeviceRect PortraitDeviceBounds
+    {
+        get
+        {
+            var portrait = _window.PortraitScreenBounds;
+            var dpi = IsValidDpi(_dpi) ? _dpi : new Dpi2(1.0, 1.0);
+            return new DeviceRect(
+                (int)Math.Round(portrait.X * dpi.X),
+                (int)Math.Round(portrait.Y * dpi.Y),
+                Math.Max(1, (int)Math.Round(portrait.Width * dpi.X)),
+                Math.Max(1, (int)Math.Round(portrait.Height * dpi.Y)));
+        }
+    }
+
     private void AttachHook()
     {
         var dpi = VisualTreeHelper.GetDpi(_window);

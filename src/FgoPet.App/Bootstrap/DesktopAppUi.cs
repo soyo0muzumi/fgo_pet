@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Main;
+using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
@@ -31,6 +32,10 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly AppPaths _paths;
     private readonly PortraitController _controller;
     private readonly ConversationViewModel? _conversation;
+    private readonly DialogueWindow? _dialogueWindow;
+    private readonly DialogueWindowViewModel? _dialogue;
+    private readonly AttachedPanelViewModel? _attachedPanel;
+    private readonly DialogueWindowPlacementCoordinator? _dialoguePlacement;
     private readonly PortraitActivation _activatePortrait;
     private readonly IAppSettingsStore? _appSettings;
     private readonly ContextMenu _portraitMenu;
@@ -49,7 +54,11 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         PortraitController controller,
         ConversationViewModel? conversation = null,
         PortraitActivation? portraitActivation = null,
-        IAppSettingsStore? appSettings = null)
+        IAppSettingsStore? appSettings = null,
+        DialogueWindow? dialogueWindow = null,
+        DialogueWindowViewModel? dialogue = null,
+        AttachedPanelViewModel? attachedPanel = null,
+        DialogueWindowPlacementCoordinator? dialoguePlacement = null)
     {
         _tray = tray;
         _libraryViewModel = libraryViewModel;
@@ -61,6 +70,10 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _paths = paths;
         _controller = controller;
         _conversation = conversation;
+        _dialogueWindow = dialogueWindow;
+        _dialogue = dialogue;
+        _attachedPanel = attachedPanel;
+        _dialoguePlacement = dialoguePlacement;
         _activatePortrait = portraitActivation
             ?? (controller is null ? ((_, _) => Task.CompletedTask) : controller.ActivateAsync);
         _appSettings = appSettings;
@@ -73,6 +86,11 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         if (_conversation is not null)
         {
             _conversation.SettingsRequested += section => ShowSettings(section);
+        }
+        if (_dialogueWindow is not null && _dialogue is not null)
+        {
+            _dialogue.OpenRequested += ShowDialogueWindow;
+            _dialogueWindow.Hidden += () => _dialoguePlacement?.SaveOnClose(_dialogueWindow);
         }
     }
 
@@ -92,6 +110,37 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             _libraryViewModel.PackFilePath = offeredPackPath;
         }
         ShowSettings(SettingsSection.RolePackages);
+    }
+
+    public void ShowDialogueWindow()
+    {
+        if (_dialogueWindow is null)
+        {
+            return;
+        }
+
+        if (_conversation is not null
+            && _attachedPanel is not null
+            && !string.IsNullOrWhiteSpace(_attachedPanel.ActiveServantId)
+            && !string.Equals(_conversation.ActiveServantId, _attachedPanel.ActiveServantId, StringComparison.Ordinal))
+        {
+            _conversation.SetActiveServant(_attachedPanel.ActiveServantId);
+        }
+
+        if (_dialogueWindow.Visibility == Visibility.Visible)
+        {
+            _dialogueWindow.Activate();
+            return;
+        }
+
+        if (_dialogueWindow.Owner is null && _portrait.IsLoaded)
+        {
+            _dialogueWindow.Owner = _portrait;
+        }
+
+        _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+        _dialogueWindow.Show();
+        _dialogueWindow.Activate();
     }
 
     public void ShowSettings(SettingsSection? section = null)

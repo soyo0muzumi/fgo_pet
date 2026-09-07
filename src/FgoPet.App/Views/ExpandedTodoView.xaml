@@ -29,6 +29,27 @@
       <CheckBox Grid.Column="1" Content="仅看今天" Foreground="{StaticResource Muted}" FontSize="9" VerticalAlignment="Center" IsChecked="{Binding OnlyToday, Mode=TwoWay}"/>
     </Grid>
     <TextBlock Text="TODO / 行动时间轴" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+    <Border Margin="0,0,0,8" Padding="6" Background="#2214243B" BorderBrush="#6638516C" BorderThickness="1"
+            Visibility="{Binding AgentHistory, Converter={StaticResource BooleanToVisibilityConverter}}">
+      <StackPanel>
+        <Grid>
+          <TextBlock Text="Agent 任务历史" Foreground="{StaticResource Cyan}" FontSize="9" FontWeight="Bold" />
+          <ComboBox Grid.Column="1" Width="92" HorizontalAlignment="Right" FontSize="9"
+                    ItemsSource="{Binding AgentHistoryFilterValues}" SelectedItem="{Binding AgentHistory.Filter}" />
+        </Grid>
+        <ItemsControl ItemsSource="{Binding AgentHistory.Items}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="0,5,0,0">
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource Cyan}" FontSize="8" />
+                <TextBlock Text="{Binding TaskId}" Foreground="{StaticResource Text}" FontSize="9" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding DiagnosticBlock}" Foreground="{StaticResource Muted}" FontSize="8" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
     <ItemsControl ItemsSource="{Binding Groups}">
       <ItemsControl.ItemTemplate>
         <DataTemplate>

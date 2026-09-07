@@ -37,7 +37,9 @@ public sealed partial class ServantCardViewModel : ObservableObject
         string? previewSource,
         string? minAppVersion,
         IReadOnlyList<Core.Packs.PackSettingDefinition> settings,
-        IReadOnlyList<ServantAppearanceItemViewModel> appearances)
+        IReadOnlyList<ServantAppearanceItemViewModel> appearances,
+        string? defaultAddress = null,
+        IReadOnlyList<string>? capabilities = null)
     {
         PackageId = packageId;
         ServantId = servantId;
@@ -47,6 +49,8 @@ public sealed partial class ServantCardViewModel : ObservableObject
         PackageVersion = packageVersion;
         PreviewSource = previewSource;
         MinAppVersion = minAppVersion;
+        DefaultAddress = defaultAddress;
+        Capabilities = capabilities ?? [];
         Settings = settings;
         Appearances = new(appearances);
         SelectedAppearance = Appearances.FirstOrDefault();
@@ -67,6 +71,10 @@ public sealed partial class ServantCardViewModel : ObservableObject
     public string? PreviewSource { get; }
 
     public string? MinAppVersion { get; }
+
+    public string? DefaultAddress { get; }
+
+    public IReadOnlyList<string> Capabilities { get; }
 
     public IReadOnlyList<Core.Packs.PackSettingDefinition> Settings { get; }
 

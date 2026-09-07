@@ -32,10 +32,6 @@ public sealed class AttachedPanelViewIntegrationTests
             Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
             Assert.Equal(Visibility.Collapsed, todo.Visibility);
 
-            model.DialogueClick();
-            Assert.Equal(Visibility.Visible, dialogue.Visibility);
-            Assert.Equal(Visibility.Collapsed, todo.Visibility);
-
             model.TodoClick();
             Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
             Assert.Equal(Visibility.Visible, todo.Visibility);
@@ -101,22 +97,22 @@ public sealed class AttachedPanelViewIntegrationTests
     }
 
     [Fact]
-    public void Focus_header_switches_from_expanded_dialogue_without_collapsing()
+    public void Focus_header_switches_from_expanded_todo_without_collapsing()
     {
         StaRun(() =>
         {
             var model = new AttachedPanelViewModel(TimeProvider.System);
             var view = new AttachedPanelView { DataContext = model };
             var focus = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("FocusContent"));
-            var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
+            var todo = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("TodoContent"));
 
             model.PortraitClick();
-            model.DialogueClick();
+            model.TodoClick();
             model.FocusClick();
 
             Assert.Equal(AttachedPanelState.ExpandedFocus, model.State);
             Assert.Equal(Visibility.Visible, focus.Visibility);
-            Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
+            Assert.Equal(Visibility.Collapsed, todo.Visibility);
         });
     }
 

@@ -12,6 +12,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Dialogue;
 
@@ -92,6 +93,7 @@ public sealed class ConversationOrchestrator
     private readonly IAppSettingsStore? _settings;
     private readonly ConversationSummaryService? _summaries;
     private readonly TodoProposalService? _todoProposals;
+    private readonly ILogger<ConversationOrchestrator>? _logger;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
@@ -105,7 +107,8 @@ public sealed class ConversationOrchestrator
         TimeProvider time,
         IAppSettingsStore? settings = null,
         ConversationSummaryService? summaries = null,
-        TodoProposalService? todoProposals = null)
+        TodoProposalService? todoProposals = null,
+        ILogger<ConversationOrchestrator>? logger = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -116,6 +119,7 @@ public sealed class ConversationOrchestrator
         _settings = settings;
         _summaries = summaries;
         _todoProposals = todoProposals;
+        _logger = logger;
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -140,6 +144,7 @@ public sealed class ConversationOrchestrator
 
         var conversationId = string.Empty;
         ContentContextKey? contentContext = null;
+        var stage = "角色包解析";
         try
         {
             var binding = await _contentResolver.ResolveAsync(servantId, requestCancellation.Token);
@@ -149,7 +154,9 @@ public sealed class ConversationOrchestrator
             }
 
             contentContext = binding.Context;
+            stage = "创建会话";
             conversationId = GetOrCreateConversation(servantId, contentContext);
+            stage = "读取会话历史";
             var allMessages = _conversations.LoadMessages(conversationId, servantId).ToArray();
             var existing = allMessages
                 .Where(message => message.Status == ChatMessageStatus.Completed)
@@ -165,6 +172,7 @@ public sealed class ConversationOrchestrator
                 now,
                 contentContext,
                 allMessages.Length + 1);
+            stage = "保存用户消息";
             _conversations.Append(userMessage);
             Publish(new ConversationUpdate(
                 ConversationUpdateType.UserMessagePersisted,
@@ -174,6 +182,7 @@ public sealed class ConversationOrchestrator
                 ServantId: servantId));
 
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
+            stage = "组装提示词";
             var prompt = _composer.Compose(new PromptContext(
                 binding.Context,
                 persona,
@@ -182,41 +191,105 @@ public sealed class ConversationOrchestrator
                 _todoProposals?.BuildRuntimeState(userText) ?? string.Empty,
                 existing.Select(message => new PromptMessage(message.Role, message.Text)).ToArray(),
                 userText));
-            var request = new ChatRequest(servantId, conversationId, prompt.Messages, binding.Context);
-            var provider = _providerResolver.Resolve();
-            var responseText = new StringBuilder();
             var assistantId = "message-" + Guid.NewGuid().ToString("N");
-            await foreach (var chunk in provider.StreamAsync(request, requestCancellation.Token))
-            {
-                requestCancellation.Token.ThrowIfCancellationRequested();
-                if (!string.IsNullOrEmpty(chunk.TextDelta))
-                {
-                    responseText.Append(chunk.TextDelta);
-                }
 
-                if (chunk.IsComplete)
-                {
-                    break;
-                }
-            }
-
-            requestCancellation.Token.ThrowIfCancellationRequested();
+            stage = "发送模型请求";
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.RequestStage,
+                conversationId,
+                RequestStage: ConversationRequestStage.Preparing,
+                ServantId: servantId));
+            var (responseText, aggregatedCall, sawToolCalls, toolsOffered) = await StreamTurnAsync(prompt, servantId, conversationId, requestCancellation.Token);
+            var finishOutcome = TodoToolCallOutcome.None;
+            string? todoDetail = null;
             IReadOnlyList<TodoProposal>? todoProposals = null;
-            if (_todoProposals is not null)
+            string? structuredPayload = null;
+
+            if (aggregatedCall is not null)
             {
-                try
+                // Tool-call channel: proposals only ever arrive through the tool.
+                if (aggregatedCall.TooManyCalls)
                 {
-                    todoProposals = _todoProposals.ParseEnvelope(responseText.ToString());
+                    finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                    todoDetail = "模型同时调用了多个工具调用。";
                 }
-                catch (FormatException)
+                else if (!string.Equals(aggregatedCall.Name, TodoToolContracts.SubmitTodoProposalsToolName, StringComparison.Ordinal))
                 {
-                    // Structured proposals are optional and must never fail an ordinary reply.
+                    finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                    todoDetail = "模型调用了未知的工具。";
+                }
+                else if (aggregatedCall.TryGetArguments(out var arguments) && _todoProposals is not null)
+                {
+                    var parsed = _todoProposals.TryParseToolCall(arguments);
+                    if (parsed.Success)
+                    {
+                        todoProposals = parsed.Proposals;
+                        finishOutcome = TodoToolCallOutcome.ProposalsReady;
+                        // Tool arguments already use the {todos:[…]} envelope shape the
+                        // view model re-parses, so pass them through unchanged.
+                        structuredPayload = aggregatedCall.Arguments;
+                    }
+                    else
+                    {
+                        finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                        todoDetail = DescribeToolCallFailure(parsed);
+                    }
+                }
+                else
+                {
+                    finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                    todoDetail = "工具参数不是有效的 JSON 对象。";
+                }
+            }
+            else if (sawToolCalls)
+            {
+                // Fragments streamed but never completed (truncation or a wrong
+                // finish reason): never treat half a tool call as plain text.
+                finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                todoDetail = "工具调用未完整返回。";
+            }
+            else if (_todoProposals is not null)
+            {
+                if (toolsOffered)
+                {
+                    // Tools were attached but the model replied in plain text without
+                    // calling the tool. Ordinary reply stays ordinary; planning intent
+                    // yields a visible empty state on the UI side.
+                    finishOutcome = TodoToolCallOutcome.NoProposal;
+                }
+                else
+                {
+                    // Text-envelope fallback path (tools unsupported for this service).
+                    try
+                    {
+                        todoProposals = _todoProposals.ParseEnvelope(responseText.ToString());
+                        if (todoProposals is { Count: > 0 })
+                        {
+                            finishOutcome = TodoToolCallOutcome.TextFallback;
+                            structuredPayload = responseText.ToString();
+                        }
+                    }
+                    catch (FormatException)
+                    {
+                        // Structured proposals are optional and must never fail an ordinary reply.
+                        // The degraded mode banner is the visible cue; malformed envelopes stay silent.
+                    }
                 }
             }
 
-            var output = StructuredOutputValidator.Validate(
-                responseText.ToString(),
-                ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+            var rawText = responseText.ToString();
+            // Tool-call turns carry the reply in tool arguments, not in message
+            // content; an empty text is legal there and must skip text validation.
+            var output = sawToolCalls
+                ? new ValidatedChatOutput(rawText, ExpressionSemantic.Neutral, null, null)
+                : StructuredOutputValidator.Validate(
+                    rawText,
+                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+            // ChatMessage requires non-empty text for a Completed message; a
+            // tool-call-only turn has no visible text, so persist a placeholder.
+            var persistedText = output.Text.Length == 0 && sawToolCalls
+                ? "[工具调用：待办提案]"
+                : output.Text;
             Publish(new ConversationUpdate(
                 ConversationUpdateType.AssistantDelta,
                 conversationId,
@@ -228,7 +301,7 @@ public sealed class ConversationOrchestrator
                 conversationId,
                 servantId,
                 ChatMessageRole.Assistant,
-                output.Text,
+                persistedText,
                 ChatMessageStatus.Completed,
                 _time.GetUtcNow(),
                 contentContext,
@@ -264,11 +337,23 @@ public sealed class ConversationOrchestrator
                 assistant.MessageId,
                 output.Text,
                 ServantId: servantId,
-                StructuredResponse: todoProposals is { Count: > 0 } ? responseText.ToString() : null));
+                StructuredResponse: todoProposals is { Count: > 0 } ? structuredPayload : null,
+                TodoOutcome: finishOutcome,
+                TodoDetail: todoDetail));
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.RequestStage,
+                conversationId,
+                RequestStage: ConversationRequestStage.Completed,
+                ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, assistant.MessageId);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested)
         {
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.RequestStage,
+                conversationId,
+                RequestStage: ConversationRequestStage.Cancelled,
+                ServantId: servantId));
             Publish(new ConversationUpdate(ConversationUpdateType.Cancelled, conversationId, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Cancelled, conversationId);
         }
@@ -276,11 +361,42 @@ public sealed class ConversationOrchestrator
         {
             var safeError = error.Message;
             TryAppendFailedMessage(conversationId, servantId, contentContext);
-            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.RequestStage,
+                conversationId,
+                RequestStage: ConversationRequestStage.Failed,
+                HttpStatusCode: error.HttpStatusCode is { } httpStatus ? (int)httpStatus : null,
+                ProviderErrorCode: error.ProviderCode,
+                ServantId: servantId));
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.Failed,
+                conversationId,
+                SafeError: safeError,
+                ServantId: servantId,
+                HttpStatusCode: error.HttpStatusCode is { } statusCode ? (int)statusCode : null,
+                ProviderErrorCode: error.ProviderCode));
             var status = error.Category == ProviderFailureCategory.Configuration
                 ? ConversationSendStatus.ConfigurationRequired
                 : ConversationSendStatus.Failed;
             return new ConversationSendResult(status, conversationId, SafeError: safeError);
+        }
+        catch (InvalidDataException)
+        {
+            const string safeError = "当前角色包内容不可用，请检查角色包后重试。";
+            TryAppendFailedMessage(conversationId, servantId, contentContext);
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.Failed,
+                conversationId,
+                SafeError: safeError,
+                ServantId: servantId));
+            return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
+        }
+        catch (IOException)
+        {
+            const string safeError = "本地对话存储暂时不可用，请重试。";
+            TryAppendFailedMessage(conversationId, servantId, contentContext);
+            Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
+            return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
         }
         catch (FormatException)
         {
@@ -289,9 +405,10 @@ public sealed class ConversationOrchestrator
             Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            const string safeError = "对话服务暂时不可用。";
+            var safeError = GetStageError(stage);
+            _logger?.LogError(error, "Dialogue turn failed during {Stage}; conversationId={ConversationId}; provider request may not have started.", stage, conversationId);
             TryAppendFailedMessage(conversationId, servantId, contentContext);
             Publish(new ConversationUpdate(ConversationUpdateType.Failed, conversationId, SafeError: safeError, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
@@ -316,13 +433,208 @@ public sealed class ConversationOrchestrator
         }
     }
 
+    /// <summary>
+    /// Streams one turn. When tools are enabled for the connection they are sent
+    /// with the request; a rejected tools parameter degrades this turn to a
+    /// plain-text retry, persists the per-connection downgrade, and keeps the
+    /// text-envelope fallback path alive.
+    /// </summary>
+    private async Task<(StringBuilder Text, AggregatedToolCall? ToolCall, bool SawToolCalls, bool ToolsOffered)> StreamTurnAsync(
+        ComposedPrompt prompt,
+        string servantId,
+        string conversationId,
+        CancellationToken cancellationToken)
+    {
+        var withTools = ShouldOfferTools();
+        var (text, call, sawCalls, retryWithoutTools) = await StreamOnceAsync(
+            prompt, conversationId, withTools, cancellationToken);
+        if (!retryWithoutTools)
+        {
+            return (text, call, sawCalls, ToolsOffered: withTools);
+        }
+
+        MarkToolsUnsupported();
+        Publish(new ConversationUpdate(
+            ConversationUpdateType.AssistantDelta,
+            conversationId,
+            null,
+            string.Empty,
+            SafeError: "当前模型不支持工具箱，已使用文本提案兜底。",
+            ServantId: servantId));
+        var retry = await StreamOnceAsync(prompt, conversationId, withTools: false, cancellationToken);
+        return (retry.Text, retry.ToolCall, retry.SawToolCalls, ToolsOffered: false);
+    }
+
+    private async Task<(StringBuilder Text, AggregatedToolCall? ToolCall, bool SawToolCalls, bool RetryWithoutTools)> StreamOnceAsync(
+        ComposedPrompt prompt,
+        string conversationId,
+        bool withTools,
+        CancellationToken cancellationToken)
+    {
+        var servantId = prompt.ContentContext.ServantId;
+        var request = withTools
+            ? new ChatRequest(servantId, conversationId, prompt.Messages, prompt.ContentContext,
+                tools: [TodoToolContracts.CreateSubmitTodoProposals()],
+                toolChoice: "auto")
+            : new ChatRequest(servantId, conversationId, prompt.Messages, prompt.ContentContext);
+        var provider = _providerResolver.Resolve();
+        var responseText = new StringBuilder();
+        var aggregator = new ToolCallAggregator();
+        string? finishReason = null;
+        var responseAccepted = false;
+        try
+        {
+            Publish(new ConversationUpdate(
+                ConversationUpdateType.RequestStage,
+                conversationId,
+                RequestStage: ConversationRequestStage.RequestStarted,
+                ServantId: servantId));
+            await foreach (var chunk in provider.StreamAsync(request, cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!responseAccepted)
+                {
+                    responseAccepted = true;
+                    Publish(new ConversationUpdate(
+                        ConversationUpdateType.RequestStage,
+                        conversationId,
+                        RequestStage: ConversationRequestStage.ResponseHeadersReceived,
+                        ServantId: servantId));
+                }
+                if (!string.IsNullOrEmpty(chunk.TextDelta))
+                {
+                    responseText.Append(chunk.TextDelta);
+                }
+
+                if (chunk.ReasoningDelta is not null)
+                {
+                    Publish(new ConversationUpdate(
+                        ConversationUpdateType.RequestStage,
+                        conversationId,
+                        RequestStage: ConversationRequestStage.StreamingReasoning,
+                        ServantId: servantId));
+                    Publish(new ConversationUpdate(
+                        ConversationUpdateType.AssistantDelta,
+                        conversationId,
+                        null,
+                        string.Empty,
+                        ReasoningDelta: chunk.ReasoningDelta,
+                        ServantId: servantId));
+                }
+
+                if (chunk.ToolCallDelta is not null)
+                {
+                    Publish(new ConversationUpdate(
+                        ConversationUpdateType.RequestStage,
+                        conversationId,
+                        RequestStage: ConversationRequestStage.StreamingTool,
+                        ServantId: servantId));
+                    aggregator.Add(chunk.ToolCallDelta);
+                }
+
+                if (!string.IsNullOrEmpty(chunk.TextDelta))
+                {
+                    Publish(new ConversationUpdate(
+                        ConversationUpdateType.RequestStage,
+                        conversationId,
+                        RequestStage: ConversationRequestStage.StreamingAnswer,
+                        ServantId: servantId));
+                }
+
+                if (chunk.FinishReason is not null)
+                {
+                    finishReason = chunk.FinishReason;
+                }
+
+                if (chunk.IsComplete)
+                {
+                    break;
+                }
+            }
+        }
+        catch (ProviderRequestException error) when (withTools && error.Category == ProviderFailureCategory.ToolsRejected)
+        {
+            return (responseText, null, SawToolCalls: false, RetryWithoutTools: true);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return (responseText, aggregator.Complete(finishReason), aggregator.SawToolCalls, RetryWithoutTools: false);
+    }
+
+    private bool ShouldOfferTools() => _settings?.Load().ModelConnection?.ToolsSupported ?? false;
+
+    private void MarkToolsUnsupported()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var current = _settings.Load();
+            var connection = current.ModelConnection;
+            if (connection is { ToolsSupported: true })
+            {
+                _settings.Save(current with
+                {
+                    ModelConnection = connection with { ToolsSupported = false },
+                });
+            }
+        }
+        catch (Exception)
+        {
+            // A persistence failure must not fail the in-flight dialogue turn.
+        }
+    }
+
+    private static string DescribeToolCallFailure(ToolCallProposalResult parsed) => parsed.Failure switch
+    {
+        TodoToolCallFailure.MissingTodos => "工具参数缺少 todos 数组。",
+        TodoToolCallFailure.TooMany => "提案超过 10 条上限。",
+        TodoToolCallFailure.NotPlanning => "提案内容被安全校验拒绝。",
+        TodoToolCallFailure.UnsupportedField => string.IsNullOrWhiteSpace(parsed.FieldName)
+            ? "提案包含不支持的执行字段。"
+            : $"提案包含不支持的执行字段：{parsed.FieldName}。",
+        _ => "工具调用无法解析。",
+    };
+
     public void StartNewConversation(string servantId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
         lock (_gate)
         {
             _conversationIds.Remove(servantId);
+            _conversations.DeleteState(ActiveConversationStateKey(servantId));
         }
+    }
+
+    private static string GetStageError(string stage) => stage switch
+    {
+        "角色包解析" => "对话初始化失败：角色包内容不可用，请检查当前角色包后重试。",
+        "创建会话" or "读取会话历史" or "保存用户消息" => "对话初始化失败：本地会话存储暂时不可用，请重试。",
+        "组装提示词" => "对话初始化失败：角色包对话内容无法准备，请检查角色包后重试。",
+        "发送模型请求" => "对话服务暂时不可用：请检查模型连接设置后重试。",
+        _ => "对话服务暂时不可用，请重试。"
+    };
+
+    public IReadOnlyList<Conversation> ListConversations(string servantId) =>
+        _conversations.ListConversations(servantId);
+
+    public IReadOnlyList<ChatMessage> ListConversationMessages(string conversationId, string servantId) =>
+        _conversations.LoadMessages(conversationId, servantId);
+
+    public IReadOnlyList<ChatMessage> LoadConversation(string conversationId, string servantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(conversationId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
+        var messages = _conversations.LoadMessages(conversationId, servantId);
+        lock (_gate)
+        {
+            _conversationIds[servantId] = conversationId;
+            _conversations.WriteState(ActiveConversationStateKey(servantId), conversationId, _time.GetUtcNow());
+        }
+        return messages;
     }
 
     private string GetOrCreateConversation(string servantId, ContentContextKey context)
@@ -334,12 +646,30 @@ public sealed class ConversationOrchestrator
                 return conversationId;
             }
 
+            var saved = _conversations.ReadState(ActiveConversationStateKey(servantId));
+            if (!string.IsNullOrWhiteSpace(saved))
+            {
+                try
+                {
+                    var existing = _conversations.LoadMessages(saved, servantId);
+                    _conversationIds[servantId] = saved;
+                    return saved;
+                }
+                catch (Exception)
+                {
+                    _conversations.DeleteState(ActiveConversationStateKey(servantId));
+                }
+            }
+
             conversationId = "conversation-" + Guid.NewGuid().ToString("N");
             _conversations.CreateConversation(conversationId, servantId, context, _time.GetUtcNow());
             _conversationIds[servantId] = conversationId;
+            _conversations.WriteState(ActiveConversationStateKey(servantId), conversationId, _time.GetUtcNow());
             return conversationId;
         }
     }
+
+    private static string ActiveConversationStateKey(string servantId) => $"LastActiveConversationId:{servantId}";
 
     private void TryAppendFailedMessage(string conversationId, string servantId, ContentContextKey? context)
     {

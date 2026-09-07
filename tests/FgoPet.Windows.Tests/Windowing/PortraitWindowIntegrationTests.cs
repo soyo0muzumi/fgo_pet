@@ -143,7 +143,7 @@ public sealed class PortraitWindowIntegrationTests
                 window.HandlePortraitClick();
                 Assert.Equal(Core.Panels.AttachedPanelState.Compact, panel.State);
 
-                panel.DialogueClick();
+                panel.TodoClick();
                 window.HandleEscape();
                 Assert.Equal(Core.Panels.AttachedPanelState.Compact, panel.State);
 
@@ -311,7 +311,7 @@ public sealed class PortraitWindowIntegrationTests
             try
             {
                 panel.PortraitClick();
-                panel.DialogueClick();
+                panel.TodoClick();
                 panel.PointerLeft();
                 time.Now = time.Now.AddSeconds(31);
 
@@ -689,6 +689,8 @@ public sealed class PortraitWindowIntegrationTests
         public WindowPlacement? Value { get; set; }
         public WindowPlacement? Load() => Value;
         public void Save(WindowPlacement placement) => Value = placement;
+        public WindowPlacement? Load(string slot) => slot == Core.Windowing.WindowPlacementSlots.Portrait ? Value : null;
+        public void Save(string slot, WindowPlacement placement) { if (slot == Core.Windowing.WindowPlacementSlots.Portrait) Value = placement; }
     }
 
     private sealed class ThrowingLoadPlacementStore : IWindowPlacementStore
@@ -696,6 +698,8 @@ public sealed class PortraitWindowIntegrationTests
         public string Location => "unused";
         public WindowPlacement? Load() => throw new InvalidOperationException("saved placement must not be read");
         public void Save(WindowPlacement placement) { }
+        public WindowPlacement? Load(string slot) => throw new InvalidOperationException("saved placement must not be read");
+        public void Save(string slot, WindowPlacement placement) { }
     }
 
     private sealed class MutableTimeProvider : TimeProvider

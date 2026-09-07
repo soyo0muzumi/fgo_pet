@@ -310,6 +310,39 @@ public sealed class SqliteConversationRepository
         command.ExecuteNonQuery();
     }
 
+    public string? ReadState(string key)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT state_value FROM runtime_state WHERE state_key=$key";
+        command.Parameters.AddWithValue("$key", key);
+        return command.ExecuteScalar() as string;
+    }
+
+    public void WriteState(string key, string value, DateTimeOffset updatedAtUtc)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO runtime_state(state_key, state_value, updated_at_utc)
+            VALUES($key, $value, $updated)
+            ON CONFLICT(state_key) DO UPDATE SET state_value=excluded.state_value, updated_at_utc=excluded.updated_at_utc
+            """;
+        command.Parameters.AddWithValue("$key", key);
+        command.Parameters.AddWithValue("$value", value);
+        command.Parameters.AddWithValue("$updated", updatedAtUtc.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteState(string key)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM runtime_state WHERE state_key=$key";
+        command.Parameters.AddWithValue("$key", key);
+        command.ExecuteNonQuery();
+    }
+
     private static string? ReadConversationServant(SqliteConnection connection, SqliteTransaction transaction, string conversationId)
     {
         using var command = connection.CreateCommand();

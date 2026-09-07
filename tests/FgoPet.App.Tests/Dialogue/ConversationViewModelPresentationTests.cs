@@ -38,6 +38,33 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     }
 
     [Fact]
+    public void Reasoning_presentation_is_assistant_only_and_has_a_dynamic_summary()
+    {
+        var user = new ConversationTurnViewModel("user", ChatMessageRole.User, "你好");
+        var assistant = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, string.Empty, true);
+
+        Assert.False(user.IsAssistant);
+        Assert.True(assistant.IsAssistant);
+
+        assistant.SetReasoningSummary("正在等待模型响应");
+        Assert.Equal("正在等待模型响应", assistant.ReasoningSummary);
+    }
+
+    [Fact]
+    public void Reasoning_well_is_hidden_until_assistant_reasoning_content_exists()
+    {
+        var user = new ConversationTurnViewModel("user", ChatMessageRole.User, "你好");
+        var assistant = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, string.Empty, true);
+
+        Assert.False(user.HasVisibleReasoning);
+        Assert.False(assistant.HasVisibleReasoning);
+
+        assistant.AppendReasoning("先分析需求");
+
+        Assert.True(assistant.HasVisibleReasoning);
+    }
+
+    [Fact]
     public void Configuration_required_state_is_derived_from_missing_model_metadata()
     {
         var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });

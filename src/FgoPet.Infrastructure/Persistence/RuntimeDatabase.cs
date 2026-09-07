@@ -39,6 +39,61 @@ public sealed class RuntimeDatabase
         return connection;
     }
 
+    /// <summary>
+    /// Detects a structurally corrupt SQLite file and moves it aside before the
+    /// next migration creates a clean database. The original is retained for
+    /// manual recovery; locked or otherwise inaccessible databases are not
+    /// classified as corruption here.
+    /// </summary>
+    public bool ArchiveIfCorrupt()
+    {
+        if (!File.Exists(DatabasePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Do not put the health-check connection in the shared pool. A pooled
+            // handle can survive Dispose and prevent the Windows archive move.
+            using var connection = new SqliteConnection(_connectionString + ";Pooling=False");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA integrity_check";
+            var result = command.ExecuteScalar() as string;
+            if (string.Equals(result, "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        catch (SqliteException error) when (IsCorruption(error))
+        {
+            // Continue to archive the damaged file below.
+        }
+
+        // Microsoft.Data.Sqlite may keep pooled handles alive after the health
+        // check connection is disposed. Release them before the Windows file
+        // move, otherwise a valid recovery can fail with sharing violation.
+        SqliteConnection.ClearAllPools();
+        var suffix = $".corrupt-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+        File.Move(DatabasePath, DatabasePath + suffix);
+        foreach (var sidecar in new[] { "-wal", "-shm" })
+        {
+            var path = DatabasePath + sidecar;
+            if (File.Exists(path))
+            {
+                File.Move(path, path + suffix);
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsCorruption(SqliteException error) =>
+        error.Message.Contains("malformed", StringComparison.OrdinalIgnoreCase)
+        || error.Message.Contains("corrupt", StringComparison.OrdinalIgnoreCase)
+        || error.Message.Contains("not a database", StringComparison.OrdinalIgnoreCase);
+
     private static void Execute(SqliteConnection connection, string pragma)
     {
         using var command = connection.CreateCommand();

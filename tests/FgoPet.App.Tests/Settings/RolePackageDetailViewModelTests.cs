@@ -27,6 +27,7 @@ public sealed class RolePackageDetailViewModelTests
         Assert.Equal("来源未验证", fixture.Detail.SourceBadge);
         Assert.Equal("要求 FGO Pet 1.0.0 或更高版本", fixture.Detail.CompatibilityText);
         Assert.Equal("C:\\packs\\mash\\1.1.0\\previews\\library.png", fixture.Detail.PreviewSource);
+        Assert.Equal("角色包声明：前辈", fixture.Detail.DefaultAddressText);
         Assert.True(fixture.Detail.IsActive);
         Assert.True(Assert.Single(fixture.Detail.Appearances, item => item.AppearanceId == "combat").IsCurrent);
         Assert.Collection(
@@ -198,6 +199,8 @@ public sealed class RolePackageDetailViewModelTests
                         new PackSettingDefinition { Key = "voice", Label = "语音", Type = PackSettingType.Choice, Default = "jp", Options = ["jp", "cn"] },
                         new PackSettingDefinition { Key = "greeting", Label = "问候", Type = PackSettingType.Text, Default = "早上好" },
                     ],
+                    DefaultAddress = "前辈",
+                    Capabilities = ["art.v3", "persona.v1"],
                 },
             ]);
 

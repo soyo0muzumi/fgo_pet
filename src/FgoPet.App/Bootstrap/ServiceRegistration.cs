@@ -214,6 +214,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<AgentEventProjector>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<AgentReconciliationService>()))
+        .AddSingleton<AgentTaskHistoryViewModel>()
         .AddSingleton<AgentConnectionSettingsViewModel>(provider => new AgentConnectionSettingsViewModel(
             provider.GetRequiredService<IAppSettingsStore>(),
             provider.GetRequiredService<IAgentRepository>(),
@@ -310,13 +311,17 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IAppSettingsStore>(),
             provider.GetRequiredService<ConversationSummaryService>(),
-            provider.GetRequiredService<TodoProposalService>()))
+            provider.GetRequiredService<TodoProposalService>(),
+            provider.GetRequiredService<ILogger<ConversationOrchestrator>>()))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IAppSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ArchiveDraftService>()))
+        .AddSingleton<DialogueWindowViewModel>()
+        .AddSingleton<DialogueWindow>()
+        .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
         {
             var currentAgentTask = provider.GetRequiredService<AgentCurrentTaskViewModel>();
@@ -354,7 +359,8 @@ public static class ServiceRegistration
                 conversation,
                 provider.GetRequiredService<TodoListViewModel>(),
                 currentAgentTask,
-                provider.GetRequiredService<AppRuntime>());
+                provider.GetRequiredService<AppRuntime>(),
+                provider.GetRequiredService<DialogueWindowViewModel>());
         })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),
@@ -373,7 +379,11 @@ public static class ServiceRegistration
             provider.GetRequiredService<PortraitController>(),
             provider.GetRequiredService<ConversationViewModel>(),
             provider.GetRequiredService<PortraitActivation>(),
-            provider.GetRequiredService<IAppSettingsStore>()))
+            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<DialogueWindow>(),
+            provider.GetRequiredService<DialogueWindowViewModel>(),
+            provider.GetRequiredService<AttachedPanelViewModel>(),
+            provider.GetRequiredService<DialogueWindowPlacementCoordinator>()))
         .AddSingleton<IDesktopAppUi>(provider => provider.GetRequiredService<DesktopAppUi>())
         .AddSingleton<IAppShell, DesktopAppShell>()
         .AddSingleton<Func<IAppShell>>(provider => provider.GetRequiredService<IAppShell>)

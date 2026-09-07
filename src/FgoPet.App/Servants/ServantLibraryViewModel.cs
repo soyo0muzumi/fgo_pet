@@ -129,7 +129,9 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
                     servant.MinAppVersion,
                     servant.Settings,
                     servant.Appearances.Select(appearance =>
-                        new ServantAppearanceItemViewModel(appearance.AppearanceId, appearance.PackageVersion, appearance.PreviewPath)).ToList()))
+                        new ServantAppearanceItemViewModel(appearance.AppearanceId, appearance.PackageVersion, appearance.PreviewPath)).ToList(),
+                    servant.DefaultAddress,
+                    servant.Capabilities))
                 .ToList();
             Servants = cards;
             UpdateActiveFlags(activeSelection);

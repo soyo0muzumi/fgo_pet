@@ -11,7 +11,8 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </UserControl.Resources>
-    <StackPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
         <Border Style="{StaticResource SettingsCardStyle}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -32,6 +33,7 @@
                         <Run Text="版本 " /><Run Text="{Binding PackageVersion, Mode=OneWay}" />
                         <Run Text="  ·  " /><Run Text="{Binding SourceBadge, Mode=OneWay}" />
                     </TextBlock>
+                    <TextBlock Margin="0,5,0,0" Text="{Binding PackageSummary}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                     <TextBlock Margin="0,4,0,0" Text="{Binding CompatibilityText}" Style="{StaticResource SettingsStatusStyle}" />
                     <TextBlock Margin="0,8,0,0" Text="当前角色包" Foreground="{DynamicResource AccentBrush}"
                                Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}" />
@@ -63,12 +65,12 @@
                 </Button>
                 <Button x:Name="PackageInfoSectionButton" Margin="3"
                         Style="{StaticResource SettingsSecondaryButtonStyle}"
-                        Click="OnPackageInfoSectionClick" automation:AutomationProperties.Name="角色包信息">
+                        Click="OnPackageInfoSectionClick" automation:AutomationProperties.Name="包设置">
                     <StackPanel Orientation="Horizontal">
                         <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
                               Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
                               Data="{StaticResource IconPackageInfoGeometry}" />
-                        <TextBlock Text="角色包信息" />
+                        <TextBlock Text="包设置" />
                     </StackPanel>
                 </Button>
             </UniformGrid>
@@ -83,6 +85,8 @@
                           ItemsSource="{Binding Appearances}"
                           SelectedItem="{Binding SelectedAppearance}"
                           DisplayMemberPath="Display" />
+                <TextBlock Margin="0,5,0,0" Text="设为当前从者后生效；可从下拉列表选择其他外观。"
+                           Style="{StaticResource SettingsStatusStyle}" />
                 <WrapPanel Margin="0,12,0,0">
                     <Button Style="{StaticResource SettingsPrimaryButtonStyle}"
                             Content="设为当前从者"
@@ -102,6 +106,7 @@
                 <TextBlock Margin="0,4,0,10" Text="称呼按 servant_id 保存，不使用全局资料显示名。"
                            Style="{StaticResource SettingsStatusStyle}" />
                 <RadioButton Content="使用角色包默认称呼" IsChecked="{Binding UsePackageDefaultAddress}" />
+                <TextBlock Margin="24,3,0,0" Text="{Binding DefaultAddressText}" Foreground="{DynamicResource MutedTextBrush}" FontStyle="Italic" />
                 <RadioButton Margin="0,7,0,0" Content="使用自定义称呼" IsChecked="{Binding UseCustomAddress}" />
                 <TextBox Margin="0,8,0,0" MaxLength="256"
                          Style="{StaticResource SettingsTextBoxStyle}"
@@ -127,7 +132,8 @@
                 <StackPanel>
                     <TextBlock Text="角色包声明设置" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
                     <TextBlock Margin="0,4,0,10" Text="仅显示应用批准的开关、选择和文本字段。" Style="{StaticResource SettingsStatusStyle}" />
-                    <ItemsControl x:Name="PackageSettingsItems" ItemsSource="{Binding PackageSettings}">
+                    <ItemsControl x:Name="PackageSettingsItems" ItemsSource="{Binding PackageSettings}"
+                                  Visibility="{Binding HasPackageSettings, Converter={StaticResource BoolToVisibility}}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,0,0,12">
@@ -144,8 +150,11 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <TextBlock Margin="0,0,0,8" Text="此角色包没有可配置项。" Style="{StaticResource SettingsStatusStyle}"
+                               Visibility="{Binding IsPackageSettingsEmpty, Converter={StaticResource BoolToVisibility}}" />
                     <Button HorizontalAlignment="Left" Style="{StaticResource SettingsPrimaryButtonStyle}"
-                            Content="保存角色包设置" Command="{Binding SavePackageSettingsCommand}" />
+                            Content="保存角色包设置" Command="{Binding SavePackageSettingsCommand}"
+                            Visibility="{Binding HasPackageSettings, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Margin="0,8,0,0" Text="{Binding PackageSettingsStatus}" Style="{StaticResource SettingsStatusStyle}" />
                 </StackPanel>
             </Border>
@@ -161,5 +170,6 @@
                 <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
-    </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
 </UserControl>

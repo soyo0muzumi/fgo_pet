@@ -1,5 +1,17 @@
+using FgoPet.App.Dialogue;
+using FgoPet.App.Focus;
 using FgoPet.App.Panels;
+using FgoPet.App.Providers;
+using FgoPet.Core.Dialogue;
+using FgoPet.Core.Focus;
+using FgoPet.Core.Packs;
 using FgoPet.Core.Panels;
+using FgoPet.Core.Settings;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Memory;
+using FgoPet.Infrastructure.Persistence;
+using FgoPet.Infrastructure.Packs;
+using FgoPet.Infrastructure.Providers;
 using Xunit;
 
 namespace FgoPet.App.Tests.Panels;
@@ -28,17 +40,55 @@ public sealed class AttachedPanelViewModelTests
     }
 
     [Fact]
-    public void Dialogue_click_expands_steps_down_and_back()
+    public void Dialogue_click_requests_the_standalone_window_without_changing_panel_state()
     {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch));
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, dialogueWindow: CreateDialogueViewModel());
         vm.PortraitClick();
         Assert.Equal(AttachedPanelState.Compact, vm.State);
 
+        var requested = 0;
+        vm.DialogueWindow!.OpenRequested += () => requested++;
         vm.DialogueClick();
-        Assert.Equal(AttachedPanelState.ExpandedDialogue, vm.State);
 
-        vm.DialogueClick();
+        Assert.Equal(1, requested);
         Assert.Equal(AttachedPanelState.Compact, vm.State);
+    }
+
+    [Fact]
+    public void Unread_replies_surface_on_the_compact_panel_and_clear_when_activated()
+    {
+        var dialogue = CreateDialogueViewModel();
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+
+        dialogue.NotifyWindowHidden();
+        dialogue.Conversation.Turns.Add(new FgoPet.App.Dialogue.ConversationTurnViewModel(
+            "m1", FgoPet.Core.Dialogue.ChatMessageRole.Assistant, "这是一条新的回复。"));
+
+        Assert.Equal(1, vm.DialogueUnreadCount);
+        Assert.Equal("对话 · 新回复：这是一条新的回复。", vm.DialogueUnreadPillText);
+
+        dialogue.NotifyActivated();
+
+        Assert.Equal(0, vm.DialogueUnreadCount);
+        Assert.Equal(string.Empty, vm.DialogueUnreadPillText);
+    }
+
+    private static DialogueWindowViewModel CreateDialogueViewModel()
+    {
+        var settingsStore = new MemorySettingsStore(AppSettings.Defaults with
+        {
+            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
+        });
+        var database = new RuntimeDatabase(":memory:");
+        var orchestrator = new ConversationOrchestrator(
+            new ThrowingProviderResolver(),
+            new ThrowingContentResolver(),
+            new SqliteConversationRepository(database),
+            new SqliteMemoryRepository(database),
+            new PromptComposer(),
+            TimeProvider.System,
+            settingsStore);
+        return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore));
     }
 
     [Fact]
@@ -62,8 +112,8 @@ public sealed class AttachedPanelViewModelTests
         var time = new MutableTimeProvider(Epoch);
         var vm = new AttachedPanelViewModel(time);
         vm.PortraitClick();
-        vm.DialogueClick();
-        Assert.Equal(AttachedPanelState.ExpandedDialogue, vm.State);
+        vm.TodoClick();
+        Assert.Equal(AttachedPanelState.ExpandedTodo, vm.State);
 
         vm.PointerLeft();
         time.Now = time.Now.AddMinutes(1);
@@ -78,13 +128,13 @@ public sealed class AttachedPanelViewModelTests
         var time = new MutableTimeProvider(Epoch);
         var vm = new AttachedPanelViewModel(time);
         vm.PortraitClick();
-        vm.DialogueClick();
+        vm.TodoClick();
 
         vm.PointerEntered();
         time.Now = time.Now.AddMinutes(1);
         vm.Tick();
 
-        Assert.Equal(AttachedPanelState.ExpandedDialogue, vm.State);
+        Assert.Equal(AttachedPanelState.ExpandedTodo, vm.State);
     }
 
     [Fact]
@@ -134,6 +184,66 @@ public sealed class AttachedPanelViewModelTests
         Assert.False(vm.TodoOverflows);
     }
 
+    [Fact]
+    public void Start_focus_is_disabled_without_an_active_servant_and_names_the_reason()
+    {
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+
+        Assert.False(vm.CanStartFocus);
+        Assert.Equal("请先在角色库导入并激活一个角色。", vm.StartFocusDisabledReason);
+    }
+
+    [Fact]
+    public void Start_focus_is_disabled_by_an_active_session_and_names_the_status()
+    {
+        var session = FocusSession.Idle with { Status = FocusStatus.PausedFocus };
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(session));
+        vm.SetActiveServant("800100");
+
+        Assert.False(vm.CanStartFocus);
+        Assert.Equal("当前专注处于 暂停（专注），请先恢复或退出后再开始新专注。", vm.StartFocusDisabledReason);
+    }
+
+    [Fact]
+    public void Start_focus_is_disabled_by_invalid_custom_fields_and_names_the_correction()
+    {
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+        vm.SetActiveServant("800100");
+        vm.SelectCustomPreset();
+        vm.CustomFocusMinutesText = "999";
+
+        Assert.True(vm.IsEditingCustomPreset);
+        Assert.False(vm.CanStartFocus);
+        Assert.Equal("请先修正自定义专注/休息/轮次设置在允许范围内。", vm.StartFocusDisabledReason);
+    }
+
+    [Fact]
+    public void Start_focus_enabled_state_has_no_disabled_reason()
+    {
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+        vm.SetActiveServant("800100");
+
+        Assert.True(vm.CanStartFocus);
+        Assert.Null(vm.StartFocusDisabledReason);
+    }
+
+    private sealed class FakeFocusService(FocusSession session) : IFocusSessionService
+    {
+        public FocusSession Current { get; private set; } = session;
+
+        // A no-op subscriber keeps the compiler happy about unused events.
+        public event EventHandler? SnapshotChanged { add { } remove { } }
+
+        public event EventHandler? PersistenceFailed { add { } remove { } }
+
+        public void Start(FocusPreset preset, string servantId) { }
+        public void Pause() { }
+        public void Resume() { }
+        public void Stop() { }
+        public void Tick() { }
+        public void Restore() { }
+    }
+
     private sealed class MutableTimeProvider : TimeProvider
     {
         public MutableTimeProvider(string utcNow) => Now = DateTimeOffset.Parse(utcNow);
@@ -141,5 +251,30 @@ public sealed class AttachedPanelViewModelTests
         public DateTimeOffset Now { get; set; }
 
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private sealed class MemorySettingsStore(AppSettings initial) : IAppSettingsStore
+    {
+        public string Location => "memory";
+        public AppSettings Load() => initial;
+        public void Save(AppSettings settings) { }
+    }
+
+    private sealed class ThrowingProviderResolver : IChatProviderResolver
+    {
+        public IChatProvider Resolve() =>
+            throw new ProviderRequestException(ProviderFailureCategory.Configuration, "未配置。");
+    }
+
+    private sealed class ThrowingContentResolver : IConversationContentResolver
+    {
+        public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
+            Task.FromResult(new ContentBinding(
+                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty),
+                null,
+                Array.Empty<KnowledgeEntry>(),
+                Array.Empty<string>(),
+                string.Empty,
+                string.Empty));
     }
 }

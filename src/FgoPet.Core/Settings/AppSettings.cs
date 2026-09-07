@@ -20,6 +20,9 @@ public sealed record AppSettings(
 
     public bool MemoryEnabled { get; init; } = true;
 
+    /// <summary>Transient reasoning display in the dialogue window (spec §9); UI-only.</summary>
+    public bool ShowReasoning { get; init; } = true;
+
     public IReadOnlyDictionary<string, ServantPreference> ServantPreferences { get; init; } = EmptyServantPreferences;
 
     public AppTheme Theme { get; init; } = AppTheme.ModernGray;

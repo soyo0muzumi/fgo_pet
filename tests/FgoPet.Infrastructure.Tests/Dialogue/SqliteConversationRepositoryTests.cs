@@ -52,6 +52,17 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Runtime_state_round_trips_and_can_be_deleted()
+    {
+        var repository = CreateRepository();
+        repository.WriteState("LastActiveConversationId:800100", "c1", Now());
+
+        Assert.Equal("c1", repository.ReadState("LastActiveConversationId:800100"));
+        repository.DeleteState("LastActiveConversationId:800100");
+        Assert.Null(repository.ReadState("LastActiveConversationId:800100"));
+    }
+
+    [Fact]
     public void Invalid_conversation_id_does_not_leave_a_database_row()
     {
         var database = new RuntimeDatabase(_path);

@@ -35,13 +35,13 @@ public sealed class PrivateBackupReaderTests : IDisposable
 
         var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
         var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
-        WriteArchive(_archivePath, snapshotPath, settingsJson, packagesJson, databaseSchemaVersion: 8);
+        WriteArchive(_archivePath, snapshotPath, settingsJson, packagesJson, databaseSchemaVersion: 9);
 
         var result = await new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath, CancellationToken.None);
 
         Assert.Equal(_stagingPath, result.StagingDirectory);
         Assert.True(File.Exists(result.RuntimeDatabasePath));
-        Assert.Equal(8L, ReadScalar<long>(result.RuntimeDatabasePath, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(9L, ReadScalar<long>(result.RuntimeDatabasePath, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal("ok", ReadScalar<string>(result.RuntimeDatabasePath, "PRAGMA integrity_check"));
         Assert.Equal(AppSettings.Defaults, new AppSettingsSnapshotCodec().Deserialize(File.ReadAllText(result.SettingsPath)));
         Assert.Contains("schema_version", File.ReadAllText(result.PackagesPath), StringComparison.Ordinal);

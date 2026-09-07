@@ -165,10 +165,34 @@ public sealed record ConversationSendResult(
 public enum ConversationUpdateType
 {
     UserMessagePersisted,
+    RequestStage,
     AssistantDelta,
     AssistantCompleted,
     Cancelled,
     Failed,
+}
+
+public enum ConversationRequestStage
+{
+    Preparing,
+    RequestStarted,
+    ResponseHeadersReceived,
+    StreamingReasoning,
+    StreamingTool,
+    StreamingAnswer,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// <summary>Outcome of the submit_todo_proposals tool-call channel for the UI.</summary>
+public enum TodoToolCallOutcome
+{
+    None,
+    ProposalsReady,
+    InvalidToolCall,
+    NoProposal,
+    TextFallback,
 }
 
 public sealed record ConversationUpdate(
@@ -178,7 +202,13 @@ public sealed record ConversationUpdate(
     string? TextDelta = null,
     string? SafeError = null,
     string? ServantId = null,
-    string? StructuredResponse = null);
+    string? StructuredResponse = null,
+    TodoToolCallOutcome TodoOutcome = TodoToolCallOutcome.None,
+    string? TodoDetail = null,
+    string? ReasoningDelta = null,
+    ConversationRequestStage? RequestStage = null,
+    int? HttpStatusCode = null,
+    string? ProviderErrorCode = null);
 
 public sealed record ChatRequest
 {
@@ -187,7 +217,9 @@ public sealed record ChatRequest
         string conversationId,
         IReadOnlyList<PromptMessage> messages,
         ContentContextKey? contentContext = null,
-        IReadOnlyDictionary<string, string>? metadata = null)
+        IReadOnlyDictionary<string, string>? metadata = null,
+        IReadOnlyList<ChatToolDefinition>? tools = null,
+        string? toolChoice = null)
     {
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
         ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
@@ -201,6 +233,19 @@ public sealed record ChatRequest
         Metadata = metadata is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+        Tools = tools is null ? null : tools.ToArray();
+        if (Tools is { Count: 0 })
+        {
+            throw new ArgumentException("Tools collection must be null or non-empty.", nameof(tools));
+        }
+
+        ToolChoice = string.IsNullOrWhiteSpace(toolChoice)
+            ? null
+            : Phase3Validation.Id(toolChoice, nameof(toolChoice), 64);
+        if (ToolChoice is not null && Tools is null)
+        {
+            throw new ArgumentException("ToolChoice requires Tools to be set.", nameof(toolChoice));
+        }
     }
 
     public string ServantId { get; }
@@ -208,14 +253,20 @@ public sealed record ChatRequest
     public IReadOnlyList<PromptMessage> Messages { get; }
     public ContentContextKey? ContentContext { get; }
     public IReadOnlyDictionary<string, string> Metadata { get; }
+    public IReadOnlyList<ChatToolDefinition>? Tools { get; }
+    public string? ToolChoice { get; }
 }
 
-public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null)
+public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null, ChatToolCallDelta? ToolCallDelta = null, string? ReasoningDelta = null)
 {
     public string TextDelta { get; } = Phase3Validation.OptionalText(TextDelta, nameof(TextDelta), 4_096);
     public string? FinishReason { get; } = string.IsNullOrWhiteSpace(FinishReason)
         ? null
         : Phase3Validation.Id(FinishReason, nameof(FinishReason), 64);
+    public ChatToolCallDelta? ToolCallDelta { get; } = ToolCallDelta;
+    public string? ReasoningDelta { get; } = string.IsNullOrWhiteSpace(ReasoningDelta)
+        ? null
+        : Phase3Validation.OptionalText(ReasoningDelta, nameof(ReasoningDelta), 4_096);
 }
 
 public sealed record ChatCompletion(

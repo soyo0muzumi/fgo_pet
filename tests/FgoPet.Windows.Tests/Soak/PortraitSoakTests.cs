@@ -45,8 +45,8 @@ public sealed class PortraitSoakTests
         for (var i = 0; i < 1000; i++)
         {
             panel.PortraitClick();
-            panel.DialogueClick();
             panel.TodoClick();
+            panel.FocusClick();
             panel.Escape();
         }
         Assert.Equal(Core.Panels.AttachedPanelState.Collapsed, panel.State);

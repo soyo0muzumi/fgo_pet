@@ -109,6 +109,12 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
     private string _compatibilityText = string.Empty;
 
     [ObservableProperty]
+    private string _packageSummary = string.Empty;
+
+    [ObservableProperty]
+    private string _defaultAddressText = string.Empty;
+
+    [ObservableProperty]
     private string? _previewSource;
 
     [ObservableProperty]
@@ -147,6 +153,9 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
 
     [ObservableProperty]
     private string _packageSettingsStatus = string.Empty;
+
+    public bool HasPackageSettings => PackageSettings.Count > 0;
+    public bool IsPackageSettingsEmpty => !HasPackageSettings;
 
     [ObservableProperty]
     private string _migrationNotice = string.Empty;
@@ -191,6 +200,13 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
         CompatibilityText = string.IsNullOrWhiteSpace(card.MinAppVersion)
             ? "未声明最低应用版本"
             : $"要求 FGO Pet {card.MinAppVersion} 或更高版本";
+        var capabilities = card.Capabilities.Count == 0
+            ? "未声明能力"
+            : string.Join("、", card.Capabilities.Select(CapabilityLabel));
+        PackageSummary = $"能力：{capabilities} · {card.Appearances.Count} 个外观";
+        DefaultAddressText = string.IsNullOrWhiteSpace(card.DefaultAddress)
+            ? "角色包未声明默认称呼"
+            : $"角色包声明：{card.DefaultAddress}";
         PreviewSource = card.PreviewSource;
         IsActive = card.IsActive;
         Appearances = card.Appearances;
@@ -356,6 +372,8 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
         PackageSettings = definitions
             .Select(definition => new RolePackageSettingViewModel(definition, normalized[definition.Key]))
             .ToArray();
+        OnPropertyChanged(nameof(HasPackageSettings));
+        OnPropertyChanged(nameof(IsPackageSettingsEmpty));
         MigrationNotice = migrated
             ? "角色包升级后，已将不再有效的设置恢复为声明的默认值。"
             : string.Empty;
@@ -397,4 +415,13 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
         UninstallCommand.NotifyCanExecuteChanged();
         OpenPackFolderCommand.NotifyCanExecuteChanged();
     }
+
+    private static string CapabilityLabel(string capability) => capability switch
+    {
+        "art.v3" => "立绘",
+        "persona.v1" => "人格",
+        "knowledge.v1" => "知识",
+        "expression.v1" => "表情",
+        _ => capability,
+    };
 }

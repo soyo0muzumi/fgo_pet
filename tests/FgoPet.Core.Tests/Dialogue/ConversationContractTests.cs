@@ -6,6 +6,21 @@ namespace FgoPet.Core.Tests.Dialogue;
 public sealed class ConversationContractTests
 {
     [Fact]
+    public void Conversation_update_can_carry_request_stage_without_text_payload()
+    {
+        var update = new ConversationUpdate(
+            ConversationUpdateType.RequestStage,
+            "conversation-1",
+            RequestStage: ConversationRequestStage.ResponseHeadersReceived,
+            HttpStatusCode: 200);
+
+        Assert.Equal(ConversationRequestStage.ResponseHeadersReceived, update.RequestStage);
+        Assert.Equal(200, update.HttpStatusCode);
+        Assert.Null(update.TextDelta);
+        Assert.Null(update.ReasoningDelta);
+    }
+
+    [Fact]
     public void Content_context_includes_servant_package_version_and_appearance()
     {
         var key = new ContentContextKey("800100", "official.mash", "1.1.0", "casual", "persona-2", "knowledge-1");

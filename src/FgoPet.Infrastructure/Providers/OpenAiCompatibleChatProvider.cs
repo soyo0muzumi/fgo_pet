@@ -15,14 +15,30 @@ public enum ProviderFailureCategory
     Network,
     ServiceUnavailable,
     InvalidResponse,
+    ToolsRejected,
 }
 
 public sealed class ProviderRequestException : Exception
 {
-    public ProviderRequestException(ProviderFailureCategory category, string message, Exception? innerException = null)
-        : base(message, innerException) => Category = category;
+    public ProviderRequestException(
+        ProviderFailureCategory category,
+        string message,
+        Exception? innerException = null,
+        HttpStatusCode? httpStatusCode = null,
+        string? providerCode = null,
+        bool requestWasSent = false)
+        : base(message, innerException)
+    {
+        Category = category;
+        HttpStatusCode = httpStatusCode;
+        ProviderCode = providerCode;
+        RequestWasSent = requestWasSent;
+    }
 
     public ProviderFailureCategory Category { get; }
+    public HttpStatusCode? HttpStatusCode { get; }
+    public string? ProviderCode { get; }
+    public bool RequestWasSent { get; }
 }
 
 public sealed class OpenAiCompatibleChatProvider : IChatProvider
@@ -77,7 +93,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
         using (response)
         {
-            EnsureSuccess(response);
+            await EnsureSuccessAsync(response, cancellationToken);
             try
             {
                 using var document = await JsonDocument.ParseAsync(
@@ -108,16 +124,34 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     {
         ArgumentNullException.ThrowIfNull(request);
         using var httpRequest = await CreateAuthorizedRequestAsync(HttpMethod.Post, "chat/completions", cancellationToken);
-        var payload = new
+        var payload = new Dictionary<string, object?>
         {
-            model = ModelId,
-            stream = true,
-            messages = request.Messages.Select(message => new
+            ["model"] = ModelId,
+            ["stream"] = true,
+            ["messages"] = request.Messages.Select(message => new
             {
                 role = message.Role.ToString().ToLowerInvariant(),
                 content = message.Text,
             }),
         };
+        if (request.Tools is { Count: > 0 })
+        {
+            payload["tools"] = request.Tools.Select(tool => new
+            {
+                type = tool.Type,
+                function = new
+                {
+                    name = tool.Name,
+                    description = tool.Description,
+                    parameters = JsonSerializer.SerializeToElement(tool.Parameters),
+                },
+            });
+            payload["tool_choice"] = request.ToolChoice switch
+            {
+                null or "auto" => "auto",
+                _ => request.ToolChoice,
+            };
+        }
         httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
         HttpResponseMessage response;
@@ -132,10 +166,22 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
         using (response)
         {
-            EnsureSuccess(response);
+            if (request.Tools is { Count: > 0 } && response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                // The tools parameter itself is the plausible rejection cause only
+                // when tools were attached; the retry without tools confirms it.
+                throw await CreateHttpExceptionAsync(
+                    response,
+                    ProviderFailureCategory.ToolsRejected,
+                    "当前模型服务不支持工具调用。",
+                    cancellationToken);
+            }
+
+            await EnsureSuccessAsync(response, cancellationToken);
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
             var done = false;
+            string? lastFinishReason = null;
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
                 if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
@@ -146,34 +192,75 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 var data = line["data:".Length..].Trim();
                 if (data.Equals("[DONE]", StringComparison.Ordinal))
                 {
-                    yield return new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "stop");
+                    // The terminal chunk must repeat the last observed finish reason:
+                    // a literal "stop" here would clobber a real "tool_calls" marker
+                    // that arrived earlier in the stream.
+                    yield return new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: lastFinishReason);
                     done = true;
                     break;
                 }
 
-                string? delta;
+                string? finishReason = null;
+                ChatToolCallDelta? toolCallDelta = null;
+                string? textDelta;
+                string? reasoningDelta;
                 try
                 {
                     using var document = JsonDocument.Parse(data);
-                    delta = document.RootElement
-                        .GetProperty("choices")[0]
-                        .GetProperty("delta")
-                        .TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
-                        ? content.GetString()
+                    var root = document.RootElement;
+                    if (!root.TryGetProperty("choices", out var choices)
+                        || choices.ValueKind != JsonValueKind.Array
+                        || choices.GetArrayLength() == 0)
+                    {
+                        throw new JsonException("Streaming response contains no choices.");
+                    }
+
+                    var choice = choices[0];
+                    finishReason = choice.TryGetProperty("finish_reason", out var finish) && finish.ValueKind == JsonValueKind.String
+                        ? finish.GetString()
                         : null;
+                    if (choice.TryGetProperty("delta", out var delta))
+                    {
+                        textDelta = delta.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
+                            ? content.GetString()
+                            : null;
+                        reasoningDelta = ReadReasoningDelta(delta);
+                        toolCallDelta = ReadToolCallDelta(delta);
+                    }
+                    else
+                    {
+                        textDelta = null;
+                        reasoningDelta = null;
+                    }
                 }
                 catch (JsonException error)
                 {
                     throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error);
                 }
-                catch (KeyNotFoundException error)
+                catch (Exception error) when (error is InvalidOperationException or IndexOutOfRangeException or ArgumentException or KeyNotFoundException)
                 {
                     throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error);
                 }
 
-                if (!string.IsNullOrEmpty(delta))
+                if (finishReason is not null)
                 {
-                    yield return new ChatStreamChunk(delta);
+                    lastFinishReason = finishReason;
+                }
+
+                if (!string.IsNullOrEmpty(textDelta))
+                {
+                    yield return new ChatStreamChunk(textDelta, FinishReason: finishReason);
+                    continue;
+                }
+
+                if (toolCallDelta is not null || reasoningDelta is not null || finishReason is not null)
+                {
+                    yield return new ChatStreamChunk(
+                        string.Empty,
+                        IsComplete: false,
+                        FinishReason: finishReason,
+                        ToolCallDelta: toolCallDelta,
+                        ReasoningDelta: reasoningDelta);
                 }
             }
 
@@ -182,6 +269,60 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 yield return new ChatStreamChunk(string.Empty, IsComplete: true);
             }
         }
+    }
+
+    private static string? ReadReasoningDelta(JsonElement delta)
+    {
+        // OpenAI-compatible reasoning fields vary by service: DeepSeek uses
+        // "reasoning_content", others use "reasoning". Unknown services without
+        // either field behave exactly as before.
+        foreach (var propertyName in (string[])["reasoning_content", "reasoning"])
+        {
+            if (delta.TryGetProperty(propertyName, out var reasoning) && reasoning.ValueKind == JsonValueKind.String)
+            {
+                return reasoning.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static ChatToolCallDelta? ReadToolCallDelta(JsonElement delta)
+    {
+        if (!delta.TryGetProperty("tool_calls", out var toolCalls) || toolCalls.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var call in toolCalls.EnumerateArray())
+        {
+            var index = call.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsed)
+                ? parsed
+                : 0;
+            string? id = call.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
+                ? idElement.GetString()
+                : null;
+            string? name = null;
+            string? argumentsDelta = null;
+            if (call.TryGetProperty("function", out var function) && function.ValueKind == JsonValueKind.Object)
+            {
+                name = function.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
+                    ? nameElement.GetString()
+                    : null;
+                argumentsDelta = function.TryGetProperty("arguments", out var argumentsElement) && argumentsElement.ValueKind == JsonValueKind.String
+                    ? argumentsElement.GetString()
+                    : null;
+            }
+
+            if (id is null && name is null && string.IsNullOrEmpty(argumentsDelta))
+            {
+                continue;
+            }
+
+            return new ChatToolCallDelta(index, id, name, argumentsDelta);
+        }
+
+        return null;
     }
 
     private async Task<HttpRequestMessage> CreateAuthorizedRequestAsync(
@@ -201,7 +342,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         return request;
     }
 
-    private static void EnsureSuccess(HttpResponseMessage response)
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
         {
@@ -215,12 +356,51 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             >= HttpStatusCode.InternalServerError => ProviderFailureCategory.ServiceUnavailable,
             _ => ProviderFailureCategory.InvalidResponse,
         };
-        throw new ProviderRequestException(category, category switch
+        throw await CreateHttpExceptionAsync(
+            response,
+            category,
+            category switch
+            {
+                ProviderFailureCategory.Authentication => "模型服务认证失败。",
+                ProviderFailureCategory.RateLimited => "模型服务请求过于频繁。",
+                ProviderFailureCategory.ServiceUnavailable => "模型服务暂时不可用。",
+                _ => "模型服务请求失败。",
+            },
+            cancellationToken);
+    }
+
+    private static async Task<ProviderRequestException> CreateHttpExceptionAsync(
+        HttpResponseMessage response,
+        ProviderFailureCategory category,
+        string fallback,
+        CancellationToken cancellationToken)
+    {
+        string? providerCode = null;
+        string? providerMessage = null;
+        try
         {
-            ProviderFailureCategory.Authentication => "模型服务认证失败。",
-            ProviderFailureCategory.RateLimited => "模型服务请求过于频繁。",
-            ProviderFailureCategory.ServiceUnavailable => "模型服务暂时不可用。",
-            _ => "模型服务请求失败。",
-        });
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                using var document = JsonDocument.Parse(body);
+                if (document.RootElement.TryGetProperty("error", out var error))
+                {
+                    providerCode = error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
+                        ? code.GetString()
+                        : null;
+                    providerMessage = error.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String
+                        ? message.GetString()
+                        : null;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Keep the safe category/status when a provider error body is malformed.
+        }
+
+        var detail = string.IsNullOrWhiteSpace(providerMessage) ? fallback : providerMessage.Trim();
+        var messageText = $"{fallback}（HTTP {(int)response.StatusCode}）：{detail}";
+        return new ProviderRequestException(category, messageText, httpStatusCode: response.StatusCode, providerCode: providerCode, requestWasSent: true);
     }
 }

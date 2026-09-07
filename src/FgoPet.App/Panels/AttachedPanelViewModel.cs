@@ -49,7 +49,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         ConversationViewModel? conversation = null,
         TodoListViewModel? todoList = null,
         AgentCurrentTaskViewModel? currentAgentTask = null,
-        AppRuntime? runtime = null)
+        AppRuntime? runtime = null,
+        DialogueWindowViewModel? dialogueWindow = null)
     {
         _time = time;
         _focus = focus;
@@ -57,8 +58,13 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         TodoList = todoList;
         CurrentAgentTask = currentAgentTask;
         _runtime = runtime;
+        DialogueWindow = dialogueWindow;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _lastInteraction = time.GetUtcNow();
+        if (dialogueWindow is not null)
+        {
+            dialogueWindow.UnreadChanged += RefreshUnread;
+        }
         if (_runtime?.ActiveRole is { } activeRole)
         {
             _activeServantId = activeRole.ServantId;
@@ -71,6 +77,50 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         {
             focus.SnapshotChanged += (_, _) => OnFocusChanged();
         }
+    }
+
+    /// <summary>Shared dialogue-window state; owns the unread badge this panel renders.</summary>
+    public DialogueWindowViewModel? DialogueWindow { get; }
+
+    [ObservableProperty]
+    private int _dialogueUnreadCount;
+
+    /// <summary>Pill text on the compact body: last unread reply preview (spec §8.2 R3).</summary>
+    [ObservableProperty]
+    private string _dialogueUnreadPillText = string.Empty;
+
+    public bool HasDialogueUnread => DialogueUnreadCount > 0;
+
+    private void RefreshUnread()
+    {
+        var dialogue = DialogueWindow;
+        if (dialogue is null)
+        {
+            return;
+        }
+
+        DialogueUnreadCount = dialogue.UnreadCount;
+        OnPropertyChanged(nameof(HasDialogueUnread));
+        if (dialogue.UnreadCount == 0)
+        {
+            DialogueUnreadPillText = string.Empty;
+            return;
+        }
+
+        var lastReply = dialogue.Conversation.Turns
+            .LastOrDefault(turn => turn.Role == Core.Dialogue.ChatMessageRole.Assistant)?.Text;
+        DialogueUnreadPillText = $"对话 · 新回复：{Preview(lastReply)}";
+    }
+
+    private static string Preview(string? text)
+    {
+        var trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return "…";
+        }
+
+        return trimmed.Length <= 18 ? trimmed : trimmed[..18] + "…";
     }
 
     [ObservableProperty]
@@ -178,6 +228,40 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         && Current.Session is { Status: FocusStatus.Idle or FocusStatus.Completed }
         && !string.IsNullOrEmpty(ActiveServantId);
 
+    /// <summary>Why "开始专注" is disabled, or null when it is enabled. Keeps any disabled primary action explainable.</summary>
+    public string? StartFocusDisabledReason
+    {
+        get
+        {
+            var session = Current.Session;
+            if (session is { Status: not FocusStatus.Idle and not FocusStatus.Completed })
+            {
+                return $"当前专注处于 {DescribeFocusStatus(session.Status)}，请先恢复或退出后再开始新专注。";
+            }
+
+            if (string.IsNullOrEmpty(ActiveServantId))
+            {
+                return "请先在角色库导入并激活一个角色。";
+            }
+
+            if (IsEditingCustomPreset)
+            {
+                return "请先修正自定义专注/休息/轮次设置在允许范围内。";
+            }
+
+            return null;
+        }
+    }
+
+    private static string DescribeFocusStatus(FocusStatus status) => status switch
+    {
+        FocusStatus.Focusing => "专注中",
+        FocusStatus.Breaking => "休息中",
+        FocusStatus.PausedFocus => "暂停（专注）",
+        FocusStatus.PausedBreak => "暂停（休息）",
+        _ => status.ToString(),
+    };
+
     public bool CanPause => Current.Session.Status == FocusStatus.Focusing || Current.Session.Status == FocusStatus.Breaking;
 
     public bool CanResume => Current.Session.Status == FocusStatus.PausedFocus || Current.Session.Status == FocusStatus.PausedBreak;
@@ -214,7 +298,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     public void DialogueClick()
     {
         Interact();
-        State = AttachedPanelStateMachine.Transition(State, PanelAction.DialogueClick);
+        DialogueWindow?.RequestOpen();
     }
 
     public void TodoClick()
@@ -281,6 +365,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         ActiveServantId = servantId;
         Conversation?.SetActiveServant(servantId);
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(StartFocusDisabledReason));
     }
 
     private void OnActiveRoleChanged(object? sender, AppStateChangedEventArgs<ActiveRoleState> args)
@@ -398,6 +483,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(StartFocusDisabledReason));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanStopTimer));
@@ -450,6 +536,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
             ? string.Empty : "循环 1-12 次";
         OnPropertyChanged(nameof(IsEditingCustomPreset));
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(StartFocusDisabledReason));
         OnPropertyChanged(nameof(CustomTotalText));
     }
 

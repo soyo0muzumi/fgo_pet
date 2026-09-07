@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "servant_id": "mash_kyrielight",
+  "package_id": "official.mash",
+  "package_version": "1.0.0",
+  "persona_version": "1.0.0",
+  "core": {
+    "path": "core_persona.json",
+    "sha256": "A1EDBF6C82D7B55A09D4F4C6D337D50E016C88FE3CB921D6F4B97CD37115EBF0"
+  },
+  "appearances": {}
+}

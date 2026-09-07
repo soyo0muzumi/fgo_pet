@@ -20,6 +20,34 @@ public sealed class PersonalizationViewModelTests
     }
 
     [Fact]
+    public void Changing_scale_without_an_active_portrait_shows_an_activation_notice()
+    {
+        var portrait = new ThrowingPortraitController();
+        var store = new FakeSettingsStore();
+        var viewModel = new PersonalizationViewModel(store, portrait);
+
+        viewModel.Scale = 0.75;
+
+        Assert.Equal("已保存，激活角色后生效。", viewModel.StatusText);
+        Assert.Equal(0.75, store.Current.Scale);
+    }
+
+    [Fact]
+    public void Persisted_scale_applies_when_the_portrait_later_activates()
+    {
+        var store = new FakeSettingsStore();
+        var viewModel = new PersonalizationViewModel(store, new ThrowingPortraitController());
+
+        viewModel.Scale = 0.60;
+        Assert.Equal("已保存，激活角色后生效。", viewModel.StatusText);
+
+        var portrait = new FakePortraitController();
+        portrait.SetScale(store.Current.Scale);
+
+        Assert.Equal(0.60, portrait.LastScale);
+    }
+
+    [Fact]
     public void Initial_status_is_empty_until_an_action_produces_feedback()
     {
         var viewModel = new PersonalizationViewModel(new FakeSettingsStore());
@@ -132,6 +160,14 @@ public sealed class PersonalizationViewModelTests
         public Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.CompletedTask;
         public void SetExpression(ExpressionSemantic semantic) { }
         public void SetScale(double scale) => LastScale = scale;
+        public void ApplyDpi(Dpi2 dpi) { }
+    }
+
+    private sealed class ThrowingPortraitController : IPortraitController
+    {
+        public Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.CompletedTask;
+        public void SetExpression(ExpressionSemantic semantic) { }
+        public void SetScale(double scale) => throw new InvalidOperationException("尚未激活任何画像。");
         public void ApplyDpi(Dpi2 dpi) { }
     }
 }

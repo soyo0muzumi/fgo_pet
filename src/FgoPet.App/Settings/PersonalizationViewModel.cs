@@ -161,7 +161,9 @@ public sealed class PersonalizationViewModel : ObservableObject
         }
         catch (InvalidOperationException)
         {
-            // No portrait is active yet; the persisted value will apply on activation.
+            // No portrait is active yet; tell the user the value will apply on
+            // activation instead of failing silently.
+            StatusText = "已保存，激活角色后生效。";
         }
     }
 

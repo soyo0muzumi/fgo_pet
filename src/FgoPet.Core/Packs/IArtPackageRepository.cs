@@ -37,6 +37,10 @@ public sealed record InstalledServant(
 
     public string? MinAppVersion { get; init; }
 
+    public string? DefaultAddress { get; init; }
+
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
+
     public IReadOnlyList<PackSettingDefinition> Settings { get; init; } = [];
 }
 

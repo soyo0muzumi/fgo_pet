@@ -77,6 +77,7 @@ public sealed class UserDataDeletionService
             DELETE FROM memories;
             DELETE FROM conversations;
             DELETE FROM content_bindings;
+            DELETE FROM runtime_state;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

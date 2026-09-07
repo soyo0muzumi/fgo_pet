@@ -37,6 +37,7 @@ public sealed partial class TodoListViewModel : ObservableObject
     private readonly AgentDispatchService? _dispatchService;
     private readonly AgentEventProjector? _projector;
     private readonly IAgentRepository? _agents;
+    private readonly AgentTaskHistoryViewModel? _agentHistory;
 
     public TodoListViewModel(
         TodoApplicationService service,
@@ -45,7 +46,8 @@ public sealed partial class TodoListViewModel : ObservableObject
         IAgentRelayAdministration? administration = null,
         AgentDispatchService? dispatchService = null,
         AgentEventProjector? projector = null,
-        IAgentRepository? agents = null)
+        IAgentRepository? agents = null,
+        AgentTaskHistoryViewModel? agentHistory = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _time = time ?? throw new ArgumentNullException(nameof(time));
@@ -54,6 +56,7 @@ public sealed partial class TodoListViewModel : ObservableObject
         _dispatchService = dispatchService;
         _projector = projector;
         _agents = agents;
+        _agentHistory = agentHistory;
         if (_projector is not null)
         {
             _projector.EventApplied += OnAgentEventApplied;
@@ -63,6 +66,8 @@ public sealed partial class TodoListViewModel : ObservableObject
     public ObservableCollection<TodoItemViewModel> VisibleItems { get; } = new();
     public ObservableCollection<TodoGroupViewModel> Groups { get; } = new();
     public ObservableCollection<WorkArchive> WorkArchives { get; } = new();
+    public AgentTaskHistoryViewModel? AgentHistory => _agentHistory;
+    public IReadOnlyList<AgentTaskHistoryFilter> AgentHistoryFilterValues { get; } = Enum.GetValues<AgentTaskHistoryFilter>();
 
     /// <summary>
     /// Raised only after the user explicitly presses a Todo's “交给 Agent” button.
@@ -99,6 +104,7 @@ public sealed partial class TodoListViewModel : ObservableObject
 
     public void Refresh()
     {
+        _agentHistory?.Refresh();
         IEnumerable<TodoItem> items = SelectedTab == TodoListTab.Todo
             ? _service.ListActive()
                 .OrderBy(item => item.Status == TodoStatus.Active ? 0 : 1)

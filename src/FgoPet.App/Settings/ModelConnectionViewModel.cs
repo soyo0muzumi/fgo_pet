@@ -33,6 +33,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         SelectedProviderId = selected.ProviderId;
         BaseUrl = saved?.BaseUrl ?? selected.DefaultBaseUrl;
         ModelId = saved?.ModelId ?? DefaultModel(selected.ProviderId);
+        ShowReasoning = _settings.Load().ShowReasoning;
         AvailableModels = Array.Empty<ProviderModel>();
         StatusText = "未测试连接。";
         TestCommand = new AsyncRelayCommand(TestAsync);
@@ -91,6 +92,19 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     [ObservableProperty]
     private string _errorText = string.Empty;
 
+    /// <summary>Dialogue window reasoning well toggle (spec §9.3); persists immediately.</summary>
+    [ObservableProperty]
+    private bool _showReasoning = true;
+
+    partial void OnShowReasoningChanged(bool value)
+    {
+        _settings.Save(_settings.Load() with { ShowReasoning = value });
+        ShowReasoningChanged?.Invoke(value);
+    }
+
+    /// <summary>Raised so the live conversation view applies the toggle without a round-trip.</summary>
+    public event Action<bool>? ShowReasoningChanged;
+
     public IAsyncRelayCommand TestCommand { get; }
 
     public IAsyncRelayCommand SaveCommand { get; }
@@ -119,7 +133,17 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         {
             var models = await provider.ListModelsAsync(CancellationToken.None);
             AvailableModels = models;
-            StatusText = $"连接成功 · {ProviderStatusText} · {ModelStatusText}";
+            var connection = new ModelConnectionSettings(SelectedProviderId, BaseUrl, ModelId);
+            if (!string.IsNullOrEmpty(_pendingApiKey))
+            {
+                await _credentials.SaveAsync(CredentialTarget(), _pendingApiKey, CancellationToken.None);
+                IsKeySaved = true;
+                _pendingApiKey = string.Empty;
+            }
+
+            _settings.Save(_settings.Load() with { ModelConnection = connection });
+            ConnectionSaved?.Invoke(connection);
+            StatusText = $"连接成功并已启用 · {ProviderStatusText} · {ModelStatusText}";
         });
     }
 

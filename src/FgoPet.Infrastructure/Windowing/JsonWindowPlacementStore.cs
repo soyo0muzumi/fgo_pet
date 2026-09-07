@@ -7,23 +7,29 @@ namespace FgoPet.Infrastructure.Windowing;
 
 /// <summary>
 /// Versioned, atomically-written transient window placement. Corrupt JSON is
-/// quarantined and treated as no placement.
+/// quarantined and treated as no placement. The portrait placement keeps the
+/// legacy file name; every other slot gets its own sidecar file.
 /// </summary>
 public sealed class JsonWindowPlacementStore : IWindowPlacementStore
 {
     private const int SchemaVersion = 1;
-    private readonly string _path;
+    private readonly string _storageRoot;
 
     public JsonWindowPlacementStore(string storageRoot)
     {
-        _path = Path.Combine(storageRoot, "window-placement.json");
+        _storageRoot = storageRoot;
     }
 
-    public string Location => _path;
+    public string Location => Path.Combine(_storageRoot, FileName(null));
 
-    public WindowPlacement? Load()
+    public WindowPlacement? Load() => Load(WindowPlacementSlots.Portrait);
+
+    public void Save(WindowPlacement placement) => Save(WindowPlacementSlots.Portrait, placement);
+
+    public WindowPlacement? Load(string slot)
     {
-        var text = AtomicJson.ReadOrNull(_path);
+        var path = Path.Combine(_storageRoot, FileName(slot));
+        var text = AtomicJson.ReadOrNull(path);
         if (text is null)
         {
             return null;
@@ -34,7 +40,7 @@ public sealed class JsonWindowPlacementStore : IWindowPlacementStore
             var dto = JsonSerializer.Deserialize<PlacementDto>(text);
             if (dto is null || dto.SchemaVersion != SchemaVersion)
             {
-                AtomicJson.Quarantine(_path);
+                AtomicJson.Quarantine(path);
                 return null;
             }
 
@@ -49,12 +55,12 @@ public sealed class JsonWindowPlacementStore : IWindowPlacementStore
         }
         catch (JsonException)
         {
-            AtomicJson.Quarantine(_path);
+            AtomicJson.Quarantine(path);
             return null;
         }
     }
 
-    public void Save(WindowPlacement placement)
+    public void Save(string slot, WindowPlacement placement)
     {
         ArgumentNullException.ThrowIfNull(placement);
         var dto = new PlacementDto
@@ -68,8 +74,12 @@ public sealed class JsonWindowPlacementStore : IWindowPlacementStore
             WindowWidthDip = placement.WindowWidthDip,
             WindowHeightDip = placement.WindowHeightDip,
         };
-        AtomicJson.Write(_path, JsonSerializer.Serialize(dto));
+        AtomicJson.Write(Path.Combine(_storageRoot, FileName(slot)), JsonSerializer.Serialize(dto));
     }
+
+    private static string FileName(string? slot) => slot is null or WindowPlacementSlots.Portrait
+        ? "window-placement.json"
+        : $"window-placement.{slot}.json";
 
     private sealed record PlacementDto
     {

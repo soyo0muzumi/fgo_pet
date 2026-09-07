@@ -309,6 +309,12 @@ public sealed class RuntimeDatabaseMigrator
         new(8, """
             ALTER TABLE agent_executions ADD COLUMN remote_task_id TEXT NULL;
             """),
+        new(9, """
+            CREATE TABLE runtime_state(
+              state_key TEXT PRIMARY KEY,
+              state_value TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL);
+            """),
     };
 
     public static long CurrentSchemaVersion => Migrations.Count;
@@ -319,6 +325,7 @@ public sealed class RuntimeDatabaseMigrator
 
     public void Migrate()
     {
+        _database.ArchiveIfCorrupt();
         using var connection = _database.Open();
         var current = ReadVersion(connection);
         if (current > Migrations.Count)
