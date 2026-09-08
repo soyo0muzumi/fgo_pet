@@ -22,8 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
-    <ProjectReference Include="..\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Drawing" />

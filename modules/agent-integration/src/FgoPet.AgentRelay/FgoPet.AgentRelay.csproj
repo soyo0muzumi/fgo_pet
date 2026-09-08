@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
-    <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
   </ItemGroup>
 </Project>

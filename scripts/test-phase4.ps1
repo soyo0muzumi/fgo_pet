@@ -11,8 +11,8 @@ Set-StrictMode -Version Latest
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $pluginRoot = Join-Path $repositoryRoot 'integrations\codex\fgo-pet-agent'
-$adapterProject = Join-Path $repositoryRoot 'src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
-$relayProject = Join-Path $repositoryRoot 'src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
+$adapterProject = Join-Path $repositoryRoot 'modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
+$relayProject = Join-Path $repositoryRoot 'modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
 $solution = Join-Path $repositoryRoot 'FgoPet.sln'
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ('fgo-pet-phase4-' + [guid]::NewGuid().ToString('N'))
 $publishRoot = $null

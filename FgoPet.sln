@@ -11,13 +11,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.Infrastructure", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.App", "src\FgoPet.App\FgoPet.App.csproj", "{F7DF97B8-453C-4B12-8CDD-3498AC7CE26E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentProtocol", "src\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj", "{6BDAFEE8-87A2-4DB8-97B1-A7D7F4FDF5D3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentProtocol", "modules\agent-integration\src\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj", "{6BDAFEE8-87A2-4DB8-97B1-A7D7F4FDF5D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRuntime", "src\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj", "{96EEF702-5043-458C-95C6-4BC06920A705}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRuntime", "modules\agent-integration\src\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj", "{96EEF702-5043-458C-95C6-4BC06920A705}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRelay", "src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj", "{6E6E87CB-0FC9-4DE4-A3F6-73D7ED0F8E7F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRelay", "modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj", "{6E6E87CB-0FC9-4DE4-A3F6-73D7ED0F8E7F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.CodexAdapter", "src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj", "{A63D31EE-0ED8-4A9E-8A2E-9B5D7B3C0B11}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.CodexAdapter", "modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj", "{A63D31EE-0ED8-4A9E-8A2E-9B5D7B3C0B11}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{1CB377A7-6902-4181-92DD-D445F8A6499D}"
 EndProject
@@ -29,13 +29,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.App.Tests", "tests\F
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.Windows.Tests", "tests\FgoPet.Windows.Tests\FgoPet.Windows.Tests.csproj", "{31C4C362-5BA9-45B8-8AAB-20B13ECB98CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentProtocol.Tests", "tests\FgoPet.AgentProtocol.Tests\FgoPet.AgentProtocol.Tests.csproj", "{4DA4B6D5-C9BC-4E17-BB4D-C13BB2710F50}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentProtocol.Tests", "modules\agent-integration\tests\FgoPet.AgentProtocol.Tests\FgoPet.AgentProtocol.Tests.csproj", "{4DA4B6D5-C9BC-4E17-BB4D-C13BB2710F50}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRuntime.Tests", "tests\FgoPet.AgentRuntime.Tests\FgoPet.AgentRuntime.Tests.csproj", "{12308400-A58E-4B99-BE7B-C2FB3BEAD4D9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRuntime.Tests", "modules\agent-integration\tests\FgoPet.AgentRuntime.Tests\FgoPet.AgentRuntime.Tests.csproj", "{12308400-A58E-4B99-BE7B-C2FB3BEAD4D9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRelay.Tests", "tests\FgoPet.AgentRelay.Tests\FgoPet.AgentRelay.Tests.csproj", "{2A5F2446-9A20-4AB4-B26D-022A98731CFA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.AgentRelay.Tests", "modules\agent-integration\tests\FgoPet.AgentRelay.Tests\FgoPet.AgentRelay.Tests.csproj", "{2A5F2446-9A20-4AB4-B26D-022A98731CFA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.CodexAdapter.Tests", "tests\FgoPet.CodexAdapter.Tests\FgoPet.CodexAdapter.Tests.csproj", "{B74A1E9A-7C36-4D4A-A5F8-2D9C84F0E21A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.CodexAdapter.Tests", "modules\agent-integration\tests\FgoPet.CodexAdapter.Tests\FgoPet.CodexAdapter.Tests.csproj", "{B74A1E9A-7C36-4D4A-A5F8-2D9C84F0E21A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FgoPet.EndToEnd.Tests", "tests\FgoPet.EndToEnd.Tests\FgoPet.EndToEnd.Tests.csproj", "{C85B2FAB-8D47-4E5B-B6A9-3EA5D9F1A32B}"
 EndProject

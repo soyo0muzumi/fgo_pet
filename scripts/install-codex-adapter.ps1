@@ -133,8 +133,8 @@ function Publish-ReleaseBinaries {
     [IO.Directory]::CreateDirectory($OutputRoot) | Out-Null
     $adapterOut = Join-Path $OutputRoot 'adapter'
     $relayOut = Join-Path $OutputRoot 'relay'
-    $adapterProject = Join-Path $repositoryRoot 'src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
-    $relayProject = Join-Path $repositoryRoot 'src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
+    $adapterProject = Join-Path $repositoryRoot 'modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
+    $relayProject = Join-Path $repositoryRoot 'modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
     foreach ($publish in @(
         @($adapterProject, $adapterOut),
         @($relayProject, $relayOut)
