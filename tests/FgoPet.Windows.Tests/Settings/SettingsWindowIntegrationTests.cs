@@ -1,5 +1,4 @@
 using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -8,6 +7,7 @@ using FgoPet.App.Bootstrap;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
+using FgoPet.App.Settings.Views;
 using FgoPet.App.Theming;
 using FgoPet.App.Tray;
 using FgoPet.Core.Geometry;
@@ -43,10 +43,10 @@ public sealed class SettingsWindowIntegrationTests
             var window = new SettingsWindow(viewModel, resolver);
             try
             {
-                Assert.Equal("设置", window.Title);
+                Assert.Equal("FGO Pet · 设置", window.Title);
                 Assert.NotNull(window.SettingsNavigation);
                 Assert.NotNull(window.SettingsContent);
-                Assert.Equal(8, window.SettingsNavigation.Items.Count);
+                Assert.Equal(Enum.GetValues<SettingsSection>().Length, window.SettingsNavigation.Items.Count);
 
                 var profileContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
                 profileContent.Text = "unsaved session input";
@@ -149,10 +149,13 @@ public sealed class SettingsWindowIntegrationTests
                 new PortraitController(),
                 new FakeSettingsStore(AppSettings.Defaults),
                 _ => { });
+            var dialogueViewModel = new DialogueWindowViewModel(CreateConversationViewModel());
+            var dialogueWindow = new DialogueWindow(dialogueViewModel);
             using var tray = new TrayService();
             var ui = new DesktopAppUi(
                 tray, library, window, viewModel,
-                null!, null!, null!, null!, null!);
+                null!, null!, null!, null!, null!,
+                dialogueWindow: dialogueWindow, dialogue: dialogueViewModel);
             try
             {
                 var headers = ui.PortraitMenu.Items.OfType<MenuItem>()
@@ -167,11 +170,14 @@ public sealed class SettingsWindowIntegrationTests
                 settingsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
                 Assert.True(window.IsVisible);
-                Assert.Equal(SettingsSection.UserProfile, viewModel.SelectedSection);
+                Assert.False(dialogueWindow.IsVisible);
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Null(window.Owner);
             }
             finally
             {
                 window.Hide();
+                dialogueWindow.Hide();
             }
         });
     }
@@ -189,10 +195,13 @@ public sealed class SettingsWindowIntegrationTests
                 new PortraitController(),
                 new FakeSettingsStore(AppSettings.Defaults),
                 _ => { });
+            var dialogueViewModel = new DialogueWindowViewModel(CreateConversationViewModel());
+            var dialogueWindow = new DialogueWindow(dialogueViewModel);
             using var tray = new TrayService();
             var ui = new DesktopAppUi(
                 tray, library, window, viewModel,
-                null!, null!, null!, null!, null!);
+                null!, null!, null!, null!, null!,
+                dialogueWindow: dialogueWindow, dialogue: dialogueViewModel);
             try
             {
                 var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
@@ -200,11 +209,20 @@ public sealed class SettingsWindowIntegrationTests
                 settingsItem.PerformClick();
 
                 Assert.True(window.IsVisible);
-                Assert.Equal(SettingsSection.UserProfile, viewModel.SelectedSection);
+                Assert.False(dialogueWindow.IsVisible);
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Null(window.Owner);
+
+                window.WindowState = WindowState.Minimized;
+                settingsItem.PerformClick();
+
+                Assert.Equal(WindowState.Normal, window.WindowState);
+                Assert.Same(window, ui.GetType().GetField("_settingsWindow", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(ui));
             }
             finally
             {
                 window.Hide();
+                dialogueWindow.Hide();
             }
         });
     }
@@ -358,20 +376,26 @@ public sealed class SettingsWindowIntegrationTests
                 new FakeSettingsStore(AppSettings.Defaults),
                 _ => { });
             var conversation = CreateConversationViewModel();
+            var dialogueViewModel = new DialogueWindowViewModel(conversation);
+            var dialogueWindow = new DialogueWindow(dialogueViewModel);
             using var tray = new TrayService();
             var ui = new DesktopAppUi(
                 tray, library, window, viewModel,
-                null!, null!, null!, null!, null!, conversation);
+                null!, null!, null!, null!, null!, conversation,
+                dialogueWindow: dialogueWindow, dialogue: dialogueViewModel);
             try
             {
+                dialogueWindow.Show();
                 conversation.OpenSettingsCommand.Execute(null);
 
                 Assert.True(window.IsVisible);
+                Assert.True(dialogueWindow.IsVisible);
                 Assert.Equal(SettingsSection.ModelConnection, viewModel.SelectedSection);
             }
             finally
             {
                 window.Hide();
+                dialogueWindow.Hide();
             }
         });
     }
@@ -601,6 +625,71 @@ public sealed class SettingsWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void Settings_shell_matches_the_html_first_geometry()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel();
+            var window = new SettingsWindow(viewModel, (_, _) => new Border());
+            try
+            {
+                Assert.Equal("FGO Pet · 设置", window.Title);
+                var shell = Assert.IsType<SettingsShellView>(window.FindName("SettingsShell"));
+                Assert.Equal(42d, shell.Header.Height);
+                Assert.Equal("FGO Pet · 设置", shell.HeaderText.Text);
+                Assert.Equal(new GridLength(190), shell.NavigationColumn.Width);
+                Assert.Equal(new Thickness(26), shell.Body.Margin);
+                Assert.NotNull(window.TryFindResource("ShellToolbarButtonStyle"));
+                Assert.NotNull(window.TryFindResource("ShellSurfaceStyle"));
+
+                var captureDirectory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
+                if (!string.IsNullOrWhiteSpace(captureDirectory))
+                {
+                    System.IO.Directory.CreateDirectory(captureDirectory);
+                    shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+                    {
+                        Source = new Uri("/FgoPet.App;component/Themes/ModernGray.xaml", UriKind.Relative),
+                    });
+                    shell.Measure(new Size(960, 720));
+                    shell.Arrange(new Rect(0, 0, 960, 720));
+                    shell.UpdateLayout();
+                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                        960, 720, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                    bitmap.Render(shell);
+                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using var file = System.IO.File.Create(System.IO.Path.Combine(captureDirectory, "settings-shell.png"));
+                    encoder.Save(file);
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+    [Theory]
+    [InlineData("ModernGray", "#FF202127")]
+    [InlineData("FgoLight", "#FFFBFAFC")]
+    public void Settings_shell_uses_the_approved_html_palette(string theme, string expectedBackground)
+    {
+        StaRun(() =>
+        {
+            var shell = new SettingsShellView();
+            shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+            {
+                Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative),
+            });
+            shell.Measure(new Size(960, 720));
+            shell.Arrange(new Rect(0, 0, 960, 720));
+            shell.UpdateLayout();
+
+            var expected = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(expectedBackground);
+            var actual = Assert.IsType<System.Windows.Media.SolidColorBrush>(shell.Background).Color;
+            Assert.Equal(expected, actual);
+        });
+    }
     private static void StaRun(Action action)
     {
         Exception? failure = null;

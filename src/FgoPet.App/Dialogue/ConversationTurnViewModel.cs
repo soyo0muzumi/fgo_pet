@@ -25,11 +25,26 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
         Role = role;
         Text = text;
         IsStreaming = isStreaming;
+        Actions = new DialogueMessageActionsViewModel(this);
     }
 
     public string MessageId { get; }
+    public DialogueMessageActionsViewModel Actions { get; }
     public ChatMessageRole Role { get; }
     public bool IsAssistant => Role == ChatMessageRole.Assistant;
+    public bool CanReadAloud => IsAssistant && !IsStreaming && !string.IsNullOrWhiteSpace(Text);
+
+    [ObservableProperty]
+    private bool _isSpeechBusy;
+
+    [ObservableProperty]
+    private string _speechActionText = "朗读";
+
+    [ObservableProperty]
+    private string _speechStatusText = string.Empty;
+
+    [ObservableProperty]
+    private bool _speechNeedsConfiguration;
     public string RoleLabel => Role == ChatMessageRole.User ? "MASTER / 我" : "SERVANT / 从者";
     public bool HasVisibleReasoning => IsAssistant && ReasoningText.Length > 0;
     public Brush RoleBrush => Role == ChatMessageRole.User ? UserBrush : AssistantBrush;
@@ -47,8 +62,12 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
     [ObservableProperty]
     private string _text;
 
+    partial void OnTextChanged(string value) => OnPropertyChanged(nameof(CanReadAloud));
+
     [ObservableProperty]
     private bool _isStreaming;
+
+    partial void OnIsStreamingChanged(bool value) => OnPropertyChanged(nameof(CanReadAloud));
 
     /// <summary>Transient reasoning display (spec §9): never persisted or exported.</summary>
     [ObservableProperty]

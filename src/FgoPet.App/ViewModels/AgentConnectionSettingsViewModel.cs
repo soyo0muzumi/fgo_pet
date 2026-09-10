@@ -27,6 +27,7 @@ public sealed partial class AgentConnectionItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isEnabled;
+
 }
 
 public sealed class AgentPendingSourceViewModel
@@ -97,6 +98,7 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
     public ObservableCollection<AgentTargetOptionViewModel> Targets { get; } = new();
     public bool HasTargets => Targets.Count > 0;
     public bool HasUnresolvedTargets => _unresolvedTargetIds.Count > 0;
+    public bool CanSavePermissions => !IsEnabled || (AllowedTargetIds.Count > 0 && IsPermissionConfirmed);
     public IReadOnlyList<string> AllowedTargetIds
     {
         get
@@ -215,23 +217,40 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
         _isDirty = true;
         OnPropertyChanged(nameof(AllowedTargetIds));
         OnPropertyChanged(nameof(HasUnresolvedTargets));
+        IsPermissionConfirmed = false;
+        OnPropertyChanged(nameof(CanSavePermissions));
         return true;
     }
 
     [ObservableProperty]
     private bool _isEnabled;
 
+    [ObservableProperty]
+    private bool _isPermissionConfirmed;
+
+    partial void OnIsPermissionConfirmedChanged(bool value) => OnPropertyChanged(nameof(CanSavePermissions));
+
     partial void OnIsEnabledChanged(bool value)
     {
-        if (!_suppressDirtyTracking) _isDirty = true;
+        if (!_suppressDirtyTracking)
+        {
+            _isDirty = true;
+            IsPermissionConfirmed = false;
+        }
+        OnPropertyChanged(nameof(CanSavePermissions));
     }
 
     private void OnTargetPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(AgentTargetOptionViewModel.IsSelected)) return;
 
-        if (!_suppressDirtyTracking) _isDirty = true;
+        if (!_suppressDirtyTracking)
+        {
+            _isDirty = true;
+            IsPermissionConfirmed = false;
+        }
         OnPropertyChanged(nameof(AllowedTargetIds));
+        OnPropertyChanged(nameof(CanSavePermissions));
     }
 
     private void ClearTargets()
@@ -474,6 +493,12 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     public Task SaveSourceAsync(AgentApprovedSourceViewModel source, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if (!source.CanSavePermissions)
+        {
+            StatusText = "请选择至少一个项目并确认授权范围。";
+            return Task.CompletedTask;
+        }
+
         if (_administration is null)
         {
             StatusText = "当前连接模式不支持按实例保存权限。";
@@ -488,6 +513,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
                 source.AllowedTargetIds,
                 source.IsEnabled,
                 cancellationToken).ConfigureAwait(true);
+            source.IsPermissionConfirmed = false;
             await RefreshSnapshotAsync(cancellationToken).ConfigureAwait(true);
             StatusText = $"已保存来源“{source.DisplayName}”的启用状态和项目权限。";
         }, cancellationToken);

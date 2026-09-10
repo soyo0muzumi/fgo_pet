@@ -114,12 +114,30 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
 
                 var targetId = ValidateText(wireTarget.TargetId);
                 var displayName = ValidateText(wireTarget.DisplayName);
+                var projectName = ValidateOptionalText(wireTarget.ProjectName);
+                var branches = ValidateBranches(wireTarget.Branches);
+                var currentBranch = ValidateOptionalText(wireTarget.CurrentBranch);
+                var revision = ValidateOptionalText(wireTarget.Revision);
+                var access = ValidateOptionalText(wireTarget.Access);
+                var source = ValidateOptionalText(wireTarget.Source);
+                var contextVersion = ValidateOptionalText(wireTarget.ContextVersion);
                 if (!targetIds.Add(targetId))
                 {
                     throw InvalidResponse();
                 }
 
-                targets.Add(new AgentTargetDescriptor(targetId, displayName, wireTarget.ReadOnly.Value));
+                targets.Add(new AgentTargetDescriptor(
+                    targetId,
+                    displayName,
+                    wireTarget.ReadOnly.Value,
+                    projectName,
+                    branches,
+                    currentBranch,
+                    revision,
+                    access ?? (wireTarget.ReadOnly.Value ? "read-only" : "workspace-write"),
+                    source ?? "local-adapter",
+                    wireTarget.RefreshedAtUtc,
+                    contextVersion));
             }
 
             return targets;
@@ -197,6 +215,19 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
         return normalized;
     }
 
+    private static string? ValidateOptionalText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return ValidateText(value);
+    }
+
+    private static IReadOnlyList<string> ValidateBranches(IReadOnlyList<string>? branches)
+    {
+        if (branches is null) return Array.Empty<string>();
+        if (branches.Count > 128) throw InvalidResponse();
+        return branches.Select(ValidateText).Distinct(StringComparer.Ordinal).ToArray();
+    }
+
     private static InvalidDataException InvalidResponse(Exception? inner = null) =>
         new("adapter_invalid_response", inner);
 
@@ -231,5 +262,17 @@ public sealed class CodexTargetCatalogClient : IAgentTargetCatalog
         }
     }
 
-    private sealed record AdapterTarget(string? TargetId, string? DisplayName, string? Directory, bool? ReadOnly);
+    private sealed record AdapterTarget(
+        string? TargetId,
+        string? DisplayName,
+        string? Directory,
+        bool? ReadOnly,
+        string? ProjectName,
+        IReadOnlyList<string>? Branches,
+        string? CurrentBranch,
+        string? Revision,
+        string? Access,
+        string? Source,
+        DateTimeOffset? RefreshedAtUtc,
+        string? ContextVersion);
 }

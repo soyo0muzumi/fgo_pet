@@ -34,7 +34,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var connection = database.Open();
-        Assert.Equal(9L, Scalar<long>(connection,
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
         foreach (var table in new[]
                  {
@@ -44,7 +44,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
                      "memory_candidates", "memories", "content_bindings",
                      "todo_items", "agent_executions", "agent_event_receipts",
                      "agent_connections", "agent_project_targets", "work_archives", "work_archive_items",
-                     "long_work_archives", "agent_archive_batches", "agent_archive_items",
+                     "long_work_archives", "agent_archive_batches", "agent_archive_items", "agent_project_snapshots",
                  })
         {
             Assert.Equal(1L, Scalar<long>(connection,
@@ -63,7 +63,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         Assert.True(File.Exists(_path));
         Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(_path)!, Path.GetFileName(_path) + ".corrupt-*"));
         using var connection = database.Open();
-        Assert.Equal(9L, Scalar<long>(connection,
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, Scalar<long>(connection,
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"));
     }
 
@@ -118,7 +118,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         new RuntimeDatabaseMigrator(database).Migrate();
 
         using var verify = database.Open();
-        Assert.Equal(9L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal(1L, Scalar<long>(verify,
             "SELECT COUNT(*) FROM pragma_table_info('agent_executions') WHERE name='previous_execution_id'"));
         Assert.Equal(1L, Scalar<long>(verify,

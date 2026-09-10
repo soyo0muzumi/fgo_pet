@@ -50,15 +50,22 @@ public sealed class AgentConnectionPageTests
                 page.Arrange(new Rect(0, 0, 620, 800));
                 page.UpdateLayout();
                 var buttons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
+                Assert.Contains("开始检测", buttons);
                 Assert.Contains("测试连接", buttons);
-                Assert.Contains("保存连接设置", buttons);
-                Assert.Contains("刷新状态", buttons);
                 Assert.Contains("批准", buttons);
                 Assert.Contains("保存权限", buttons);
                 Assert.Contains("撤销授权", buttons);
-                Assert.Contains("刷新项目", buttons);
-                Assert.Contains("复制诊断信息", buttons);
                 Assert.Contains("重新配对", buttons);
+                Assert.Contains(Descendants(page).OfType<CheckBox>(), item => item.Content?.ToString() == "我确认仅允许所选项目访问此来源");
+
+                var advanced = Descendants(page).OfType<Expander>().Single(item => item.Header?.ToString() == "高级诊断与维护");
+                Assert.False(advanced.IsExpanded);
+                advanced.IsExpanded = true;
+                page.UpdateLayout();
+                var advancedButtons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
+                Assert.Contains("保存总开关", advancedButtons);
+                Assert.Contains("刷新项目", advancedButtons);
+                Assert.Contains("复制诊断信息", advancedButtons);
                 var textBlocks = Descendants(page).OfType<TextBlock>().Select(item => item.Text).ToArray();
                 Assert.Contains("Project A", textBlocks);
                 Assert.Contains("（只读）", textBlocks);

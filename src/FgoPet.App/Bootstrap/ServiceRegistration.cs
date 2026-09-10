@@ -20,6 +20,7 @@ using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Theming;
 using FgoPet.App.Services;
+using FgoPet.App.Speech;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Archives;
 using FgoPet.App.Views.Settings;
@@ -32,6 +33,7 @@ using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Bond;
 using FgoPet.Infrastructure.Backup;
@@ -44,6 +46,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Infrastructure.Speech;
 using FgoPet.Infrastructure.Secrets;
 using FgoPet.Infrastructure.Settings;
 using FgoPet.Infrastructure.Timeline;
@@ -140,7 +143,8 @@ public static class ServiceRegistration
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<IAgentRelayAdministration>(),
                 provider.GetRequiredService<AgentEventProjector>(),
-                action => dispatcher.InvokeAsync(action, DispatcherPriority.DataBind).Task);
+                action => dispatcher.InvokeAsync(action, DispatcherPriority.DataBind).Task,
+                 provider.GetRequiredService<IAgentTargetCatalog>());
         })
         .AddSingleton<TodoListViewModel>()
         .AddSingleton<SqliteFocusCompletionUnit>()
@@ -163,6 +167,8 @@ public static class ServiceRegistration
         })
         .AddSingleton<IAgentTargetCatalog>(provider =>
             new CodexTargetCatalogClient(provider.GetRequiredService<RelayRuntimeOptions>()))
+        .AddSingleton<IDialogueProjectCatalog>(provider =>
+            new AgentDialogueProjectCatalog(provider.GetRequiredService<IAgentTargetCatalog>()))
         .AddSingleton<CodexWorkerProcess>()
         .AddSingleton(provider =>
         {
@@ -213,7 +219,8 @@ public static class ServiceRegistration
         .AddSingleton<AgentCurrentTaskViewModel>(provider => new AgentCurrentTaskViewModel(
             provider.GetRequiredService<AgentEventProjector>(),
             provider.GetRequiredService<TimeProvider>(),
-            provider.GetRequiredService<AgentReconciliationService>()))
+            provider.GetRequiredService<AgentReconciliationService>(),
+            provider.GetRequiredService<IAgentGateway>()))
         .AddSingleton<AgentTaskHistoryViewModel>()
         .AddSingleton<AgentConnectionSettingsViewModel>(provider => new AgentConnectionSettingsViewModel(
             provider.GetRequiredService<IAppSettingsStore>(),
@@ -241,17 +248,30 @@ public static class ServiceRegistration
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<HttpClient>()
+        .AddSingleton<OpenAiCompatibleSpeechSynthesizer>()
+        .AddSingleton<GptSoVitsSpeechSynthesizer>()
+        .AddSingleton<ISpeechSynthesizer, SpeechSynthesizerRouter>()
+         .AddSingleton<ISpeechAudioPlayer, WpfSpeechAudioPlayer>()
+         .AddSingleton<SpeechPlaybackCoordinator>()
+        .AddSingleton<SpeechSynthesisCoordinator>()
         .AddSingleton<WindowsCredentialStore>()
         .AddSingleton<ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
+        .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
+        .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionPage>()
+         .AddSingleton<SpeechConnectionViewModel>()
+         .AddSingleton<SpeechConnectionPage>()
         .AddSingleton<SettingsViewModel>()
         .AddSingleton<UserProfileViewModel>()
         .AddSingleton<UserProfilePage>()
         .AddSingleton<PersonalizationViewModel>()
-        .AddSingleton<PersonalizationPage>()
+        .AddSingleton<PersonalizationPage>(provider => new PersonalizationPage(
+            provider.GetRequiredService<PersonalizationViewModel>(),
+            provider.GetRequiredService<ServantLibraryViewModel>(),
+            provider.GetRequiredService<SettingsViewModel>()))
         .AddSingleton<ThemePage>()
         .AddSingleton<RolePackagesPage>()
         .AddSingleton<SettingsPageContentResolver>(provider => (section, route) => section switch
@@ -265,6 +285,7 @@ public static class ServiceRegistration
                 provider.GetRequiredService<IAppSettingsStore>(),
                 provider.GetRequiredService<SettingsViewModel>())),
             SettingsSection.ModelConnection => provider.GetRequiredService<ModelConnectionPage>(),
+            SettingsSection.Speech => provider.GetRequiredService<SpeechConnectionPage>(),
             SettingsSection.AgentConnection => provider.GetRequiredService<AgentConnectionSettingsView>(),
             SettingsSection.ConversationMemory => provider.GetRequiredService<ConversationMemoryPage>(),
             SettingsSection.Privacy => provider.GetRequiredService<PrivacyPage>(),
@@ -319,7 +340,11 @@ public static class ServiceRegistration
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ArchiveDraftService>()))
-        .AddSingleton<DialogueWindowViewModel>()
+        .AddSingleton<DialogueWindowViewModel>(provider => new DialogueWindowViewModel(
+            provider.GetRequiredService<ConversationViewModel>(),
+            provider.GetRequiredService<ServantLibraryViewModel>(),
+            provider.GetRequiredService<SpeechPlaybackCoordinator>(),
+            provider.GetRequiredService<IDialogueProjectCatalog>()))
         .AddSingleton<DialogueWindow>()
         .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
@@ -360,7 +385,8 @@ public static class ServiceRegistration
                 provider.GetRequiredService<TodoListViewModel>(),
                 currentAgentTask,
                 provider.GetRequiredService<AppRuntime>(),
-                provider.GetRequiredService<DialogueWindowViewModel>());
+                provider.GetRequiredService<DialogueWindowViewModel>(),
+                provider.GetRequiredService<IAppSettingsStore>());
         })
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>(),

@@ -78,6 +78,32 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     }
 
     [Fact]
+    public async Task Failed_send_preserves_draft_and_session_intent()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SetActiveServant("800100");
+        viewModel.SessionContext.TrySetIntent("todo");
+        viewModel.InputText = "请保留这段草稿";
+
+        await viewModel.SendCommand.ExecuteAsync(null);
+
+        Assert.Equal("请保留这段草稿", viewModel.InputText);
+        Assert.Equal("todo", viewModel.SessionContext.IntentId);
+        Assert.Equal("整理成待办", viewModel.SessionContext.IntentLabel);
+    }
+
+    [Fact]
+    public void Model_connection_recovery_is_offered_for_model_and_network_errors_only()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.ErrorText = "无法连接模型服务。";
+        Assert.True(viewModel.CanOpenModelSettings);
+
+        viewModel.ErrorText = "本地对话存储暂时不可用，请重试。";
+        Assert.False(viewModel.CanOpenModelSettings);
+    }
+    [Fact]
     public void Open_settings_command_requests_the_model_connection_route_without_owning_a_window()
     {
         var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });

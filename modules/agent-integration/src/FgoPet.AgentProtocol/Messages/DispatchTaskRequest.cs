@@ -52,4 +52,7 @@ public sealed record DispatchTaskRequest
 
     [JsonPropertyName("source_instance_id")]
     public string? SourceInstanceId { get; init; }
+
+    [JsonPropertyName("target_context_version")]
+    public string? TargetContextVersion { get; init; }
 }

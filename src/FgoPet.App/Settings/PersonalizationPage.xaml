@@ -16,6 +16,24 @@
                   VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="4,4,14,18">
             <Border Style="{StaticResource SettingsCardStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="82" Height="108" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="10" HorizontalAlignment="Left">
+                        <Image Source="{Binding Library.SelectedServant.PreviewSource}" Stretch="Uniform" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="16,4,12,4" VerticalAlignment="Center">
+                        <TextBlock Text="当前角色" Style="{StaticResource SettingsCaptionStyle}" />
+                        <TextBlock Text="{Binding Library.SelectedServant.DisplayName, TargetNullValue=尚未选择角色}" Foreground="{DynamicResource TextBrush}" FontSize="18" FontWeight="SemiBold" Margin="0,5,0,0" />
+                        <TextBlock Text="当前使用的角色与立绘外观" Style="{StaticResource SettingsStatusStyle}" Margin="0,5,0,0" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="更换角色" Style="{StaticResource SettingsSecondaryButtonStyle}" Click="OnChangeServantClick" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCardStyle}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="桌宠显示" />
                     <TextBlock Margin="0,0,0,10"
@@ -27,9 +45,9 @@
                               Width="180"
                               HorizontalAlignment="Left"
                               Style="{StaticResource SettingsComboBoxStyle}"
-                              ItemsSource="{Binding ScaleOptions}"
+                              ItemsSource="{Binding ViewModel.ScaleOptions}"
                               ItemStringFormat="{}{0:P0}"
-                              SelectedItem="{Binding Scale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              SelectedItem="{Binding ViewModel.Scale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                               ToolTip="仅支持 50%、60% 和 75%"
                               automation:AutomationProperties.Name="桌宠缩放比例" />
                     <TextBlock Margin="0,8,0,0"
@@ -45,13 +63,13 @@
                               Margin="0,2,0,12"
                               Foreground="{DynamicResource TextBrush}"
                               Content="桌宠窗口始终置顶"
-                              IsChecked="{Binding Topmost, Mode=TwoWay}"
+                              IsChecked="{Binding ViewModel.Topmost, Mode=TwoWay}"
                               ToolTip="在其他窗口前显示桌宠"
                               automation:AutomationProperties.Name="桌宠窗口始终置顶" />
                     <CheckBox x:Name="AutoCollapseCheckBox"
                               Foreground="{DynamicResource TextBrush}"
                               Content="展开面板无操作时自动收起"
-                              IsChecked="{Binding AutoCollapseExpandedPanel, Mode=TwoWay}"
+                              IsChecked="{Binding ViewModel.AutoCollapseExpandedPanel, Mode=TwoWay}"
                               ToolTip="沿用运行时面板的自动收起行为"
                               automation:AutomationProperties.Name="展开面板无操作时自动收起" />
                 </StackPanel>
@@ -67,19 +85,19 @@
                             Width="140"
                             HorizontalAlignment="Left"
                             Style="{StaticResource SettingsSecondaryButtonStyle}"
-                            Command="{Binding ResetCommand}"
+                            Command="{Binding ViewModel.ResetCommand}"
                             Content="恢复默认"
                             automation:AutomationProperties.Name="恢复默认个性化设置" />
                 </StackPanel>
             </Border>
 
             <TextBlock Style="{StaticResource SettingsStatusStyle}"
-                       Text="{Binding StatusText}"
+                       Text="{Binding ViewModel.StatusText}"
                        automation:AutomationProperties.LiveSetting="Polite" />
             <TextBlock Margin="0,4,0,0"
                        Style="{StaticResource SettingsStatusStyle}"
                        Foreground="{DynamicResource DangerBrush}"
-                       Text="{Binding ErrorText}"
+                       Text="{Binding ViewModel.ErrorText}"
                        TextWrapping="Wrap"
                        automation:AutomationProperties.LiveSetting="Assertive" />
         </StackPanel>

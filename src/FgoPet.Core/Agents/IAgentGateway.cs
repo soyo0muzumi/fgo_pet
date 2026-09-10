@@ -19,7 +19,10 @@ public sealed record AgentDispatchRequest(
     string TargetId)
 {
     public string? SourceInstanceId { get; init; }
+    public string? TargetContextVersion { get; init; }
 }
+
+public sealed record AgentDispatchContext(string? ConversationId = null, string? MessageId = null);
 
 public enum AgentDispatchStatus
 {
@@ -35,6 +38,25 @@ public sealed record AgentDispatchResult(
     string? SafeError = null,
     string? TaskId = null,
     string? SourceInstance = null);
+
+public sealed record AgentStopRequest(string SourceType, string SourceInstance, string TaskId, string DispatchRequestId);
+
+public enum AgentStopStatus
+{
+    Requested,
+    AlreadyRequested,
+    Completed,
+    Unknown,
+    Offline,
+    Unsupported,
+    Unauthorized,
+    Failed,
+}
+
+public sealed record AgentStopResult(
+    AgentStopStatus Status,
+    string TaskId,
+    string? SafeError = null);
 
 public sealed record AgentOpenTaskRequest(string SourceType, string SourceInstance, string TaskId);
 
@@ -54,6 +76,13 @@ public interface IAgentGateway
     Task<AgentGatewayStatus> GetStatusAsync(CancellationToken cancellationToken = default);
     Task<AgentDispatchResult> DispatchAsync(AgentDispatchRequest request, CancellationToken cancellationToken = default);
     Task<AgentOpenTaskResult> OpenTaskAsync(AgentOpenTaskRequest request, CancellationToken cancellationToken = default);
+    Task<AgentStopResult> StopAsync(AgentStopRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Task.FromResult(new AgentStopResult(AgentStopStatus.Unsupported, request.TaskId, "stop_unsupported"));
+    }
+
+
     Task<IReadOnlyList<AgentEvent>> QueryKnownStatesAsync(
         IReadOnlyList<AgentExecution> knownExecutions,
         CancellationToken cancellationToken = default);

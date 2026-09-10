@@ -13,6 +13,8 @@ using FgoPet.Core.Panels;
 using FgoPet.Core.Timeline;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Runtime;
+using FgoPet.App.Settings;
+using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Panels;
 
@@ -34,6 +36,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     private readonly IFocusSessionService? _focus;
     private readonly AppRuntime? _runtime;
     private readonly Dispatcher _dispatcher;
+    private readonly IAppSettingsStore? _settings;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
@@ -50,7 +53,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         TodoListViewModel? todoList = null,
         AgentCurrentTaskViewModel? currentAgentTask = null,
         AppRuntime? runtime = null,
-        DialogueWindowViewModel? dialogueWindow = null)
+        DialogueWindowViewModel? dialogueWindow = null,
+        IAppSettingsStore? settings = null)
     {
         _time = time;
         _focus = focus;
@@ -59,6 +63,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         CurrentAgentTask = currentAgentTask;
         _runtime = runtime;
         DialogueWindow = dialogueWindow;
+        _settings = settings;
+        _isAutoReadEnabled = settings?.Load().SpeechConnection.AutoReadEnabled ?? false;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _lastInteraction = time.GetUtcNow();
         if (dialogueWindow is not null)
@@ -77,6 +83,10 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
         {
             focus.SnapshotChanged += (_, _) => OnFocusChanged();
         }
+        if (CurrentAgentTask is not null)
+        {
+            CurrentAgentTask.PropertyChanged += OnCurrentAgentTaskPropertyChanged;
+        }
     }
 
     /// <summary>Shared dialogue-window state; owns the unread badge this panel renders.</summary>
@@ -90,6 +100,18 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     private string _dialogueUnreadPillText = string.Empty;
 
     public bool HasDialogueUnread => DialogueUnreadCount > 0;
+
+    public string GreetingText => "今天也按自己的节奏来。";
+    public string ChatActionAutomationName => "打开聊天";
+    public string ToolsActionAutomationName => "打开更多能力";
+    public string AttentionActionAutomationName => "查看需要关注的内容";
+    public string SpeechActionAutomationName => IsAutoReadEnabled ? "关闭自动朗读" : "开启自动朗读";
+    public string MoreActionAutomationName => "更多";
+    public bool IsAutoReadEnabled => _isAutoReadEnabled;
+    private bool _isAutoReadEnabled;
+
+    public event Action<SettingsSection>? SettingsRequested;
+    public event Action? ExitRequested;
 
     private void RefreshUnread()
     {
@@ -299,6 +321,66 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
     {
         Interact();
         DialogueWindow?.RequestOpen();
+    }
+
+    public void ToggleAutoRead()
+    {
+        Interact();
+        if (_settings is null)
+        {
+            SettingsRequested?.Invoke(SettingsSection.Speech);
+            return;
+        }
+
+        var current = _settings.Load();
+        _isAutoReadEnabled = !current.SpeechConnection.AutoReadEnabled;
+        _settings.Save(current with
+        {
+            SpeechConnection = current.SpeechConnection with { AutoReadEnabled = _isAutoReadEnabled },
+        });
+        OnPropertyChanged(nameof(IsAutoReadEnabled));
+        OnPropertyChanged(nameof(SpeechActionAutomationName));
+    }
+
+    public void RequestSettings(SettingsSection section = SettingsSection.Personalization)
+    {
+        Interact();
+        SettingsRequested?.Invoke(section);
+    }
+
+    public void RequestExit()
+    {
+        Interact();
+        ExitRequested?.Invoke();
+    }
+
+    public void OpenTasks()
+    {
+        Interact();
+        if (DialogueWindow is { } main)
+        {
+            main.NavigateTo(MainNavigationTarget.Schedule);
+            main.RequestOpen();
+            return;
+        }
+
+        TodoClick();
+    }
+
+    public void AttentionClick()
+    {
+        Interact();
+        if (HasDialogueUnread)
+        {
+            DialogueWindow?.RequestOpen();
+            return;
+        }
+
+        if (CurrentAgentTask?.AttentionRequired == true)
+        {
+            CurrentAgentTask.OpenCurrentTask();
+            return;
+        }
     }
 
     public void TodoClick()
@@ -589,4 +671,13 @@ public sealed partial class AttachedPanelViewModel : ObservableObject
             : $"{totalSeconds / 60.0:0.#} 分钟";
 
     private void Interact() => _lastInteraction = _time.GetUtcNow();
+
+    private void OnCurrentAgentTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(AgentCurrentTaskViewModel.AttentionRequired)
+            or nameof(AgentCurrentTaskViewModel.OutcomeUnknown))
+        {
+            OnPropertyChanged(nameof(AttentionActionAutomationName));
+        }
+    }
 }

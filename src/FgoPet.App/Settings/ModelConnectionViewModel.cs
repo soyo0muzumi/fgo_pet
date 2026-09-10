@@ -15,6 +15,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     private readonly ProviderCatalog _catalog;
     private readonly ChatProviderFactory _providerFactory;
     private string _pendingApiKey = string.Empty;
+    private long _draftVersion;
 
     public ModelConnectionViewModel(
         IAppSettingsStore settings,
@@ -53,6 +54,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     partial void OnSelectedProviderIdChanged(string value)
     {
+        _draftVersion++;
         var provider = Providers.FirstOrDefault(candidate => candidate.ProviderId == value);
         if (provider is null)
         {
@@ -68,9 +70,13 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     [ObservableProperty]
     private string _baseUrl;
 
+    partial void OnBaseUrlChanged(string value) => _draftVersion++;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModelStatusText))]
     private string _modelId;
+
+    partial void OnModelIdChanged(string value) => _draftVersion++;
 
     [ObservableProperty]
     private IReadOnlyList<ProviderModel> _availableModels;
@@ -120,7 +126,11 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     public string KeyStateText => IsKeySaved ? "已保存密钥（存储在 Windows Credential Manager）" : "尚未保存密钥。";
 
-    public void SetApiKey(string value) => _pendingApiKey = value?.Trim() ?? string.Empty;
+    public void SetApiKey(string value)
+    {
+        _pendingApiKey = value?.Trim() ?? string.Empty;
+        _draftVersion++;
+    }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -129,21 +139,18 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     private async Task TestAsync()
     {
+        var testedDraftVersion = _draftVersion;
         await ExecuteProviderOperationAsync("测试连接", async provider =>
         {
             var models = await provider.ListModelsAsync(CancellationToken.None);
-            AvailableModels = models;
-            var connection = new ModelConnectionSettings(SelectedProviderId, BaseUrl, ModelId);
-            if (!string.IsNullOrEmpty(_pendingApiKey))
+            if (testedDraftVersion != _draftVersion)
             {
-                await _credentials.SaveAsync(CredentialTarget(), _pendingApiKey, CancellationToken.None);
-                IsKeySaved = true;
-                _pendingApiKey = string.Empty;
+                StatusText = "测试完成，但草稿已更改；结果未应用。";
+                return;
             }
 
-            _settings.Save(_settings.Load() with { ModelConnection = connection });
-            ConnectionSaved?.Invoke(connection);
-            StatusText = $"连接成功并已启用 · {ProviderStatusText} · {ModelStatusText}";
+            AvailableModels = models;
+            StatusText = $"连接成功（尚未保存） · {ProviderStatusText} · {ModelStatusText}";
         });
     }
 
@@ -168,6 +175,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
                 await _credentials.SaveAsync(CredentialTarget(), _pendingApiKey, CancellationToken.None);
                 IsKeySaved = true;
                 _pendingApiKey = string.Empty;
+                _draftVersion++;
             }
             else if (!IsKeySaved)
             {

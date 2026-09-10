@@ -65,6 +65,11 @@ try {
         Invoke-PluginValidation
 
         if ([string]::IsNullOrWhiteSpace($PublishedSource)) {
+            # The solution restore does not create RID-specific assets needed by
+            # the isolated win-x64 publish below. Restore the two published
+            # projects explicitly while keeping the normal solution gate above.
+            Invoke-Checked -Command 'dotnet' -Arguments @('restore', $adapterProject, '-r', 'win-x64')
+            Invoke-Checked -Command 'dotnet' -Arguments @('restore', $relayProject, '-r', 'win-x64')
             $publishRoot = Join-Path $temporaryRoot 'published'
             $adapterOut = Join-Path $publishRoot 'adapter'
             $relayOut = Join-Path $publishRoot 'relay'

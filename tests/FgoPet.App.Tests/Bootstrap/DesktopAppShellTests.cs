@@ -1,4 +1,5 @@
 using FgoPet.App.Bootstrap;
+using FgoPet.App.Servants;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -173,6 +174,22 @@ public sealed class DesktopAppShellTests
     }
 
     [Fact]
+    public async Task First_start_with_available_pack_opens_minimal_chat_setup()
+    {
+        var ui = new FakeUi();
+        var shell = new DesktopAppShell(
+            new FakeRepository(null),
+            new FakeController(),
+            new FakeSettings(),
+            ui,
+            activation: new FakeActivationService());
+
+        await shell.StartAsync([], CancellationToken.None);
+
+        Assert.True(ui.PortraitShown);
+        Assert.True(ui.FirstStartChatRequested);
+    }
+    [Fact]
     public async Task Start_without_installed_pack_keeps_tray_and_shows_library()
     {
         var ui = new FakeUi();
@@ -209,15 +226,26 @@ public sealed class DesktopAppShellTests
         Assert.True(ui.LibraryShown);
     }
 
+    private sealed class FakeActivationService : IRoleActivationService
+    {
+        public Task<RoleActivationResult> ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<RoleActivationResult> RestoreAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(RoleActivationResult.Success(new FgoPet.App.Runtime.ActiveRoleState(
+                "official.mash", "casual", "1.0.0", "mash_kyrielight")));
+    }
     private sealed class FakeUi : IDesktopAppUi
     {
         public bool TrayInitialized { get; private set; }
         public bool LibraryShown { get; private set; }
         public bool PortraitShown { get; private set; }
+        public bool FirstStartChatRequested { get; private set; }
         public string? OfferedPack { get; private set; }
         public void InitializeTray() => TrayInitialized = true;
         public void ShowLibrary(string? offeredPackPath = null) { LibraryShown = true; OfferedPack = offeredPackPath; }
         public void ShowPortrait() => PortraitShown = true;
+        public void ShowFirstStartChat() => FirstStartChatRequested = true;
     }
 
     private sealed class FakeSettings(PortraitSelection? selection = null, bool agentEnabled = false) : IAppSettingsStore

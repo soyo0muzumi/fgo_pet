@@ -127,7 +127,8 @@ public sealed class ConversationOrchestrator
     public async Task<ConversationSendResult> SendAsync(
         string servantId,
         string userText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ConversationRequestContext? requestContext = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(userText);
@@ -190,7 +191,8 @@ public sealed class ConversationOrchestrator
                 IsMemoryEnabled() ? _memories.ListEnabledMemories(servantId) : Array.Empty<StoredMemory>(),
                 _todoProposals?.BuildRuntimeState(userText) ?? string.Empty,
                 existing.Select(message => new PromptMessage(message.Role, message.Text)).ToArray(),
-                userText));
+                userText,
+                requestContext));
             var assistantId = "message-" + Guid.NewGuid().ToString("N");
 
             stage = "发送模型请求";

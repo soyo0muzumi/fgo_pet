@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FgoPet.Infrastructure.Speech</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
+  </ItemGroup>
+</Project>

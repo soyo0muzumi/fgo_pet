@@ -19,5 +19,6 @@
     <ProjectReference Include="..\..\src\FgoPet.App\FgoPet.App.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Desktop\FgoPet.Speech.Desktop.csproj" />
   </ItemGroup>
 </Project>

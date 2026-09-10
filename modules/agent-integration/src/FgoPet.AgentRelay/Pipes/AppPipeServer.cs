@@ -305,6 +305,24 @@ public sealed class AppPipeServer
                 }).ToJson());
             }
 
+            case "stop_task":
+            {
+                var request = envelope.DeserializePayload<StopTaskRequest>();
+                var receipt = _router.RouteStop(request, at);
+                return Task.FromResult(Response(messageId, "stop_task", new
+                {
+                    result = receipt.Result switch
+                    {
+                        RelayStopResult.AlreadyApplied => "already_applied",
+                        _ => receipt.Result.ToString().ToLowerInvariant(),
+                    },
+                    stop_request_id = receipt.StopRequestId,
+                    task_id = receipt.TaskId,
+                    source_instance = receipt.SourceInstance,
+                    error = receipt.Error,
+                }).ToJson());
+            }
+
             case "authenticate":
                 throw new UnauthorizedAccessException("The app-control pipe does not accept credentials.");
 

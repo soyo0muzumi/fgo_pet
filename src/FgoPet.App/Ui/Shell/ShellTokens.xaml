@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+    <SolidColorBrush x:Key="ShellWindowBackgroundBrush" Color="{DynamicResource ShellWindowColor}" />
+    <SolidColorBrush x:Key="ShellPanelBackgroundBrush" Color="{DynamicResource ShellPanelColor}" />
+    <SolidColorBrush x:Key="ShellRaisedBackgroundBrush" Color="{DynamicResource ShellRaisedColor}" />
+    <SolidColorBrush x:Key="ShellTextBrush" Color="{DynamicResource ShellTextColor}" />
+    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{DynamicResource ShellMutedColor}" />
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="{DynamicResource ShellLineColor}" />
+    <SolidColorBrush x:Key="ShellAccentBrush" Color="{DynamicResource ShellAccentColor}" />
+    <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="{DynamicResource ShellAccentSoftColor}" />
+    <SolidColorBrush x:Key="ShellOverlayBrush" Color="{DynamicResource ShellOverlayColor}" />
+
+    <sys:Double x:Key="ShellTitleHeight">42</sys:Double>
+    <GridLength x:Key="ShellTitleGridLength">42</GridLength>
+    <sys:Double x:Key="ShellNavWidth">190</sys:Double>
+    <GridLength x:Key="ShellNavGridLength">190</GridLength>
+    <sys:Double x:Key="ShellReadingWidth">680</sys:Double>
+    <sys:Double x:Key="ShellTaskWidth">300</sys:Double>
+    <sys:Double x:Key="ShellTaskOverlayMaxWidth">340</sys:Double>
+    <sys:Double x:Key="ShellIconSize">34</sys:Double>
+
+    <Thickness x:Key="ShellPagePadding">26</Thickness>
+    <Thickness x:Key="ShellToolbarPadding">14,8</Thickness>
+    <CornerRadius x:Key="ShellControlRadius">8</CornerRadius>
+    <CornerRadius x:Key="ShellSurfaceRadius">12</CornerRadius>
+    <CornerRadius x:Key="ShellComposerRadius">14</CornerRadius>
+</ResourceDictionary>

@@ -2,31 +2,28 @@ using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Main;
 
-/// <summary>Single source of truth for the approved terminal panel's DIP budgets.</summary>
-internal static class AttachedPanelVisualMetrics
+public static class AttachedPanelVisualMetrics
 {
-    public const double ExpandedReservedHeight = 370;
+    public const double ExpandedReservedHeight = 312;
 
-    public static double CalculateWidth(double portraitWidth) =>
-        Math.Clamp(portraitWidth + 100, 300, 340);
+    public static double CalculateWidth(double portraitWidth, bool focusSurfaceVisible = false) =>
+        focusSurfaceVisible ? 304 : Math.Clamp(portraitWidth + 24, 230, 280);
 
     public static double CalculateHeight(
         AttachedPanelState state,
         bool compactTimerVisible,
         bool customPresetVisible,
-        double workAreaHeightDip)
+        double workAreaHeightDip,
+        bool quickActionsExpanded = false,
+        bool focusSurfaceVisible = false)
     {
-        var desired = state switch
-        {
-            AttachedPanelState.ExpandedFocus when customPresetVisible => 370,
-            AttachedPanelState.ExpandedFocus => 240,
-            AttachedPanelState.ExpandedToday or AttachedPanelState.ExpandedTodo or AttachedPanelState.ExpandedDialogue => 220,
-            _ when compactTimerVisible => 170,
-            _ => 150,
-        };
-        return Math.Min(desired, workAreaHeightDip * 0.6);
+        var desired = quickActionsExpanded
+            ? ExpandedReservedHeight
+            : focusSurfaceVisible ? 220
+            : compactTimerVisible ? 188 : 132;
+        return Math.Min(desired, workAreaHeightDip * 0.72);
     }
 
     public static double CalculateReservedHeight(double workAreaHeightDip) =>
-        Math.Min(ExpandedReservedHeight, workAreaHeightDip * 0.6);
+        Math.Min(ExpandedReservedHeight, workAreaHeightDip * 0.72);
 }

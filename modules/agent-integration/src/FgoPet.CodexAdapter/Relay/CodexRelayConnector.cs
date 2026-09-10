@@ -147,6 +147,49 @@ public sealed class CodexRelayConnector : ICodexRelayConnector
         return result;
     }
 
+    public async Task<IReadOnlyList<StopTaskRequest>> PollStopRequestsAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await SendOperationAsync(
+            ProtocolEnvelope.Create(NewId(), "status_check", new { include_stop_requests = true }),
+            cancellationToken).ConfigureAwait(false);
+        if (!response.Payload.TryGetProperty("stop_requests", out var stopRequests)
+            || stopRequests.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Missing stop request collection.");
+
+        var result = new List<StopTaskRequest>();
+        foreach (var item in stopRequests.EnumerateArray())
+        {
+            var envelope = ProtocolEnvelope.Parse(item.ValueKind == JsonValueKind.String ? item.GetString()! : item.GetRawText());
+            AgentProtocolValidator.Validate(envelope);
+            if (envelope.MessageType != "stop_task")
+                throw new InvalidDataException("Unexpected stop request type.");
+            result.Add(envelope.DeserializePayload<StopTaskRequest>());
+        }
+
+        return result;
+    }
+
+    public async Task<string> AcknowledgeStopRequestsAsync(
+        IReadOnlyList<string> stopRequestIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stopRequestIds);
+        if (stopRequestIds.Count == 0) return "already_acknowledged";
+
+        var result = "already_acknowledged";
+        foreach (var batch in stopRequestIds.Distinct(StringComparer.Ordinal).Chunk(512))
+        {
+            var response = await SendOperationAsync(
+                ProtocolEnvelope.Create(NewId(), "stop_ack", new StopAcknowledgementRequest(
+                    "codex", SourceInstanceId, batch)), cancellationToken).ConfigureAwait(false);
+            result = ReadResult(response) ?? throw new InvalidDataException("Missing stop acknowledgement result.");
+            if (result is not "acknowledged" and not "already_acknowledged" and not "unknown")
+                throw new InvalidDataException("Unknown stop acknowledgement result.");
+        }
+
+        return result;
+    }
+
     public async Task<string> AcknowledgeDispatchesAsync(IReadOnlyList<string> dispatchRequestIds,
         CancellationToken cancellationToken = default)
     {

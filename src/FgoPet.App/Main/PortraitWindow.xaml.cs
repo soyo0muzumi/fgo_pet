@@ -27,6 +27,8 @@ public partial class PortraitWindow : Window
     private double _portraitOffsetX;
     private double _portraitOffsetY;
     private bool _stablePanelLayoutPrepared;
+    private DeviceRect? _panelWorkArea;
+    private Dpi2 _panelDpi = new(1, 1);
 
     public PortraitWindow() : this(new AttachedPanelViewModel(TimeProvider.System))
     {
@@ -49,6 +51,11 @@ public partial class PortraitWindow : Window
         _idleTimer.Tick += (_, _) => HandlePanelIdleTick();
         _panelView = new AttachedPanelView { DataContext = panel };
         PanelHost.Content = _panelView;
+        _panelView.CompactSizeChanged += () =>
+        {
+            if (_geometry is not null && _panelWorkArea is { } area)
+                ArrangeStablePanelLayout(_geometry, area, _panelDpi);
+        };
         panel.PropertyChanged += OnPanelPropertyChanged;
         Loaded += (_, _) => _idleTimer.Start();
         Closed += (_, _) =>
@@ -83,7 +90,10 @@ public partial class PortraitWindow : Window
 
     internal void HandlePortraitClick() => _panel.PortraitClick();
 
-    internal void HandleEscape() => _panel.Escape();
+    internal void HandleEscape()
+    {
+        if (!_panelView.CollapseQuickActions()) _panel.Escape();
+    }
 
     internal void HandlePanelIdleTick()
     {
@@ -144,6 +154,8 @@ public partial class PortraitWindow : Window
 
     private DeviceRect ArrangeStablePanelLayout(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
     {
+        _panelWorkArea = workArea;
+        _panelDpi = dpi;
         _geometry = geometry;
         var windowLeft = double.IsFinite(Left) ? Left : 0;
         var windowTop = double.IsFinite(Top) ? Top : 0;
@@ -159,12 +171,13 @@ public partial class PortraitWindow : Window
             portraitTop + geometry.PanelAnchorDevice.Y);
 
         var workAreaHeightDip = workArea.Height / dpi.Y;
-        var panelWidthDip = AttachedPanelVisualMetrics.CalculateWidth(geometry.LogicalSize.Width);
+        var focusSurfaceVisible = _panel.State == AttachedPanelState.ExpandedFocus || _panel.IsCompactTimerVisible;
+        var panelWidthDip = AttachedPanelVisualMetrics.CalculateWidth(geometry.LogicalSize.Width, focusSurfaceVisible);
         var panelHeightDip = AttachedPanelVisualMetrics.CalculateHeight(
             _panel.State,
             _panel.IsCompactTimerVisible,
             _panel.SelectedPresetId == "custom",
-            workAreaHeightDip);
+            workAreaHeightDip, _panelView.QuickActionsExpanded, focusSurfaceVisible);
         // Reserve the largest expanded footprint so switching sections never moves the portrait.
         var reservedHeightDip = AttachedPanelVisualMetrics.CalculateReservedHeight(workAreaHeightDip);
         PanelHost.Width = panelWidthDip;
@@ -180,14 +193,41 @@ public partial class PortraitWindow : Window
         var reservedHeight = Math.Min(
             Math.Max(1, (int)Math.Ceiling(reservedHeightDip * dpi.Y)),
             (int)Math.Floor(workArea.Height * 0.6));
+        var marginX = Math.Min((int)Math.Round(16 * dpi.X), Math.Max(0, (workArea.Width - panelWidth) / 2));
+        var marginY = Math.Min((int)Math.Round(16 * dpi.Y), Math.Max(0, (workArea.Height - panelHeight) / 2));
+        var gap = Math.Max(1, (int)Math.Round(12 * dpi.X));
+        var rightLeft = portraitBounds.Right + gap;
+        var leftLeft = portraitBounds.Left - panelWidth - gap;
+        var rightFits = rightLeft + panelWidth <= workArea.Right - marginX;
+        var leftFits = leftLeft >= workArea.Left + marginX;
+        int preferredLeft;
+        int preferredTop;
+        if (rightFits || leftFits)
+        {
+            preferredLeft = rightFits ? rightLeft : leftLeft;
+            preferredTop = anchor.Y - panelHeight / 2;
+        }
+        else
+        {
+            preferredLeft = anchor.X - panelWidth / 2;
+            var verticalGap = Math.Max(1, (int)Math.Round(12 * dpi.Y));
+            var belowTop = portraitBounds.Bottom + verticalGap;
+            var aboveTop = portraitBounds.Top - panelHeight - verticalGap;
+            preferredTop = belowTop + panelHeight <= workArea.Bottom - marginY
+                ? belowTop
+                : aboveTop >= workArea.Top + marginY
+                    ? aboveTop
+                    : anchor.Y - panelHeight / 2;
+        }
+
         var panelBounds = new DeviceRect(
-            Math.Clamp(anchor.X - (panelWidth / 2), workArea.Left, workArea.Right - panelWidth),
-            Math.Clamp(anchor.Y, workArea.Top, workArea.Bottom - panelHeight),
+            Math.Clamp(preferredLeft, workArea.Left + marginX, workArea.Right - panelWidth - marginX),
+            Math.Clamp(preferredTop, workArea.Top + marginY, workArea.Bottom - panelHeight - marginY),
             panelWidth,
             panelHeight);
         var reservedPanelBounds = new DeviceRect(
             panelBounds.Left,
-            Math.Clamp(anchor.Y, workArea.Top, workArea.Bottom - reservedHeight),
+            Math.Clamp(panelBounds.Top, workArea.Top, workArea.Bottom - reservedHeight),
             panelWidth,
             reservedHeight);
         PanelHost.MaxHeight = panelBounds.Height / dpi.Y;

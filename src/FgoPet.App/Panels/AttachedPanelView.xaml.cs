@@ -1,22 +1,20 @@
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using FgoPet.App.Dialogue;
-using FgoPet.App.ViewModels;
-using FgoPet.App.Views;
+using FgoPet.App.Settings;
 using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Panels;
 
-/// <summary>Bounded, collapsible attached panel body bound to <see cref="AttachedPanelViewModel"/>.</summary>
+/// <summary>Minimal desktop-pet entry shell. Detailed chat, task, and settings work stays in ordinary windows.</summary>
 public partial class AttachedPanelView : UserControl
 {
     private AttachedPanelViewModel? _model;
-    private ConversationViewModel? _conversation;
-    private TodoListViewModel? _todoList;
-    private Window? _dispatchWindow;
+
+    internal bool QuickActionsExpanded { get; private set; }
+    internal event Action? CompactSizeChanged;
 
     public AttachedPanelView()
     {
@@ -25,20 +23,22 @@ public partial class AttachedPanelView : UserControl
         Unloaded += (_, _) => DetachModel();
     }
 
+    internal bool CollapseQuickActions()
+    {
+        if (!QuickActionsExpanded)
+        {
+            return false;
+        }
+
+        QuickActionsExpanded = false;
+        ApplyState();
+        CompactSizeChanged?.Invoke();
+        return true;
+    }
+
     internal void ApplyPhase0Clip(double width, double height, double corner)
     {
-        var geometry = new StreamGeometry();
-        using (var context = geometry.Open())
-        {
-            context.BeginFigure(new Point(corner, 0), true, true);
-            context.LineTo(new Point(width - corner, 0), true, false);
-            context.LineTo(new Point(width, corner), true, false);
-            context.LineTo(new Point(width, height - corner), true, false);
-            context.LineTo(new Point(width - corner, height), true, false);
-            context.LineTo(new Point(corner, height), true, false);
-            context.LineTo(new Point(0, height - corner), true, false);
-            context.LineTo(new Point(0, corner), true, false);
-        }
+        var geometry = new RectangleGeometry(new Rect(0, 0, width, height), corner, corner);
         geometry.Freeze();
         Clip = geometry;
     }
@@ -50,104 +50,8 @@ public partial class AttachedPanelView : UserControl
         if (_model is not null)
         {
             _model.PropertyChanged += OnModelPropertyChanged;
-            AttachConversation(_model.Conversation);
-            AttachTodoList(_model.TodoList);
         }
         ApplyState();
-    }
-
-    private void AttachConversation(ConversationViewModel? conversation)
-    {
-        if (_conversation is not null)
-        {
-            _conversation.PropertyChanged -= OnConversationPropertyChanged;
-            _conversation.Turns.CollectionChanged -= OnConversationTurnsChanged;
-        }
-
-        _conversation = conversation;
-        if (_conversation is not null)
-        {
-            _conversation.PropertyChanged += OnConversationPropertyChanged;
-            _conversation.Turns.CollectionChanged += OnConversationTurnsChanged;
-        }
-
-        RefreshDialogueSurfaces();
-    }
-
-    private void AttachTodoList(TodoListViewModel? todoList)
-    {
-        if (_todoList is not null)
-        {
-            _todoList.DispatchRequested -= OnDispatchRequested;
-        }
-
-        _todoList = todoList;
-        if (_todoList is not null)
-        {
-            _todoList.DispatchRequested += OnDispatchRequested;
-        }
-    }
-
-    private void OnDispatchRequested(AgentDispatchDialogViewModel viewModel)
-    {
-        if (_dispatchWindow is { IsVisible: true })
-        {
-            _dispatchWindow.Activate();
-            return;
-        }
-
-        var dialog = new AgentDispatchDialog { DataContext = viewModel };
-        var owner = Window.GetWindow(this);
-        var window = new Window
-        {
-            Title = "交给 Agent",
-            Content = dialog,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            ResizeMode = ResizeMode.NoResize,
-            ShowInTaskbar = false,
-            WindowStartupLocation = owner?.IsVisible == true
-                ? WindowStartupLocation.CenterOwner
-                : WindowStartupLocation.CenterScreen,
-            Owner = owner?.IsVisible == true ? owner : null,
-            Background = Brushes.Transparent,
-        };
-        _dispatchWindow = window;
-        window.Closed += (_, _) =>
-        {
-            viewModel.Dispose();
-            if (ReferenceEquals(_dispatchWindow, window))
-            {
-                _dispatchWindow = null;
-            }
-        };
-        window.ShowDialog();
-    }
-
-    private void OnConversationTurnsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-        RefreshDialogueSurfaces();
-
-    private void OnConversationPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(ConversationViewModel.IsEmptyStateVisible)
-            or nameof(ConversationViewModel.IsConfigurationStateVisible))
-        {
-            RefreshDialogueSurfaces();
-        }
-    }
-
-    /// <summary>Switches empty / configuration / message surfaces; never touches state or data.</summary>
-    private void RefreshDialogueSurfaces()
-    {
-        var conversation = _model?.Conversation;
-        var hasTurns = conversation is { } c && c.Turns.Count > 0;
-        var configurationRequired = conversation?.IsConfigurationRequired == true;
-
-        DialogueEmptyState.Visibility = !hasTurns && !configurationRequired
-            ? Visibility.Visible : Visibility.Collapsed;
-        DialogueConfigurationCard.Visibility = !hasTurns && configurationRequired
-            ? Visibility.Visible : Visibility.Collapsed;
-        DialogueMessageList.Visibility = hasTurns ? Visibility.Visible : Visibility.Collapsed;
-        DialogueSettingsButton.Visibility = configurationRequired ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -155,129 +59,153 @@ public partial class AttachedPanelView : UserControl
         if (e.PropertyName is nameof(AttachedPanelViewModel.State)
             or nameof(AttachedPanelViewModel.IsCompactTimerVisible)
             or nameof(AttachedPanelViewModel.CanPause)
-            or nameof(AttachedPanelViewModel.SelectedPresetId)
-            or nameof(AttachedPanelViewModel.IsEditingCustomPreset))
+            or nameof(AttachedPanelViewModel.CanResume)
+            or nameof(AttachedPanelViewModel.DialogueUnreadCount)
+            or nameof(AttachedPanelViewModel.HasDialogueUnread)
+            or nameof(AttachedPanelViewModel.IsAutoReadEnabled)
+            or nameof(AttachedPanelViewModel.CanStartFocus)
+            or nameof(AttachedPanelViewModel.ProgressPercent)
+            or nameof(AttachedPanelViewModel.PhaseText))
         {
             ApplyState();
         }
-
-        if (_model is not null && e.PropertyName is nameof(AttachedPanelViewModel.Conversation))
-        {
-            AttachConversation(_model.Conversation);
-        }
     }
 
-    /// <summary>
-    /// Visibility switching only: never queries SQLite, advances time, computes
-    /// levels, validates fields, or selects dialogue.
-    /// </summary>
     private void ApplyState()
     {
         var state = _model?.State ?? AttachedPanelState.Collapsed;
-        CompactActions.Visibility = state == AttachedPanelState.Collapsed ? Visibility.Collapsed : Visibility.Visible;
-
-        // The active header column is highlighted magenta; the rest stay cyan.
-        FocusButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedFocus);
-        TodayButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedToday);
-        TodoButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedTodo);
-        DialogueButton.Foreground = AccentFor(state == AttachedPanelState.ExpandedDialogue);
+        if (state == AttachedPanelState.Collapsed)
+        {
+            QuickActionsExpanded = false;
+        }
 
         var timerVisible = _model?.IsCompactTimerVisible == true;
-        CompactMessage.Visibility = state == AttachedPanelState.Compact && !timerVisible
-            ? Visibility.Visible : Visibility.Collapsed;
-        CompactTimer.Visibility = state == AttachedPanelState.Compact && timerVisible
-            ? Visibility.Visible : Visibility.Collapsed;
+        var focusSetupVisible = state == AttachedPanelState.ExpandedFocus && !timerVisible;
+        CardSurface.Visibility = timerVisible || focusSetupVisible ? Visibility.Visible : Visibility.Collapsed;
+        FocusSetupCard.Visibility = focusSetupVisible ? Visibility.Visible : Visibility.Collapsed;
+        CompactTimer.Visibility = timerVisible ? Visibility.Visible : Visibility.Collapsed;
+        StartFocusButton.IsEnabled = _model?.CanStartFocus == true;
+        CompanionControlIsland.Visibility = state == AttachedPanelState.Collapsed
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        CompactActions.Visibility = state != AttachedPanelState.Collapsed && QuickActionsExpanded
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
-        FocusContent.Visibility = state == AttachedPanelState.ExpandedFocus ? Visibility.Visible : Visibility.Collapsed;
-        TodayContent.Visibility = state == AttachedPanelState.ExpandedToday ? Visibility.Visible : Visibility.Collapsed;
-        DialogueContent.Visibility = state == AttachedPanelState.ExpandedDialogue ? Visibility.Visible : Visibility.Collapsed;
-        TodoContent.Visibility = state == AttachedPanelState.ExpandedTodo ? Visibility.Visible : Visibility.Collapsed;
-        FocusFooterOrnament.Visibility = state == AttachedPanelState.ExpandedFocus
-            ? Visibility.Visible : Visibility.Collapsed;
-        GeneralFooterOrnament.Visibility = state is AttachedPanelState.ExpandedToday
-            or AttachedPanelState.ExpandedTodo
-            or AttachedPanelState.ExpandedDialogue
-            ? Visibility.Visible : Visibility.Collapsed;
+        MoreEntryButton.SetResourceReference(
+            ForegroundProperty,
+            QuickActionsExpanded ? "ShellAccentBrush" : "ShellMutedBrush");
 
+        UpdateProgressArc();
         if (_model is not null)
         {
-            PauseResumeButton.Content = _model.CanPause ? "暂停" : "继续";
-            HighlightPresetButtons(_model.SelectedPresetId);
-            CustomPresetFields.Visibility = _model.SelectedPresetId == "custom"
-                ? Visibility.Visible : Visibility.Collapsed;
+            PauseResumeButton.Content = FindResource(_model.CanPause ? "PetPauseIcon" : "PetPlayIcon");
+            PauseResumeButton.ToolTip = _model.CanPause ? "暂停专注" : "继续专注";
+            System.Windows.Automation.AutomationProperties.SetName(
+                PauseResumeButton,
+                _model.CanPause ? "暂停专注" : "继续专注");
         }
     }
 
-    private void HighlightPresetButtons(string selectedPresetId)
+    private void OnToggleQuickActions(object sender, RoutedEventArgs e)
     {
-        Preset25Button.Foreground = AccentFor(selectedPresetId == "builtin.25x4");
-        Preset50Button.Foreground = AccentFor(selectedPresetId == "builtin.50x2");
-        CustomPresetButton.Foreground = AccentFor(selectedPresetId == "custom");
+        QuickActionsExpanded = !QuickActionsExpanded;
+        ApplyState();
+        CompactSizeChanged?.Invoke();
     }
 
-    private static System.Windows.Media.Brush AccentFor(bool isActive) =>
-        isActive
-            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xD2, 0x42, 0xE8))
-            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x70, 0xE7, 0xF5));
+    private void OnDialogueClick(object sender, RoutedEventArgs e) => _model?.DialogueClick();
+    private void OnSpeechClick(object sender, RoutedEventArgs e) => _model?.ToggleAutoRead();
+    private void OnSettingsClick(object sender, RoutedEventArgs e) => _model?.RequestSettings(SettingsSection.Personalization);
+    private void OnTasksClick(object sender, RoutedEventArgs e) => _model?.OpenTasks();
+
+    private void OnExitClick(object sender, RoutedEventArgs e) => _model?.RequestExit();
 
     private void OnFocusClick(object sender, RoutedEventArgs e) => _model?.FocusClick();
-    private void OnTodayClick(object sender, RoutedEventArgs e) => _model?.TodayClick();
-    private void OnDialogueClick(object sender, RoutedEventArgs e) => _model?.DialogueClick();
-    private void OnTodoClick(object sender, RoutedEventArgs e) => _model?.TodoClick();
-    private void OnPreset25Click(object sender, RoutedEventArgs e) => _model?.SelectPreset(Panels.FocusPresetCatalog.Short);
-    private void OnPreset50Click(object sender, RoutedEventArgs e) => _model?.SelectPreset(Panels.FocusPresetCatalog.Long);
-    private void OnCustomPresetClick(object sender, RoutedEventArgs e)
+
+    private void OnStartFocusClick(object sender, RoutedEventArgs e) => _model?.StartFocus();
+
+    private void OnFocusAdjustClick(object sender, RoutedEventArgs e)
     {
-        if (_model is null)
+        if (_model is null || sender is not Button button || button.Tag is not string tag)
         {
             return;
         }
 
         _model.SelectCustomPreset();
-        CustomPresetFields.Visibility = Visibility.Visible;
+        switch (tag)
+        {
+            case "FocusUp": _model.AdjustCustomFocus(1); break;
+            case "FocusDown": _model.AdjustCustomFocus(-1); break;
+            case "BreakUp": _model.AdjustCustomBreak(1); break;
+            case "BreakDown": _model.AdjustCustomBreak(-1); break;
+            case "CyclesUp": _model.AdjustCustomCycles(1); break;
+            case "CyclesDown": _model.AdjustCustomCycles(-1); break;
+        }
     }
-    private void OnCustomFocusMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomFocus(-1);
-    private void OnCustomFocusPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomFocus(1);
-    private void OnCustomBreakMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomBreak(-1);
-    private void OnCustomBreakPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomBreak(1);
-    private void OnCustomCyclesMinusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomCycles(-1);
-    private void OnCustomCyclesPlusClick(object sender, RoutedEventArgs e) => _model?.AdjustCustomCycles(1);
-    private void OnStartFocusClick(object sender, RoutedEventArgs e) => _model?.StartFocus();
+
     private void OnPauseResumeClick(object sender, RoutedEventArgs e)
     {
-        if (_model is null)
-        {
-            return;
-        }
-
-        if (_model.CanPause)
+        if (_model?.CanPause == true)
         {
             _model.PauseTimer();
         }
         else
         {
-            _model.ResumeTimer();
+            _model?.ResumeTimer();
         }
     }
+
     private void OnStopTimerClick(object sender, RoutedEventArgs e) => _model?.StopTimer();
-    private void OnNewConversationClick(object sender, RoutedEventArgs e) => _model?.Conversation?.NewConversationCommand.Execute(null);
-    private void OnDialogueSettingsClick(object sender, RoutedEventArgs e) => _model?.Conversation?.OpenSettingsCommand.Execute(null);
+
+    private void UpdateProgressArc()
+    {
+        FocusProgressArc.Data = BuildProgressArc(_model?.ProgressPercent ?? 0);
+    }
+
+    private static Geometry BuildProgressArc(double percent)
+    {
+        const double size = 186;
+        const double center = size / 2;
+        const double radius = 89;
+        var geometry = new StreamGeometry();
+        var clamped = Math.Clamp(percent, 0, 100);
+        if (clamped <= 0)
+        {
+            geometry.Freeze();
+            return geometry;
+        }
+
+        var startAngle = -Math.PI / 2;
+        var endAngle = startAngle + (Math.PI * 2 * clamped / 100);
+        var start = new Point(center + radius * Math.Cos(startAngle), center + radius * Math.Sin(startAngle));
+        var end = new Point(center + radius * Math.Cos(endAngle), center + radius * Math.Sin(endAngle));
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(start, false, false);
+            if (clamped >= 99.99)
+            {
+                var opposite = new Point(center - radius, center);
+                context.ArcTo(opposite, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);
+                context.ArcTo(start, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);
+            }
+            else
+            {
+                context.ArcTo(end, new Size(radius, radius), 0, clamped > 50, SweepDirection.Clockwise, true, false);
+            }
+        }
+
+        geometry.Freeze();
+        return geometry;
+    }
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
     private void OnPointerLeft(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerLeft();
 
     private void DetachModel()
     {
-        if (_conversation is not null)
-        {
-            _conversation.PropertyChanged -= OnConversationPropertyChanged;
-            _conversation.Turns.CollectionChanged -= OnConversationTurnsChanged;
-            _conversation = null;
-        }
-
         if (_model is not null)
         {
             _model.PropertyChanged -= OnModelPropertyChanged;
-            AttachTodoList(null);
             _model = null;
         }
     }

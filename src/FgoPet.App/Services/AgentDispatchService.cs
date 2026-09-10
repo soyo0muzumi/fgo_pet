@@ -16,6 +16,7 @@ public sealed class AgentDispatchService
     private readonly IAgentRelayAdministration? _administration;
     private readonly AgentEventProjector? _projector;
     private readonly Func<Action, Task> _dispatchToUi;
+    private readonly IAgentTargetCatalog? _targetCatalog;
 
     public AgentDispatchService(
         ITodoRepository todos,
@@ -24,7 +25,8 @@ public sealed class AgentDispatchService
         TimeProvider time,
         IAgentRelayAdministration? administration = null,
         AgentEventProjector? projector = null,
-        Func<Action, Task>? dispatchToUi = null)
+        Func<Action, Task>? dispatchToUi = null,
+        IAgentTargetCatalog? targetCatalog = null)
     {
         _todos = todos ?? throw new ArgumentNullException(nameof(todos));
         _agents = agents ?? throw new ArgumentNullException(nameof(agents));
@@ -37,6 +39,7 @@ public sealed class AgentDispatchService
             action();
             return Task.CompletedTask;
         });
+        _targetCatalog = targetCatalog;
     }
 
     public async Task<AgentDispatchResult> DispatchAsync(
@@ -45,7 +48,8 @@ public sealed class AgentDispatchService
         string targetId,
         bool confirmed,
         CancellationToken cancellationToken = default,
-        string? sourceInstanceId = null)
+        string? sourceInstanceId = null,
+        AgentDispatchContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(todo);
         if (!confirmed)
@@ -74,6 +78,29 @@ public sealed class AgentDispatchService
             sourceInstanceId = candidates[0].SourceInstanceId;
         }
 
+        string? targetContextVersion = null;
+        AgentTargetDescriptor? selectedTarget = null;
+        if (_targetCatalog is not null && string.Equals(sourceType, "codex", StringComparison.Ordinal))
+        {
+            var catalog = await _targetCatalog.ListAsync(cancellationToken).ConfigureAwait(false);
+            if (!catalog.IsAvailable)
+            {
+                return new AgentDispatchResult(
+                    AgentDispatchStatus.Failed,
+                    string.Empty,
+                    catalog.SafeError ?? "target_catalog_unavailable");
+            }
+
+            selectedTarget = catalog.Targets.SingleOrDefault(item =>
+                string.Equals(item.TargetId, targetId, StringComparison.Ordinal));
+            if (selectedTarget is null)
+            {
+                return new AgentDispatchResult(AgentDispatchStatus.Failed, string.Empty, "target_not_registered");
+            }
+
+            targetContextVersion = selectedTarget.ContextVersion;
+        }
+
         var dispatchRequestId = CreateStableRequestId(todo.Id, sourceType, targetId, sourceInstanceId);
         var previousExecution = _agents.GetLatestExecutionForTodo(todo.Id);
         if (previousExecution is { IsTerminal: true })
@@ -88,12 +115,23 @@ public sealed class AgentDispatchService
             todo.Priority,
             todo.DueAt,
             sourceType,
-            targetId) { SourceInstanceId = sourceInstanceId };
+            targetId)
+        {
+            SourceInstanceId = sourceInstanceId,
+            TargetContextVersion = targetContextVersion,
+        };
         if (!_gateway.IsConnected)
         {
             return new AgentDispatchResult(AgentDispatchStatus.Offline, dispatchRequestId, "relay_offline");
         }
+
         var now = _time.GetUtcNow();
+        var projectSnapshot = selectedTarget is null ? null : AgentProjectSnapshot.Create(selectedTarget, now);
+        if (projectSnapshot is not null)
+        {
+            _agents.SaveProjectSnapshot(projectSnapshot);
+        }
+
         var sourceInstance = sourceInstanceId ?? "relay";
         // Reserve the execution before enqueueing. The Adapter may poll and
         // complete a very fast task before DispatchAsync returns; saving only
@@ -106,8 +144,14 @@ public sealed class AgentDispatchService
             dispatchRequestId,
             dispatchRequestId,
             now,
-            previousExecutionId: previousExecution?.Id);
+            previousExecutionId: previousExecution?.Id,
+            conversationId: context?.ConversationId,
+            messageId: context?.MessageId,
+            targetId: targetId,
+            targetContextVersion: targetContextVersion,
+            projectSnapshotId: projectSnapshot?.SnapshotId);
         _agents.SaveExecution(reservation);
+        _projector?.Synchronize(reservation);
         // Make the local Todo active before enqueueing. A very fast Adapter can
         // emit task_completed while DispatchAsync is still awaiting the relay
         // acknowledgement; activating afterwards with the original planned

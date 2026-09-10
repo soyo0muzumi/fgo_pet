@@ -7,6 +7,7 @@ public interface ICodexTargetResolver
 {
     string Resolve(string targetId);
     bool IsReadOnly(string targetId) => false;
+    string? GetContextVersion(string targetId) => null;
 }
 
 public interface ICodexAppServerRpc

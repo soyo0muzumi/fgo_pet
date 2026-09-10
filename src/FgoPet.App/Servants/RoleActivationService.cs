@@ -101,15 +101,12 @@ public sealed class RoleActivationService : IRoleActivationService
     public async Task<RoleActivationResult> RestoreAsync(CancellationToken cancellationToken)
     {
         var saved = _settings.Load().Selection;
-        if (saved is null)
-        {
-            return RoleActivationResult.Failed(RoleActivationFailure.NoSelection, "尚未选择角色包。");
-        }
-
         var resolved = await _repository.ResolveStartupSelectionAsync(saved, cancellationToken).ConfigureAwait(false);
         if (resolved is null)
         {
-            return RoleActivationResult.Failed(RoleActivationFailure.MissingPackage, "已保存的角色包不可用。");
+            return saved is null
+                ? RoleActivationResult.Failed(RoleActivationFailure.NoSelection, "尚未发现可用角色包，请从本地文件恢复。")
+                : RoleActivationResult.Failed(RoleActivationFailure.MissingPackage, "已保存的角色包不可用。");
         }
 
         var selection = new PortraitSelection(

@@ -15,6 +15,12 @@
       <Button Content="{Binding AttentionText}" Click="OnOpenTaskClick" Foreground="#FFD242E8" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9">
         <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding AttentionRequired}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
       </Button>
+      <Button Content="请求停止" Click="OnStopClick" Foreground="#FFFF8A8A" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9" AutomationProperties.Name="请求停止当前 Agent 任务">
+        <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding CanRequestStop}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
+      </Button>
+      <Button Content="{Binding StopStatusText}" Foreground="#FFFFB84D" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9" AutomationProperties.Name="停止请求状态">
+        <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding StopRequested}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
+      </Button>
       <Button Content="人工核对结果" Click="OnReconcileClick" Foreground="#FFFFB84D" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" Padding="0,4" FontSize="9" AutomationProperties.Name="人工核对 Agent 执行结果">
         <Button.Style><Style TargetType="Button"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding OutcomeUnknown}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
       </Button>

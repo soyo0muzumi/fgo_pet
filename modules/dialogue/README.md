@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-Own conversation sessions, model calls, prompt composition, knowledge binding, structured output, conversation-tool parsing and orchestration, and dialogue presentation state.
+Own conversation sessions, model calls, prompt composition, knowledge binding, structured output, conversation-tool parsing and orchestration, and dialogue presentation state. The shared DialogueWindow is the single chat/settings host; session chips and the tool drawer expose bounded context and intent without creating a second conversation shell.
 
 ## Non-responsibilities
 
@@ -26,7 +26,7 @@ May depend on `memory` through read-only query and candidate-submission contract
 
 ## Data and security boundaries
 
-Prompts, conversations, model configuration, and tool results are sensitive. Apply sanitization and approval boundaries; dialogue may submit memory candidates but cannot control memory review or deletion.
+Prompts, conversations, model configuration, and tool results are sensitive. Apply sanitization and approval boundaries; session context is bounded and inserted as data, not instructions. Dialogue may submit memory candidates but cannot control memory review or deletion, Agent transport, target authorization, or stop semantics.
 
 ## Development and validation
 

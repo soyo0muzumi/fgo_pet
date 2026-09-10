@@ -39,6 +39,10 @@ public interface ICodexRelayConnector : ICodexRelaySession
     string SourceInstanceId { get; }
     Task<AdapterConnectionResult> EnsureAuthenticatedAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DispatchTaskRequest>> PollDispatchesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StopTaskRequest>> PollStopRequestsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<StopTaskRequest>>(Array.Empty<StopTaskRequest>());
+    Task<string> AcknowledgeStopRequestsAsync(IReadOnlyList<string> stopRequestIds,
+        CancellationToken cancellationToken = default) => Task.FromResult("already_acknowledged");
     Task<string> AcknowledgeDispatchesAsync(IReadOnlyList<string> dispatchRequestIds,
         CancellationToken cancellationToken = default) => Task.FromResult("acknowledged");
     Task<bool> IsDispatchAllowedAsync(string targetId, CancellationToken cancellationToken = default) => Task.FromResult(false);

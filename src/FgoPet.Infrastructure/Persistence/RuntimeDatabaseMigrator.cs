@@ -315,7 +315,28 @@ public sealed class RuntimeDatabaseMigrator
               state_value TEXT NOT NULL,
               updated_at_utc TEXT NOT NULL);
             """),
-    };
+        new(10, """
+            ALTER TABLE agent_executions ADD COLUMN conversation_id TEXT NULL;
+            ALTER TABLE agent_executions ADD COLUMN message_id TEXT NULL;
+            ALTER TABLE agent_executions ADD COLUMN target_id TEXT NULL;
+            ALTER TABLE agent_executions ADD COLUMN target_context_version TEXT NULL;
+            ALTER TABLE agent_executions ADD COLUMN project_snapshot_id TEXT NULL;
+            CREATE INDEX ix_agent_executions_conversation
+              ON agent_executions(conversation_id, updated_at_utc DESC);
+            CREATE TABLE agent_project_snapshots(
+              snapshot_id TEXT PRIMARY KEY,
+              target_id TEXT NOT NULL,
+              project_name TEXT NOT NULL,
+              branches_json TEXT NOT NULL,
+              current_branch TEXT NULL,
+              revision TEXT NULL,
+              access TEXT NOT NULL,
+              source TEXT NOT NULL,
+              context_version TEXT NULL,
+              captured_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_agent_project_snapshots_target
+              ON agent_project_snapshots(target_id, captured_at_utc DESC);
+            """),    };
 
     public static long CurrentSchemaVersion => Migrations.Count;
 

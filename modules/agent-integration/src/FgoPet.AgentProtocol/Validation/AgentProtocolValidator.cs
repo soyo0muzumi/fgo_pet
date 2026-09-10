@@ -26,6 +26,7 @@ public static class AgentProtocolValidator
         "list_sources", "update_permissions", "revoke_source", "status_check", "error",
         "event_ack", "dispatch_ack", "maintenance_status", "archive_prepare", "archive_commit",
         "maintenance_sync",
+        "stop_task", "stop_ack",
     };
 
     private static readonly HashSet<string> KnownRegistrationStatuses = new(StringComparer.Ordinal)
@@ -105,6 +106,8 @@ public static class AgentProtocolValidator
         {
             case "agent_event": ValidateEvent(envelope.DeserializePayload<AgentEventMessage>()); break;
             case "dispatch_task": ValidateDispatch(envelope.DeserializePayload<DispatchTaskRequest>()); break;
+            case "stop_task": ValidateStop(envelope.DeserializePayload<StopTaskRequest>()); break;
+            case "stop_ack": ValidateStopAcknowledgement(envelope.DeserializePayload<StopAcknowledgementRequest>()); break;
             case "open_task": ValidateOpen(envelope.DeserializePayload<OpenTaskRequest>()); break;
             case "registration_request":
                 if (HasAnyProperty(envelope.Payload, "source_instance_id", "adapter_version", "protocol_version", "request_nonce"))
@@ -217,6 +220,15 @@ public static class AgentProtocolValidator
                 ValidateOptionalIdentifier(envelope.Payload, "task_id");
                 ValidateOptionalIdentifier(envelope.Payload, "source_instance");
                 break;
+            case "stop_task":
+                ValidateResult(envelope, "accepted", "already_applied", "alreadyapplied", "completed", "unknown", "offline", "unsupported", "unauthorized", "backpressure", "disabled");
+                ValidateOptionalIdentifier(envelope.Payload, "stop_request_id");
+                ValidateOptionalIdentifier(envelope.Payload, "task_id");
+                ValidateOptionalIdentifier(envelope.Payload, "source_instance");
+                break;
+            case "stop_ack":
+                ValidateResult(envelope, "acknowledged", "already_acknowledged", "unknown");
+                break;
             case "open_task": ValidateResult(envelope, "exact", "apponly", "app_only", "unsupported", "offline"); break;
             case "decide_registration":
             case "update_permissions":
@@ -238,6 +250,7 @@ public static class AgentProtocolValidator
                 ValidateResult(envelope, "status", "dispatches", "ok");
                 ValidateEmbeddedEnvelopes(envelope.Payload, "events", "agent_event");
                 ValidateEmbeddedEnvelopes(envelope.Payload, "dispatches", "dispatch_task");
+                ValidateEmbeddedEnvelopes(envelope.Payload, "stop_requests", "stop_task");
                 break;
             case "error": ValidateResult(envelope); break;
             default:
@@ -344,6 +357,27 @@ public static class AgentProtocolValidator
         AgentPayloadSanitizer.SanitizeText(message.Description, nameof(message.Description));
         AgentPayloadSanitizer.SanitizeText(message.Priority, nameof(message.Priority));
         if (AgentPayloadSanitizer.ContainsForbiddenText(message.TargetId)) throw new AgentProtocolValidationException("Target ID is not opaque.");
+        if (message.TargetContextVersion is not null)
+            ValidateSafeIdentifier(message.TargetContextVersion, nameof(message.TargetContextVersion));
+    }
+
+    private static void ValidateStop(StopTaskRequest message)
+    {
+        ValidateSafeIdentifier(message.StopRequestId, nameof(message.StopRequestId));
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        ValidateSafeIdentifier(message.TaskId, nameof(message.TaskId));
+        ValidateSafeIdentifier(message.DispatchRequestId, nameof(message.DispatchRequestId));
+    }
+
+    private static void ValidateStopAcknowledgement(StopAcknowledgementRequest message)
+    {
+        ValidateSafeIdentifier(message.SourceType, nameof(message.SourceType));
+        ValidateSafeIdentifier(message.SourceInstanceId, nameof(message.SourceInstanceId));
+        if (message.StopRequestIds is null || message.StopRequestIds.Count == 0 || message.StopRequestIds.Count > 512)
+            throw new AgentProtocolValidationException("Stop acknowledgement must contain a bounded non-empty collection.");
+        foreach (var requestId in message.StopRequestIds)
+            ValidateSafeIdentifier(requestId, nameof(requestId));
     }
 
     private static void ValidateOpen(OpenTaskRequest message)

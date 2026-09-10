@@ -92,11 +92,12 @@ public sealed class ModelConnectionViewModelTests
 
         Assert.Equal(string.Empty, viewModel.ErrorText);
         Assert.Equal("Bearer new-key", handler.AuthorizationHeader);
-        Assert.Equal("new-key", credentials.Values["fgo-pet/provider/openai"]);
+        Assert.False(credentials.Values.ContainsKey("fgo-pet/provider/openai"));
+        Assert.Null(settings.Saved);
     }
 
     [Fact]
-    public async Task Successful_test_activates_the_connection_for_dialogue_when_metadata_was_not_saved()
+    public async Task Successful_test_does_not_persist_or_activate_until_explicit_save()
     {
         var settings = new FakeSettings { Current = AppSettings.Defaults with { ModelConnection = null } };
         var credentials = new FakeCredentials();
@@ -109,14 +110,47 @@ public sealed class ModelConnectionViewModelTests
             BaseUrl = "https://api.deepseek.com/v1",
             ModelId = "deepseek-chat",
         };
+        var savedCount = 0;
+        viewModel.ConnectionSaved += _ => savedCount++;
         viewModel.SetApiKey("new-key");
 
         await viewModel.TestCommand.ExecuteAsync(null);
 
+        Assert.Equal(0, savedCount);
+        Assert.Null(settings.Saved);
+        Assert.False(credentials.Values.ContainsKey("fgo-pet/provider/deepseek"));
+        Assert.Contains("尚未保存", viewModel.StatusText, StringComparison.Ordinal);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, savedCount);
         Assert.Equal("deepseek", settings.Saved!.ModelConnection!.ProviderId);
         Assert.Equal("deepseek-chat", settings.Saved.ModelConnection.ModelId);
+        Assert.Equal("new-key", credentials.Values["fgo-pet/provider/deepseek"]);
     }
+    [Fact]
+    public async Task Stale_test_result_does_not_overwrite_a_changed_draft()
+    {
+        var settings = new FakeSettings();
+        var credentials = new FakeCredentials();
+        var handler = new DelayedRespondingHandler();
+        var catalog = new ProviderCatalog();
+        var factory = new ChatProviderFactory(catalog, credentials, new HttpClient(handler));
+        var viewModel = new ModelConnectionViewModel(settings, credentials, catalog, factory);
+        viewModel.SetApiKey("new-key");
 
+        var test = viewModel.TestCommand.ExecuteAsync(null);
+        await handler.RequestStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.ModelId = "newer-model";
+        handler.Complete();
+        await test;
+
+        Assert.Equal("newer-model", viewModel.ModelId);
+        Assert.Empty(viewModel.AvailableModels);
+        Assert.Contains("草稿已更改", viewModel.StatusText, StringComparison.Ordinal);
+        Assert.Null(settings.Saved);
+        Assert.Empty(credentials.Values);
+    }
     [Fact]
     public async Task Save_with_invalid_metadata_reports_error_without_throwing()
     {
@@ -185,6 +219,25 @@ public sealed class ModelConnectionViewModelTests
         }
     }
 
+    private sealed class DelayedRespondingHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource<HttpResponseMessage> _response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task RequestStarted => _requestStarted.Task;
+
+        public void Complete() => _response.TrySetResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { data = new[] { new { id = "stale-model" } } }),
+        });
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            _requestStarted.TrySetResult();
+            cancellationToken.Register(() => _response.TrySetCanceled(cancellationToken));
+            return _response.Task;
+        }
+    }
     private sealed class RespondingHandler : HttpMessageHandler
     {
         public string? AuthorizationHeader { get; private set; }

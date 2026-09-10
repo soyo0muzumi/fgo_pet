@@ -35,6 +35,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly ModelConnectionViewModel? _modelConnection;
     private readonly TodoProposalService? _todoProposals;
     private readonly ArchiveDraftService? _archiveDrafts;
+    private readonly IConfiguredModelAuthority? _modelAuthority;
     private string _activeConversationId = string.Empty;
     private bool _configurationRequired;
     private readonly StringBuilder _pendingReasoning = new();
@@ -53,6 +54,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         _modelConnection = modelConnection;
         _todoProposals = todoProposals;
         _archiveDrafts = archiveDrafts;
+        _modelAuthority = modelConnection is null ? null : new DialogueModelConnectionSource(modelConnection);
         if (_modelConnection is not null)
         {
             _modelConnection.ConnectionSaved += OnConnectionSaved;
@@ -80,6 +82,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     public ObservableCollection<TodoProposalViewModel> TodoProposals { get; } = new();
     public ObservableCollection<ArchiveDraftViewModel> ArchiveDrafts { get; } = new();
     public ObservableCollection<ConversationHistoryItem> History { get; } = new();
+    public DialogueSessionContextViewModel SessionContext { get; } = new();
 
     [ObservableProperty]
     private string _historyStatus = string.Empty;
@@ -113,6 +116,8 @@ public sealed partial class ConversationViewModel : ObservableObject
     [ObservableProperty]
     private string _errorText = string.Empty;
 
+    partial void OnErrorTextChanged(string value) => OnPropertyChanged(nameof(CanOpenModelSettings));
+
     [ObservableProperty]
     private string _requestStatusText = string.Empty;
 
@@ -130,6 +135,12 @@ public sealed partial class ConversationViewModel : ObservableObject
     /// <summary>Settings toggle (default on): window shows the reasoning well; compact never does.</summary>
     public bool ShowReasoning => _settings.Load().ShowReasoning;
 
+    public bool CanOpenModelSettings =>
+        ErrorText.Contains("模型连接", StringComparison.Ordinal)
+        || ErrorText.Contains("模型服务地址", StringComparison.Ordinal)
+        || ErrorText.Contains("模型 API Key", StringComparison.Ordinal)
+        || ErrorText.Contains("无法连接模型服务", StringComparison.Ordinal)
+        || ErrorText.Contains("对话服务暂时不可用", StringComparison.Ordinal);
     public bool CanSend => !IsStreaming
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(InputText);
@@ -140,6 +151,25 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public string ActionLabel => IsStreaming ? "停止生成" : "发送消息";
 
+    public bool SelectModelForFutureRequests(string modelId)
+    {
+        if (IsStreaming || string.IsNullOrWhiteSpace(modelId)) return false;
+        var current = _settings.Load().ModelConnection;
+        if (current is null) return false;
+        var normalized = modelId.Trim();
+        if (_modelAuthority is null || !_modelAuthority.IsAvailable(normalized)) return false;
+        if (string.Equals(current.ModelId, normalized, StringComparison.Ordinal)) return true;
+        _settings.Save(_settings.Load() with
+        {
+            ModelConnection = new ModelConnectionSettings(
+                current.ProviderId, current.BaseUrl, normalized, current.ToolsSupported),
+        });
+        ModelStatusText = normalized;
+        return true;
+    }
+
+    public IConfiguredModelAuthority? ModelAuthority => _modelAuthority;
+
     public sealed record TodoNoticeState(string Text, TodoNoticeKind Kind);
 
     private TodoNoticeState _todoNotice = new(string.Empty, TodoNoticeKind.None);
@@ -147,6 +177,12 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     /// <summary>Raised when the user asks to create a Todo manually; the host owns the route.</summary>
     public event Action? ManualTodoRequested;
+
+    /// <summary>Raised only for a newly completed assistant reply in the live session.</summary>
+    public event Action<ConversationTurnViewModel>? AssistantReplyCompleted;
+
+    /// <summary>Raised when the active conversation identity is about to change.</summary>
+    public event Action? SessionChanged;
 
     public TodoNoticeState TodoNotice => _todoNotice;
 
@@ -192,12 +228,14 @@ public sealed partial class ConversationViewModel : ObservableObject
             return;
         }
 
+        SessionChanged?.Invoke();
         _orchestrator.CancelCurrent();
         Turns.Clear();
         StopThinkingTimer();
         _pendingReasoning.Clear();
         ClearTodoProposals();
         ArchiveDrafts.Clear();
+        SessionContext.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
@@ -252,11 +290,13 @@ public sealed partial class ConversationViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(ActiveServantId)) return;
         try
         {
+            SessionChanged?.Invoke();
             _orchestrator.CancelCurrent();
             var messages = _orchestrator.LoadConversation(conversationId, ActiveServantId);
             Turns.Clear();
             ClearTodoProposals();
             ArchiveDrafts.Clear();
+            SessionContext.Clear();
             _activeConversationId = conversationId;
             foreach (var message in messages.Where(m => m.Role is ChatMessageRole.User or ChatMessageRole.Assistant))
             {
@@ -293,17 +333,21 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private async Task SendAsync()
     {
-        var text = InputText.Trim();
+        var draft = InputText;
+        var text = draft.Trim();
         if (!CanSend || string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
-        InputText = string.Empty;
-        await SendCoreAsync(text);
+        var completed = await SendCoreAsync(text);
+        if (completed && string.Equals(InputText, draft, StringComparison.Ordinal))
+        {
+            InputText = string.Empty;
+        }
     }
 
-    private async Task SendCoreAsync(string text)
+    private async Task<bool> SendCoreAsync(string text)
     {
         ErrorText = string.Empty;
         SetTodoNotice(string.Empty, TodoNoticeKind.None);
@@ -313,7 +357,11 @@ public sealed partial class ConversationViewModel : ObservableObject
         try
         {
             _lastUserMessage = text;
-            var result = await _orchestrator.SendAsync(ActiveServantId, text, CancellationToken.None);
+            var result = await _orchestrator.SendAsync(
+                ActiveServantId,
+                text,
+                CancellationToken.None,
+                SessionContext.ToRequestContext());
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
@@ -324,11 +372,14 @@ public sealed partial class ConversationViewModel : ObservableObject
             }
             else
             {
+                SessionContext.ClearTransient();
                 _configurationRequired = false;
                 OnPropertyChanged(nameof(IsConfigurationRequired));
                 OnPropertyChanged(nameof(IsConfigurationStateVisible));
                 OnPropertyChanged(nameof(IsEmptyStateVisible));
             }
+
+            return result.Status == ConversationSendStatus.Completed;
         }
         finally
         {
@@ -393,12 +444,14 @@ public sealed partial class ConversationViewModel : ObservableObject
             return;
         }
 
+        SessionChanged?.Invoke();
         _orchestrator.StartNewConversation(ActiveServantId);
         Turns.Clear();
         StopThinkingTimer();
         _pendingReasoning.Clear();
         ClearTodoProposals();
         ArchiveDrafts.Clear();
+        SessionContext.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         _configurationRequired = false;
@@ -533,6 +586,10 @@ public sealed partial class ConversationViewModel : ObservableObject
                 _pendingReasoning.Clear();
                 TryLoadTodoProposals(update.StructuredResponse);
                 ApplyTodoOutcome(update.TodoOutcome, update.TodoDetail, update.StructuredResponse);
+                if (completedTurn is { CanReadAloud: true })
+                {
+                    AssistantReplyCompleted?.Invoke(completedTurn);
+                }
                 break;
             case ConversationUpdateType.Cancelled:
                 RemoveStreamingTurns();

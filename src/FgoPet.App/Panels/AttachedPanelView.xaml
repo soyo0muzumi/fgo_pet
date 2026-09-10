@@ -1,167 +1,458 @@
-<UserControl x:Class="FgoPet.App.Panels.AttachedPanelView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore" xmlns:views="clr-namespace:FgoPet.App.Views" FontFamily="Segoe UI, Microsoft YaHei UI" MouseEnter="OnPointerEntered" MouseLeave="OnPointerLeft">
-  <UserControl.Resources>
-    <SolidColorBrush x:Key="Cyan" Color="#FF70E7F5"/><SolidColorBrush x:Key="Mag" Color="#FFD242E8"/><SolidColorBrush x:Key="Text" Color="#FFF0F5FF"/><SolidColorBrush x:Key="Muted" Color="#FF9FB2D8"/>
-    <Style x:Key="LinkButton" TargetType="Button"><Setter Property="Padding" Value="5,3"/><Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/></Style>
-    <Style x:Key="CompactLinkButton" TargetType="Button" BasedOn="{StaticResource LinkButton}"><Setter Property="Padding" Value="3,2"/><Setter Property="FontSize" Value="10"/></Style>
-    <Style x:Key="PresetButton" TargetType="Button"><Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="Background" Value="#990B1424"/><Setter Property="BorderBrush" Value="#FF38516C"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="5,7"/><Setter Property="Margin" Value="0,0,5,0"/><Setter Property="FontSize" Value="10"/><Setter Property="Cursor" Value="Hand"/></Style>
-    <Style x:Key="StepButton" TargetType="Button"><Setter Property="Width" Value="31"/><Setter Property="Background" Value="#FF142A3C"/><Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="17"/><Setter Property="Cursor" Value="Hand"/></Style>
-    <Style x:Key="StepTextBox" TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="1,0"/><Setter Property="BorderBrush" Value="#FF314C63"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="TextAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
-    <Style x:Key="PrimaryActionButton" TargetType="Button"><Setter Property="Background" Value="#2642DFF5"/><Setter Property="BorderBrush" Value="#CC42DFF5"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Padding" Value="13,8"/><Setter Property="Cursor" Value="Hand"/></Style>
-    <Style x:Key="DialogueIconButton" TargetType="Button">
-      <Setter Property="Width" Value="20"/><Setter Property="Height" Value="20"/><Setter Property="Padding" Value="4"/>
-      <Setter Property="Background" Value="#26101C2E"/><Setter Property="BorderBrush" Value="#FF38516C"/><Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-      <Setter Property="Template">
-        <Setter.Value><ControlTemplate TargetType="Button">
-          <Border x:Name="IconChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="IconChrome" Property="Background" Value="#4038516C"/><Setter TargetName="IconChrome" Property="BorderBrush" Value="{StaticResource Cyan}"/></Trigger>
-            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="IconChrome" Property="BorderBrush" Value="{StaticResource Cyan}"/><Setter TargetName="IconChrome" Property="BorderThickness" Value="2"/></Trigger>
-            <Trigger Property="IsPressed" Value="True"><Setter TargetName="IconChrome" Property="Background" Value="#6642DFF5"/></Trigger>
-            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="IconChrome" Property="Opacity" Value="0.38"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate></Setter.Value>
-      </Setter>
-    </Style>
-    <Style x:Key="DialogueSendIconButton" TargetType="Button" BasedOn="{StaticResource DialogueIconButton}">
-      <Setter Property="Foreground" Value="{StaticResource Cyan}"/><Setter Property="Background" Value="#2642DFF5"/><Setter Property="BorderBrush" Value="#CC42DFF5"/>
-      <Style.Triggers><DataTrigger Binding="{Binding Conversation.IsStreaming}" Value="True"><Setter Property="Foreground" Value="{StaticResource Mag}"/><Setter Property="Background" Value="#3320243B"/><Setter Property="BorderBrush" Value="#CCD242E8"/></DataTrigger></Style.Triggers>
-    </Style>
-    <Style x:Key="DialogueInputStyle" TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="#FF101C2E"/><Setter Property="BorderBrush" Value="#FF38516C"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CaretBrush" Value="{StaticResource Cyan}"/><Setter Property="SelectionBrush" Value="#6642DFF5"/><Setter Property="Padding" Value="9,7"/><Style.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Cyan}"/></Trigger></Style.Triggers></Style>
-    <Style x:Key="FieldError" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Mag}"/><Setter Property="FontSize" Value="9"/></Style>
-  </UserControl.Resources>
-  <Grid ClipToBounds="True" SnapsToDevicePixels="True">
-    <Border Background="#F217243B" BorderBrush="#FF42DFF5" BorderThickness="1.5"/>
-    <Grid Margin="12,8"><Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="PanelTitle" Text="CHALDEA LINK" Foreground="{StaticResource Cyan}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
-        <StackPanel x:Name="CompactActions" Grid.Column="1" Orientation="Horizontal"><Button x:Name="FocusButton" Content="专注" Click="OnFocusClick" Style="{StaticResource LinkButton}"/><Button x:Name="TodayButton" Content="今日" Click="OnTodayClick" Style="{StaticResource LinkButton}"/><Button x:Name="TodoButton" Content="TODO" Click="OnTodoClick" Style="{StaticResource LinkButton}"/><Grid><Button x:Name="DialogueButton" Content="对话" Click="OnDialogueClick" Style="{StaticResource LinkButton}"/><Border x:Name="DialogueUnreadBadge" Background="{StaticResource Mag}" CornerRadius="7" MinWidth="14" Height="14" Padding="3,0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-4,0" Visibility="Collapsed"><TextBlock Text="{Binding DialogueUnreadCount}" Foreground="#FF101C2E" FontSize="8" FontWeight="Bold" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding HasDialogueUnread}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style></Border></Grid></StackPanel>
-        <Grid Grid.ColumnSpan="2" Height="3" VerticalAlignment="Bottom" Background="#4438516C"><Border Width="72" HorizontalAlignment="Left" Background="{StaticResource Mag}"/></Grid>
-      </Grid>
-      <Grid Grid.Row="1" Margin="4,11,4,2">
-        <Grid x:Name="CompactMessage"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="LOCAL COMPANION" Foreground="{StaticResource Cyan}" FontSize="9"/><TextBlock Text="前辈，今天也请按自己的节奏来。" TextWrapping="Wrap" Foreground="{StaticResource Text}" FontSize="14" Margin="0,7,8,0"/></StackPanel><Border Grid.Column="1" BorderBrush="{StaticResource Mag}" BorderThickness="2,0,0,0" Padding="9,3,0,3" VerticalAlignment="Center"><TextBlock Text="READY&#x0a;本地待命" Foreground="{StaticResource Muted}" FontSize="9"/></Border>
-          <Border x:Name="CompactUnreadPill" Grid.ColumnSpan="2" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#3314243B" BorderBrush="{StaticResource Mag}" BorderThickness="1" CornerRadius="2" Padding="7,4" MaxWidth="200" Visibility="Collapsed"><TextBlock Text="{Binding DialogueUnreadPillText}" Foreground="{StaticResource Text}" FontSize="10" TextTrimming="CharacterEllipsis"/><Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding HasDialogueUnread}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style></Border>
-        </Grid>
-        <Grid x:Name="CompactTimer" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <Grid><TextBlock x:Name="CompactPhaseText" Text="{Binding PhaseText}" Foreground="{StaticResource Cyan}" FontSize="11"/><TextBlock x:Name="CompactCycleText" Text="{Binding CycleText}" Foreground="{StaticResource Muted}" FontSize="10" HorizontalAlignment="Right"/></Grid>
-          <TextBlock Grid.Row="1" Text="{Binding RemainingText}" Foreground="{StaticResource Text}" FontFamily="Consolas" FontSize="30" FontWeight="Bold" Margin="0,4,0,7"/>
-          <ProgressBar x:Name="TimerProgress" Grid.Row="2" Value="{Binding ProgressPercent}" Maximum="100" Height="6" Background="#FF293C51" Foreground="{StaticResource Cyan}"/>
-          <Grid Grid.Row="3" Margin="0,7,0,0"><TextBlock Text="{Binding TimerMetaText}" Foreground="{StaticResource Muted}" FontSize="9"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button x:Name="PauseResumeButton" Content="暂停" Click="OnPauseResumeClick" Style="{StaticResource LinkButton}"/><Button x:Name="StopTimerButton" Content="退出" Click="OnStopTimerClick" Style="{StaticResource LinkButton}" Foreground="#FFEF9BE9"/></StackPanel></Grid>
-        </Grid>
-        <ScrollViewer x:Name="FocusContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel>
-          <Grid Margin="0,0,0,9"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="FOCUS PROTOCOL / 专注方案" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/><Border Grid.Column="1" Height="1" Background="#9942DFF5" Margin="9,0,0,0" VerticalAlignment="Center"/></Grid>
-          <views:AgentCurrentTaskStrip DataContext="{Binding CurrentAgentTask}"/>
-          <Grid x:Name="PresetGrid" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Button x:Name="Preset25Button" Content="25 / 5&#x0a;4 轮" Click="OnPreset25Click" Style="{StaticResource PresetButton}"/><Button x:Name="Preset50Button" Grid.Column="1" Content="50 / 10&#x0a;2 轮" Click="OnPreset50Click" Style="{StaticResource PresetButton}"/><Button x:Name="CustomPresetButton" Grid.Column="2" Content="CUSTOM&#x0a;自定义" Click="OnCustomPresetClick" Style="{StaticResource PresetButton}" Margin="0"/></Grid>
-          <StackPanel x:Name="CustomPresetFields" Visibility="Collapsed">
-            <Grid Margin="0,0,0,7"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="65"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="专注时长" Foreground="{StaticResource Muted}" FontSize="10" VerticalAlignment="Center"/><Border Grid.Column="1" Height="34" BorderBrush="#FF42647D" BorderThickness="1"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="31"/><ColumnDefinition Width="*"/><ColumnDefinition Width="31"/></Grid.ColumnDefinitions><Button x:Name="CustomFocusMinusButton" Content="−" Click="OnCustomFocusMinusClick" Style="{StaticResource StepButton}"/><TextBox x:Name="CustomFocusMinutesBox" Grid.Column="1" Text="{Binding CustomFocusMinutesText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource StepTextBox}"/><Button x:Name="CustomFocusPlusButton" Grid.Column="2" Content="＋" Click="OnCustomFocusPlusClick" Style="{StaticResource StepButton}"/></Grid></Border><TextBlock Grid.Row="1" Grid.Column="1" Text="5–180 分钟 · 步进 5" Foreground="#FF6F87A6" FontSize="8" Margin="0,3,0,0"/></Grid><TextBlock Text="{Binding CustomFocusError}" Style="{StaticResource FieldError}"/>
-            <Grid Margin="0,3,0,7"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="65"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="休息时长" Foreground="{StaticResource Muted}" FontSize="10" VerticalAlignment="Center"/><Border Grid.Column="1" Height="34" BorderBrush="#FF42647D" BorderThickness="1"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="31"/><ColumnDefinition Width="*"/><ColumnDefinition Width="31"/></Grid.ColumnDefinitions><Button Content="−" Click="OnCustomBreakMinusClick" Style="{StaticResource StepButton}"/><TextBox x:Name="CustomBreakMinutesBox" Grid.Column="1" Text="{Binding CustomBreakMinutesText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource StepTextBox}"/><Button Grid.Column="2" Content="＋" Click="OnCustomBreakPlusClick" Style="{StaticResource StepButton}"/></Grid></Border><TextBlock Grid.Row="1" Grid.Column="1" Text="1–60 分钟 · 步进 5" Foreground="#FF6F87A6" FontSize="8" Margin="0,3,0,0"/></Grid><TextBlock Text="{Binding CustomBreakError}" Style="{StaticResource FieldError}"/>
-            <Grid Margin="0,3,0,7"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="65"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="循环轮次" Foreground="{StaticResource Muted}" FontSize="10" VerticalAlignment="Center"/><Border Grid.Column="1" Height="34" BorderBrush="#FF42647D" BorderThickness="1"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="31"/><ColumnDefinition Width="*"/><ColumnDefinition Width="31"/></Grid.ColumnDefinitions><Button Content="−" Click="OnCustomCyclesMinusClick" Style="{StaticResource StepButton}"/><TextBox x:Name="CustomCyclesBox" Grid.Column="1" Text="{Binding CustomCyclesText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource StepTextBox}"/><Button Grid.Column="2" Content="＋" Click="OnCustomCyclesPlusClick" Style="{StaticResource StepButton}"/></Grid></Border><TextBlock Grid.Row="1" Grid.Column="1" Text="1–12 轮 · 步进 1" Foreground="#FF6F87A6" FontSize="8" Margin="0,3,0,0"/></Grid><TextBlock Text="{Binding CustomCyclesError}" Style="{StaticResource FieldError}"/>
-          </StackPanel>
-          <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="预计总时长 · 最后一轮后无休息" Foreground="{StaticResource Muted}" FontSize="9"/><TextBlock Text="{Binding CustomTotalText}" Foreground="{StaticResource Text}" FontFamily="Consolas" FontSize="17" FontWeight="Bold"/></StackPanel><Button x:Name="StartFocusButton" Grid.Column="1" Content="开始专注" Click="OnStartFocusClick" IsEnabled="{Binding CanStartFocus}" Style="{StaticResource PrimaryActionButton}" ToolTip="{Binding StartFocusDisabledReason}" automation:AutomationProperties.HelpText="{Binding StartFocusDisabledReason}"/></Grid>
-        </StackPanel></ScrollViewer>
-        <ScrollViewer x:Name="TodayContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel><Grid Margin="0,0,0,8"><TextBlock Text="TODAY / 今日记录" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/><TextBlock Text="{Binding TodayEffectiveText}" Foreground="{StaticResource Mag}" FontSize="11" HorizontalAlignment="Right"/></Grid><TextBlock Foreground="{StaticResource Text}" FontSize="12"><Run Text="羁绊 Lv. "/><Run Text="{Binding BondLevelText}"/></TextBlock><TextBlock Text="{Binding BondRemainingText}" Foreground="{StaticResource Muted}" FontSize="9" Margin="0,2,0,8"/><ItemsControl ItemsSource="{Binding Today}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,0,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding TimeText}" Foreground="{StaticResource Muted}"/><TextBlock Grid.Column="1" Text="{Binding SummaryText}" Foreground="{StaticResource Text}" Margin="5,0"/><TextBlock Grid.Column="2" Text="{Binding BondLevelText}" Foreground="{StaticResource Mag}"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></ScrollViewer>
-        <ScrollViewer x:Name="TodoContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><views:ExpandedTodoView DataContext="{Binding TodoList}"/></ScrollViewer>
-        <ScrollViewer x:Name="DialogueContent" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Background="#F817243B">
-          <StackPanel>
-            <Border x:Name="DialogueViewport" Background="#F817243B" CornerRadius="3" Padding="4">
-            <StackPanel>
-            <Grid Margin="0,0,0,7">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="DIALOGUE / 对话" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold" />
-                <TextBlock Text="CHALDEA LINK · SERVANT CHANNEL" Foreground="#FF6F87A6" FontSize="7" Margin="0,1,0,0" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="6,0,0,0">
-                <Border x:Name="DialogueProviderBadge" Background="#2642DFF5" BorderBrush="#8842DFF5" BorderThickness="1" CornerRadius="2" Padding="4,1" MaxWidth="82">
-                  <TextBlock Text="{Binding Conversation.ProviderStatusText}" Foreground="{StaticResource Cyan}" FontSize="8" FontFamily="Consolas" TextTrimming="CharacterEllipsis"/>
-                </Border>
-                <Border x:Name="DialogueModelBadge" Margin="4,0,0,0" Background="#330B1424" BorderBrush="#FF38516C" BorderThickness="1" CornerRadius="2" Padding="4,1" MaxWidth="112">
-                  <TextBlock Text="{Binding Conversation.ModelStatusText}" Foreground="{StaticResource Muted}" FontSize="8" FontFamily="Consolas" TextTrimming="CharacterEllipsis"/>
-                </Border>
-              </StackPanel>
-            </Grid>
+<UserControl x:Class="FgoPet.App.Panels.AttachedPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             FontFamily="Segoe UI, Microsoft YaHei UI"
+             Foreground="{DynamicResource ShellTextBrush}"
+             UseLayoutRounding="True"
+             MouseEnter="OnPointerEntered"
+             MouseLeave="OnPointerLeft">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/Ui/Shell/ShellTokens.xaml" />
+            </ResourceDictionary.MergedDictionaries>
 
-            <StackPanel x:Name="DialogueEmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,26,0,10">
-              <TextBlock Text="等待你的第一句话" Foreground="{StaticResource Text}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-              <TextBlock Text="从者频道已就绪。输入一句话开始对话。" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,5,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
-            </StackPanel>
+            <StreamGeometry x:Key="PetChatIcon">M2,2.5 H14 V10.5 H7 L3.5,13.5 V10.5 H2 Z M5,5.5 H11 M5,7.8 H9</StreamGeometry>
+            <StreamGeometry x:Key="PetSpeechIcon">M2,6 H5 L9,2 V14 L5,10 H2 Z M11,5 C13,6.5 13,9.5 11,11 M13,3 C16,5.5 16,10.5 13,13</StreamGeometry>
+            <StreamGeometry x:Key="PetMoreIcon">M3,8 A1,1 0 1 0 3,8.1 M8,8 A1,1 0 1 0 8,8.1 M13,8 A1,1 0 1 0 13,8.1</StreamGeometry>
+            <StreamGeometry x:Key="PetSettingsIcon">M8,5.5 A2.5,2.5 0 1 0 8,10.5 A2.5,2.5 0 1 0 8,5.5 M8,1.5 V3 M8,13 V14.5 M1.5,8 H3 M13,8 H14.5 M3.4,3.4 L4.5,4.5 M11.5,11.5 L12.6,12.6 M12.6,3.4 L11.5,4.5 M4.5,11.5 L3.4,12.6</StreamGeometry>
+            <StreamGeometry x:Key="PetTaskIcon">M2,3 L4,5 L7,2 M9,4 H14 M2,9 L4,11 L7,8 M9,10 H14 M2,14 L4,16 L7,13 M9,15 H14</StreamGeometry>
+            <StreamGeometry x:Key="PetFocusIcon">M8,3 A5,5 0 1 0 8,13 A5,5 0 1 0 8,3 M8,5.5 V8 L10.5,9.5 M6,1.5 H10 M11.5,3 L12.5,2</StreamGeometry>
+            <StreamGeometry x:Key="PetPlayIcon">M5,3 L12,8 L5,13 Z</StreamGeometry>
+            <StreamGeometry x:Key="PetPauseIcon">M5,3 V13 M11,3 V13</StreamGeometry>
+            <StreamGeometry x:Key="PetStopIcon">M3.5,3.5 H12.5 V12.5 H3.5 Z</StreamGeometry>
+            <StreamGeometry x:Key="PetExitIcon">M8,1.5 V8 M4,3.5 A6,6 0 1 0 12,3.5</StreamGeometry>
 
-            <TextBlock x:Name="DialogueThinkingHint" Text="{Binding Conversation.ThinkingTimerText}" Foreground="{StaticResource Cyan}" FontSize="10" FontFamily="Consolas" Margin="0,0,0,5">
-              <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Conversation.IsThinking}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-            </TextBlock>
+            <DataTemplate x:Key="PetIconTemplate">
+                <Viewbox Width="16" Height="16" Stretch="Uniform">
+                    <Path Data="{Binding}"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                          StrokeThickness="1.5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"
+                          Fill="Transparent" />
+                </Viewbox>
+            </DataTemplate>
 
-            <Border x:Name="DialogueConfigurationCard" Background="#3314243B" BorderBrush="#88EF9DAF" BorderThickness="1" CornerRadius="2" Margin="0,0,0,7" Visibility="Collapsed">
-              <Border BorderBrush="#EF9DAF" BorderThickness="2,0,0,0" Padding="9,8">
-                <StackPanel>
-                  <TextBlock Text="尚未配置模型连接" Foreground="#FFEF9DAF" FontSize="11" FontWeight="Bold"/>
-                  <TextBlock Text="对话需要 OpenAI 格式的模型供应商。角色包与本地功能仍可离线使用。" Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                  <Button x:Name="DialogueSettingsButton" Content="去设置 · AI 模型与连接" Click="OnDialogueSettingsClick" Style="{StaticResource PrimaryActionButton}" HorizontalAlignment="Left" Padding="9,5"/>
-                </StackPanel>
-              </Border>
-            </Border>
+            <DataTemplate x:Key="PetSolidIconTemplate">
+                <Viewbox Width="16" Height="16" Stretch="Uniform">
+                    <Path Data="{Binding}"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
+                </Viewbox>
+            </DataTemplate>
 
-            <ItemsControl x:Name="DialogueMessageList" ItemsSource="{Binding Conversation.Turns}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <StackPanel Margin="0,0,0,7" HorizontalAlignment="{Binding Alignment}">
-                    <TextBlock Text="{Binding RoleLabel}" Foreground="{Binding RoleBrush}" FontSize="8" FontFamily="Consolas" />
-                    <Border BorderThickness="{Binding BubbleBorderThickness}" BorderBrush="{Binding BubbleBorderBrush}" CornerRadius="4" Padding="7,5" Background="{Binding BubbleBackground}" Margin="0,2,0,0">
-                      <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{StaticResource Text}" FontSize="12" LineHeight="18" LineStackingStrategy="BlockLineHeight" />
-                    </Border>
-                  </StackPanel>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <Style x:Key="PetEntryButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="9" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ShellWindowBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ShellLineBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ShellRaisedBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
-            <ItemsControl ItemsSource="{Binding Conversation.TodoProposals}" Margin="0,0,0,7">
-              <ItemsControl.ItemTemplate><DataTemplate><views:TodoProposalCard /></DataTemplate></ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <Style x:Key="PetFluentEntryButtonStyle" TargetType="Button" BasedOn="{StaticResource PetEntryButtonStyle}">
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="Padding" Value="7" />
+            </Style>
 
-            <ItemsControl ItemsSource="{Binding Conversation.ArchiveDrafts}" Margin="0,0,0,7">
-              <ItemsControl.ItemTemplate><DataTemplate><views:ArchiveDraftCard /></DataTemplate></ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <Style x:Key="PetDialAdjustButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="18" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
-            <TextBlock x:Name="DialogueErrorText" Text="{Binding Conversation.ErrorText}" Foreground="{StaticResource Mag}" TextWrapping="Wrap" Margin="0,0,0,5" />
+            <Style x:Key="PetFocusPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PetEntryButtonStyle}">
+                <Setter Property="Width" Value="70" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="Padding" Value="4" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellWindowBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
 
-            <StackPanel x:Name="DialogueComposer" Margin="0,2,0,0">
-              <TextBox x:Name="DialogueInputBox" Style="{StaticResource DialogueInputStyle}" Text="{Binding Conversation.InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="12000" MinHeight="40" VerticalScrollBarVisibility="Auto">
-                <TextBox.InputBindings>
-                  <KeyBinding Key="Enter" Command="{Binding Conversation.SendCommand}" />
-                </TextBox.InputBindings>
-              </TextBox>
-              <Grid Margin="0,5,0,0">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                  <Button x:Name="NewConversationButton" Content="新对话" Click="OnNewConversationClick" Style="{StaticResource CompactLinkButton}" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                  <Button x:Name="SendDialogueButton" IsEnabled="{Binding Conversation.CanSendOrStop}" Command="{Binding Conversation.SendOrStopCommand}" Style="{StaticResource DialogueSendIconButton}" ToolTip="{Binding Conversation.ActionLabel}" automation:AutomationProperties.Name="{Binding Conversation.ActionLabel}">
-                    <Grid>
-                      <Viewbox Width="10" Height="10">
-                        <Viewbox.Style><Style TargetType="Viewbox"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding Conversation.IsStreaming}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Viewbox.Style>
-                        <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="M 3,7 L 8,2 13,7 M 8,2 L 8,14"/>
-                      </Viewbox>
-                      <Viewbox Width="10" Height="10">
-                        <Viewbox.Style><Style TargetType="Viewbox"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Conversation.IsStreaming}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Viewbox.Style>
-                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="M 3,3 L 13,3 13,13 3,13 Z"/>
-                      </Viewbox>
+            <Style x:Key="PetDialChevronButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="24" />
+                <Setter Property="Height" Value="18" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PetDialStartButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="52" />
+                <Setter Property="Height" Value="52" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellWindowBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="26">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ShellRaisedBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="{x:Type ToolTip}">
+                <Setter Property="Placement" Value="Right" />
+                <Setter Property="HorizontalOffset" Value="8" />
+                <Setter Property="Padding" Value="8,5" />
+                <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ShellWindowBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource ShellLineBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="HasDropShadow" Value="False" />
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid ClipToBounds="True" SnapsToDevicePixels="True">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Border x:Name="CardSurface"
+                Grid.Column="1"
+                Margin="8,0,0,0"
+                VerticalAlignment="Top"
+                Background="{DynamicResource ShellPanelBackgroundBrush}"
+                BorderBrush="{DynamicResource ShellAccentBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Width="220"
+                HorizontalAlignment="Left"
+                Padding="6">
+            <Grid>
+                <TextBlock x:Name="PanelTitle" Text="桌宠" Visibility="Collapsed" />
+
+
+                <Grid x:Name="FocusSetupCard" Width="196" Height="196" Visibility="Collapsed">
+                    <Ellipse Fill="{DynamicResource ShellWindowBrush}"
+                             Stroke="{DynamicResource ShellAccentBrush}"
+                             StrokeThickness="3"
+                             Opacity="0.85" />
+                    <Ellipse Margin="8"
+                             Stroke="{DynamicResource ShellLineBrush}"
+                             StrokeThickness="4"
+                             Opacity="0.7" />
+                    <Grid Margin="16,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+                            <TextBlock Text="循环"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource ShellTextBrush}"
+                                       FontSize="11" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button Content="‹" Tag="CyclesDown" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                                <TextBlock Text="{Binding CustomCyclesText}"
+                                           MinWidth="24"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <Button Content="›" Tag="CyclesUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid Grid.Row="1" Margin="0,2,0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                                <TextBlock Text="专注"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           FontSize="11" />
+                                <Grid Width="62" Height="62" Margin="0,1,0,0">
+                                    <Ellipse Fill="{DynamicResource ShellPanelBackgroundBrush}"
+                                             Stroke="{DynamicResource ShellLineBrush}"
+                                             StrokeThickness="2" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <Button Content="⌃" Tag="FocusUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                                        <TextBlock Text="{Binding CustomFocusMinutesText}"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource ShellTextBrush}"
+                                                   FontSize="20"
+                                                   FontWeight="SemiBold" />
+                                        <Button Content="⌄" Tag="FocusDown" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                <TextBlock Text="休息"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           FontSize="11" />
+                                <Grid Width="62" Height="62" Margin="0,1,0,0">
+                                    <Ellipse Fill="{DynamicResource ShellPanelBackgroundBrush}"
+                                             Stroke="{DynamicResource ShellLineBrush}"
+                                             StrokeThickness="2" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <Button Content="⌃" Tag="BreakUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                                        <TextBlock Text="{Binding CustomBreakMinutesText}"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource ShellTextBrush}"
+                                                   FontSize="20"
+                                                   FontWeight="SemiBold" />
+                                        <Button Content="⌄" Tag="BreakDown" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+
+                        <Button x:Name="StartFocusButton"
+                                Grid.Row="2"
+                                Content="{StaticResource PetPlayIcon}"
+                                ContentTemplate="{StaticResource PetSolidIconTemplate}"
+                                Click="OnStartFocusClick"
+                                ToolTip="开始专注"
+                                automation:AutomationProperties.Name="开始专注"
+                                Style="{StaticResource PetDialStartButtonStyle}" />
                     </Grid>
-                  </Button>
-                </StackPanel>
-              </Grid>
+                </Grid>
+                <Grid x:Name="CompactTimer" Width="196" Height="196" Visibility="Collapsed">
+                    <Ellipse Fill="{DynamicResource ShellWindowBrush}"
+                             Stroke="{DynamicResource ShellLineBrush}"
+                             StrokeThickness="1" />
+                    <Ellipse Margin="5"
+                             Stroke="{DynamicResource ShellLineBrush}"
+                             StrokeThickness="5"
+                             Opacity="0.55" />
+                    <Path x:Name="FocusProgressArc"
+                          Width="186" Height="186"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Stroke="{DynamicResource ShellAccentBrush}"
+                          StrokeThickness="5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          Fill="Transparent" />
+                    <Grid Margin="14,14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <TextBlock x:Name="CompactPhaseText"
+                                       Text="{Binding PhaseText}"
+                                       Foreground="{DynamicResource ShellAccentBrush}"
+                                       FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock x:Name="CompactCycleText"
+                                       Text="{Binding CycleText}"
+                                       Foreground="{DynamicResource ShellMutedBrush}"
+                                       FontSize="12" HorizontalAlignment="Right" />
+                        </Grid>
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding RemainingText}"
+                                   Foreground="{DynamicResource ShellTextBrush}"
+                                   FontFamily="Consolas"
+                                   FontSize="26" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                            <Button x:Name="PauseResumeButton"
+                                    Content="{StaticResource PetPauseIcon}"
+                                    ContentTemplate="{StaticResource PetIconTemplate}"
+                                    ToolTip="暂停专注"
+                                    automation:AutomationProperties.Name="暂停专注"
+                                    Click="OnPauseResumeClick"
+                                    Style="{StaticResource PetEntryButtonStyle}" />
+                            <Button x:Name="StopTimerButton"
+                                    Content="{StaticResource PetStopIcon}"
+                                    ContentTemplate="{StaticResource PetIconTemplate}"
+                                    ToolTip="结束专注"
+                                    automation:AutomationProperties.Name="结束专注"
+                                    Click="OnStopTimerClick"
+                                    Style="{StaticResource PetEntryButtonStyle}"
+                                    Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Column="0" VerticalAlignment="Top">
+            <StackPanel x:Name="CompanionControlIsland" Orientation="Vertical" HorizontalAlignment="Left">
+                <Grid>
+                    <Button x:Name="ChatEntryButton"
+                            Content="{StaticResource PetChatIcon}"
+                            ContentTemplate="{StaticResource PetIconTemplate}"
+                            ToolTip="聊天"
+                            automation:AutomationProperties.Name="聊天"
+                            Click="OnDialogueClick"
+                            Style="{StaticResource PetEntryButtonStyle}" />
+                    <Border x:Name="DialogueUnreadBadge"
+                            Background="{DynamicResource ShellAccentBrush}"
+                            CornerRadius="7" MinWidth="14" Height="14" Padding="3,0"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0">
+                        <TextBlock Text="{Binding DialogueUnreadCount}"
+                                   Foreground="{DynamicResource ShellWindowBrush}"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasDialogueUnread}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+                </Grid>
+                <Button x:Name="SpeechEntryButton"
+                        Content="{StaticResource PetSpeechIcon}"
+                        ContentTemplate="{StaticResource PetIconTemplate}"
+                        ToolTip="朗读"
+                        automation:AutomationProperties.Name="朗读"
+                        Click="OnSpeechClick"
+                        Margin="0,8,0,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource PetEntryButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAutoReadEnabled}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button x:Name="MoreEntryButton"
+                        Content="{StaticResource PetMoreIcon}"
+                        ContentTemplate="{StaticResource PetIconTemplate}"
+                        ToolTip="更多"
+                        automation:AutomationProperties.Name="更多"
+                        Click="OnToggleQuickActions"
+                        Style="{StaticResource PetEntryButtonStyle}"
+                        Margin="0,8,0,0" />
             </StackPanel>
+
+            <StackPanel x:Name="CompactActions" Orientation="Vertical" Margin="0,8,0,0" Visibility="Collapsed">
+                <Button x:Name="SettingsEntryButton"
+                        Content="&#xE713;"
+                        ToolTip="设置"
+                        automation:AutomationProperties.Name="设置"
+                        Click="OnSettingsClick"
+                        Style="{StaticResource PetFluentEntryButtonStyle}" />
+                <Button x:Name="TasksEntryButton"
+                        Content="{StaticResource PetTaskIcon}"
+                        ContentTemplate="{StaticResource PetIconTemplate}"
+                        ToolTip="任务"
+                        automation:AutomationProperties.Name="任务"
+                        Click="OnTasksClick"
+                        Style="{StaticResource PetEntryButtonStyle}"
+                        Margin="0,8,0,0" />
+                <Button x:Name="FocusEntryButton"
+                        Content="&#xE823;"
+                        ToolTip="专注"
+                        automation:AutomationProperties.Name="专注"
+                        Click="OnFocusClick"
+                        Style="{StaticResource PetFluentEntryButtonStyle}"
+                        Margin="0,8,0,0" />
+                <Button x:Name="ExitEntryButton"
+                        Content="{StaticResource PetExitIcon}"
+                        ContentTemplate="{StaticResource PetIconTemplate}"
+                        ToolTip="退出"
+                        automation:AutomationProperties.Name="退出"
+                        Click="OnExitClick"
+                        Style="{StaticResource PetEntryButtonStyle}"
+                        Margin="0,8,0,0" />
             </StackPanel>
-            </Border>
-          </StackPanel>
-        </ScrollViewer>
-      </Grid>
-      <Viewbox x:Name="FocusFooterOrnament" Grid.Row="2" Height="18" Margin="0,5,0,0" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"><Canvas Width="300" Height="18"><Path Stroke="#A8B8945F" StrokeThickness="1" Data="M 2,13 L 50,13 L 58,9 L 112,9 L 119,13 L 181,13 L 188,9 L 242,9 L 250,13 L 298,13 M 136,13 A 14,14 0 0 1 164,13"/><Path Stroke="#8870E7F5" StrokeThickness="1" Data="M 150,0 L 150,18 M 138,13 L 138,9 M 162,13 L 162,9 M 126,13 L 126,10 M 174,13 L 174,10"/><Ellipse Canvas.Left="147" Canvas.Top="10" Width="6" Height="6" Stroke="#CCD242E8"/></Canvas></Viewbox>
-      <Viewbox x:Name="GeneralFooterOrnament" Grid.Row="2" Height="13" Margin="0,5,0,0" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"><Canvas Width="300" Height="13"><Path Stroke="#8870E7F5" StrokeThickness="1" Data="M 2,8 L 34,8 L 40,4 L 94,4 L 99,8 L 137,8 L 143,4 L 157,4 L 163,8 L 201,8 L 206,4 L 260,4 L 266,8 L 298,8"/><Path Stroke="#88B8945F" StrokeThickness="1" Data="M 2,11 L 71,11 M 229,11 L 298,11 M 147,3 L 150,0 L 153,3 L 150,6 Z"/></Canvas></Viewbox>
+        </StackPanel>
     </Grid>
-  </Grid>
 </UserControl>

@@ -26,6 +26,26 @@ public sealed record RelayRouteReceipt(
     string? TaskId = null,
     string? SourceInstance = null);
 
+public enum RelayStopResult
+{
+    Accepted,
+    AlreadyApplied,
+    Completed,
+    Unknown,
+    Offline,
+    Unsupported,
+    Unauthorized,
+    Disabled,
+    Backpressure,
+}
+
+public sealed record RelayStopReceipt(
+    RelayStopResult Result,
+    string StopRequestId,
+    string TaskId,
+    string? Error = null,
+    string? SourceInstance = null);
+
 public sealed record RelayOpenReceipt(AgentOpenTaskStatus Status, string? Error = null);
 
 public sealed record RelayMaintenanceResponse(
@@ -245,6 +265,80 @@ public sealed class RelayRouter
             return new RelayRouteReceipt(RelayRouteResult.Backpressure, request.DispatchRequestId, "relay_backpressure");
         }
         return new RelayRouteReceipt(RelayRouteResult.Accepted, request.DispatchRequestId, TaskId: request.DispatchRequestId, SourceInstance: grant.SourceInstance);
+        }
+    }
+
+    public RelayStopReceipt RouteStop(StopTaskRequest request, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_stateGate)
+        {
+            var grant = _registration.GetGrant(request.SourceType, request.SourceInstanceId)
+                ?? throw new UnauthorizedAccessException("The source is not registered.");
+            if (!string.Equals(request.SourceType, grant.SourceType, StringComparison.Ordinal)
+                || !string.Equals(request.SourceInstanceId, grant.SourceInstance, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("The stop source identity does not match the registered source.");
+            grant = _registration.Authenticate(grant.SourceType, grant.SourceInstance, grant.Credential, at);
+            AgentProtocolValidator.Validate(ProtocolEnvelope.Create(
+                "stop-" + request.StopRequestId, "stop_task", request));
+            var existing = _store.GetStopReceipt(request.StopRequestId);
+            if (existing is not null)
+            {
+                if (existing.SourceType.Length > 0 && !string.Equals(existing.SourceType, grant.SourceType, StringComparison.Ordinal)
+                    || existing.SourceInstance.Length > 0 && !string.Equals(existing.SourceInstance, grant.SourceInstance, StringComparison.Ordinal)
+                    || existing.TaskId.Length > 0 && !string.Equals(existing.TaskId, request.TaskId, StringComparison.Ordinal))
+                    throw new UnauthorizedAccessException("The stop request ID is already bound to a different task.");
+                return new RelayStopReceipt(RelayStopResult.AlreadyApplied, request.StopRequestId, request.TaskId,
+                    SourceInstance: grant.SourceInstance);
+            }
+            if (!_store.AcceptEvents || !grant.Enabled)
+                return new RelayStopReceipt(RelayStopResult.Disabled, request.StopRequestId, request.TaskId, "source_disabled", grant.SourceInstance);
+            var dispatch = _store.GetDispatchReceipt(request.DispatchRequestId);
+            if (dispatch is null)
+                return new RelayStopReceipt(RelayStopResult.Unknown, request.StopRequestId, request.TaskId, "task_unknown", grant.SourceInstance);
+            if (dispatch.SourceType.Length > 0 && !string.Equals(dispatch.SourceType, grant.SourceType, StringComparison.Ordinal)
+                || dispatch.SourceInstance.Length > 0 && !string.Equals(dispatch.SourceInstance, grant.SourceInstance, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("The stop task identity does not match the registered source.");
+            if (string.Equals(dispatch.Result, "revoked", StringComparison.Ordinal))
+                return new RelayStopReceipt(RelayStopResult.Unauthorized, request.StopRequestId, request.TaskId, "task_revoked", grant.SourceInstance);
+            try
+            {
+                if (!_store.TryEnqueueStop(new QueuedStopTask(grant.SourceType, grant.SourceInstance, request, at), out var race))
+                    return race is null
+                        ? new RelayStopReceipt(RelayStopResult.AlreadyApplied, request.StopRequestId, request.TaskId, SourceInstance: grant.SourceInstance)
+                        : new RelayStopReceipt(RelayStopResult.AlreadyApplied, request.StopRequestId, request.TaskId, SourceInstance: grant.SourceInstance);
+            }
+            catch (InvalidDataException error) when (error.Message is "relay_stop_queue_full" or "relay_stop_receipts_full")
+            {
+                return new RelayStopReceipt(RelayStopResult.Backpressure, request.StopRequestId, request.TaskId, "relay_backpressure", grant.SourceInstance);
+            }
+            return new RelayStopReceipt(RelayStopResult.Accepted, request.StopRequestId, request.TaskId, SourceInstance: grant.SourceInstance);
+        }
+    }
+
+    public IReadOnlyList<QueuedStopTask> DrainStopRequests(RegistrationGrant grant, DateTimeOffset at, int maxBytes = int.MaxValue, bool consume = false)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        lock (_stateGate)
+        {
+            var current = _registration.Authenticate(grant.SourceType, grant.SourceInstance, grant.Credential, at);
+            TouchAdapterOnline(current.SourceType, current.SourceInstance, at);
+            return _store.DrainStopRequests(current.SourceType, current.SourceInstance, maxBytes, consume);
+        }
+    }
+
+    public string AcknowledgeStopRequests(RegistrationGrant grant, StopAcknowledgementRequest request, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_stateGate)
+        {
+            var current = _registration.Authenticate(grant.SourceType, grant.SourceInstance, grant.Credential, at);
+            if (!string.Equals(request.SourceType, current.SourceType, StringComparison.Ordinal)
+                || !string.Equals(request.SourceInstanceId, current.SourceInstance, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("The stop acknowledgement identity does not match the registered adapter.");
+            TouchAdapterOnline(current.SourceType, current.SourceInstance, at);
+            return _store.AcknowledgeStopRequests(current.SourceType, current.SourceInstance, request.StopRequestIds);
         }
     }
 

@@ -2,7 +2,7 @@
 
 ## Ownership map
 
-Business modules: focus, dialogue, memory, todo, servant-packs, agent-integration, settings-privacy
+Business modules: focus, dialogue, memory, todo, servant-packs, agent-integration, settings-privacy, speech
 
 Application support: desktop-shell
 
@@ -15,6 +15,7 @@ Migration status:
 - `agent-integration` — Migrated. Production projects are under `modules/agent-integration/src/`; unit-test projects are under `modules/agent-integration/tests/`. Supporting Agent/archive code remains at its documented legacy paths.
 - `desktop-shell` — Planned. Current paths: `src/FgoPet.App/{Bootstrap,Lifetime,Main,Panels,Portraits,Runtime,Tray,Windowing}` and shell-only tests in `tests/FgoPet.App.Tests` and `tests/FgoPet.Windows.Tests`.
 - `dialogue` — Planned. Current paths: `src/FgoPet.Core/Dialogue`, `src/FgoPet.App/{Dialogue,Providers,Conversation}`, and `src/FgoPet.Infrastructure/{Dialogue,Providers}` with corresponding legacy tests.
+- `speech` — Migrated for v0.3. Production projects and unit-test projects are under `modules/speech/src/` and `modules/speech/tests/`; shared AppSettings persistence remains in the documented Core/Infrastructure boundary.
 - `focus` — Planned. Current paths: `src/FgoPet.Core/{Focus,Bond,Timeline}`, `src/FgoPet.App/Focus`, and `src/FgoPet.Infrastructure/{Focus,Bond,Timeline}` with corresponding legacy tests.
 - `memory` — Planned. Current paths: `src/FgoPet.Core/Memory`, `src/FgoPet.App/Memory`, `src/FgoPet.Infrastructure/Memory`, `ConversationSummaryService`, and memory-management pages/view models with corresponding legacy tests.
 - `servant-packs` — Planned. Current paths: `src/FgoPet.Core/{Packs,Portraits}`, `src/FgoPet.App/Servants`, role-pack/servant Settings pages, and `src/FgoPet.Infrastructure/Packs` with corresponding legacy tests.

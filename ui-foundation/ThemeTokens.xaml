@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Surface.App" Color="#FFF5F2EC" />
+    <SolidColorBrush x:Key="Surface.Content" Color="#FFFFFDF9" />
+    <SolidColorBrush x:Key="Surface.Subtle" Color="#FFEEE9E1" />
+    <SolidColorBrush x:Key="Surface.Hover" Color="#FFE7E2D9" />
+    <SolidColorBrush x:Key="Surface.Pressed" Color="#FFD9D2C6" />
+    <SolidColorBrush x:Key="Text.Primary" Color="#FF252B35" />
+    <SolidColorBrush x:Key="Text.Secondary" Color="#FF666271" />
+    <SolidColorBrush x:Key="Action.Primary" Color="#FF304860" />
+    <SolidColorBrush x:Key="Action.OnPrimary" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Relation" Color="#FFA58B57" />
+    <SolidColorBrush x:Key="State.Success" Color="#FF2F6B50" />
+    <SolidColorBrush x:Key="State.Pending" Color="#FF9A661D" />
+    <SolidColorBrush x:Key="State.Danger" Color="#FF9F3F48" />
+    <SolidColorBrush x:Key="Border.Decorative" Color="#FFD7D0C5" />
+    <SolidColorBrush x:Key="Border.Control" Color="#FF827A70" />
+    <SolidColorBrush x:Key="Focus.Ring" Color="#FF356B94" />
+    <FontFamily x:Key="Typography.Ui">Segoe UI Variable, Segoe UI, Microsoft YaHei UI</FontFamily>
+    <Thickness x:Key="Spacing.Page">24</Thickness>
+    <CornerRadius x:Key="Radius.Control">6</CornerRadius>
+    <CornerRadius x:Key="Radius.Content">10</CornerRadius>
+    <CornerRadius x:Key="Radius.Floating">14</CornerRadius>
+</ResourceDictionary>

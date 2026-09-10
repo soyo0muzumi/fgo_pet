@@ -158,7 +158,7 @@ public sealed class PortraitWindowIntegrationTests
     }
 
     [Fact]
-    public void Attached_panel_overlays_the_lower_portrait_and_respects_the_work_area_height_cap()
+    public void Desktop_pet_entry_prefers_the_outer_side_of_the_portrait_and_stays_compact()
     {
         StaRun(() =>
         {
@@ -178,12 +178,11 @@ public sealed class PortraitWindowIntegrationTests
                     new Dpi2(1, 1));
 
                 var portrait = window.PortraitScreenBounds;
-                Assert.True(bounds.Top >= portrait.Y + geometry.PanelAnchor.Y);
-                Assert.True(bounds.Left < portrait.Right && bounds.Right > portrait.X);
-                Assert.Equal(300, bounds.Width);
-                Assert.Equal(150, bounds.Height);
+                Assert.True(bounds.Right <= portrait.X || bounds.Left >= portrait.Right);
+                Assert.Equal(230, bounds.Width);
+                Assert.Equal(104, bounds.Height);
                 var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
-                Assert.Equal(150, host.Height);
+                Assert.Equal(104, host.Height);
             }
             finally
             {
@@ -211,7 +210,7 @@ public sealed class PortraitWindowIntegrationTests
 
                 var messageBounds = window.ArrangeOverlayPanel(
                     geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
-                Assert.Equal(150, messageBounds.Height);
+                Assert.Equal(104, messageBounds.Height);
 
                 // Starting the session swaps the compact body to the timer; the host
                 // must grow so the countdown and buttons are not clipped.
@@ -224,7 +223,7 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactTimerVisible);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                Assert.True(timerBounds.Height <= 170,
+                Assert.True(timerBounds.Height <= 188,
                     $"timer body height {timerBounds.Height} must stay within the compact budget");
 
                 // Stopping restores the message budget exactly.
@@ -238,6 +237,31 @@ public sealed class PortraitWindowIntegrationTests
             {
                 window.Close();
             }
+        });
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(1.5)]
+    [InlineData(2)]
+    public void Entry_shell_stays_outside_the_portrait_and_inside_screen_bounds_across_dpi(double scale)
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(model) { Left=800, Top=100 };
+            try
+            {
+                model.PortraitClick();
+                var dpi = new Dpi2(scale,scale);
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300,600,0,0,100,100,50,300),0.5,dpi);
+                var bounds = window.ArrangeOverlayPanel(geometry,new DeviceRect(0,0,(int)(1000*scale),(int)(800*scale)),dpi);
+                var portrait = window.PortraitScreenBounds;
+                Assert.True(bounds.Right <= portrait.X * scale || bounds.Left >= portrait.Right * scale);
+                Assert.True(bounds.Left >= 16*scale);
+                Assert.True(bounds.Bottom <= 800*scale-16*scale);
+            }
+            finally { window.Close(); }
         });
     }
 

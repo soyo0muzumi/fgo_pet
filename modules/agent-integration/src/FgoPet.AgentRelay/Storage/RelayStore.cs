@@ -59,6 +59,16 @@ public sealed record DispatchReceipt(
     string RequestDigest = "",
     bool Acknowledged = false);
 public sealed record QueuedDispatch(string SourceType, string SourceInstance, DispatchTaskRequest Request, DateTimeOffset EnqueuedAt);
+public sealed record QueuedStopTask(string SourceType, string SourceInstance, StopTaskRequest Request, DateTimeOffset EnqueuedAt);
+public sealed record StopReceipt(
+    string StopRequestId,
+    string Result,
+    DateTimeOffset CreatedAt,
+    string SourceType = "",
+    string SourceInstance = "",
+    string TaskId = "",
+    string DispatchRequestId = "",
+    bool Acknowledged = false);
 
 public sealed record RelayMaintenanceAcknowledgement(
     string Result,
@@ -75,6 +85,8 @@ public sealed class RelayStore
     public const int MaxRegistrationRecords = 512;
     public const int MaxQueuedInboundEvents = 512;
     public const int MaxQueuedDispatches = 512;
+    public const int MaxQueuedStopRequests = 512;
+    public const int MaxStopReceipts = 4096;
     public const int MaxDispatchReceipts = 4096;
     public const int MaxInboundEventKeys = 4096;
     public const int MaxInboundWatermarks = 4096;
@@ -92,6 +104,8 @@ public sealed class RelayStore
     private Dictionary<string, InboundEventWatermark> _inboundWatermarks;
     private Dictionary<string, DispatchReceipt> _dispatchReceipts;
     private Queue<QueuedDispatch> _outbound;
+    private Queue<QueuedStopTask> _stopRequests;
+    private Dictionary<string, StopReceipt> _stopReceipts;
     private Dictionary<string, RelayArchiveBatchState> _archiveBatches;
     private Dictionary<string, AgentArchiveTombstone> _archiveTombstones;
     private Dictionary<string, AdapterCapacityReport> _adapterCapacityReports;
@@ -108,17 +122,24 @@ public sealed class RelayStore
             || state.InboundEventWatermarks.Count > MaxInboundWatermarks
             || state.ArchiveBatches is null || state.ArchiveBatches.Count > MaxArchiveBatches
             || state.ArchiveTombstones is null || state.ArchiveTombstones.Count > MaxArchiveTombstones
-            || state.AdapterCapacityReports is null || state.AdapterCapacityReports.Count > MaxAdapterCapacityReports)
+             || state.AdapterCapacityReports is null || state.AdapterCapacityReports.Count > MaxAdapterCapacityReports
+             || state.StopRequests is null || state.StopRequests.Count > MaxQueuedStopRequests
+             || state.StopReceipts is null || state.StopReceipts.Count > MaxStopReceipts)
             throw new InvalidDataException("The relay state schema is invalid.");
 
         _pending = state.Pending.ToDictionary(item => item.RequestId, StringComparer.Ordinal);
         _grantsBySource = state.Grants.ToDictionary(item => SourceKey(item.SourceType, item.SourceInstance), StringComparer.Ordinal);
         _inbound = new Queue<QueuedInboundEvent>(state.Inbound ?? Array.Empty<QueuedInboundEvent>());
         _outbound = new Queue<QueuedDispatch>(state.Outbound ?? Array.Empty<QueuedDispatch>());
+        _stopRequests = new Queue<QueuedStopTask>(state.StopRequests);
         var persistedReceipts = state.DispatchReceipts ?? Array.Empty<DispatchReceipt>();
         if (persistedReceipts.Any(item => item is null || string.IsNullOrWhiteSpace(item.DispatchRequestId)))
             throw new InvalidDataException("The relay dispatch receipt state is invalid.");
         _dispatchReceipts = persistedReceipts.ToDictionary(item => item.DispatchRequestId, StringComparer.Ordinal);
+        var persistedStopReceipts = state.StopReceipts ?? Array.Empty<StopReceipt>();
+        if (persistedStopReceipts.Any(item => item is null || string.IsNullOrWhiteSpace(item.StopRequestId)))
+            throw new InvalidDataException("The relay stop receipt state is invalid.");
+        _stopReceipts = persistedStopReceipts.ToDictionary(item => item.StopRequestId, StringComparer.Ordinal);
         _archiveBatches = state.ArchiveBatches.ToDictionary(item => item.BatchId, StringComparer.Ordinal);
         _archiveTombstones = state.ArchiveTombstones.ToDictionary(item => ArchiveIdentityKey(item), StringComparer.Ordinal);
         _adapterCapacityReports = state.AdapterCapacityReports.ToDictionary(
@@ -157,6 +178,15 @@ public sealed class RelayStore
                 "dispatch-" + item.Request.DispatchRequestId, "dispatch_task", item.Request, item.EnqueuedAt));
         }
 
+        foreach (var item in _stopRequests)
+        {
+            if (item is null || item.Request is null
+                || !string.Equals(item.SourceType, item.Request.SourceType, StringComparison.Ordinal)
+                || !string.Equals(item.SourceInstance, item.Request.SourceInstanceId, StringComparison.Ordinal))
+                throw new InvalidDataException("The relay stop request state is invalid.");
+            AgentProtocolValidator.Validate(ProtocolEnvelope.Create(
+                "stop-" + item.Request.StopRequestId, "stop_task", item.Request, item.EnqueuedAt));
+        }
         if (_archiveBatches.Values.Any(item => item.Items is null or { Count: 0 or > 128 }
             || item.Items.Any(archiveItem => archiveItem is null)
             || item.Phase is not (RelayArchiveBatchPhase.AwaitingAdapterPrepare
@@ -585,6 +615,95 @@ public sealed class RelayStore
     public DispatchReceipt? GetDispatchReceipt(string requestId)
     {
         lock (_gate) return _dispatchReceipts.GetValueOrDefault(requestId);
+    }
+
+    public StopReceipt? GetStopReceipt(string stopRequestId)
+    {
+        lock (_gate) return _stopReceipts.GetValueOrDefault(stopRequestId);
+    }
+
+    /// <summary>Queues a stop request and records its idempotency receipt atomically.</summary>
+    public bool TryEnqueueStop(QueuedStopTask stop, out StopReceipt? existing)
+    {
+        ArgumentNullException.ThrowIfNull(stop);
+        lock (_gate)
+        {
+            if (_stopReceipts.TryGetValue(stop.Request.StopRequestId, out existing)) return false;
+            if (_stopRequests.Count >= MaxQueuedStopRequests) throw new InvalidDataException("relay_stop_queue_full");
+            if (_stopReceipts.Count >= MaxStopReceipts) throw new InvalidDataException("relay_stop_receipts_full");
+            var receipt = new StopReceipt(
+                stop.Request.StopRequestId, "accepted", stop.EnqueuedAt, stop.SourceType, stop.SourceInstance,
+                stop.Request.TaskId, stop.Request.DispatchRequestId);
+            var nextRequests = new Queue<QueuedStopTask>(_stopRequests);
+            nextRequests.Enqueue(stop);
+            var nextReceipts = new Dictionary<string, StopReceipt>(_stopReceipts, StringComparer.Ordinal)
+            {
+                [receipt.StopRequestId] = receipt,
+            };
+            CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts, _inboundKeys,
+                nextStopRequests: nextRequests, nextStopReceipts: nextReceipts);
+            existing = null;
+            return true;
+        }
+    }
+
+    public IReadOnlyList<QueuedStopTask> DrainStopRequests(
+        string sourceType, string sourceInstance, int maxBytes = int.MaxValue, bool consume = false)
+    {
+        lock (_gate)
+        {
+            var matching = new List<QueuedStopTask>();
+            var bytes = 0;
+            foreach (var item in _stopRequests.Where(item => item.SourceType == sourceType && item.SourceInstance == sourceInstance))
+            {
+                var size = System.Text.Encoding.UTF8.GetByteCount(ProtocolEnvelope.Create(
+                    "stop-" + item.Request.StopRequestId, "stop_task", item.Request, item.EnqueuedAt).ToJson()) + 1;
+                if (size > maxBytes) throw new InvalidDataException("queued_stop_too_large");
+                if (bytes + size > maxBytes) break;
+                matching.Add(item);
+                bytes += size;
+            }
+            if (matching.Count == 0 || !consume) return matching;
+            return RemoveStopRequestsUnsafe(matching);
+        }
+    }
+
+    public string AcknowledgeStopRequests(string sourceType, string sourceInstance, IEnumerable<string> requestIds)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceInstance);
+        ArgumentNullException.ThrowIfNull(requestIds);
+        lock (_gate)
+        {
+            var ids = requestIds.ToHashSet(StringComparer.Ordinal);
+            var matching = _stopRequests.Where(item => item.SourceType == sourceType
+                && item.SourceInstance == sourceInstance && ids.Contains(item.Request.StopRequestId)).ToArray();
+            if (matching.Length == 0) return "already_acknowledged";
+            var retained = _stopRequests.Where(item => !matching.Contains(item)).ToArray();
+            var nextReceipts = new Dictionary<string, StopReceipt>(_stopReceipts, StringComparer.Ordinal);
+            foreach (var item in matching)
+            {
+                if (nextReceipts.TryGetValue(item.Request.StopRequestId, out var receipt))
+                    nextReceipts[item.Request.StopRequestId] = receipt with { Result = "acknowledged", Acknowledged = true };
+            }
+            CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts, _inboundKeys,
+                nextStopRequests: new Queue<QueuedStopTask>(retained), nextStopReceipts: nextReceipts);
+            return "acknowledged";
+        }
+    }
+
+    private IReadOnlyList<QueuedStopTask> RemoveStopRequestsUnsafe(IReadOnlyList<QueuedStopTask> matching)
+    {
+        var retained = _stopRequests.Where(item => !matching.Contains(item)).ToArray();
+        var nextReceipts = new Dictionary<string, StopReceipt>(_stopReceipts, StringComparer.Ordinal);
+        foreach (var item in matching)
+        {
+            if (nextReceipts.TryGetValue(item.Request.StopRequestId, out var receipt))
+                nextReceipts[item.Request.StopRequestId] = receipt with { Result = "acknowledged", Acknowledged = true };
+        }
+        CommitRuntimeUnsafe(_pending, _grantsBySource, _inbound, _outbound, _dispatchReceipts, _inboundKeys,
+            nextStopRequests: new Queue<QueuedStopTask>(retained), nextStopReceipts: nextReceipts);
+        return matching;
     }
 
     public RelayArchiveBatchState? GetArchiveBatch(string batchId)
@@ -1050,7 +1169,9 @@ public sealed class RelayStore
         IEnumerable<InboundEventWatermark> inboundWatermarks,
         IReadOnlyDictionary<string, RelayArchiveBatchState>? archiveBatches = null,
         IReadOnlyDictionary<string, AgentArchiveTombstone>? archiveTombstones = null,
-        IReadOnlyDictionary<string, AdapterCapacityReport>? adapterCapacityReports = null) =>
+        IReadOnlyDictionary<string, AdapterCapacityReport>? adapterCapacityReports = null,
+        IEnumerable<QueuedStopTask>? stopRequests = null,
+        IReadOnlyDictionary<string, StopReceipt>? stopReceipts = null) =>
         new(2,
             pending.Values.OrderBy(item => item.RequestedAt).ToArray(),
             grants.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ToArray(),
@@ -1060,8 +1181,10 @@ public sealed class RelayStore
             archiveTombstones?.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ThenBy(item => item.TaskId, StringComparer.Ordinal).ToArray()
                 ?? _archiveTombstones.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance).ThenBy(item => item.TaskId, StringComparer.Ordinal).ToArray(),
             adapterCapacityReports?.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance, StringComparer.Ordinal).ToArray()
-                ?? _adapterCapacityReports.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance, StringComparer.Ordinal).ToArray());
-
+                ?? _adapterCapacityReports.Values.OrderBy(item => item.SourceType).ThenBy(item => item.SourceInstance, StringComparer.Ordinal).ToArray(),
+            stopRequests?.ToArray() ?? _stopRequests.ToArray(),
+            stopReceipts?.Values.OrderBy(item => item.CreatedAt).ThenBy(item => item.StopRequestId, StringComparer.Ordinal).ToArray()
+                ?? _stopReceipts.Values.OrderBy(item => item.CreatedAt).ThenBy(item => item.StopRequestId, StringComparer.Ordinal).ToArray());
     private static string SourceKey(string sourceType, string sourceInstance) => $"{sourceType}\u001f{sourceInstance}";
 
     private void CommitRuntimeUnsafe(
@@ -1074,9 +1197,13 @@ public sealed class RelayStore
         Dictionary<string, InboundEventWatermark>? nextInboundWatermarks = null,
         IReadOnlyDictionary<string, RelayArchiveBatchState>? nextArchiveBatches = null,
         IReadOnlyDictionary<string, AgentArchiveTombstone>? nextArchiveTombstones = null,
-        IReadOnlyDictionary<string, AdapterCapacityReport>? nextAdapterCapacityReports = null)
+        IReadOnlyDictionary<string, AdapterCapacityReport>? nextAdapterCapacityReports = null,
+        Queue<QueuedStopTask>? nextStopRequests = null,
+        Dictionary<string, StopReceipt>? nextStopReceipts = null)
     {
         nextInboundWatermarks ??= _inboundWatermarks;
+        nextStopRequests ??= _stopRequests;
+        nextStopReceipts ??= _stopReceipts;
         if (nextInbound.Count > MaxQueuedInboundEvents) throw new InvalidDataException("relay_inbound_queue_full");
         if (nextOutbound.Count > MaxQueuedDispatches) throw new InvalidDataException("relay_outbound_queue_full");
         if (nextReceipts.Count > MaxDispatchReceipts) throw new InvalidDataException("relay_dispatch_receipts_full");
@@ -1085,26 +1212,33 @@ public sealed class RelayStore
         var archiveBatches = nextArchiveBatches ?? _archiveBatches;
         var archiveTombstones = nextArchiveTombstones ?? _archiveTombstones;
         var adapterCapacityReports = nextAdapterCapacityReports ?? _adapterCapacityReports;
+        var stopRequests = nextStopRequests;
+        var stopReceipts = nextStopReceipts;
         if (archiveBatches.Count > MaxArchiveBatches)
             throw new InvalidDataException("relay_archive_batches_full");
         if (archiveTombstones.Count > MaxArchiveTombstones)
             throw new InvalidDataException("relay_archive_tombstones_full");
         if (adapterCapacityReports.Count > MaxAdapterCapacityReports)
             throw new InvalidDataException("relay_adapter_capacity_reports_full");
+        if (stopRequests.Count > MaxQueuedStopRequests)
+            throw new InvalidDataException("relay_stop_queue_full");
+        if (stopReceipts.Count > MaxStopReceipts)
+            throw new InvalidDataException("relay_stop_receipts_full");
         _stateStore.Save(BuildState(nextPending, nextGrants, nextInbound, nextOutbound, nextReceipts.Values,
-            nextInboundKeys, nextInboundWatermarks.Values, archiveBatches, archiveTombstones, adapterCapacityReports));
+            nextInboundKeys, nextInboundWatermarks.Values, archiveBatches, archiveTombstones, adapterCapacityReports, stopRequests, stopReceipts));
         _pending = nextPending;
         _grantsBySource = nextGrants;
         _inbound = nextInbound;
         _outbound = nextOutbound;
+        _stopRequests = stopRequests;
         _dispatchReceipts = nextReceipts;
+        _stopReceipts = stopReceipts;
         _inboundKeys = nextInboundKeys;
         _inboundWatermarks = nextInboundWatermarks;
         _archiveBatches = new Dictionary<string, RelayArchiveBatchState>(archiveBatches, StringComparer.Ordinal);
         _archiveTombstones = new Dictionary<string, AgentArchiveTombstone>(archiveTombstones, StringComparer.Ordinal);
         _adapterCapacityReports = new Dictionary<string, AdapterCapacityReport>(adapterCapacityReports, StringComparer.Ordinal);
     }
-
     private static string EventKey(AgentEventMessage message) =>
         EventKey(message.SourceType, message.SourceInstance, message.TaskId, message.Sequence);
 

@@ -1,3 +1,4 @@
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Services;
 using FgoPet.Core.Agents;
@@ -9,15 +10,19 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
 {
     private readonly AgentEventProjector _projector;
     private readonly AgentReconciliationService? _reconciliation;
+    private readonly IAgentGateway? _gateway;
+    private string? _stopRequestedIdentity;
 
     public AgentCurrentTaskViewModel(
         AgentEventProjector projector,
         TimeProvider time,
-        AgentReconciliationService? reconciliation = null)
+        AgentReconciliationService? reconciliation = null,
+        IAgentGateway? gateway = null)
     {
         _projector = projector ?? throw new ArgumentNullException(nameof(projector));
         _ = time ?? throw new ArgumentNullException(nameof(time));
         _reconciliation = reconciliation;
+        _gateway = gateway;
         _projector.EventApplied += OnProjectorEventApplied;
         _projector.ExecutionRestored += OnExecutionRestored;
         Refresh();
@@ -46,6 +51,15 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
     [ObservableProperty]
     private bool _wantsToTalk;
 
+    [ObservableProperty]
+    private bool _canRequestStop;
+
+    [ObservableProperty]
+    private bool _stopRequested;
+
+    [ObservableProperty]
+    private string _stopStatusText = string.Empty;
+
     public AgentTaskProjection? CurrentProjection { get; private set; }
     public event Action<AgentTaskProjection>? OpenTaskRequested;
     public event Action<AgentTaskProjection>? ArchiveRequested;
@@ -72,6 +86,47 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
         if (CurrentProjection is not null)
         {
             OpenTaskRequested?.Invoke(CurrentProjection);
+        }
+    }
+
+    public async Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
+    {
+        var projection = CurrentProjection;
+        if (_gateway is null || projection is null || !IsStopEligible(projection) || StopRequested)
+            return false;
+
+        AgentStopResult result;
+        try
+        {
+            result = await _gateway.StopAsync(new AgentStopRequest(
+                projection.SourceType,
+                projection.SourceInstance,
+                projection.TaskId,
+                projection.DispatchRequestId ?? projection.TaskId), cancellationToken);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            StopStatusText = "停止未确认 · 请打开任务核对";
+            return false;
+        }
+
+        switch (result.Status)
+        {
+            case AgentStopStatus.Requested:
+            case AgentStopStatus.AlreadyRequested:
+                _stopRequestedIdentity = projection.Identity;
+                StopRequested = true;
+                StopStatusText = "已请求停止 · 等待来源确认";
+                CanRequestStop = false;
+                return true;
+            case AgentStopStatus.Completed:
+                StopStatusText = "任务已结束 · 保留真实结果";
+                CanRequestStop = false;
+                return true;
+            default:
+                StopStatusText = "停止未确认 · 请打开任务核对";
+                CanRequestStop = false;
+                return false;
         }
     }
 
@@ -131,6 +186,23 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
         AttentionText = OutcomeUnknown
             ? "待核对 · 点击打开任务；不会自动再次派发"
             : attention is null ? string.Empty : "需要你的确认 · 点击打开任务";
+        var currentIdentity = CurrentProjection?.Identity;
+        if (CurrentProjection is null || CurrentProjection.Status == AgentExecutionStatus.DispatchOutcomeUnknown)
+        {
+            _stopRequestedIdentity = null;
+            StopRequested = false;
+            StopStatusText = string.Empty;
+        }
+        else if (!string.Equals(_stopRequestedIdentity, currentIdentity, StringComparison.Ordinal))
+        {
+            StopRequested = false;
+            StopStatusText = string.Empty;
+        }
+
+        CanRequestStop = _gateway is not null
+            && CurrentProjection is not null
+            && IsStopEligible(CurrentProjection)
+            && !StopRequested;
         OnPropertyChanged(nameof(CurrentProjection));
     }
 
@@ -150,4 +222,9 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
     }
 
     private void OnExecutionRestored(AgentExecution execution) => Refresh();
+
+    private static bool IsStopEligible(AgentTaskProjection projection) =>
+        projection.Status is AgentExecutionStatus.Dispatching
+            or AgentExecutionStatus.Active
+            or AgentExecutionStatus.Attention;
 }

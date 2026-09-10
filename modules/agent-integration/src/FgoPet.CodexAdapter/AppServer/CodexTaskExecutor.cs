@@ -33,6 +33,12 @@ public sealed class CodexTaskExecutor : ICodexTaskExecutor
         string directory;
         try
         {
+            if (request.TargetContextVersion is not null
+                && !string.Equals(request.TargetContextVersion, _targets.GetContextVersion(request.TargetId), StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("target_context_changed");
+            }
+
             directory = _targets.Resolve(request.TargetId); // Validate before launching anything.
             _diagnostics.Record("target.resolve", "ok", dispatchRequestId: request.DispatchRequestId);
         }

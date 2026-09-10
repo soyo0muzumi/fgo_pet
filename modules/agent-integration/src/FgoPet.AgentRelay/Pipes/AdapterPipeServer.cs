@@ -242,8 +242,10 @@ public sealed class AdapterPipeServer
         {
             var includeDispatches = envelope.Payload.TryGetProperty("include_dispatches", out var value)
                 && value.ValueKind == JsonValueKind.True;
+            var includeStopRequests = envelope.Payload.TryGetProperty("include_stop_requests", out var includeStops)
+                && includeStops.ValueKind == JsonValueKind.True;
             var dispatches = includeDispatches
-                ? _router.DrainOutbound(grant, at, JsonLinePipeClient.MaxFrameBytes - 4096, consume)
+                ? _router.DrainOutbound(grant, at, JsonLinePipeClient.MaxFrameBytes - 8192, consume)
                     .Select(item => ProtocolEnvelope.Create(
                         "dispatch-" + item.Request.DispatchRequestId,
                         "dispatch_task",
@@ -251,9 +253,24 @@ public sealed class AdapterPipeServer
                         item.EnqueuedAt))
                     .ToArray()
                 : Array.Empty<ProtocolEnvelope>();
+            var stopRequests = includeStopRequests
+                ? _router.DrainStopRequests(grant, at, JsonLinePipeClient.MaxFrameBytes - 8192, consume)
+                    .Select(item => ProtocolEnvelope.Create(
+                        "stop-" + item.Request.StopRequestId,
+                        "stop_task",
+                        item.Request,
+                        item.EnqueuedAt))
+                    .ToArray()
+                : Array.Empty<ProtocolEnvelope>();
             var allowed = envelope.Payload.TryGetProperty("target_id", out var target) && target.ValueKind == JsonValueKind.String
                 && _router.IsDispatchAllowed(grant, target.GetString()!, at);
-            return Task.FromResult(Response(envelope.MessageId, "status_check", new { result = "status", dispatches, dispatch_allowed = allowed }).ToJson());
+            return Task.FromResult(Response(envelope.MessageId, "status_check", new
+            {
+                result = "status",
+                dispatches,
+                stop_requests = stopRequests,
+                dispatch_allowed = allowed,
+            }).ToJson());
         }
 
         if (string.Equals(envelope.MessageType, "maintenance_sync", StringComparison.Ordinal))
@@ -300,8 +317,15 @@ public sealed class AdapterPipeServer
             return Task.FromResult(Response(envelope.MessageId, "dispatch_ack", new { result }).ToJson());
         }
 
+        if (string.Equals(envelope.MessageType, "stop_ack", StringComparison.Ordinal))
+        {
+            var request = envelope.DeserializePayload<StopAcknowledgementRequest>();
+            var result = _router.AcknowledgeStopRequests(grant, request, at);
+            return Task.FromResult(Response(envelope.MessageId, "stop_ack", new { result }).ToJson());
+        }
+
         if (!string.Equals(envelope.MessageType, "agent_event", StringComparison.Ordinal))
-            throw new AgentProtocolValidationException("Adapter pipe accepts agent_event and status_check messages only.");
+            throw new AgentProtocolValidationException("Adapter pipe accepts agent_event, status_check and stop_ack messages only.");
 
         var receipt = _router.RouteAdapterEvent(grant, envelope, at);
         return Task.FromResult(Response(envelope.MessageId, "agent_event", new

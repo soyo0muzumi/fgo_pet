@@ -1,16 +1,11 @@
 namespace FgoPet.Infrastructure.Secrets;
 
-public interface ICredentialStore
+/// <summary>Compatibility namespace for the Windows Credential Manager adapter.</summary>
+public interface ICredentialStore : FgoPet.Core.Secrets.ICredentialStore
 {
-    Task SaveAsync(string target, string secret, CancellationToken cancellationToken);
-
-    Task<bool> ExistsAsync(string target, CancellationToken cancellationToken);
-
-    Task DeleteAsync(string target, CancellationToken cancellationToken);
 }
 
-/// <summary>Internal provider-facing read capability, never injected into UI view models.</summary>
-public interface ICredentialReader
+/// <summary>Compatibility namespace for provider-facing protected reads.</summary>
+public interface ICredentialReader : FgoPet.Core.Secrets.ICredentialReader
 {
-    Task<string?> ReadAsync(string target, CancellationToken cancellationToken);
 }

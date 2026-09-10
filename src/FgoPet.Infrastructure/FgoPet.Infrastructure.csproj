@@ -12,5 +12,6 @@
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
+    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -1,12 +1,14 @@
 using System.IO;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Services;
+using FgoPet.App.Speech;
 using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Core.Todo;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
@@ -107,6 +109,82 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Equal("安排好了。", persisted.Single(message => message.Role == ChatMessageRole.Assistant).Text);
     }
 
+    [Fact]
+    public async Task Completed_new_reply_is_auto_read_when_enabled()
+    {
+        var settings = new RecordingSettings();
+        settings.Save(AppSettings.Defaults with
+        {
+            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
+            SpeechConnection = new SpeechConnectionSettings
+            {
+                Enabled = true,
+                Provider = SpeechProviderKind.GptSoVits,
+                AutoReadEnabled = true,
+            },
+        });
+        var synthesizer = new RecordingSpeechSynthesizer();
+        var player = new RecordingSpeechPlayer();
+        using var synthesis = new SpeechSynthesisCoordinator(synthesizer);
+        using var playback = new SpeechPlaybackCoordinator(synthesis, player, settings);
+        var conversation = new ConversationViewModel(
+            CreateOrchestrator(
+                new FakeProvider([new ChatStreamChunk("朗读这句", IsComplete: true)]),
+                settings: settings),
+            settings);
+        var dialogue = new DialogueWindowViewModel(conversation, speech: playback);
+        dialogue.NotifyActivated();
+        conversation.SetActiveServant("800100");
+        conversation.InputText = "请回复";
+
+        await conversation.SendCommand.ExecuteAsync(null);
+        await player.Played.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("朗读这句", synthesizer.LastText);
+    }
+    [Fact]
+    public async Task Auto_read_is_blocked_when_do_not_disturb_enabled()
+    {
+        var settings = new RecordingSettings();
+        settings.Save(AppSettings.Defaults with
+        {
+            SpeechConnection = new SpeechConnectionSettings
+            {
+                Enabled = true,
+                Provider = SpeechProviderKind.GptSoVits,
+                AutoReadEnabled = true,
+                DoNotDisturb = true,
+            },
+        });
+        var synthesizer = new RecordingSpeechSynthesizer();
+        using var synthesis = new SpeechSynthesisCoordinator(synthesizer);
+        using var playback = new SpeechPlaybackCoordinator(synthesis, new RecordingSpeechPlayer(), settings);
+
+        var result = await playback.PlayConfiguredAsync("不应自动朗读。", autoRead: true);
+
+        Assert.False(result.Completed);
+        Assert.Equal("免打扰已开启。", result.SafeError);
+        Assert.Null(synthesizer.LastText);
+    }
+    [Fact]
+    public async Task Manual_reading_exposes_configuration_recovery_on_the_message()
+    {
+        var settings = new RecordingSettings();
+        using var synthesis = new SpeechSynthesisCoordinator(new RecordingSpeechSynthesizer());
+        using var playback = new SpeechPlaybackCoordinator(synthesis, new RecordingSpeechPlayer(), settings);
+        var viewModel = new DialogueWindowViewModel(
+            new ConversationViewModel(CreateOrchestrator(new FakeProvider([]), settings: settings), settings),
+            speech: playback);
+        var turn = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, "请先配置朗读。");
+
+        var result = await viewModel.ReadAloudAsync(turn);
+
+        Assert.NotNull(result);
+        Assert.False(result!.Completed);
+        Assert.True(turn.SpeechNeedsConfiguration);
+        Assert.Equal("去朗读设置", turn.SpeechActionText);
+        Assert.Contains("朗读设置", turn.SpeechStatusText, StringComparison.Ordinal);
+    }
     [Fact]
     public async Task Conversation_view_model_exposes_bounded_turns_and_send_state()
     {
@@ -597,5 +675,42 @@ public sealed class ConversationOrchestratorTests : IDisposable
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
         public void Delete(string id) { }
         public void ClearAgentTodoData() { }
+    }
+    private sealed class RecordingSpeechSynthesizer : ISpeechSynthesizer
+    {
+        public SpeechProviderKind Provider => SpeechProviderKind.GptSoVits;
+        public string? LastText { get; private set; }
+
+        public Task<SpeechSynthesisResult> SynthesizeAsync(
+            SpeechSynthesisRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            LastText = request.Text;
+            return Task.FromResult(new SpeechSynthesisResult([
+                (byte)'R', (byte)'I', (byte)'F', (byte)'F', 36, 0, 0, 0,
+                (byte)'W', (byte)'A', (byte)'V', (byte)'E']));
+        }
+    }
+
+    private sealed class RecordingSpeechPlayer : ISpeechAudioPlayer
+    {
+        public TaskCompletionSource<bool> Played { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task PlayAsync(
+            SpeechSynthesisResult audio,
+            SpeechPlaybackOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            Played.TrySetResult(true);
+            return Task.CompletedTask;
+        }
+
+        public void Stop()
+        {
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

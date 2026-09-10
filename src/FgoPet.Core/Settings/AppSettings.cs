@@ -1,5 +1,6 @@
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Agents;
+using FgoPet.Core.Speech;
 
 namespace FgoPet.Core.Settings;
 
@@ -32,6 +33,8 @@ public sealed record AppSettings(
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> PackageSettings { get; init; } = EmptyPackageSettings;
 
     public AgentConnectionSettings AgentConnection { get; init; } = AgentConnectionSettings.Defaults;
+
+    public SpeechConnectionSettings SpeechConnection { get; init; } = SpeechConnectionSettings.Defaults;
 
     public static AppSettings Defaults { get; } = new(
         Selection: null,

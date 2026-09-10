@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-Own the Windows desktop shell, application lifetime, windows, tray, attached-panel container, page navigation, portrait host, and composition root. The composition root assembles the feature modules.
+Own the Windows desktop shell, application lifetime, windows, tray, attached-panel container, page navigation, portrait host, and composition root. DialogueWindow is the unique chat/settings surface and PortraitWindow remains the desktop pet; the composition root assembles the feature modules without parallel window shells.
 
 ## Non-responsibilities
 

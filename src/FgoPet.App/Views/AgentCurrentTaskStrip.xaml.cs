@@ -12,6 +12,12 @@ public partial class AgentCurrentTaskStrip : UserControl
     private void OnOpenTaskClick(object sender, RoutedEventArgs e) =>
         (DataContext as AgentCurrentTaskViewModel)?.OpenCurrentTask();
 
+    private async void OnStopClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is AgentCurrentTaskViewModel viewModel)
+            await viewModel.RequestStopAsync();
+    }
+
     private async void OnReconcileClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not AgentCurrentTaskViewModel viewModel || !viewModel.OutcomeUnknown)

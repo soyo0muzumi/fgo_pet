@@ -8,13 +8,37 @@ using FgoPet.Infrastructure.Packs;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Input;
 
 namespace FgoPet.Windows.Tests.Dialogue;
 
 [Trait("Category", "WindowsIntegration")]
 public sealed class DialogueWindowIntegrationTests
 {
+    [Fact]
+    public void More_menu_groups_settings_by_user_goal()
+    {
+        StaRun(() =>
+        {
+            var settings = new FgoPet.App.Settings.SettingsViewModel();
+            var window = new DialogueWindow(CreateViewModel(), settingsNavigation: settings);
+            try
+            {
+                var more = Assert.IsType<Button>(FindField(window, "MoreButton"));
+                more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var menu = Assert.IsType<ContextMenu>(window.LastMoreMenu);
+                var headers = menu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString()).ToArray();
+                Assert.Equal(settings.NavigationGroups.Select(group => group.Label), headers);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     [Fact]
     public void Close_hides_instead_of_closing_so_the_window_reuses_the_session()
     {
@@ -177,7 +201,209 @@ public sealed class DialogueWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void Dialogue_input_binds_enter_to_send_and_keeps_shift_enter_for_newline()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
+                var binding = Assert.Single(input.InputBindings.OfType<KeyBinding>());
+                Assert.Equal(Key.Enter, binding.Key);
+                Assert.Equal(ModifierKeys.None, binding.Modifiers);
+                Assert.Equal("Composer.SendOrStopCommand", BindingOperations.GetBinding(binding, InputBinding.CommandProperty)?.Path.Path);
+                Assert.True(input.AcceptsReturn);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
     private static DialogueWindow CreateWindow() => new(CreateViewModel());
+
+    [Fact]
+    public void Reasoning_toggle_keeps_a_caption_when_the_provider_has_no_summary()
+    {
+        StaRun(() =>
+        {
+            var vm=CreateViewModel();
+            var window=new DialogueWindow(vm);
+            try
+            {
+                var turn=new ConversationTurnViewModel("reasoning",ChatMessageRole.Assistant,"回答");
+                turn.AppendReasoning("测试供应商返回的思考片段");
+                turn.IsReasoningExpanded=false;
+                vm.Conversation.Turns.Add(turn);
+                window.Show();
+                window.Dispatcher.Invoke(() => {},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                var toggle=FindVisualChildren<System.Windows.Controls.Primitives.ToggleButton>(window).Single(button => button.Name=="ReasoningToggle");
+                Assert.True(toggle.IsVisible);
+                Assert.Contains(FindVisualChildren<TextBlock>(toggle),text => text.Text=="思考");
+                toggle.IsChecked=true;
+                window.UpdateLayout();
+                Assert.True(turn.IsReasoningExpanded);
+                Assert.True(FindVisualChildren<TextBlock>(window).Single(text => text.Text=="测试供应商返回的思考片段").IsVisible);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Settings_request_is_forwarded_without_replacing_chat_content()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var window = new DialogueWindow(vm);
+            FgoPet.App.Settings.SettingsSection? requested = null;
+            vm.SettingsRequested += section => requested = section;
+            try
+            {
+                vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.Personalization);
+
+                Assert.Equal(FgoPet.App.Settings.SettingsSection.Personalization, requested);
+                Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ConversationPage")).Visibility);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(FindField(window, "ContextPage")).Visibility);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Legacy_settings_targets_are_forwarded_without_entering_dialogue_context()
+    {
+        var vm = CreateViewModel();
+        FgoPet.App.Settings.SettingsSection? requested = null;
+        vm.SettingsRequested += section => requested = section;
+
+        vm.NavigateTo(MainNavigationTarget.Servant);
+        Assert.Equal(FgoPet.App.Settings.SettingsSection.RolePackages, requested);
+        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+
+        vm.NavigateTo(MainNavigationTarget.MemoryReview);
+        Assert.Equal(FgoPet.App.Settings.SettingsSection.ConversationMemory, requested);
+        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+
+        vm.NavigateTo(MainNavigationTarget.AgentReconciliation);
+        Assert.Equal(FgoPet.App.Settings.SettingsSection.AgentConnection, requested);
+        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+
+        vm.NavigateTo(MainNavigationTarget.TodoDetail, selectedId: "todo-1");
+        Assert.Equal(MainNavigationTarget.Schedule, vm.CurrentTarget);
+    }
+
+    [Fact]
+    public void Navigation_replaces_chat_surface_and_preserves_the_draft()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var window = new DialogueWindow(vm);
+            try
+            {
+                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
+                input.Text = "尚未发送的草稿";
+                vm.NavigateTo(MainNavigationTarget.Schedule);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ConversationPage")).Visibility);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ContextPage")).Visibility);
+                Assert.Equal(300, Assert.IsType<Grid>(FindField(window, "ContextPage")).Width);
+                vm.NavigateTo(MainNavigationTarget.Companion);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ConversationPage")).Visibility);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(FindField(window, "ContextPage")).Visibility);
+                Assert.Equal("尚未发送的草稿", input.Text);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Configuration_request_stays_in_chat_and_preserves_draft()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var window = new DialogueWindow(vm);
+            FgoPet.App.Settings.SettingsSection? requested = null;
+            vm.SettingsRequested += section => requested = section;
+            try
+            {
+                window.Show();
+                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
+                input.Text = "打开设置后的草稿";
+
+                vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.ModelConnection);
+                window.UpdateLayout();
+
+                Assert.Equal(FgoPet.App.Settings.SettingsSection.ModelConnection, requested);
+                Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+                Assert.Equal("打开设置后的草稿", input.Text);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Settings_request_does_not_add_dialogue_navigation_history()
+    {
+        var vm = CreateViewModel();
+
+        vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.ModelConnection);
+
+        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
+        Assert.False(vm.NavigateBack());
+    }
+
+    [Fact]
+    public void Portrait_treatment_reduces_at_narrow_and_constrained_widths()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                window.Show();
+                var avatar = Assert.IsType<System.Windows.Controls.Image>(FindField(window, "ServantAvatar"));
+
+                window.Width = 800;
+                window.UpdateLayout();
+                Assert.Equal(24, avatar.Width);
+
+                window.Width = 640;
+                window.UpdateLayout();
+                Assert.Equal(20, avatar.Width);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Narrow_history_overlays_without_compressing_the_conversation()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                window.Width = 640;
+                window.Show();
+                var button = Assert.IsType<Button>(FindField(window, "HistoryDrawerButton"));
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+                var pane = Assert.IsType<Border>(FindField(window, "HistoryPane"));
+                Assert.Equal(Visibility.Visible, pane.Visibility);
+                Assert.Equal(2, Grid.GetColumnSpan(pane));
+                Assert.Equal(0, Assert.IsType<ColumnDefinition>(FindField(window, "SidebarColumn")).ActualWidth);
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(Visibility.Collapsed, pane.Visibility);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
 
     private static DialogueWindowViewModel CreateViewModel()
     {
@@ -226,6 +452,13 @@ public sealed class DialogueWindowIntegrationTests
         public void Save(FgoPet.Core.Settings.AppSettings settings) { }
     }
 
+    private sealed class TestCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader
+    {
+        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task DeleteAsync(string target, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+    }
     private sealed class ThrowingProviderResolver : IChatProviderResolver
     {
         public IChatProvider Resolve() =>

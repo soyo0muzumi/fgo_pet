@@ -12,6 +12,7 @@ public interface IDesktopAppUi
 {
     void InitializeTray();
     void ShowLibrary(string? offeredPackPath = null);
+    void ShowFirstStartChat();
     void ShowPortrait();
 }
 
@@ -112,10 +113,15 @@ public sealed class DesktopAppShell : IAppShell
 
         if (_activation is not null)
         {
+            var firstStartForActivation = _settings.Load().Selection is null;
             var restored = await _activation.RestoreAsync(cancellationToken).ConfigureAwait(true);
             if (restored.Succeeded)
             {
                 _ui.ShowPortrait();
+                if (firstStartForActivation)
+                {
+                    _ui.ShowFirstStartChat();
+                }
             }
             else
             {
@@ -126,6 +132,7 @@ public sealed class DesktopAppShell : IAppShell
         }
 
         var requested = _settings.Load().Selection;
+        var firstStart = requested is null;
         var location = await _repository.ResolveStartupSelectionAsync(requested, cancellationToken);
         if (location is null)
         {
@@ -151,6 +158,10 @@ public sealed class DesktopAppShell : IAppShell
 
         // 4. Portrait last.
         _ui.ShowPortrait();
+        if (firstStart)
+        {
+            _ui.ShowFirstStartChat();
+        }
     }
 
     private async Task StartAgentRuntimeAsync(bool enabled)

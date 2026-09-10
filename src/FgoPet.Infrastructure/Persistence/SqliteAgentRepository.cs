@@ -23,8 +23,8 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.CommandText = """
             INSERT INTO agent_executions(
               execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
-              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id)
-            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended, $previous, $remote)
+              status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id, conversation_id, message_id, target_id, target_context_version, project_snapshot_id)
+            VALUES($id, $todo, $source, $instance, $task, $request, $status, $started, $updated, $ended, $previous, $remote, $conversation, $message, $target, $targetVersion, $snapshot)
             ON CONFLICT(execution_id) DO UPDATE SET
               todo_id=excluded.todo_id,
               source_type=excluded.source_type,
@@ -36,7 +36,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
               updated_at_utc=excluded.updated_at_utc,
               ended_at_utc=excluded.ended_at_utc,
               previous_execution_id=excluded.previous_execution_id,
-              remote_task_id=excluded.remote_task_id
+              remote_task_id=excluded.remote_task_id, conversation_id=excluded.conversation_id, message_id=excluded.message_id, target_id=excluded.target_id, target_context_version=excluded.target_context_version, project_snapshot_id=excluded.project_snapshot_id
             """;
         AddExecutionParameters(command, execution);
         command.ExecuteNonQuery();
@@ -390,7 +390,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
             update.CommandText = """
                 UPDATE agent_executions
                 SET status=$status, started_at_utc=$started, updated_at_utc=$updated, ended_at_utc=$ended,
-                    remote_task_id=$remote
+                    remote_task_id=$remote, conversation_id=$conversation, message_id=$message, target_id=$target, target_context_version=$targetVersion, project_snapshot_id=$snapshot
                 WHERE execution_id=$id
                 """;
             update.Parameters.AddWithValue("$status", ToDb(updated.Status));
@@ -398,6 +398,11 @@ public sealed class SqliteAgentRepository : IAgentRepository
             update.Parameters.AddWithValue("$updated", updated.UpdatedAt.ToString("O"));
             update.Parameters.AddWithValue("$ended", updated.EndedAt?.ToString("O") ?? (object)DBNull.Value);
             update.Parameters.AddWithValue("$remote", updated.RemoteTaskId ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$conversation", updated.ConversationId ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$message", updated.MessageId ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$target", updated.TargetId ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$targetVersion", updated.TargetContextVersion ?? (object)DBNull.Value);
+            update.Parameters.AddWithValue("$snapshot", updated.ProjectSnapshotId ?? (object)DBNull.Value);
             update.Parameters.AddWithValue("$id", updated.Id);
             update.ExecuteNonQuery();
         }
@@ -499,7 +504,54 @@ public sealed class SqliteAgentRepository : IAgentRepository
         return result;
     }
 
-    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id FROM agent_executions";
+
+    public void SaveProjectSnapshot(AgentProjectSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT OR IGNORE INTO agent_project_snapshots(snapshot_id, target_id, project_name, branches_json, current_branch, revision, access, source, context_version, captured_at_utc) VALUES($id, $target, $project, $branches, $current, $revision, $access, $source, $version, $captured)";
+        command.Parameters.AddWithValue("$id", snapshot.SnapshotId);
+        command.Parameters.AddWithValue("$target", snapshot.TargetId);
+        command.Parameters.AddWithValue("$project", snapshot.ProjectName);
+        command.Parameters.AddWithValue("$branches", JsonSerializer.Serialize(snapshot.Branches));
+        command.Parameters.AddWithValue("$current", snapshot.CurrentBranch ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$revision", snapshot.Revision ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$access", snapshot.Access);
+        command.Parameters.AddWithValue("$source", snapshot.Source);
+        command.Parameters.AddWithValue("$version", snapshot.ContextVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$captured", snapshot.CapturedAtUtc.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public AgentProjectSnapshot? GetProjectSnapshot(string snapshotId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshotId);
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT snapshot_id, target_id, project_name, branches_json, current_branch, revision, access, source, context_version, captured_at_utc FROM agent_project_snapshots WHERE snapshot_id=$id";
+        command.Parameters.AddWithValue("$id", snapshotId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        var branches = JsonSerializer.Deserialize<string[]>(reader.GetString(3)) ?? Array.Empty<string>();
+        return new AgentProjectSnapshot(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            branches,
+            reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.GetString(6),
+            reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            ParseUtc(reader.GetString(9)));
+    }
+
+    private static readonly string SelectExecutionSql = "SELECT execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, started_at_utc, updated_at_utc, ended_at_utc, previous_execution_id, remote_task_id, conversation_id, message_id, target_id, target_context_version, project_snapshot_id FROM agent_executions";
 
     private static void EnsureNoOtherActiveExecution(SqliteConnection connection, SqliteTransaction transaction, AgentExecution execution)
     {
@@ -528,7 +580,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         command.Parameters.AddWithValue("$updated", execution.UpdatedAt.ToString("O"));
         command.Parameters.AddWithValue("$ended", execution.EndedAt?.ToString("O") ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$previous", execution.PreviousExecutionId ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("$remote", execution.RemoteTaskId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$remote", execution.RemoteTaskId ?? (object)DBNull.Value); command.Parameters.AddWithValue("$conversation", execution.ConversationId ?? (object)DBNull.Value); command.Parameters.AddWithValue("$message", execution.MessageId ?? (object)DBNull.Value); command.Parameters.AddWithValue("$target", execution.TargetId ?? (object)DBNull.Value); command.Parameters.AddWithValue("$targetVersion", execution.TargetContextVersion ?? (object)DBNull.Value); command.Parameters.AddWithValue("$snapshot", execution.ProjectSnapshotId ?? (object)DBNull.Value);
     }
 
     private static AgentExecution? ReadExecution(SqliteConnection connection, SqliteTransaction transaction, string source, string instance, string task)
@@ -548,7 +600,7 @@ public sealed class SqliteAgentRepository : IAgentRepository
         ParseUtc(reader.GetString(8)), FromDb(reader.GetString(6)),
         reader.IsDBNull(7) ? null : ParseUtc(reader.GetString(7)), reader.IsDBNull(9) ? null : ParseUtc(reader.GetString(9)),
         reader.IsDBNull(10) ? null : reader.GetString(10),
-        reader.IsDBNull(11) ? null : reader.GetString(11));
+        reader.IsDBNull(11) ? null : reader.GetString(11), conversationId: reader.IsDBNull(12) ? null : reader.GetString(12), messageId: reader.IsDBNull(13) ? null : reader.GetString(13), targetId: reader.IsDBNull(14) ? null : reader.GetString(14), targetContextVersion: reader.IsDBNull(15) ? null : reader.GetString(15), projectSnapshotId: reader.IsDBNull(16) ? null : reader.GetString(16));
 
     private static long ReadMaxSequence(SqliteConnection connection, SqliteTransaction transaction, AgentEvent agentEvent)
     {

@@ -70,6 +70,7 @@ public sealed class Phase2StartupTests
         public void InitializeTray() { OnInit?.Invoke(); TrayInitialized = true; }
         public void ShowLibrary(string? offeredPackPath = null) => LibraryShown = true;
         public void ShowPortrait() { PortraitShown = true; OnPortrait?.Invoke(); }
+        public void ShowFirstStartChat() { }
     }
 
     private sealed class FakeMigrator : IRuntimeDatabaseMigrator

@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-Own Agent protocol, Relay, Runtime, Codex Adapter, source authorization, dispatch, reconciliation, archival, and replay protection.
+Own Agent protocol, Relay, Runtime, Codex Adapter, source authorization, dispatch, reconciliation, archival, replay protection, and the local target-context contract.
 
 ## Non-responsibilities
 
@@ -60,7 +60,7 @@ May depend on `foundation` and `ui-foundation` for shared infrastructure. `deskt
 
 ## Data and security boundaries
 
-Sources and project targets are default-deny and require explicit authorization. Credentials belong in protected stores. Payloads, logs, and archives must exclude prompts, reasoning, tool arguments, terminal output, credentials, and unnecessary local paths. Preserve replay, acknowledgement, reconciliation, and archive protections.
+Sources and project targets are default-deny and require explicit authorization. Credentials belong in protected stores. Payloads, logs, and archives must exclude prompts, reasoning, tool arguments, terminal output, credentials, and unnecessary local paths. The Codex Adapter may resolve local project paths, but target descriptors, Relay messages, events, and logs carry only bounded project metadata and an optional context version. Dispatch persists a bounded project snapshot locally; the Adapter rechecks the target context version before execution. Stop requests are bound to source type, source instance, task ID, and dispatch request ID; stop completion is accepted only after source confirmation. Preserve replay, acknowledgement, reconciliation, and archive protections.
 
 ## Development and validation
 

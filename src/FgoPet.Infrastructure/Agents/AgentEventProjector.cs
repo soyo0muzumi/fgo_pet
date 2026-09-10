@@ -24,7 +24,13 @@ public sealed record AgentTaskProjection(
     long LastSequence,
     DateTimeOffset UpdatedAt,
     string? RemoteTaskId = null,
-    string? ExecutionId = null);
+    string? ExecutionId = null,
+    string? DispatchRequestId = null,
+    string? ConversationId = null,
+    string? MessageId = null,
+    string? TargetId = null,
+    string? TargetContextVersion = null,
+    string? ProjectSnapshotId = null);
 
 public sealed class AgentEventProjector
 {
@@ -70,7 +76,13 @@ public sealed class AgentEventProjector
             LastSequence: 0,
             UpdatedAt: execution.UpdatedAt,
             RemoteTaskId: execution.RemoteTaskId,
-            ExecutionId: execution.Id);
+            ExecutionId: execution.Id,
+            DispatchRequestId: execution.DispatchRequestId,
+            ConversationId: execution.ConversationId,
+            MessageId: execution.MessageId,
+            TargetId: execution.TargetId,
+            TargetContextVersion: execution.TargetContextVersion,
+            ProjectSnapshotId: execution.ProjectSnapshotId);
         ExecutionRestored?.Invoke(execution);
     }
 
@@ -90,6 +102,12 @@ public sealed class AgentEventProjector
                 UpdatedAt = execution.UpdatedAt,
                 RemoteTaskId = execution.RemoteTaskId,
                 ExecutionId = execution.Id,
+                DispatchRequestId = execution.DispatchRequestId,
+                ConversationId = execution.ConversationId,
+                MessageId = execution.MessageId,
+                TargetId = execution.TargetId,
+                TargetContextVersion = execution.TargetContextVersion,
+                ProjectSnapshotId = execution.ProjectSnapshotId,
             };
         }
         else
@@ -144,6 +162,9 @@ public sealed class AgentEventProjector
             return AgentProjectionApplyResult.Removed;
         }
 
+        var persisted = existing is null
+            ? _agents?.GetExecution(agentEvent.SourceType, agentEvent.SourceInstance, agentEvent.TaskId)
+            : null;
         var status = existing?.Status ?? AgentExecutionStatus.Dispatching;
         var attention = existing?.AttentionRequired ?? false;
         var goalCompleted = existing?.GoalCompleted ?? false;
@@ -194,7 +215,13 @@ public sealed class AgentEventProjector
             agentEvent.Sequence,
             agentEvent.OccurredAt,
             agentEvent.RemoteTaskId ?? existing?.RemoteTaskId,
-            existing?.ExecutionId);
+            existing?.ExecutionId ?? persisted?.Id,
+            agentEvent.DispatchRequestId ?? existing?.DispatchRequestId ?? persisted?.DispatchRequestId,
+            existing?.ConversationId ?? persisted?.ConversationId,
+            existing?.MessageId ?? persisted?.MessageId,
+            existing?.TargetId ?? persisted?.TargetId,
+            existing?.TargetContextVersion ?? persisted?.TargetContextVersion,
+            existing?.ProjectSnapshotId ?? persisted?.ProjectSnapshotId);
         EventApplied?.Invoke(agentEvent, AgentProjectionApplyResult.Applied);
         return AgentProjectionApplyResult.Applied;
     }

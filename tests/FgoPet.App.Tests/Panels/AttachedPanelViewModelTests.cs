@@ -2,6 +2,8 @@ using FgoPet.App.Dialogue;
 using FgoPet.App.Focus;
 using FgoPet.App.Panels;
 using FgoPet.App.Providers;
+using FgoPet.App.ViewModels;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Focus;
 using FgoPet.Core.Packs;
@@ -12,6 +14,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Infrastructure.Agents;
 using Xunit;
 
 namespace FgoPet.App.Tests.Panels;
@@ -55,6 +58,81 @@ public sealed class AttachedPanelViewModelTests
     }
 
     [Fact]
+    public void Attention_click_opens_the_existing_current_task_when_agent_attention_is_present()
+    {
+        var currentTask = new AgentCurrentTaskViewModel(new AgentEventProjector(), TimeProvider.System);
+        currentTask.Apply(new AgentEvent(
+            "codex", "source-1", "task-1", 1, AgentEventType.AttentionRequired,
+            DateTimeOffset.UtcNow, summary: "需要确认的任务"));
+        var opened = 0;
+        currentTask.OpenTaskRequested += _ => opened++;
+        var dialogue = CreateDialogueViewModel();
+        var dialogueOpened = 0;
+        dialogue.OpenRequested += () => dialogueOpened++;
+        var vm = new AttachedPanelViewModel(
+            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue, currentAgentTask: currentTask);
+
+        vm.AttentionClick();
+
+        Assert.Equal(1, opened);
+        Assert.Equal(0, dialogueOpened);
+    }
+
+    [Fact]
+    public void Attention_click_opens_shared_dialogue_when_unread_dialogue_exists()
+    {
+        var dialogue = CreateDialogueViewModel();
+        var vm = new AttachedPanelViewModel(
+            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+        var opened = 0;
+        dialogue.OpenRequested += () => opened++;
+        dialogue.NotifyWindowHidden();
+        dialogue.Conversation.Turns.Add(new ConversationTurnViewModel(
+            "m1", ChatMessageRole.Assistant, "新的回复"));
+
+        vm.AttentionClick();
+
+        Assert.Equal(1, opened);
+    }
+
+    [Fact]
+    public void Attention_click_does_nothing_when_no_unread_or_current_task_exists()
+    {
+        var dialogue = CreateDialogueViewModel();
+        var vm = new AttachedPanelViewModel(
+            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+        var opened = 0;
+        dialogue.OpenRequested += () => opened++;
+
+        vm.AttentionClick();
+
+        Assert.Equal(0, opened);
+    }
+
+    [Fact]
+    public void Compact_action_accessible_text_is_exposed_by_the_view_model()
+    {
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch));
+
+        Assert.Equal("今天也按自己的节奏来。", vm.GreetingText);
+        Assert.Equal("打开聊天", vm.ChatActionAutomationName);
+        Assert.Equal("打开更多能力", vm.ToolsActionAutomationName);
+        Assert.Equal("查看需要关注的内容", vm.AttentionActionAutomationName);
+    }
+
+    [Fact]
+    public void Desktop_pet_read_aloud_entry_toggles_the_existing_auto_read_setting()
+    {
+        var settings = new MemorySettingsStore(AppSettings.Defaults);
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, settings: settings);
+
+        Assert.False(vm.IsAutoReadEnabled);
+        vm.ToggleAutoRead();
+
+        Assert.True(vm.IsAutoReadEnabled);
+        Assert.True(settings.Current.SpeechConnection.AutoReadEnabled);
+    }
+    [Fact]
     public void Unread_replies_surface_on_the_compact_panel_and_clear_when_activated()
     {
         var dialogue = CreateDialogueViewModel();
@@ -89,6 +167,71 @@ public sealed class AttachedPanelViewModelTests
             TimeProvider.System,
             settingsStore);
         return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore));
+    }
+
+    [Fact]
+    public void Dialogue_navigation_preserves_the_single_conversation_owner()
+    {
+        var dialogue = CreateDialogueViewModel();
+
+        dialogue.NavigateTo(MainNavigationTarget.Schedule, filter: "today", selectedId: "todo-1");
+        dialogue.SaveContext(filter: "today", selectedId: "todo-1", scrollOffset: 42);
+
+        Assert.Equal(MainNavigationTarget.Schedule, dialogue.CurrentTarget);
+        Assert.Equal("today", dialogue.CurrentContext.Filter);
+        Assert.Equal("todo-1", dialogue.CurrentContext.SelectedId);
+        Assert.Equal(42, dialogue.CurrentContext.ScrollOffset);
+        Assert.True(dialogue.NavigateBack());
+        Assert.Equal(MainNavigationTarget.Companion, dialogue.CurrentTarget);
+    }
+
+    [Fact]
+    public void Invalid_navigation_scroll_offset_is_rejected()
+    {
+        var dialogue = CreateDialogueViewModel();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => dialogue.SaveContext(scrollOffset: -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => dialogue.SaveContext(scrollOffset: double.NaN));
+    }
+
+    [Theory]
+    [InlineData(1000, ResponsiveLayoutState.Wide)]
+    [InlineData(899, ResponsiveLayoutState.Narrow)]
+    [InlineData(720, ResponsiveLayoutState.Narrow)]
+    [InlineData(719, ResponsiveLayoutState.Constrained)]
+    public void Dialogue_layout_uses_the_plan_breakpoints(double width, ResponsiveLayoutState expected)
+    {
+        Assert.Equal(expected, DialogueWindowViewModel.GetResponsiveLayoutState(width));
+    }
+
+    [Fact]
+    public void Short_window_is_constrained_without_scaling_the_content()
+    {
+        Assert.Equal(ResponsiveLayoutState.Constrained,
+            DialogueWindowViewModel.GetResponsiveLayoutState(1200, 519));
+        Assert.Equal(ResponsiveLayoutState.Wide,
+            DialogueWindowViewModel.GetResponsiveLayoutState(1200, 520));
+    }
+
+    [Fact]
+    public void Navigation_preserves_the_current_context_when_switching_pages()
+    {
+        var dialogue = CreateDialogueViewModel();
+        dialogue.SaveContext("active", "todo-7", 88);
+
+        dialogue.NavigateTo(MainNavigationTarget.Schedule);
+        Assert.True(dialogue.NavigateBack());
+        Assert.Equal(MainNavigationTarget.Companion, dialogue.CurrentContext.Target);
+        Assert.Equal("active", dialogue.CurrentContext.Filter);
+        Assert.Equal("todo-7", dialogue.CurrentContext.SelectedId);
+        Assert.Equal(88, dialogue.CurrentContext.ScrollOffset);
+    }
+
+    [Fact]
+    public void Invalid_responsive_dimensions_are_rejected()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => DialogueWindowViewModel.GetResponsiveLayoutState(899, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => DialogueWindowViewModel.GetResponsiveLayoutState(double.NaN));
     }
 
     [Fact]
@@ -256,8 +399,9 @@ public sealed class AttachedPanelViewModelTests
     private sealed class MemorySettingsStore(AppSettings initial) : IAppSettingsStore
     {
         public string Location => "memory";
-        public AppSettings Load() => initial;
-        public void Save(AppSettings settings) { }
+        public AppSettings Current { get; private set; } = initial;
+        public AppSettings Load() => Current;
+        public void Save(AppSettings settings) => Current = settings;
     }
 
     private sealed class ThrowingProviderResolver : IChatProviderResolver

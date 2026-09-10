@@ -1,4 +1,5 @@
 using System.Windows;
+using System.IO;
 using FgoPet.App.Bootstrap;
 using FgoPet.App.Lifetime;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,22 @@ public partial class App : Application
 
     private void ShowStartupError(Exception error)
     {
+        try
+        {
+            var stateRoot = Environment.GetEnvironmentVariable("FGO_PET_STATE_ROOT");
+            if (!string.IsNullOrWhiteSpace(stateRoot))
+            {
+                Directory.CreateDirectory(stateRoot);
+                File.WriteAllText(
+                    Path.Combine(stateRoot, "startup-error.log"),
+                    $"{DateTimeOffset.UtcNow:O}{Environment.NewLine}{error}{Environment.NewLine}");
+            }
+        }
+        catch
+        {
+            // Startup diagnostics must never replace the user-facing error path.
+        }
+
         MessageBox.Show(
             error.Message,
             "FgoPet 启动失败",

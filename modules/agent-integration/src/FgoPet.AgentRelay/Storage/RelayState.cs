@@ -59,7 +59,9 @@ public sealed record RelayState
         IReadOnlyList<InboundEventWatermark>? inboundEventWatermarks = null,
         IReadOnlyList<RelayArchiveBatchState>? archiveBatches = null,
         IReadOnlyList<AgentArchiveTombstone>? archiveTombstones = null,
-        IReadOnlyList<AdapterCapacityReport>? adapterCapacityReports = null)
+        IReadOnlyList<AdapterCapacityReport>? adapterCapacityReports = null,
+        IReadOnlyList<QueuedStopTask>? stopRequests = null,
+        IReadOnlyList<StopReceipt>? stopReceipts = null)
     {
         SchemaVersion = schemaVersion;
         Pending = pending ?? Array.Empty<PendingRegistration>();
@@ -72,6 +74,8 @@ public sealed record RelayState
         ArchiveBatches = archiveBatches ?? Array.Empty<RelayArchiveBatchState>();
         ArchiveTombstones = archiveTombstones ?? Array.Empty<AgentArchiveTombstone>();
         AdapterCapacityReports = adapterCapacityReports ?? Array.Empty<AdapterCapacityReport>();
+        StopRequests = stopRequests ?? Array.Empty<QueuedStopTask>();
+        StopReceipts = stopReceipts ?? Array.Empty<StopReceipt>();
     }
 
     [JsonPropertyName("schema_version")]
@@ -106,6 +110,12 @@ public sealed record RelayState
 
     [JsonPropertyName("adapter_capacity_reports")]
     public IReadOnlyList<AdapterCapacityReport> AdapterCapacityReports { get; init; }
+
+    [JsonPropertyName("stop_requests")]
+    public IReadOnlyList<QueuedStopTask> StopRequests { get; init; }
+
+    [JsonPropertyName("stop_receipts")]
+    public IReadOnlyList<StopReceipt> StopReceipts { get; init; }
 
     public RelayState ToCurrentSchema() => SchemaVersion == 1
         ? this with

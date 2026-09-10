@@ -22,6 +22,8 @@ public interface IAgentRepository
     AgentExecution? GetExecution(string id);
     AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId);
     AgentExecution? GetLatestExecutionForTodo(string todoId) => null;
+    void SaveProjectSnapshot(AgentProjectSnapshot snapshot) { }
+    AgentProjectSnapshot? GetProjectSnapshot(string snapshotId) => null;
     IReadOnlyList<AgentExecution> ListNonTerminalExecutions();
     IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit);
     bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence);

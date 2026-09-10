@@ -91,6 +91,39 @@ public sealed class AgentConnectionSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Enabled_source_requires_project_selection_and_explicit_confirmation_before_save()
+    {
+        var source = new AgentApprovedSource("codex", "instance-2", "Codex", "1.2", true, new[] { "project-a" }, true);
+        var administration = new FakeAdministration(Snapshot(approved: source));
+        using var viewModel = new AgentConnectionSettingsViewModel(
+            new FakeSettingsStore(),
+            new FakeAgentRepository(),
+            administration: administration);
+        await viewModel.RefreshAsync();
+        var approved = viewModel.ApprovedSources.Single();
+        approved.ApplyCatalog(new[]
+        {
+            new AgentTargetDescriptor("project-a", "Project A", false),
+            new AgentTargetDescriptor("project-b", "Project B", false),
+        });
+
+        await viewModel.SaveSourceAsync(approved);
+
+        Assert.Empty(administration.PermissionUpdates);
+        Assert.Contains("确认授权范围", viewModel.StatusText, StringComparison.Ordinal);
+
+        approved.IsPermissionConfirmed = true;
+        await viewModel.SaveSourceAsync(approved);
+
+        Assert.Single(administration.PermissionUpdates);
+        Assert.False(approved.IsPermissionConfirmed);
+
+        approved.IsPermissionConfirmed = true;
+        approved.Targets.Single(target => target.TargetId == "project-b").IsSelected = true;
+        Assert.False(approved.IsPermissionConfirmed);
+        Assert.False(approved.CanSavePermissions);
+    }
+    [Fact]
     public async Task Administration_global_save_updates_runtime_without_overwriting_legacy_source_maps()
     {
         var sourceEnabled = new Dictionary<string, bool> { ["legacy"] = true };

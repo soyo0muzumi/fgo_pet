@@ -19,6 +19,7 @@ public sealed partial class AgentDispatchDialogViewModel : ObservableObject, IDi
 {
     private readonly IAgentRelayAdministration _administration;
     private readonly AgentDispatchService _dispatchService;
+    private readonly AgentDispatchContext? _dispatchContext;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _loaded;
     private bool _disposed;
@@ -26,11 +27,12 @@ public sealed partial class AgentDispatchDialogViewModel : ObservableObject, IDi
     public AgentDispatchDialogViewModel(
         TodoItem todo,
         IAgentRelayAdministration administration,
-        AgentDispatchService dispatchService)
+        AgentDispatchService dispatchService, AgentDispatchContext? dispatchContext = null)
     {
         Todo = todo ?? throw new ArgumentNullException(nameof(todo));
         _administration = administration ?? throw new ArgumentNullException(nameof(administration));
         _dispatchService = dispatchService ?? throw new ArgumentNullException(nameof(dispatchService));
+        _dispatchContext = dispatchContext;
 
         ConfirmCommand = new AsyncRelayCommand(ConfirmAsync, () => CanConfirm);
     }
@@ -207,7 +209,7 @@ public sealed partial class AgentDispatchDialogViewModel : ObservableObject, IDi
                 target,
                 confirmed: true,
                 cancellationToken: _lifetime.Token,
-                sourceInstanceId: source.SourceInstanceId).ConfigureAwait(true);
+                sourceInstanceId: source.SourceInstanceId, context: _dispatchContext).ConfigureAwait(true);
             if (_lifetime.IsCancellationRequested)
             {
                 return;

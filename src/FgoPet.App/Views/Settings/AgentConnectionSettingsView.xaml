@@ -13,36 +13,42 @@
     <StackPanel>
       <Border Style="{StaticResource SettingsCardStyle}">
         <StackPanel>
-          <TextBlock Text="Agent 总开关" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
-          <TextBlock Text="FGO Pet 只接收已授权来源的状态事件；关闭后不会删除配对或项目权限。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+          <TextBlock Text="连接 Agent" Style="{StaticResource SettingsPageHeaderStyle}"/>
+          <TextBlock Text="按三步连接现有 Agent：检测来源、批准配对、选择项目并确认授权。检测只读取当前 Relay 和来源状态，不会扫描或安装软件。" Style="{StaticResource SettingsStatusStyle}" Margin="0,6,0,12" TextWrapping="Wrap"/>
           <CheckBox Content="启用 Agent 集成" IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding CanInteract}"/>
-          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-            <Button Content="保存连接设置" Style="{StaticResource SettingsPrimaryButtonStyle}" HorizontalAlignment="Left" Click="OnSaveClick" IsEnabled="{Binding CanInteract}"/>
-            <Button Content="刷新状态" Margin="8,0,0,0" Click="OnRefreshClick" IsEnabled="{Binding CanInteract}"/>
+          <TextBlock Text="步骤 1 · 检测现有 Relay 与来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Margin="0,14,0,6"/>
+          <WrapPanel>
+            <Button x:Name="DetectAgentButton" Content="开始检测" Style="{StaticResource SettingsPrimaryButtonStyle}" Click="OnRefreshClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="检测现有 Agent 连接"/>
             <Button Content="测试连接" Margin="8,0,0,0" Click="OnTestConnectionClick" IsEnabled="{Binding CanInteract}"/>
-            <Button Content="刷新项目" Margin="8,0,0,0" Click="OnRefreshTargetsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="刷新项目"/>
-            <Button Content="复制诊断信息" Margin="8,0,0,0" Click="OnCopyDiagnosticsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="复制诊断信息"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-            <TextBlock Text="状态：" Style="{StaticResource SettingsStatusStyle}"/>
+          </WrapPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <TextBlock Text="当前状态：" Style="{StaticResource SettingsStatusStyle}"/>
             <TextBlock Text="{Binding StateText}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-            <TextBlock Style="{StaticResource SettingsStatusStyle}"><Run Text="Relay："/><Run Text="{Binding RelayStatusText, Mode=OneWay}"/></TextBlock>
-            <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="App："/><Run Text="{Binding AppStatusText, Mode=OneWay}"/></TextBlock>
-            <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="适配器："/><Run Text="{Binding AdapterStatusText, Mode=OneWay}"/></TextBlock>
           </StackPanel>
           <TextBlock Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
           <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
           <TextBlock Text="{Binding InstallationGuidanceText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-          <Button Content="清除全部 Agent Todo 数据" Style="{StaticResource SettingsDangerButtonStyle}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnClearClick" IsEnabled="{Binding CanInteract}"/>
+          <Expander Header="高级诊断与维护" Margin="0,12,0,0" IsExpanded="False">
+            <StackPanel Margin="0,8,0,0">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource SettingsStatusStyle}"><Run Text="Relay："/><Run Text="{Binding RelayStatusText, Mode=OneWay}"/></TextBlock>
+                <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="App："/><Run Text="{Binding AppStatusText, Mode=OneWay}"/></TextBlock>
+                <TextBlock Style="{StaticResource SettingsStatusStyle}" Margin="12,0,0,0"><Run Text="适配器："/><Run Text="{Binding AdapterStatusText, Mode=OneWay}"/></TextBlock>
+              </StackPanel>
+              <WrapPanel Margin="0,8,0,0">
+                <Button Content="保存总开关" Click="OnSaveClick" IsEnabled="{Binding CanInteract}"/>
+                <Button Content="刷新项目" Margin="8,0,0,0" Click="OnRefreshTargetsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="刷新项目"/>
+                <Button Content="复制诊断信息" Margin="8,0,0,0" Click="OnCopyDiagnosticsClick" IsEnabled="{Binding CanInteract}" AutomationProperties.Name="复制诊断信息"/>
+              </WrapPanel>
+              <Button Content="清除全部 Agent Todo 数据" Style="{StaticResource SettingsDangerButtonStyle}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnClearClick" IsEnabled="{Binding CanInteract}"/>
+            </StackPanel>
+          </Expander>
         </StackPanel>
       </Border>
-
       <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
         <StackPanel>
           <DockPanel LastChildFill="False">
-            <TextBlock Text="运行安全与容量" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+            <TextBlock Text="高级 · 运行安全与容量" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
             <Button DockPanel.Dock="Right" Content="{Binding ArchiveActionText}" Click="OnArchiveClick" IsEnabled="{Binding CanArchive}" AutomationProperties.Name="执行 Agent 安全归档"/>
           </DockPanel>
           <TextBlock Text="{Binding MaintenanceStatusText}" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
@@ -64,7 +70,7 @@
 
       <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
         <StackPanel>
-          <TextBlock Text="待批准来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <TextBlock Text="步骤 2 · 批准检测到的来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
           <TextBlock Text="适配器首次连接会出现在这里。批准前不会获得任务或事件权限。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
           <TextBlock Text="当前没有待批准请求。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoPendingSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>
           <ItemsControl ItemsSource="{Binding PendingSources}" Visibility="{Binding HasPendingSources, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -89,7 +95,7 @@
 
       <Border Style="{StaticResource SettingsCardStyle}" Visibility="{Binding IsAdministrationAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
         <StackPanel>
-          <TextBlock Text="已授权来源" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
+          <TextBlock Text="步骤 3 · 选择项目并保存授权" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/>
           <TextBlock Text="权限按来源实例保存。Agent 仅会访问你明确选择的项目；请从下方已登记的项目名称中选择并保存。未选择项目时不会派发任务。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,8" TextWrapping="Wrap"/>
           <TextBlock Text="当前没有已授权来源。" Style="{StaticResource SettingsStatusStyle}" Visibility="{Binding HasNoApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}"/>
           <ItemsControl ItemsSource="{Binding ApprovedSources}" Visibility="{Binding HasApprovedSources, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -164,8 +170,19 @@
                         </Style>
                       </Button.Style>
                     </Button>
+                    <CheckBox Content="我确认仅允许所选项目访问此来源" IsChecked="{Binding IsPermissionConfirmed, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="确认所选项目授权范围"/>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                      <Button Content="保存权限" Click="OnSaveSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
+                      <Button x:Name="SaveSourcePermissionsButton" Content="保存权限" Click="OnSaveSourceClick" MinWidth="88">
+                        <Button.Style>
+                          <Style TargetType="Button" BasedOn="{StaticResource SettingsPrimaryButtonStyle}">
+                            <Setter Property="IsEnabled" Value="True"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding CanSavePermissions}" Value="False"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+                              <DataTrigger Binding="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="False"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                      </Button>
                       <Button Content="撤销授权" Margin="8,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}" Click="OnRevokeSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" MinWidth="88"/>
                       <Button Content="重新配对" Margin="8,0,0,0" Click="OnRePairSourceClick" IsEnabled="{Binding DataContext.CanInteract, RelativeSource={RelativeSource AncestorType=UserControl}}" AutomationProperties.Name="重新配对" MinWidth="88"/>
                     </StackPanel>

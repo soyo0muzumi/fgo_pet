@@ -4,6 +4,7 @@ using FgoPet.Core.Agents;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Infrastructure.Json;
 
 namespace FgoPet.Infrastructure.Settings;
@@ -49,7 +50,8 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             return settings with
             {
                 ModelConnection = dto.ModelConnection?.ToModel(),
-                MemoryEnabled = dto.MemoryEnabled ?? true,
+                SpeechConnection = dto.SpeechConnection?.ToModel() ?? SpeechConnectionSettings.Defaults,
+MemoryEnabled = dto.MemoryEnabled ?? true,
                 ShowReasoning = dto.ShowReasoning ?? true,
                 ServantPreferences = ParseServantPreferences(dto.ServantPreferences),
                 Theme = ParseTheme(dto.Theme),
@@ -76,7 +78,8 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             Topmost = settings.Topmost,
             AutoCollapseExpandedPanel = settings.AutoCollapseExpandedPanel,
             ModelConnection = ModelConnectionDto.FromModel(settings.ModelConnection),
-            MemoryEnabled = settings.MemoryEnabled,
+            SpeechConnection = SpeechConnectionDto.FromModel(settings.SpeechConnection),
+MemoryEnabled = settings.MemoryEnabled,
             ShowReasoning = settings.ShowReasoning,
             ServantPreferences = settings.ServantPreferences.ToDictionary(
                 pair => pair.Key,
@@ -115,6 +118,9 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
         [JsonPropertyName("model_connection")]
         public ModelConnectionDto? ModelConnection { get; init; }
+        [JsonPropertyName("speech_connection")]
+        public SpeechConnectionDto? SpeechConnection { get; init; }
+
 
         [JsonPropertyName("agent_connection")]
         public AgentConnectionDto? AgentConnection { get; init; }
@@ -161,6 +167,71 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             settings is null ? null : new ModelConnectionDto(settings.ProviderId, settings.BaseUrl, settings.ModelId);
     }
 
+    private sealed record SpeechConnectionDto(
+        [property: JsonPropertyName("enabled")] bool Enabled,
+        [property: JsonPropertyName("provider")] string? Provider,
+        [property: JsonPropertyName("openai_base_url")] string? OpenAiBaseUrl,
+        [property: JsonPropertyName("openai_model")] string? OpenAiModel,
+        [property: JsonPropertyName("openai_voice")] string? OpenAiVoice,
+        [property: JsonPropertyName("openai_credential_target")] string? OpenAiCredentialTarget,
+        [property: JsonPropertyName("gpt_sovits_base_url")] string? GptSoVitsBaseUrl,
+        [property: JsonPropertyName("gpt_sovits_reference_audio_path")] string? GptSoVitsReferenceAudioPath,
+        [property: JsonPropertyName("gpt_sovits_prompt_text")] string? GptSoVitsPromptText,
+        [property: JsonPropertyName("gpt_sovits_language")] string? GptSoVitsLanguage,
+        [property: JsonPropertyName("gpt_sovits_prompt_language")] string? GptSoVitsPromptLanguage,
+        [property: JsonPropertyName("auto_read_enabled")] bool? AutoReadEnabled,
+        [property: JsonPropertyName("auto_read_limit")] int? AutoReadLimit,
+        [property: JsonPropertyName("rate")] double? Rate,
+        [property: JsonPropertyName("volume")] double? Volume)
+    {
+        public SpeechConnectionSettings ToModel()
+        {
+            var provider = string.IsNullOrWhiteSpace(Provider)
+                ? SpeechProviderKind.OpenAiCompatible
+                : Enum.TryParse<SpeechProviderKind>(Provider, ignoreCase: true, out var parsed)
+                    ? parsed
+                    : throw new JsonException("Unknown speech provider.");
+            return new SpeechConnectionSettings
+            {
+                Enabled = Enabled,
+                Provider = provider,
+                OpenAiBaseUrl = OpenAiBaseUrl ?? string.Empty,
+                OpenAiModel = OpenAiModel ?? string.Empty,
+                OpenAiVoice = OpenAiVoice ?? string.Empty,
+                OpenAiCredentialTarget = OpenAiCredentialTarget ?? string.Empty,
+                GptSoVitsBaseUrl = GptSoVitsBaseUrl ?? string.Empty,
+                GptSoVitsReferenceAudioPath = GptSoVitsReferenceAudioPath ?? string.Empty,
+                GptSoVitsPromptText = GptSoVitsPromptText ?? string.Empty,
+                GptSoVitsLanguage = GptSoVitsLanguage ?? string.Empty,
+                GptSoVitsPromptLanguage = GptSoVitsPromptLanguage ?? string.Empty,
+                AutoReadEnabled = AutoReadEnabled ?? false,
+                AutoReadLimit = AutoReadLimit ?? 300,
+                Rate = Rate ?? 1.0,
+                Volume = Volume ?? 1.0,
+            }.Normalize();
+        }
+
+        public static SpeechConnectionDto FromModel(SpeechConnectionSettings settings)
+        {
+            var normalized = (settings ?? SpeechConnectionSettings.Defaults).Normalize();
+            return new(
+                normalized.Enabled,
+                normalized.Provider.ToString(),
+                normalized.OpenAiBaseUrl,
+                normalized.OpenAiModel,
+                normalized.OpenAiVoice,
+                normalized.OpenAiCredentialTarget,
+                normalized.GptSoVitsBaseUrl,
+                normalized.GptSoVitsReferenceAudioPath,
+                normalized.GptSoVitsPromptText,
+                normalized.GptSoVitsLanguage,
+                normalized.GptSoVitsPromptLanguage,
+                normalized.AutoReadEnabled,
+                normalized.AutoReadLimit,
+                normalized.Rate,
+                normalized.Volume);
+        }
+    }
     private sealed record AgentConnectionDto(
         [property: JsonPropertyName("enabled")] bool Enabled,
         [property: JsonPropertyName("source_enabled")] Dictionary<string, bool>? SourceEnabled,

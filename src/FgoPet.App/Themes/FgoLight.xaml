@@ -38,7 +38,15 @@
     <Color x:Key="DisabledTextColor">#FF9AA7B4</Color>
     <Color x:Key="DisabledBorderColor">#FFD6DEE7</Color>
     <Color x:Key="OverlayColor">#660D1C2D</Color>
-
+    <Color x:Key="ShellWindowColor">#FFFBFAFC</Color>
+    <Color x:Key="ShellPanelColor">#FFF1EFF5</Color>
+    <Color x:Key="ShellRaisedColor">#FFFFFFFF</Color>
+    <Color x:Key="ShellTextColor">#FF292634</Color>
+    <Color x:Key="ShellMutedColor">#FF686272</Color>
+    <Color x:Key="ShellLineColor">#FFDFDBE6</Color>
+    <Color x:Key="ShellAccentColor">#FF66528D</Color>
+    <Color x:Key="ShellAccentSoftColor">#2266528D</Color>
+    <Color x:Key="ShellOverlayColor">#66000000</Color>
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
     <SolidColorBrush x:Key="ContentBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
@@ -83,4 +91,20 @@
     <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
     <SolidColorBrush x:Key="DisabledBorderBrush" Color="{StaticResource DisabledBorderColor}" />
     <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource OverlayColor}" />
+    <SolidColorBrush x:Key="Surface.App" Color="{StaticResource WindowBackgroundColor}" />
+    <SolidColorBrush x:Key="Surface.Content" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="Surface.Subtle" Color="{StaticResource SurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="Surface.Hover" Color="{StaticResource SurfaceHoverColor}" />
+    <SolidColorBrush x:Key="Surface.Pressed" Color="{StaticResource SurfacePressedColor}" />
+    <SolidColorBrush x:Key="Text.Primary" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="Text.Secondary" Color="{StaticResource MutedTextColor}" />
+    <SolidColorBrush x:Key="Action.Primary" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="Action.OnPrimary" Color="{StaticResource TextOnAccentColor}" />
+    <SolidColorBrush x:Key="Accent.Relation" Color="#FFA58B57" />
+    <SolidColorBrush x:Key="State.Success" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="State.Pending" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="State.Danger" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="Border.Decorative" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="Border.Control" Color="{StaticResource BorderStrongColor}" />
+    <SolidColorBrush x:Key="Focus.Ring" Color="{StaticResource FocusColor}" />
 </ResourceDictionary>

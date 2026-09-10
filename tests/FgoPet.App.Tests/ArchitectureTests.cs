@@ -47,21 +47,25 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Dependency_direction_is_App_to_Infrastructure_to_Core()
+    public void Dependency_direction_keeps_feature_modules_on_foundational_contracts()
     {
         var core = ReferencedProjects("FgoPet.Core");
         var infra = ReferencedProjects("FgoPet.Infrastructure");
         var app = ReferencedProjects("FgoPet.App");
 
-        Assert.Empty(core);
+        // Speech.Core is a dependency-free contract leaf. Core may use it for
+        // the shared AppSettings speech value without depending on a feature
+        // implementation; the rest of the application direction is unchanged.
         Assert.Equal(
-            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            new[] { "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            core.OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal(
+            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core", "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
             infra.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Equal(
-            new[] { "FgoPet.Core", "FgoPet.Infrastructure" }.OrderBy(name => name, StringComparer.Ordinal),
+            new[] { "FgoPet.Core", "FgoPet.Infrastructure", "FgoPet.Speech.Desktop" }.OrderBy(name => name, StringComparer.Ordinal),
             app.OrderBy(name => name, StringComparer.Ordinal));
     }
-
     [Fact]
     public void Production_container_resolves_the_application_shell()
     {

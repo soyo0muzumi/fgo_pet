@@ -13,7 +13,8 @@
     <StackPanel>
         <Border Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
-                <TextBlock Text="模型供应商" Style="{StaticResource SettingsCaptionStyle}" />
+                <TextBlock Text="服务连接" Style="{StaticResource SettingsPageHeaderStyle}" />
+                <TextBlock Margin="0,12,0,0" Text="模型供应商" Style="{StaticResource SettingsCaptionStyle}" />
                 <ComboBox x:Name="ProviderComboBox"
                           Style="{StaticResource SettingsComboBoxStyle}"
                           ItemsSource="{Binding Providers}"
@@ -52,7 +53,8 @@
                          Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
                          automation:AutomationProperties.Name="Base URL" />
 
-                <TextBlock Margin="0,14,0,0" Text="当前模型" Style="{StaticResource SettingsCaptionStyle}" />
+                <TextBlock Margin="0,20,0,0" Text="模型" Style="{StaticResource SettingsPageHeaderStyle}" />
+                <TextBlock Margin="0,8,0,0" Text="默认模型 ID" Style="{StaticResource SettingsCaptionStyle}" />
                 <Grid>
                     <TextBox x:Name="ModelTextBox"
                              Style="{StaticResource SettingsTextBoxStyle}"
@@ -127,7 +129,7 @@
 
         <Border Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
-                <TextBlock Text="模型输出" Style="{StaticResource SettingsCaptionStyle}" />
+                <TextBlock Text="回复显示" Style="{StaticResource SettingsPageHeaderStyle}" />
                 <CheckBox x:Name="ShowReasoningCheck"
                           Content="显示模型思考过程"
                           IsChecked="{Binding ShowReasoning, Mode=TwoWay}"

@@ -25,7 +25,7 @@ namespace FgoPet.Windows.Tests.Panels;
 public sealed class DialoguePanelIntegrationTests
 {
     [Fact]
-    public void Expanded_dialogue_contains_input_and_controls_without_changing_four_headers()
+    public void Attached_panel_keeps_dialogue_body_without_embedded_composer()
     {
         StaRun(() =>
         {
@@ -33,21 +33,21 @@ public sealed class DialoguePanelIntegrationTests
             {
                 DataContext = new AttachedPanelViewModel(TimeProvider.System),
             };
-            var dialogue = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
 
+            Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
             Assert.NotNull(view.FindName("FocusButton"));
             Assert.NotNull(view.FindName("TodayButton"));
             Assert.NotNull(view.FindName("TodoButton"));
             Assert.NotNull(view.FindName("DialogueButton"));
-            Assert.NotNull(view.FindName("DialogueInputBox"));
-            Assert.NotNull(view.FindName("SendDialogueButton"));
-            Assert.Null(view.FindName("StopDialogueButton"));
-            Assert.Equal(Visibility.Collapsed, dialogue.Visibility);
+            Assert.Null(view.FindName("DialogueInputBox"));
+            Assert.Null(view.FindName("SendDialogueButton"));
+            Assert.Null(view.FindName("DialogueComposer"));
+            Assert.Null(view.FindName("NewConversationButton"));
         });
     }
 
     [Fact]
-    public void Redesigned_dialogue_exposes_presentation_surfaces_for_all_states()
+    public void Attached_panel_exposes_companion_control_island()
     {
         StaRun(() =>
         {
@@ -55,60 +55,15 @@ public sealed class DialoguePanelIntegrationTests
             {
                 DataContext = new AttachedPanelViewModel(TimeProvider.System),
             };
+            var island = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
 
-            // Named surfaces required by the redesign contract.
-            Assert.NotNull(view.FindName("DialogueEmptyState"));
-            Assert.NotNull(view.FindName("DialogueProviderBadge"));
-            Assert.NotNull(view.FindName("DialogueModelBadge"));
-            Assert.NotNull(view.FindName("DialogueMessageList"));
-            Assert.NotNull(view.FindName("DialogueComposer"));
-            Assert.NotNull(view.FindName("DialogueSettingsButton"));
-            Assert.NotNull(view.FindName("NewConversationButton"));
-            Assert.NotNull(view.FindName("DialogueViewport"));
-
-            var input = Assert.IsType<System.Windows.Controls.TextBox>(view.FindName("DialogueInputBox"));
-            Assert.NotEqual(System.Windows.Media.Brushes.White, input.Background);
+            Assert.Equal(230, island.MinWidth);
+            Assert.Equal(280, island.MaxWidth);
+            Assert.NotNull(view.FindName("ChatEntryButton"));
+            Assert.NotNull(view.FindName("ToolsEntryButton"));
+            Assert.NotNull(view.FindName("AttentionEntryButton"));
         });
     }
-
-    [Fact]
-    public void Dialogue_uses_one_compact_circular_action_button()
-    {
-        StaRun(() =>
-        {
-            var view = new AttachedPanelView
-            {
-                DataContext = new AttachedPanelViewModel(TimeProvider.System),
-            };
-            var send = Assert.IsType<Button>(view.FindName("SendDialogueButton"));
-
-            var actionLabelBinding = BindingOperations.GetBinding(send, AutomationProperties.NameProperty);
-            Assert.Equal("Conversation.ActionLabel", actionLabelBinding?.Path.Path);
-            Assert.Equal(20, send.Width);
-            Assert.Equal(20, send.Height);
-            Assert.Null(view.FindName("StopDialogueButton"));
-            Assert.IsType<Grid>(send.Content);
-        });
-    }
-
-    [Fact]
-    public void Dialogue_input_sends_on_enter_without_overriding_shift_enter()
-    {
-        StaRun(() =>
-        {
-            var view = new AttachedPanelView
-            {
-                DataContext = new AttachedPanelViewModel(TimeProvider.System),
-            };
-            var input = Assert.IsType<TextBox>(view.FindName("DialogueInputBox"));
-            var binding = Assert.Single(input.InputBindings.OfType<KeyBinding>());
-
-            Assert.Equal(Key.Enter, binding.Key);
-            Assert.Equal(ModifierKeys.None, binding.Modifiers);
-            Assert.True(input.AcceptsReturn);
-        });
-    }
-
     [Fact]
     public void Dialogue_presentation_state_switches_empty_configured_and_configuration_views()
     {

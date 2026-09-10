@@ -11,10 +11,18 @@ public sealed class SettingsViewModel : ObservableObject
         new(SettingsSection.Personalization, "个性化", "调整应用的个性化偏好。", "IconPersonalizationGeometry"),
         new(SettingsSection.RolePackages, "角色包", "安装、浏览并管理角色包。", "IconRolePackageGeometry"),
         new(SettingsSection.ModelConnection, "AI 模型与连接", "配置提供商、凭据、端点和模型。", "IconConnectionGeometry"),
+        new(SettingsSection.Speech, "角色朗读", "配置 OpenAI 风格或 GPT-SoVITS 朗读。", "IconConnectionGeometry"),
         new(SettingsSection.AgentConnection, "Agent 连接", "管理 Agent 来源、授权和项目 allowlist。", "IconAgentGeometry"),
         new(SettingsSection.ConversationMemory, "对话与记忆", "管理对话和记忆偏好。", "IconConversationGeometry"),
         new(SettingsSection.Privacy, "数据与隐私", "导出或清理本地用户数据。", "IconPrivacyGeometry"),
         new(SettingsSection.Theme, "主题", "选择设置界面的视觉主题。", "IconThemeGeometry"),
+    ];
+
+    private static readonly IReadOnlyList<SettingsNavigationGroup> Groups =
+    [
+        new("开始使用", Items.Where(item => item.Section is SettingsSection.UserProfile or SettingsSection.Personalization or SettingsSection.ModelConnection).ToArray()),
+        new("能力", Items.Where(item => item.Section is SettingsSection.RolePackages or SettingsSection.ConversationMemory or SettingsSection.AgentConnection or SettingsSection.Speech).ToArray()),
+        new("管理", Items.Where(item => item.Section is SettingsSection.Privacy or SettingsSection.Theme).ToArray()),
     ];
 
     private SettingsSection _selectedSection;
@@ -33,6 +41,7 @@ public sealed class SettingsViewModel : ObservableObject
     }
 
     public IReadOnlyList<SettingsNavigationItem> NavigationItems => Items;
+    public IReadOnlyList<SettingsNavigationGroup> NavigationGroups => Groups;
 
     public SettingsSection SelectedSection
     {

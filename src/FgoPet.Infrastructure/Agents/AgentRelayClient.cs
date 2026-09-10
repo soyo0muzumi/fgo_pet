@@ -56,7 +56,12 @@ public sealed class AgentRelayClient : IAgentGateway
             request.Description,
             request.Priority.ToString().ToLowerInvariant(),
             request.DueAt,
-            request.TargetId) { SourceType = request.SourceType, SourceInstanceId = request.SourceInstanceId };
+            request.TargetId)
+        {
+            SourceType = request.SourceType,
+            SourceInstanceId = request.SourceInstanceId,
+            TargetContextVersion = request.TargetContextVersion,
+        };
         var envelope = ProtocolEnvelope.Create("dispatch-" + request.DispatchRequestId, "dispatch_task", message);
         AgentProtocolValidator.Validate(envelope);
         var response = await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
@@ -79,6 +84,47 @@ public sealed class AgentRelayClient : IAgentGateway
                 : result == "backpressure" ? "relay_backpressure" : "relay_rejected",
             ReadOptionalString(response.Payload, "task_id"),
             ReadOptionalString(response.Payload, "source_instance"));
+    }
+
+    public async Task<AgentStopResult> StopAsync(AgentStopRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.SourceType)
+            || string.IsNullOrWhiteSpace(request.SourceInstance)
+            || string.IsNullOrWhiteSpace(request.TaskId)
+            || string.IsNullOrWhiteSpace(request.DispatchRequestId))
+        {
+            return new AgentStopResult(AgentStopStatus.Failed, request.TaskId, "stop_identity_required");
+        }
+
+        var message = new StopTaskRequest(
+            "stop-" + request.DispatchRequestId,
+            request.SourceType,
+            request.SourceInstance,
+            request.TaskId,
+            request.DispatchRequestId);
+        var envelope = ProtocolEnvelope.Create(
+            "stop-" + request.DispatchRequestId,
+            "stop_task",
+            message);
+        AgentProtocolValidator.Validate(envelope);
+        var response = await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
+        if (response is null)
+            return new AgentStopResult(AgentStopStatus.Offline, request.TaskId, "relay_offline");
+
+        var result = ReadOptionalString(response.Payload, "result");
+        var status = result switch
+        {
+            "accepted" => AgentStopStatus.Requested,
+            "already_applied" => AgentStopStatus.AlreadyRequested,
+            "completed" => AgentStopStatus.Completed,
+            "unknown" => AgentStopStatus.Unknown,
+            "offline" => AgentStopStatus.Offline,
+            "unsupported" => AgentStopStatus.Unsupported,
+            "unauthorized" => AgentStopStatus.Unauthorized,
+            _ => AgentStopStatus.Failed,
+        };
+        return new AgentStopResult(status, request.TaskId, ReadOptionalString(response.Payload, "error"));
     }
 
     public async Task<AgentOpenTaskResult> OpenTaskAsync(AgentOpenTaskRequest request, CancellationToken cancellationToken = default)

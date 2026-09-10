@@ -85,7 +85,7 @@ public sealed partial class TodoListViewModel : ObservableObject
 
     public bool CanOpenDispatch => _administration is not null && _dispatchService is not null;
 
-    public void RequestDispatch(TodoItem todo)
+    public void RequestDispatch(TodoItem todo, AgentDispatchContext? dispatchContext = null)
     {
         ArgumentNullException.ThrowIfNull(todo);
         if (!todo.CanDispatch || _administration is null || _dispatchService is null)
@@ -93,7 +93,7 @@ public sealed partial class TodoListViewModel : ObservableObject
             return;
         }
 
-        DispatchRequested?.Invoke(new AgentDispatchDialogViewModel(todo, _administration, _dispatchService));
+        DispatchRequested?.Invoke(new AgentDispatchDialogViewModel(todo, _administration, _dispatchService, dispatchContext));
     }
 
     public void SelectTab(TodoListTab tab)

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using FgoPet.AgentProtocol.Messages;
@@ -21,6 +22,9 @@ public sealed class CodexDispatchWorker
     private readonly Dictionary<string, CodexDispatchRecord> _records;
     private CodexArchiveState _archiveState;
     private readonly ICodexWorkerDiagnostics _diagnostics;
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeExecutions = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingStopIds = new(StringComparer.Ordinal);
+    private readonly object _stopGate = new();
 
     public CodexDispatchWorker(ICodexRelayConnector connector, ICodexTaskExecutor executor, string stateRoot,
         ISecretProtector? protector = null, ICodexWorkerDiagnostics? diagnostics = null)
@@ -50,6 +54,22 @@ public sealed class CodexDispatchWorker
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        using var monitorLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var stopMonitor = MonitorStopsAsync(monitorLifetime.Token);
+        try
+        {
+            await RunCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await monitorLifetime.CancelAsync().ConfigureAwait(false);
+            try { await stopMonitor.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (monitorLifetime.IsCancellationRequested) { }
+        }
+    }
+
+    private async Task RunCoreAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -136,6 +156,83 @@ public sealed class CodexDispatchWorker
         }
     }
 
+    private async Task MonitorStopsAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var requests = await _connector.PollStopRequestsAsync(cancellationToken).ConfigureAwait(false);
+                var acknowledgedIds = new List<string>();
+                foreach (var request in requests)
+                {
+                    if (request.SourceType != "codex" || request.SourceInstanceId != _connector.SourceInstanceId)
+                        throw new InvalidDataException("stop_identity_mismatch");
+
+                    var shouldAcknowledge = false;
+                    var shouldCancel = false;
+                    lock (_stopGate)
+                    {
+                        if (_records.TryGetValue(request.DispatchRequestId, out var existing)
+                            && existing.State == "terminal")
+                        {
+                            shouldAcknowledge = true;
+                        }
+                        else if (_pendingStopIds.Contains(request.DispatchRequestId))
+                        {
+                            shouldAcknowledge = true;
+                            shouldCancel = true;
+                        }
+                        else if (_pendingStopIds.Count < 512)
+                        {
+                            _pendingStopIds.Add(request.DispatchRequestId);
+                            shouldAcknowledge = true;
+                            shouldCancel = true;
+                        }
+                    }
+
+                    if (shouldCancel
+                        && _activeExecutions.TryGetValue(request.DispatchRequestId, out var execution))
+                    {
+                        execution.Cancel();
+                    }
+
+                    if (shouldAcknowledge)
+                    {
+                        acknowledgedIds.Add(request.StopRequestId);
+                        _diagnostics.Record(
+                            "stop.request",
+                            shouldCancel ? "accepted" : "already_terminal",
+                            dispatchRequestId: request.DispatchRequestId);
+                    }
+                    else
+                    {
+                        _diagnostics.Record("stop.request", "deferred", "stop_journal_full", request.DispatchRequestId);
+                    }
+                }
+
+                if (acknowledgedIds.Count > 0)
+                {
+                    var result = await _connector.AcknowledgeStopRequestsAsync(
+                        acknowledgedIds.Distinct(StringComparer.Ordinal).ToArray(),
+                        cancellationToken).ConfigureAwait(false);
+                    if (result is not "acknowledged" and not "already_acknowledged" and not "unknown")
+                        throw new InvalidDataException("stop_ack_rejected");
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or TimeoutException)
+            {
+                _diagnostics.Record("stop.poll", "failed", CodexWorkerDiagnostics.ErrorCode(error));
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private async Task ExecuteAsync(CodexDispatchRecord record, CancellationToken cancellationToken)
     {
         var request = record.Request;
@@ -149,6 +246,12 @@ public sealed class CodexDispatchWorker
         Save(record with { State = "running" }); // Persist before side effects, including process/thread creation.
         _diagnostics.Record("dispatch.execute", "started", dispatchRequestId: request.DispatchRequestId);
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _activeExecutions[request.DispatchRequestId] = execution;
+        lock (_stopGate)
+        {
+            if (_pendingStopIds.Contains(request.DispatchRequestId))
+                execution.Cancel();
+        }
         var watching = WatchAuthorizationAsync(request.TargetId, execution);
         string result;
         try
@@ -170,6 +273,8 @@ public sealed class CodexDispatchWorker
         }
         finally
         {
+            _activeExecutions.TryRemove(request.DispatchRequestId, out _);
+            lock (_stopGate) _pendingStopIds.Remove(request.DispatchRequestId);
             await execution.CancelAsync().ConfigureAwait(false);
             try { await watching.ConfigureAwait(false); }
             catch (OperationCanceledException) { }

@@ -25,7 +25,12 @@ public sealed record AgentExecution
         DateTimeOffset? startedAt = null,
         DateTimeOffset? endedAt = null,
         string? previousExecutionId = null,
-        string? remoteTaskId = null)
+        string? remoteTaskId = null,
+        string? conversationId = null,
+        string? messageId = null,
+        string? targetId = null,
+        string? targetContextVersion = null,
+        string? projectSnapshotId = null)
     {
         Id = AgentIdentityValidation.Id(id, nameof(id));
         TodoId = AgentIdentityValidation.Id(todoId, nameof(todoId));
@@ -39,6 +44,11 @@ public sealed record AgentExecution
         RemoteTaskId = string.IsNullOrWhiteSpace(remoteTaskId)
             ? null
             : AgentIdentityValidation.Id(remoteTaskId, nameof(remoteTaskId));
+        ConversationId = OptionalId(conversationId, nameof(conversationId));
+        MessageId = OptionalId(messageId, nameof(messageId));
+        TargetId = OptionalId(targetId, nameof(targetId));
+        TargetContextVersion = OptionalId(targetContextVersion, nameof(targetContextVersion));
+        ProjectSnapshotId = OptionalId(projectSnapshotId, nameof(projectSnapshotId));
         Status = status;
         StartedAt = startedAt;
         UpdatedAt = updatedAt;
@@ -63,10 +73,17 @@ public sealed record AgentExecution
     public string DispatchRequestId { get; }
     public string? PreviousExecutionId { get; }
     public string? RemoteTaskId { get; init; }
+    public string? ConversationId { get; }
+    public string? MessageId { get; }
+    public string? TargetId { get; }
+    public string? TargetContextVersion { get; }
+    public string? ProjectSnapshotId { get; }
     public AgentExecutionStatus Status { get; init; }
     public DateTimeOffset? StartedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
     public DateTimeOffset? EndedAt { get; init; }
+    public bool HasConversationReference => !string.IsNullOrWhiteSpace(ConversationId) && !string.IsNullOrWhiteSpace(MessageId);
+    public bool HasTargetContextValidation => !string.IsNullOrWhiteSpace(TargetContextVersion);
     public bool IsTerminal => Status is AgentExecutionStatus.Completed or AgentExecutionStatus.Failed or AgentExecutionStatus.Cancelled;
     public bool IsNonTerminal => !IsTerminal;
     public bool ShouldReturnTodoToPlanned => Status is AgentExecutionStatus.Failed or AgentExecutionStatus.Cancelled;
@@ -156,7 +173,12 @@ public sealed record AgentExecution
             normalizedTaskId,
             normalizedDispatchRequestId,
             updatedAt,
-            previousExecutionId: previous.Id);
+            previousExecutionId: previous.Id,
+            conversationId: previous.ConversationId,
+            messageId: previous.MessageId,
+            targetId: previous.TargetId,
+            targetContextVersion: previous.TargetContextVersion,
+            projectSnapshotId: previous.ProjectSnapshotId);
     }
 
     public static void ValidateCanStart(IEnumerable<AgentExecution> executions)
@@ -167,6 +189,11 @@ public sealed record AgentExecution
             throw new InvalidOperationException("A Todo item already has a non-terminal Agent execution.");
         }
     }
+
+    private static string? OptionalId(string? value, string parameterName, int maxLength = 256) =>
+        string.IsNullOrWhiteSpace(value)
+            ? null
+            : AgentIdentityValidation.Id(value, parameterName, maxLength);
 
     private void EnsureMutable()
     {

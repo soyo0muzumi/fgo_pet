@@ -41,6 +41,19 @@ public sealed class RoleActivationServiceTests
     }
 
     [Fact]
+    public async Task RestoreAsync_uses_available_local_pack_when_selection_is_missing()
+    {
+        var settings = new FakeSettingsStore();
+        var runtime = new AppRuntime();
+        var service = CreateService(settings, runtime);
+
+        var result = await service.RestoreAsync(CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(Selection, settings.Load().Selection);
+        Assert.Equal("mash_kyrielight", result.ActiveRole!.ServantId);
+    }
+    [Fact]
     public async Task RestoreAsync_returns_missing_package_when_saved_selection_cannot_be_resolved()
     {
         var settings = new FakeSettingsStore { Current = AppSettings.Defaults with { Selection = Selection } };

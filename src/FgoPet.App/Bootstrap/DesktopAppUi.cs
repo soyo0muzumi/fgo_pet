@@ -24,8 +24,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 {
     private readonly TrayService _tray;
     private readonly ServantLibraryViewModel _libraryViewModel;
-    private readonly SettingsWindow _settings;
     private readonly SettingsViewModel _settingsViewModel;
+    private readonly SettingsWindow? _settingsWindow;
     private readonly PortraitWindow _portrait;
     private readonly PortraitWindowCoordinator _coordinator;
     private readonly IAppLifetime _lifetime;
@@ -42,10 +42,46 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private bool _initialized;
     private Task? _portraitRecovery;
 
+    /// <summary>Compatibility overload for legacy tests; production composition uses the shared DialogueWindow.</summary>
     public DesktopAppUi(
         TrayService tray,
         ServantLibraryViewModel libraryViewModel,
-        SettingsWindow settings,
+        SettingsWindow settingsWindow,
+        SettingsViewModel settingsViewModel,
+        PortraitWindow portrait,
+        PortraitWindowCoordinator coordinator,
+        IAppLifetime lifetime,
+        AppPaths paths,
+        PortraitController controller,
+        ConversationViewModel? conversation = null,
+        PortraitActivation? portraitActivation = null,
+        IAppSettingsStore? appSettings = null,
+        DialogueWindow? dialogueWindow = null,
+        DialogueWindowViewModel? dialogue = null,
+        AttachedPanelViewModel? attachedPanel = null,
+        DialogueWindowPlacementCoordinator? dialoguePlacement = null)
+        : this(
+            tray,
+            libraryViewModel,
+            settingsViewModel,
+            portrait,
+            coordinator,
+            lifetime,
+            paths,
+            controller,
+            conversation,
+            portraitActivation,
+            appSettings,
+            dialogueWindow,
+            dialogue,
+            attachedPanel,
+            dialoguePlacement)
+    {
+        _settingsWindow = settingsWindow;
+    }
+    public DesktopAppUi(
+        TrayService tray,
+        ServantLibraryViewModel libraryViewModel,
         SettingsViewModel settingsViewModel,
         PortraitWindow portrait,
         PortraitWindowCoordinator coordinator,
@@ -62,7 +98,6 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         _tray = tray;
         _libraryViewModel = libraryViewModel;
-        _settings = settings;
         _settingsViewModel = settingsViewModel;
         _portrait = portrait;
         _coordinator = coordinator;
@@ -74,6 +109,11 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _dialogue = dialogue;
         _attachedPanel = attachedPanel;
         _dialoguePlacement = dialoguePlacement;
+        if (_attachedPanel is not null)
+        {
+            _attachedPanel.SettingsRequested += OnAttachedPanelSettingsRequested;
+            _attachedPanel.ExitRequested += OnAttachedPanelExitRequested;
+        }
         _activatePortrait = portraitActivation
             ?? (controller is null ? ((_, _) => Task.CompletedTask) : controller.ActivateAsync);
         _appSettings = appSettings;
@@ -90,6 +130,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         if (_dialogueWindow is not null && _dialogue is not null)
         {
             _dialogue.OpenRequested += ShowDialogueWindow;
+            _dialogue.SettingsRequested += OnDialogueSettingsRequested;
             _dialogueWindow.Hidden += () => _dialoguePlacement?.SaveOnClose(_dialogueWindow);
         }
     }
@@ -105,6 +146,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void ShowLibrary(string? offeredPackPath = null)
     {
+        // Packless startup is a first-run flow in the existing DialogueWindow.
+        // Keeping this route on the ordinary window guarantees a taskbar entry and
+        // shares the same navigation/context contract as normal conversation.
         if (!string.IsNullOrWhiteSpace(offeredPackPath))
         {
             _libraryViewModel.PackFilePath = offeredPackPath;
@@ -133,7 +177,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             return;
         }
 
-        if (_dialogueWindow.Owner is null && _portrait.IsLoaded)
+        if (_dialogueWindow.Owner is null && _portrait?.IsLoaded == true)
         {
             _dialogueWindow.Owner = _portrait;
         }
@@ -145,17 +189,45 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void ShowSettings(SettingsSection? section = null)
     {
-        if (section is not null)
+        _settingsViewModel.Select(section ?? SettingsSection.Personalization);
+
+        if (_settingsWindow is null)
         {
-            _settingsViewModel.Select(section.Value);
+            return;
         }
 
-        _settings.Show();
-        _settings.Activate();
+        if (_settingsWindow.IsVisible)
+        {
+            if (_settingsWindow.WindowState == WindowState.Minimized)
+            {
+                _settingsWindow.WindowState = WindowState.Normal;
+            }
+
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     public ContextMenu PortraitMenu => _portraitMenu;
 
+    public void ShowFirstStartChat()
+    {
+        if (_dialogue is null)
+        {
+            return;
+        }
+
+        _dialogue.NavigateTo(MainNavigationTarget.Companion);
+        ShowDialogueWindow();
+
+        if (_dialogue.Conversation.IsConfigurationRequired)
+        {
+            ShowSettings(SettingsSection.ModelConnection);
+        }
+    }
     public void ShowPortrait()
     {
         _lifetime.AttachPetWindow(_portrait);
@@ -168,7 +240,22 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _tray.ShowHideRequested -= OnTrayShowHideRequested;
         _tray.RestoreRequested -= OnTrayRestoreRequested;
         _controller.StateChanged -= OnPortraitStateChanged;
+        if (_dialogue is not null)
+        {
+            _dialogue.SettingsRequested -= OnDialogueSettingsRequested;
+        }
+        if (_attachedPanel is not null)
+        {
+            _attachedPanel.SettingsRequested -= OnAttachedPanelSettingsRequested;
+            _attachedPanel.ExitRequested -= OnAttachedPanelExitRequested;
+        }
     }
+
+    private void OnDialogueSettingsRequested(SettingsSection section) => ShowSettings(section);
+
+    private void OnAttachedPanelSettingsRequested(SettingsSection section) => ShowSettings(section);
+
+    private void OnAttachedPanelExitRequested() => Exit();
 
     private ContextMenu CreatePortraitMenu()
     {
