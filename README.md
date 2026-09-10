@@ -165,7 +165,7 @@ Themes currently affect only the settings window. The desktop pet and dialogue p
 - **Phase 4** — Todo, Agent Relay/Adapter, Codex integration, restart recovery, and revocation are accepted and merged into local `main`.
 - **Phase 5** — task-operation safety, backup and restore, guided configuration, role-package release workflow, and Release candidate preparation are integrated into local `main`. Public release remains blocked only by the documented manual Windows evidence and final release authorization.
 
-Historical implementation plans and acceptance reports remain available as internal development records; they are not the primary user documentation.
+v0.1.2 is in ZIP-based external testing. See the roadmap for the current scope, feedback priorities, and preparation for the next version.
 
 ## Developer build and test
 
@@ -187,5 +187,7 @@ Developers may use the packless smoke test to verify the application shell. This
 ```powershell
 dotnet run --project src/FgoPet.App/FgoPet.App.csproj -c Release -- --smoke-test
 ```
+
+Start with [modules/README.md](modules/README.md) for module ownership. See the [developer guide](docs/guides/development.md) for the complete build, test, and ZIP candidate workflow.
 
 FGO artwork and extracted Atlas assets are not stored in this repository.

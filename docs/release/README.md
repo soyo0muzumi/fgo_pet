@@ -13,3 +13,6 @@ Expected candidate artifacts are `manifest.json`, `SHA256SUMS`, `app\FgoPet-win-
 Acceptance uses the existing release verifier and adapter install/uninstall smoke boundary. It creates generated temporary extraction, install, Codex-home, and state directories, and preserves caller PATH, Codex home, pairing state, and business data.
 
 For every manual evidence item record: owner, candidate version/hash, Windows build, .NET Desktop Runtime version, hardware/display configuration, timestamp, pass/fail, notes, and screenshot or log path. Required manual coverage is GUI install, sleep/resume, DPI, multi-monitor, and long-running operation. Missing manual evidence means the candidate is not publicly release-authorized.
+## v0.1.2 ZIP test candidate
+
+The v0.1.2 external-test artifact is the framework-dependent Windows x64 ZIP only. Tester-facing instructions live in [`0.1.2-test-notes.md`](0.1.2-test-notes.md). MSI, signing, upload, tags, and public Release creation remain out of scope until separately authorized.

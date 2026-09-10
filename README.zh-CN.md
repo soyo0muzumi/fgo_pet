@@ -165,7 +165,7 @@ Agent 是可选能力。Phase 5 Release 的 Relay、Adapter 和 Codex 插件载�
 - **Phase 4**：Todo、Agent Relay/Adapter、Codex 集成、重启恢复和撤销已验收并合入本地 `main`。
 - **Phase 5**：任务运行安全、备份恢复、配置引导、角色包发布流程和 Release candidate 准备已整合到本地 `main`。公开发布仍等待文档中列出的 Windows 人工证据和最终发布授权。
 
-开发阶段的详细计划、规格和验收记录仅在本地维护；当前公开状态请以[路线图](docs/roadmap.md)和[发布说明](docs/release/README.md)为准。
+v0.1.2 正在进行 ZIP 外部测试；当前范围、反馈重点和下一版本准备请参阅[路线图](docs/roadmap.md)。
 
 ## 开发者构建与测试
 
@@ -187,5 +187,7 @@ pwsh -File scripts/test-phase4.ps1
 ```powershell
 dotnet run --project src/FgoPet.App/FgoPet.App.csproj -c Release -- --smoke-test
 ```
+
+模块职责从 [modules/README.md](modules/README.md) 开始查阅。完整构建、测试和 ZIP 候选流程见[开发者指南](docs/guides/development.md)。
 
 FGO 美术与提取后的 Atlas 资源不存储在本仓库中。
