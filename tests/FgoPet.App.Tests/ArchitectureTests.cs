@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Windows;
 using FgoPet.App.Bootstrap;
@@ -97,6 +98,23 @@ public sealed class ArchitectureTests
             Assert.Equal("servant-mash", panel.ActiveServantId);
             Assert.True(panel.CanStartFocus);
         });
+    }
+
+    [Fact]
+    public void Attached_panel_shell_brush_references_are_defined()
+    {
+        var root = RepoRoot();
+        var panel = File.ReadAllText(Path.Combine(root, "src", "FgoPet.App", "Panels", "AttachedPanelView.xaml"));
+        var tokens = XDocument.Load(Path.Combine(root, "src", "FgoPet.App", "Ui", "Shell", "ShellTokens.xaml"));
+        var definedKeys = tokens.Descendants()
+            .Select(element => element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value)
+            .Where(key => key is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        var referencedKeys = Regex.Matches(panel, @"\{DynamicResource\s+(Shell\w+Brush)\}")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(referencedKeys, key => Assert.Contains(key, definedKeys));
     }
 
     private static IEnumerable<string> ProjectFiles() => FindCsproj(RepoRoot());
