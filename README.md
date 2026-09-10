@@ -2,192 +2,86 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-FGO Pet is a Windows 11 desktop companion based on Fate/Grand Order servants. It brings focus sessions, daily activity, Todo items, Codex/Agent progress, dialogue, and memory into a desktop pet and its attached panel.
+FGO Pet is a Windows 11 desktop companion inspired by Fate/Grand Order servants. It combines a desktop pet, focus sessions, daily activity, Todo items, AI dialogue, memory, Agent tasks, and optional speech in a local-first desktop experience.
 
-The application uses WPF and .NET 8. Servant images, dialogue, persona prompts, and knowledge resources are not embedded in the program installer. They are distributed separately as data-only `.fgopetpack` role packages. The first supported servant is Mash Kyrielight.
+The application uses WPF and .NET 8. Servant artwork, persona data, and knowledge are installed separately through data-only `.fgopetpack` packages. Model and Agent integration are optional; the pet and focus features remain available offline when they are not configured.
 
-## Release status
+## Current release
 
-Phases 1–5 development slices are integrated into local `main`. The current work is first-release preparation: final Windows manual checks, production role-package confirmation, and release documentation.
+**v0.1.2 is available for external testing as a Windows x64 ZIP.** It is a test build, not a signed or auto-updating public release.
 
-See the [current roadmap](docs/roadmap.md) and [release candidate workflow](docs/release/README.md).
+Requirements:
 
-The repository does not yet provide a final installer for regular users. PowerShell, CLI, and `dotnet` commands in the source tree are for development, diagnostics, and acceptance only. They are not the end-user installation path.
+- Windows 11 x64;
+- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0);
+- at least one compatible `.fgopetpack` role package.
 
-The Phase 5 Release must provide:
+See the [v0.1.2 external testing notes](docs/release/0.1.2-test-notes.md) for scope, limitations, and the feedback template. See the [roadmap](docs/roadmap.md) for current and next-version priorities.
 
-- one Windows x64 per-user GUI installer;
-- at least one reviewed, separately distributed `.fgopetpack`;
-- install, upgrade, rollback, and uninstall flows;
-- in-app role-package import, model configuration, and Agent configuration;
-- no requirement for users to open a terminal, edit `PATH`, run scripts, or copy opaque project IDs.
+## Feature overview
 
-The program installer and role package remain separate artifacts, but both are required for a usable first installation.
+- **Desktop companion and windows** — the pet stays on the desktop; chat and settings are independent taskbar windows, and the task panel adapts to available width.
+- **Focus and Today** — preset or custom Pomodoro sessions, pause and recovery, a daily timeline, and servant bond progress.
+- **Dialogue and memory** — multi-turn conversations, history recovery, role persona and knowledge, with user-reviewed memory candidates.
+- **Todo and Agent** — tasks require confirmation before dispatch; Agent sources and project access are deny-by-default, while stop and unknown outcomes require source confirmation or explicit review.
+- **Speech** — optional synthesis, auto-read, manual playback, stop, and retry; speech failures do not block other features.
+- **Data and privacy** — safe sharing exports, private backup and restore, conversation deletion, and local data controls.
 
-## Installation and first launch
+## ZIP quick start
 
-The final Release user flow is:
+1. Compare the ZIP SHA-256 with the supplied `SHA256SUMS` entry.
+2. Extract the complete ZIP into a normal user-writable directory. Do not run it from inside the archive.
+3. Start `FgoPet.App.exe`.
+4. On first launch, import a `.fgopetpack`, choose an appearance, and set it as the active servant.
+5. Configure an AI model, Agent, or speech provider only if needed; each setup can be skipped.
 
-1. Double-click the FGO Pet GUI installer and complete the installation wizard.
-2. Start FGO Pet. First launch opens the role-package setup flow.
-3. Select the `.fgopetpack` supplied on the release page and let FGO Pet validate and install it.
-4. Select an appearance and set it as the current servant. The desktop-pet UI opens only after this step.
-5. AI model and Agent setup may be skipped. Once a role package is active, the pet and focus features work offline.
-
-The role-package step cannot be skipped. Without a role package, the current application can only show its package library/import UI and has no servant portrait to display. The Release onboarding flow must therefore remain on package setup instead of opening an empty desktop pet.
+Role packages cannot execute code. FGO Pet validates their manifest, compatibility, paths, and file hashes. The application ZIP and `.fgopetpack` files are separate artifacts; do not embed a role package inside the application archive.
 
 ## Everyday use
 
-Click the servant portrait to open or close the attached panel. The panel has four sections:
+- Select the pet controls to open chat and common actions.
+- The chat window provides dialogue, history, Todo, focus, and current Agent-task entry points.
+- The settings window manages models, Agent access, speech, roles and appearances, personalization, themes, and data/privacy.
+- The system tray can show the pet, open settings, or exit the application.
+- `Esc` closes the current overlay or returns one level; primary controls expose keyboard focus and visible state feedback.
 
-- **Focus (`专注`)** — start `25/5 × 4`, `50/10 × 2`, or custom Pomodoro sessions. Sessions can be paused, resumed, or stopped. After an unexpected exit, the latest session is restored in a paused state; offline time never advances it.
-- **Today (`今日`)** — inspect today's focus time, events, and bond progress. Focus credit belongs to the servant active when the focus stage started and is capped at Lv.10.
-- **Todo (`TODO`)** — create, confirm, and review tasks. An approved Agent target can receive a task, and its progress appears on the execution timeline and in history.
-- **Dialogue (`对话`)** — use the active role package's persona and knowledge. A configured model enables messages; without a model, the panel points to settings while the pet and focus features keep working.
+### AI model
 
-Clicking the portrait closes the panel, and `Esc` steps back through the current UI level. The system-tray menu can show the pet again, open settings, or exit the application.
+Under **Settings → AI Model and Connection**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
 
-## Settings and feature configuration
+### Agent
 
-Open **Settings (`设置`)** from the system tray or the portrait menu. All regular-user configuration is performed through the GUI.
+Under **Settings → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 
-### User profile
+### Speech
 
-Use **Settings → User Profile (`用户资料`)** to set an optional global display name. This field belongs to the application profile and does not automatically become the name used by a servant when addressing the user.
+Under **Settings → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
 
-Each servant's form of address is configured separately in its role package and is stored by stable `servant_id`.
+## Security and privacy boundaries
 
-### Personalization
-
-Use **Settings → Personalization (`个性化`)** to configure:
-
-- portrait scale: 50%, 60%, or 75%;
-- always-on-top behavior;
-- automatic collapse of an inactive expanded panel;
-- restoration of the default personalization values.
-
-Window placement and valid settings are persisted automatically. Restoring personalization defaults does not change the selected theme.
-
-### Role packages
-
-A role package is required to display the desktop pet. In **Settings → Role Packages (`角色包`)**:
-
-1. select **Choose file (`选择文件`)** and choose a `.fgopetpack`;
-2. select **Install (`安装`)**;
-3. open the installed package;
-4. under **Servant and appearance (`从者与外观`)**, choose an appearance and select **Set as current servant (`设为当前从者`)**.
-
-The package detail page also provides:
-
-- **Form of address (`称呼设置`)** — use the package default or enter a custom name;
-- **Package information (`角色包信息`)** — inspect version, compatibility, and source;
-- **Package-declared settings (`角色包声明设置`)** — edit only the switches, choices, and text fields allowed by the application contract;
-- **Uninstall this version (`卸载此版本`)** — remove the selected version; uninstall and failed upgrades must preserve a recovery path for the active version.
-
-FGO Pet never executes code from a role package. The installer validates the manifest, compatibility, paths, and file hashes.
-
-### AI model and connection
-
-Model configuration is optional and affects only features such as dialogue. In **Settings → AI Model and Connection (`AI 模型与连接`)**:
-
-1. select a provider;
-2. enter the API key;
-3. review or enter the Base URL;
-4. refresh the available-model list and choose a model, or enter the model ID directly;
-5. select **Test connection (`测试连接`)**;
-6. after a successful test, select **Save connection (`保存连接`)**.
-
-API keys are stored only in Windows Credential Manager. They are not written to `settings.json`, exports, or role packages. Select **Skip and use offline (`跳过，离线使用`)** to leave model setup for later.
-
-### Agent connection
-
-Agent integration is optional. The Phase 5 Release includes the Relay, Adapter, and Codex plugin payload in the GUI installer. Installation, repair, and registration must be handled by the installer or FGO Pet settings; regular users do not run commands.
-
-In **Settings → Agent Connection (`Agent 连接`)**:
-
-1. enable **Agent integration (`启用 Agent 集成`)**;
-2. start Codex and inspect the name, instance, and version under **Pending sources (`待批准来源`)**;
-3. select **Approve (`批准`)**;
-4. select allowed project targets through the GUI;
-5. enable the source and save its permissions;
-6. select **Test connection (`测试连接`)** and confirm that Relay, App, and Adapter are online.
-
-Permissions are deny-by-default. Tasks cannot be dispatched until both the source and target are explicitly approved. Revocation takes effect immediately and remains revoked after restart. The final Release must not ask users to copy project IDs, modify `PATH`, or run commands such as `target add`; commands currently present in the repository are development and acceptance tools only.
-
-When Codex requests command or file approval during a dispatch, FGO Pet marks the task as awaiting acceptance and opens a visible `codex resume` session for the same remote thread. The attention action in the App reopens that existing thread; it never creates a duplicate task. Only the opaque thread ID is retained—prompts, tool arguments, terminal output, and local paths stay outside the Agent protocol.
-
-If the App loses the transport boundary after a dispatch may have started, the execution is shown as **outcome unknown** (`待核对`) with its original source, instance, task, and dispatch identifiers. The App does not retry it automatically. The user can open the original task, copy its bounded diagnostic identifier, and explicitly confirm **completed**, **still running**, **failed**, or **cancelled** locally. A later retry is a new dispatch with a new request/execution ID linked to the previous execution; it is never mistaken for a replay of the old request.
-
-The Agent Connection settings page also shows Relay/Adapter capacity, archivable records, and incomplete archive batches. Safety archive candidates are terminal records older than 30 days with an exact final receipt. Archiving is disabled while any Agent work is active or awaiting confirmation, while maintenance status is unavailable, or when replay-protection tombstones are full. After an explicit irreversible-action confirmation, the Relay and Adapter coordinate prepare/commit before deleting full records; compact tombstones remain to reject stale replays.
-
-### Dialogue and memory
-
-In **Settings → Dialogue and Memory (`对话与记忆`)** you can:
-
-- enable or disable memory;
-- inspect pending memory candidates;
-- edit, approve, or reject a candidate;
-- edit, disable, or delete an approved memory.
-
-Candidates do not enter later conversations automatically. Only memories explicitly approved by the user are stored. Memory belongs to the servant, so switching appearances for the same servant does not move it.
-
-### Data and privacy
-
-The current **Settings → Data and Privacy (`数据与隐私`)** page provides a safe sharing export, a separate private backup and restore flow, conversation deletion, and local user-data controls. The safe export contains allowed dialogue, summaries, memories, and bounded metadata. It excludes API keys, full prompts, raw story data, and role-package assets.
-
-The safe export is not a complete backup and cannot be restored. A private `.fgopetbackup` is a four-member, versioned archive covering focus, timeline, bond, dialogue, memory, Todo, Agent executions/receipts, work archives, settings, and role-package references. It excludes API keys, Credential Manager/Relay/Adapter pairing state, prompts, logs, absolute paths, and role-package assets. Before replacement, restore validates archive paths, sizes, hashes, SQLite integrity, and schema in an isolated directory and retains a rollback copy. `dispatching`, `active`, and `attention` Agent executions become explicit unknown/interrupted outcomes and are never automatically re-dispatched. Missing role packages produce install guidance without failing the data restore; Agent credentials are not restored, so pairing must be repeated before enabling Agent again.
-
-Deletion actions have different scopes; review the confirmation text before continuing. Uninstall preserves user data by default, and a complete data removal requires separate confirmation.
-
-### Theme
-
-Use **Settings → Theme (`主题`)** to choose:
-
-- **Modern Gray** — neutral gray surfaces with restrained Windows-style blue accents;
-- **FGO Light** — navy navigation with soft gold accents.
-
-Themes currently affect only the settings window. The desktop pet and dialogue panel retain the existing dark terminal-inspired appearance.
-
-## Data and privacy boundaries
-
-- Runtime data is stored under the current Windows user's local application-data directory.
 - API keys are stored in Windows Credential Manager.
-- Relay and Adapter pairing credentials use protected machine-local state and are excluded from user backups.
-- Role packages contain data and assets only; executable code is rejected.
-- The Agent protocol rejects prompts, reasoning, tool calls, terminal output, credentials, and file paths.
-- Memory candidates, Todo dispatches, and work archives require explicit user confirmation.
+- Relay and Adapter pairing credentials use protected local state and are excluded from user backups.
+- The Agent protocol excludes full prompts, reasoning, tool arguments, terminal output, credentials, and unnecessary local paths.
+- Todo dispatch, memory approval, project authorization, and irreversible data operations require explicit user actions.
+- A safe sharing export is not a complete backup; private backups exclude credentials, role-package assets, and Agent pairing state.
+- FGO artwork, Atlas files, audio, and extracted assets are not stored in this repository.
 
-## Current phase status
+## Developer entry points
 
-- **Phase 1** — desktop pet, role-package installation, portrait rendering, tray, and attached panel are implemented.
-- **Phase 2** — focus, recovery, today's timeline, and bond progression are accepted in the primary Release environment.
-- **Phase 3** — model setup, dialogue, memory, settings, and privacy controls are accepted.
-- **Phase 4** — Todo, Agent Relay/Adapter, Codex integration, restart recovery, and revocation are accepted and merged into local `main`.
-- **Phase 5** — task-operation safety, backup and restore, guided configuration, role-package release workflow, and Release candidate preparation are integrated into local `main`. Public release remains blocked only by the documented manual Windows evidence and final release authorization.
-
-v0.1.2 is in ZIP-based external testing. See the roadmap for the current scope, feedback priorities, and preparation for the next version.
-
-## Developer build and test
-
-The following commands are for source development and verification only. They are not end-user installation steps.
-
-Requirements: Windows and .NET SDK 8.0.x.
+Requirements: Windows, .NET SDK 8.0.x, and PowerShell 7.
 
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release
-pwsh -File scripts/test-phase1.ps1
-pwsh -File scripts/test-phase2.ps1
-pwsh -File scripts/test-phase3-settings.ps1
-pwsh -File scripts/test-phase4.ps1
 ```
 
-Developers may use the packless smoke test to verify the application shell. This does not mean that end users may skip the required role-package step:
+Further documentation:
 
-```powershell
-dotnet run --project src/FgoPet.App/FgoPet.App.csproj -c Release -- --smoke-test
-```
+- [Developer guide](docs/guides/development.md) — complete build, test, repository, and ZIP candidate workflow;
+- [Module map](modules/README.md) — ownership, dependency direction, and migration status;
+- [Agent integration guide](docs/guides/agent-integration.md);
+- [Codex Adapter guide](docs/guides/codex-adapter.md);
+- [Release candidate workflow](docs/release/README.md);
+- [Documentation index](docs/README.md).
 
-Start with [modules/README.md](modules/README.md) for module ownership. See the [developer guide](docs/guides/development.md) for the complete build, test, and ZIP candidate workflow.
-
-FGO artwork and extracted Atlas assets are not stored in this repository.
+Release scripts create local candidates only. They do not grant authorization to push, tag, upload, or create a public Release.
