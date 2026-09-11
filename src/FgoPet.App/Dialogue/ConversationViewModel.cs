@@ -37,8 +37,11 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly ArchiveDraftService? _archiveDrafts;
     private readonly IConfiguredModelAuthority? _modelAuthority;
     private string _activeConversationId = string.Empty;
+    public string CurrentConversationId => _activeConversationId;
     private bool _configurationRequired;
     private readonly StringBuilder _pendingReasoning = new();
+    private readonly HashSet<string> _completedNotifications = new(StringComparer.Ordinal);
+    public event Action<FgoPet.Core.Portraits.ExpressionSemantic>? ExpressionRequested;
     private long _thinkingStartedTicks;
     private System.Timers.Timer? _thinkingTimer;
 
@@ -572,6 +575,7 @@ public sealed partial class ConversationViewModel : ObservableObject
                 turn.Append(update.TextDelta ?? string.Empty);
                 break;
             case ConversationUpdateType.AssistantCompleted:
+                if (update.MessageId is not null && !_completedNotifications.Add(update.ConversationId + "/" + update.MessageId)) break;
                 var completedTurn = Turns.FirstOrDefault(item => item.MessageId == update.MessageId);
                 if (completedTurn is not null)
                 {
@@ -581,6 +585,7 @@ public sealed partial class ConversationViewModel : ObservableObject
                         completedTurn.IsThinkingActive = false;
                     }
                 }
+                if (completedTurn is not null && update.Expression is { } expression) ExpressionRequested?.Invoke(expression);
                 RequestStatusText = string.Empty;
                 StopThinkingTimer();
                 _pendingReasoning.Clear();
@@ -714,7 +719,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         TodoProposals.Clear();
     }
 
-    private void OnTodoProposalClosed(TodoProposalViewModel proposal) => TodoProposals.Remove(proposal);
+    private void OnTodoProposalClosed(TodoProposalViewModel proposal) { if (proposal.IsRemoved) TodoProposals.Remove(proposal); }
 
     public void ShowArchiveDraft(ArchiveDraft draft)
     {

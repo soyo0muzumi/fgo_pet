@@ -12,6 +12,19 @@ public sealed class SqliteAgentRepository : IAgentRepository
 
     public SqliteAgentRepository(RuntimeDatabase database) => _database = database;
 
+    public bool TryResumeUnknown(string executionId, DateTimeOffset at)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE agent_executions
+            SET status='active', started_at_utc=COALESCE(started_at_utc,$at), updated_at_utc=$at
+            WHERE execution_id=$id AND status='dispatch_outcome_unknown'
+            """;
+        command.Parameters.AddWithValue("$id", executionId);
+        command.Parameters.AddWithValue("$at", at.ToString("O", CultureInfo.InvariantCulture));
+        return command.ExecuteNonQuery() == 1;
+    }
     public void SaveExecution(AgentExecution execution)
     {
         ArgumentNullException.ThrowIfNull(execution);

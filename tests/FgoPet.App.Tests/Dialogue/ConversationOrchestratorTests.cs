@@ -24,6 +24,18 @@ public sealed class ConversationOrchestratorTests : IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-phase3-orchestrator-{Guid.NewGuid():N}.db");
 
     [Fact]
+    public async Task Validated_emotion_is_published_only_with_the_completed_reply()
+    {
+        var provider = new FakeProvider([new ChatStreamChunk("{\"text\":\"很好！\",\"emotion\":\"happy\"}", IsComplete: true)]);
+        var orchestrator = CreateOrchestrator(provider);
+        var updates = new List<ConversationUpdate>();
+        orchestrator.Updated += updates.Add;
+        await orchestrator.SendAsync("800100", "你好", CancellationToken.None);
+        var completed = Assert.Single(updates.Where(u => u.Type == ConversationUpdateType.AssistantCompleted));
+        Assert.Equal(ExpressionSemantic.Happy, completed.Expression);
+        Assert.DoesNotContain(updates, u => u.Type != ConversationUpdateType.AssistantCompleted && u.Expression is not null);
+    }
+    [Fact]
     public async Task Send_persists_user_and_final_assistant_messages_with_context()
     {
         var provider = new FakeProvider([new ChatStreamChunk("已收到"), new ChatStreamChunk("，御主", IsComplete: true)]);

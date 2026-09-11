@@ -12,6 +12,8 @@ public partial class DialogueWindow : Window
 {
     private readonly DialogueWindowViewModel _viewModel;
     private readonly TodoListViewModel? _todos;
+    private FgoPet.App.Views.TodoWorkspaceView? _workspace;
+    private bool _showingTasks;
     private bool _composing;
     private bool _following = true;
     private Button? _drawerOrigin;
@@ -19,15 +21,40 @@ public partial class DialogueWindow : Window
     public event Action? Hidden;
 
     public DialogueWindow(DialogueWindowViewModel viewModel, TodoListViewModel? todos = null,
-        FgoPet.App.Panels.AttachedPanelViewModel? panel = null, SettingsViewModel? settingsNavigation = null)
+        FgoPet.App.Panels.AttachedPanelViewModel? panel = null, SettingsViewModel? settingsNavigation = null,
+        FgoPet.App.Services.TodoApplicationService? todoService = null,
+        FgoPet.Core.Agents.IAgentRepository? agents = null,
+        AgentCurrentTaskViewModel? currentTask = null,
+        FgoPet.App.Portraits.PortraitController? portrait = null)
     {
         _viewModel = viewModel;
         _todos = todos;
         InitializeComponent();
         DataContext = viewModel;
-        if (todos is not null) TaskList.ItemsSource = todos.VisibleItems;
+        Loaded += async (_, _) => await viewModel.EnsureRoleInfoAsync();
+        if (todoService is not null)
+        {
+            _workspace = new FgoPet.App.Views.TodoWorkspaceView(todoService, agents, currentTask);
+            _workspace.LegacyRequested += () => _viewModel.NavigateToSettings(SettingsSection.AgentConnection);
+            TasksPage.Content = _workspace;
+        }
+        viewModel.Conversation.ManualTodoRequested += () => { ShowTasks(true); _workspace?.BeginAdd(); };
+        AddHandler(FgoPet.App.Views.TodoProposalCard.ViewTodoRequestedEvent, new RoutedEventHandler((_, e) => { ShowTasks(true); if (e.OriginalSource is FgoPet.App.Views.TodoProposalCard { DataContext: TodoProposalViewModel proposal }) _workspace?.FocusTodo(proposal.CreatedTodoId); }));
         TextCompositionManager.AddPreviewTextInputStartHandler(InputBox, (_, _) => _composing = true);
         TextCompositionManager.AddPreviewTextInputHandler(InputBox, (_, _) => _composing = false);
+        viewModel.Conversation.ExpressionRequested += semantic =>
+        {
+            var state = portrait?.CurrentState;
+            var conversationId = viewModel.Conversation.CurrentConversationId;
+            var servant = viewModel.Conversation.ActiveServantId;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (state is null || portrait is null || !ReferenceEquals(portrait.CurrentState, state) ||
+                    viewModel.Conversation.CurrentConversationId != conversationId ||
+                    viewModel.Conversation.ActiveServantId != servant) return;
+                portrait.SetExpression(semantic);
+            }));
+        };
         viewModel.OpenRequested += OnOpenRequested;
         viewModel.NavigationRequested += OnNavigationRequested;
         viewModel.Conversation.PropertyChanged += OnConversationChanged;
@@ -56,11 +83,11 @@ public partial class DialogueWindow : Window
         RefreshConversation();
     }
 
-    private void OnOpenRequested() { Show(); Activate(); InputBox.Focus(); }
+    private void OnOpenRequested() { Show(); Activate(); if (!_showingTasks) InputBox.Focus(); }
     private void OnNavigationRequested(object? sender, MainNavigationTarget target)
     {
-        if (target == MainNavigationTarget.Schedule) OpenDrawer(true);
-        else CloseDrawers();
+        if (target is MainNavigationTarget.Schedule or MainNavigationTarget.TodoDetail or MainNavigationTarget.AgentReconciliation) { ShowTasks(true); _workspace?.FocusTodo(_viewModel.CurrentContext.SelectedId); }
+        else ShowTasks(false);
     }
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -79,35 +106,45 @@ public partial class DialogueWindow : Window
         StoppedNotice.Visibility = stopped ? Visibility.Visible : Visibility.Collapsed;
         Welcome.Visibility = _viewModel.Conversation.Turns.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
-    private void OpenDrawer(bool tasks)
+    private void ShowTasks(bool tasks)
     {
         CloseDrawers();
-        _drawerOrigin = tasks ? TasksButton : HistoryButton;
-        if (tasks) _todos?.Refresh();
-        TasksDrawer.Visibility = tasks ? Visibility.Visible : Visibility.Collapsed;
-        HistoryDrawer.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
-        Backdrop.Visibility = Visibility.Visible;
+        _showingTasks = tasks;
+        ChatBody.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
+        TasksPage.Visibility = tasks ? Visibility.Visible : Visibility.Collapsed;
+        NewConversationButton.Visibility = HistoryButton.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
+        ChatTabButton.FontWeight = tasks ? FontWeights.Normal : FontWeights.Bold;
+        TasksButton.FontWeight = tasks ? FontWeights.Bold : FontWeights.Normal;
+        Title = tasks ? "FGO Pet · 待办" : "FGO Pet · 聊天";
+        if (tasks) _workspace?.Refresh();
+    }
+    private void OpenDrawer(bool tasks)
+    {
+        if (tasks) { ShowTasks(true); return; }
+        ShowTasks(false);
+        _drawerOrigin = HistoryButton;
+        HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Visible;
         ChatBody.IsHitTestVisible = false;
         KeyboardNavigation.SetTabNavigation(ChatBody, KeyboardNavigationMode.None);
-        var drawer = tasks ? TasksDrawer : HistoryDrawer;
-        drawer.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+        HistoryDrawer.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
     }
     private void CloseDrawers()
     {
-        HistoryDrawer.Visibility = TasksDrawer.Visibility = Backdrop.Visibility = Visibility.Collapsed;
+        HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Collapsed;
         ChatBody.IsHitTestVisible = true;
         KeyboardNavigation.SetTabNavigation(ChatBody, KeyboardNavigationMode.Continue);
-        _drawerOrigin?.Focus();
     }
     private void OnHistoryClick(object sender, RoutedEventArgs e) => OpenDrawer(false);
-    private void OnTasksClick(object sender, RoutedEventArgs e) => OpenDrawer(true);
-    private void OnCloseClick(object sender, RoutedEventArgs e) => CloseDrawers();
+    private void OnTasksClick(object sender, RoutedEventArgs e) => ShowTasks(true);
+    private void OnChatClick(object sender, RoutedEventArgs e) => ShowTasks(false);
+    private void OnCloseClick(object sender, RoutedEventArgs e) { CloseDrawers(); _drawerOrigin?.Focus(); }
     private void OnHideClick(object sender, RoutedEventArgs e) => Hide();
     private void OnNewClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel.Conversation.NewConversationCommand.CanExecute(null))
             _viewModel.Conversation.NewConversationCommand.Execute(null);
         CloseDrawers();
+        ShowTasks(false);
         _following = true;
         MessageScroller.ScrollToEnd();
         InputBox.Focus();
@@ -123,6 +160,7 @@ public partial class DialogueWindow : Window
     }
     private void OnJumpClick(object sender, RoutedEventArgs e)
     {
+        ShowTasks(false);
         _following = true;
         MessageScroller.ScrollToEnd();
         JumpButton.Visibility = Visibility.Collapsed;

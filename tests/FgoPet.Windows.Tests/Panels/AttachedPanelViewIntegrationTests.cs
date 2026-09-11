@@ -23,24 +23,41 @@ public sealed class AttachedPanelViewIntegrationTests
             var model = new AttachedPanelViewModel(TimeProvider.System);
             var view = new AttachedPanelView { DataContext = model };
             model.PortraitClick();
+            // Bindings on the entry shell (the auto-read switch announces its state)
+            // only settle once the shell has been through a layout pass.
+            view.Measure(new Size(240, 240));
+            view.Arrange(new Rect(0, 0, 240, 240));
+            view.UpdateLayout();
 
-            Assert.NotNull(view.FindName("GreetingText"));
+            Assert.NotNull(view.FindName("PanelTitle"));
             var island = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
             Assert.Equal(Visibility.Visible, island.Visibility);
             var primaryControls = new[] { "ChatEntryButton", "SpeechEntryButton", "MoreEntryButton" }
                 .Select(name => Assert.IsType<Button>(view.FindName(name)))
                 .ToArray();
-            var secondaryControls = new[] { "SettingsEntryButton", "TasksEntryButton", "FocusEntryButton" }
+            var secondaryControls = new[] { "SettingsEntryButton", "TasksEntryButton", "FocusEntryButton", "ExitEntryButton" }
                 .Select(name => Assert.IsType<Button>(view.FindName(name)))
                 .ToArray();
 
             Assert.All(primaryControls.Concat(secondaryControls), control =>
             {
-                Assert.IsAssignableFrom<System.Windows.Media.Geometry>(control.Content);
-                Assert.NotNull(control.ContentTemplate);
-                Assert.False(string.IsNullOrWhiteSpace(control.ToolTip?.ToString()));
-                Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(control)));
-                Assert.True(control.Height >= 34);
+                // Entries either draw an icon geometry through a template or use a Fluent glyph.
+                if (control.Content is System.Windows.Media.Geometry)
+                {
+                    Assert.NotNull(control.ContentTemplate);
+                }
+                else
+                {
+                    Assert.False(string.IsNullOrWhiteSpace(control.Content?.ToString()), $"{control.Name} must expose an icon");
+                }
+
+                Assert.False(
+                    string.IsNullOrWhiteSpace(control.ToolTip?.ToString()),
+                    $"{control.Name} must expose a tooltip");
+                Assert.False(
+                    string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(control)),
+                    $"{control.Name} must expose an accessible name");
+                Assert.True(control.Height >= 34, $"{control.Name} must be at least 34 DIP tall");
             });
             Assert.Null(view.FindName("MicrophoneEntryButton"));
             Assert.Null(view.FindName("AttentionEntryButton"));
@@ -93,26 +110,27 @@ public sealed class AttachedPanelViewIntegrationTests
     }
 
     [Fact]
-    public void Active_focus_replaces_the_greeting_with_a_compact_timer_card()
+    public void Active_focus_replaces_the_setup_card_with_a_compact_timer_card()
     {
         StaRun(() =>
         {
             var focus = new FakeFocusService();
             var model = new AttachedPanelViewModel(TimeProvider.System, focus);
             var view = new AttachedPanelView { DataContext = model };
-            var greeting = Assert.IsType<Grid>(view.FindName("CompactMessage"));
+            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
             var timer = Assert.IsType<Grid>(view.FindName("CompactTimer"));
             model.PortraitClick();
 
-            Assert.Equal(Visibility.Visible, greeting.Visibility);
+            // The compact entry shell shows neither the focus setup card nor the timer.
+            Assert.Equal(Visibility.Collapsed, setup.Visibility);
             Assert.Equal(Visibility.Collapsed, timer.Visibility);
 
             focus.Start(FgoPet.App.Panels.FocusPresetCatalog.Short, "servant-mash");
             focus.RaiseChanged();
 
-            Assert.Equal(Visibility.Collapsed, greeting.Visibility);
+            Assert.Equal(Visibility.Collapsed, setup.Visibility);
             Assert.Equal(Visibility.Visible, timer.Visibility);
-            Assert.NotNull(view.FindName("TimerProgress"));
+            Assert.NotNull(view.FindName("FocusProgressArc"));
             Assert.IsType<Button>(view.FindName("PauseResumeButton"));
             Assert.IsType<Button>(view.FindName("StopTimerButton"));
         });
@@ -139,8 +157,20 @@ public sealed class AttachedPanelViewIntegrationTests
 
             var bitmap = new RenderTargetBitmap(480, 220, 192, 192, System.Windows.Media.PixelFormats.Pbgra32);
             bitmap.Render(view);
+            // Probe the rendered chat entry chip; the entry surface must be opaque in both
+            // themes so the glyph stays readable over whatever is behind the pet.
+            var chip = Assert.IsType<Button>(view.FindName("ChatEntryButton"));
+            var origin = chip.TransformToAncestor(view).Transform(new Point(0, 0));
             var pixel = new byte[4];
-            bitmap.CopyPixels(new Int32Rect(200, 48, 1, 1), pixel, 4, 0);
+            bitmap.CopyPixels(
+                new Int32Rect(
+                    (int)((origin.X + chip.ActualWidth / 2) * 2),
+                    (int)((origin.Y + chip.ActualHeight / 2) * 2),
+                    1,
+                    1),
+                pixel,
+                4,
+                0);
             Assert.Equal(255, pixel[3]);
 
             var captureDirectory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");

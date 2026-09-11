@@ -63,7 +63,7 @@ public sealed class ThemeServiceTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new MemorySettingsStore(AppSettings.Defaults);
+            var store = new MemorySettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var service = new ThemeService(
                 store,
                 resources,
@@ -106,7 +106,7 @@ public sealed class ThemeServiceTests
     }
 
     [Fact]
-    public void Initialize_uses_a_complete_modern_gray_fallback_when_the_initial_dictionary_cannot_load()
+    public void Initialize_uses_a_complete_light_fallback_when_the_initial_dictionary_cannot_load()
     {
         StaRun(() =>
         {
@@ -118,7 +118,7 @@ public sealed class ThemeServiceTests
 
             service.Initialize();
 
-            Assert.Equal(AppTheme.ModernGray, service.CurrentTheme);
+            Assert.Equal(AppTheme.FgoLight, service.CurrentTheme);
             var fallback = Assert.Single(resources.MergedDictionaries.Where(ThemeService.IsMarkedThemeDictionary));
             foreach (var key in RequiredStyleBrushKeys)
             {

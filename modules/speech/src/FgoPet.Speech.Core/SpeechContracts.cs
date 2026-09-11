@@ -6,6 +6,7 @@ public enum SpeechProviderKind
 {
     OpenAiCompatible,
     GptSoVits,
+    IndexTts,
 }
 
 public enum SpeechFailureCategory
@@ -55,6 +56,8 @@ public sealed class SpeechSynthesisException : Exception
 }
 
 /// <summary>Non-secret speech configuration. API keys remain in Credential Manager.</summary>
+public sealed record ReferenceVoice(string Id, string Name, string AudioPath);
+
 public sealed record SpeechConnectionSettings
 {
     public bool Enabled { get; init; }
@@ -68,6 +71,9 @@ public sealed record SpeechConnectionSettings
     public string GptSoVitsPromptText { get; init; } = string.Empty;
     public string GptSoVitsLanguage { get; init; } = "zh";
     public string GptSoVitsPromptLanguage { get; init; } = "zh";
+    public string IndexTtsBaseUrl { get; init; } = "http://127.0.0.1:7860";
+    public string IndexTtsVoiceId { get; init; } = string.Empty;
+    public IReadOnlyList<ReferenceVoice> IndexTtsVoices { get; init; } = Array.Empty<ReferenceVoice>();
     public bool AutoReadEnabled { get; init; }
     public bool DoNotDisturb { get; init; }
     public int AutoReadLimit { get; init; } = 300;
@@ -80,6 +86,10 @@ public sealed record SpeechConnectionSettings
 
     public SpeechConnectionSettings Normalize() => this with
     {
+        IndexTtsBaseUrl = Bounded(IndexTtsBaseUrl, Defaults.IndexTtsBaseUrl, 512),
+        IndexTtsVoiceId = Bounded(IndexTtsVoiceId, string.Empty, 64),
+        IndexTtsVoices = (IndexTtsVoices ?? Array.Empty<ReferenceVoice>()).Where(v => v is not null && !string.IsNullOrWhiteSpace(v.Id)
+            && !string.IsNullOrWhiteSpace(v.Name) && !string.IsNullOrWhiteSpace(v.AudioPath)).Take(32).ToArray(),
         OpenAiBaseUrl = Bounded(OpenAiBaseUrl, Defaults.OpenAiBaseUrl, 512),
         OpenAiModel = Bounded(OpenAiModel, Defaults.OpenAiModel, 128),
         OpenAiVoice = Bounded(OpenAiVoice, Defaults.OpenAiVoice, 128),
@@ -113,6 +123,9 @@ public sealed record SpeechConnectionSettings
                     model: settings.OpenAiModel,
                     voice: settings.OpenAiVoice,
                     credentialTarget: settings.OpenAiCredentialTarget),
+                SpeechProviderKind.IndexTts => new SpeechSynthesisRequest(
+                    "试听", settings.Provider, new Uri(settings.IndexTtsBaseUrl, UriKind.Absolute),
+                    referenceAudioPath: settings.IndexTtsVoices.FirstOrDefault(v => v.Id == settings.IndexTtsVoiceId)?.AudioPath),
                 SpeechProviderKind.GptSoVits => new SpeechSynthesisRequest(
                     "试听",
                     settings.Provider,

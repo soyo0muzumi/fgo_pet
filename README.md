@@ -85,3 +85,13 @@ Further documentation:
 - [Documentation index](docs/README.md).
 
 Release scripts create local candidates only. They do not grant authorization to push, tag, upload, or create a public Release.
+
+## Feedback fixes in the working source (unreleased)
+
+Chat and Todos share one window with separate views. Local Todos support creation, editing, completion with brief undo, and copying task instructions. LLM suggestions require an explicit Add action. The ordinary list does not dispatch Agents; existing execution records retain their real state and manual reconciliation.
+
+Fresh settings use the light theme. Appearance and Role settings expose light/dark selection and retain an existing dark preference. The collapsed Pet still exposes chat, auto-read, and expand.
+
+Streaming replies keep their original spacing between words, and the chat window shows the reasoning well again behind the existing show-reasoning setting.
+
+Speech settings add local IndexTTS reference-voice cloning through an already deployed Gradio WebUI. Import WAV audio, name/save a voice, and preview it. The app does not install models, start services, or silently switch providers. Real voice quality, latency, DPI and IME acceptance remain pending; these source changes are not a new release. Private backups contain voice configuration but not reference audio. Reimport audio after moving to another machine; manage the service's own reference-audio cache in IndexTTS.

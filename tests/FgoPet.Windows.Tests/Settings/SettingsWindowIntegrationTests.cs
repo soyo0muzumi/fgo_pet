@@ -34,11 +34,16 @@ public sealed class SettingsWindowIntegrationTests
         {
             var viewModel = new SettingsViewModel();
             var createdContent = new Dictionary<SettingsSection, TextBox>();
+            // The real resolver returns singletons, so re-selecting a category must not
+            // rebuild its page; this also keeps the "cached content" contract testable.
             SettingsPageContentResolver resolver = (section, _) =>
             {
-                var content = new TextBox { Text = section.ToString() };
-                createdContent.Add(section, content);
-                return content;
+                if (!createdContent.TryGetValue(section, out var existing))
+                {
+                    existing = new TextBox { Text = section.ToString() };
+                    createdContent.Add(section, existing);
+                }
+                return existing;
             };
             var window = new SettingsWindow(viewModel, resolver);
             try
@@ -46,17 +51,19 @@ public sealed class SettingsWindowIntegrationTests
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 Assert.NotNull(window.SettingsNavigation);
                 Assert.NotNull(window.SettingsContent);
-                Assert.Equal(Enum.GetValues<SettingsSection>().Length, window.SettingsNavigation.Items.Count);
+                // Five user-goal categories; Theme and UserProfile resolve into them.
+                Assert.Equal(5, window.SettingsNavigation.Items.Count);
 
-                var profileContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
-                profileContent.Text = "unsaved session input";
+                var privacyContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
+                Assert.Equal(SettingsSection.Privacy.ToString(), privacyContent.Text);
+                privacyContent.Text = "unsaved session input";
 
                 viewModel.Select(SettingsSection.Theme);
-                Assert.Same(createdContent[SettingsSection.Theme], window.SettingsContent.Content);
+                Assert.Same(createdContent[SettingsSection.Personalization], window.SettingsContent.Content);
 
                 viewModel.Select(SettingsSection.UserProfile);
-                Assert.Same(profileContent, window.SettingsContent.Content);
-                Assert.Equal("unsaved session input", profileContent.Text);
+                Assert.Same(privacyContent, window.SettingsContent.Content);
+                Assert.Equal("unsaved session input", privacyContent.Text);
                 Assert.Equal(2, createdContent.Count);
             }
             finally
@@ -85,7 +92,7 @@ public sealed class SettingsWindowIntegrationTests
 
                 Assert.Same(packageDetail, window.SettingsContent.Content);
                 Assert.Equal(Visibility.Visible, window.PackageBreadcrumb.Visibility);
-                Assert.Equal("设置 / 角色包 / Mash Kyrielight", window.PackageBreadcrumbText.Text);
+                Assert.Equal("角色包 / Mash Kyrielight", window.PackageBreadcrumbText.Text);
 
                 viewModel.BackToPackagesCommand.Execute(null);
 
@@ -446,13 +453,17 @@ public sealed class SettingsWindowIntegrationTests
             var viewModel = provider.GetRequiredService<SettingsViewModel>();
             try
             {
-                Assert.IsType<UserProfilePage>(window.SettingsContent.Content);
+                // UserProfile resolves into the "通用与数据" category.
+                Assert.IsType<PrivacyPage>(window.SettingsContent.Content);
 
                 viewModel.Select(SettingsSection.Personalization);
                 Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
 
+                // Theme has no category of its own: its control is embedded in the
+                // personalization page, which keeps the reachable-entry contract.
                 viewModel.Select(SettingsSection.Theme);
-                Assert.IsType<ThemePage>(window.SettingsContent.Content);
+                var personalization = Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
+                Assert.IsType<ThemePage>(personalization.ThemeHost.Content);
             }
             finally
             {
@@ -467,7 +478,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var themeService = new ThemeService(store, resources, ThemeService.CreateTestDictionary);
             themeService.Initialize();
             var page = new ThemePage(themeService);
@@ -492,7 +503,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var themeService = new ThemeService(
                 store,
                 resources,
@@ -517,12 +528,10 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var viewModel = new SettingsViewModel();
-            var profileContent = new Border { Name = "Profile" };
-            var themeContent = new Border { Name = "Theme" };
+            var personalizationContent = new Border { Name = "Personalization" };
             SettingsPageContentResolver resolver = (section, _) => section switch
             {
-                SettingsSection.UserProfile => profileContent,
-                SettingsSection.Theme => themeContent,
+                SettingsSection.Personalization => personalizationContent,
                 _ => new Border { Name = section.ToString() },
             };
             var window = new SettingsWindow(viewModel, resolver);
@@ -532,10 +541,10 @@ public sealed class SettingsWindowIntegrationTests
                 var handle = new WindowInteropHelper(window).Handle;
                 Assert.NotEqual(IntPtr.Zero, handle);
 
-                window.SettingsNavigation.SelectedValue = SettingsSection.Theme;
+                window.SettingsNavigation.SelectedValue = SettingsSection.Personalization;
 
-                Assert.Equal(SettingsSection.Theme, viewModel.SelectedSection);
-                Assert.Same(themeContent, window.SettingsContent.Content);
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Same(personalizationContent, window.SettingsContent.Content);
                 Assert.Equal(handle, new WindowInteropHelper(window).Handle);
             }
             finally
@@ -636,12 +645,22 @@ public sealed class SettingsWindowIntegrationTests
             {
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 var shell = Assert.IsType<SettingsShellView>(window.FindName("SettingsShell"));
-                Assert.Equal(42d, shell.Header.Height);
-                Assert.Equal("FGO Pet · 设置", shell.HeaderText.Text);
-                Assert.Equal(new GridLength(190), shell.NavigationColumn.Width);
-                Assert.Equal(new Thickness(26), shell.Body.Margin);
-                Assert.NotNull(window.TryFindResource("ShellToolbarButtonStyle"));
-                Assert.NotNull(window.TryFindResource("ShellSurfaceStyle"));
+                // The header height lives on the shell's fixed 86 DIP row, not on the border.
+                shell.Measure(new Size(960, 720));
+                shell.Arrange(new Rect(0, 0, 960, 720));
+                shell.UpdateLayout();
+                Assert.Equal(86d, shell.Header.ActualHeight);
+                Assert.Equal("设置", shell.HeaderText.Text);
+                Assert.Equal(new GridLength(184), shell.NavigationColumn.Width);
+                Assert.Equal(new Thickness(28, 28, 28, 20), shell.Body.Margin);
+                // The window is built without the application resource dictionaries, so the
+                // shell controls are supplied here before asserting on their styles.
+                shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+                {
+                    Source = new Uri("/FgoPet.App;component/Ui/Shell/ShellControls.xaml", UriKind.Relative),
+                });
+                Assert.NotNull(shell.TryFindResource("ShellToolbarButtonStyle"));
+                Assert.NotNull(shell.TryFindResource("ShellSurfaceStyle"));
 
                 var captureDirectory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
                 if (!string.IsNullOrWhiteSpace(captureDirectory))
@@ -677,7 +696,13 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var shell = new SettingsShellView();
+            // Shell brushes come from ShellTokens and take their colours from the theme,
+            // so both dictionaries are needed for the palette to resolve.
             shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+            {
+                Source = new Uri("/FgoPet.App;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
+            });
+            shell.Resources.MergedDictionaries.Insert(1, new ResourceDictionary
             {
                 Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative),
             });

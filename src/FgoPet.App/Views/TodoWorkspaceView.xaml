@@ -1,0 +1,38 @@
+<UserControl x:Class="FgoPet.App.Views.TodoWorkspaceView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml"/></ResourceDictionary.MergedDictionaries><Style TargetType="Expander"><Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}"/></Style><Style TargetType="Button" BasedOn="{StaticResource SettingsSecondaryButtonStyle}"/><Style TargetType="TextBox" BasedOn="{StaticResource SettingsTextBoxStyle}"/>
+<BooleanToVisibilityConverter x:Key="Bool"/>
+<DataTemplate x:Key="TodoRow">
+<Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1" Padding="0,14">
+<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+<CheckBox IsChecked="{Binding IsCompleted, Mode=OneWay}" IsEnabled="{Binding CanComplete}" Click="OnComplete" Tag="{Binding}" VerticalAlignment="Top" Margin="0,4,0,0" AutomationProperties.Name="{Binding CompletionLabel}"/>
+<Expander Grid.Column="1" Foreground="{DynamicResource ShellTextBrush}" HorizontalContentAlignment="Stretch">
+<Expander.Header><TextBlock Text="{Binding Item.Title}" TextWrapping="Wrap" FontSize="16"/></Expander.Header>
+<StackPanel Margin="8,10,0,0">
+<TextBlock Text="{Binding Item.Description}" TextWrapping="Wrap"/>
+<TextBlock Text="{Binding ExecutionStatus}" TextWrapping="Wrap" Margin="0,8" Foreground="{DynamicResource ShellMutedTextBrush}" Visibility="{Binding HasExecution, Converter={StaticResource Bool}}"/>
+<WrapPanel Margin="0,8,0,0">
+<Button Content="复制任务说明" Click="OnCopy" Tag="{Binding}" Padding="10,6" Margin="0,0,8,0"/>
+<Button Content="编辑" Click="OnEdit" Tag="{Binding}" IsEnabled="{Binding CanEdit}" Padding="10,6" Margin="0,0,8,0"/>
+<Button Content="删除" Click="OnDelete" Tag="{Binding}" IsEnabled="{Binding CanEdit}" Padding="10,6"/>
+</WrapPanel></StackPanel></Expander></Grid></Border>
+</DataTemplate>
+</ResourceDictionary></UserControl.Resources>
+<Grid Margin="24,18" MaxWidth="760"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+<DockPanel><Button x:Name="AddButton" DockPanel.Dock="Right" Content="＋ 新增待办" Click="OnAdd" Padding="12,7"/><TextBlock Text="待办" FontSize="24" FontWeight="SemiBold"/></DockPanel>
+<StackPanel Grid.Row="1">
+<WrapPanel Margin="0,10"><TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="{DynamicResource ShellMutedTextBrush}" VerticalAlignment="Center"/><Button x:Name="UndoButton" Content="撤销完成" Click="OnUndo" Margin="12,0" Visibility="Collapsed"/></WrapPanel>
+<Border x:Name="Editor" Visibility="Collapsed" Background="{DynamicResource ShellPanelBackgroundBrush}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+<StackPanel><TextBlock x:Name="EditorHeading" Text="新增待办" FontWeight="SemiBold"/><TextBlock Text="标题" Margin="0,12,0,4"/><TextBox x:Name="TitleInput" MaxLength="500" Padding="8" AutomationProperties.Name="待办标题"/>
+<TextBlock Text="目标与步骤（可选）" Margin="0,10,0,4"/><TextBox x:Name="DescriptionInput" MaxLength="4000" MinHeight="80" MaxHeight="160" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="8" AutomationProperties.Name="待办目标与步骤"/>
+<WrapPanel Margin="0,12,0,0"><Button Content="保存" Click="OnSave" Padding="16,6"/><Button Content="取消" Click="OnCancel" Padding="16,6" Margin="8,0"/></WrapPanel></StackPanel>
+</Border></StackPanel>
+<ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+<StackPanel><TextBlock x:Name="EmptyText" Text="还没有待办，可以直接新增，也可以从聊天中加入。" Foreground="{DynamicResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,18"/>
+<ItemsControl x:Name="ActiveItems" ItemTemplate="{StaticResource TodoRow}"/>
+<Expander x:Name="CompletedSection" Header="已完成" Margin="0,20,0,0" HorizontalContentAlignment="Stretch"><ItemsControl x:Name="CompletedItems" ItemTemplate="{StaticResource TodoRow}"/></Expander>
+<Expander Header="Agent 兼容记录" Margin="0,20,0,0" HorizontalContentAlignment="Stretch">
+<StackPanel><TextBlock Text="保留已有执行及未知结果。新任务可复制到外部工具；此处不会自动重新派发。" TextWrapping="Wrap" Margin="0,8"/>
+<Button Content="连接与诊断（兼容）" Click="OnLegacy" HorizontalAlignment="Left" Padding="10,6"/>
+<ContentControl x:Name="LegacyTaskHost" Margin="0,12"/></StackPanel></Expander>
+</StackPanel></ScrollViewer>
+</Grid></UserControl>

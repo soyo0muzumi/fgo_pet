@@ -49,6 +49,10 @@ captures/
 exports/
 backups/
 
+# Test run output
+TestResults/
+*.trx
+
 # Local agent state, generated evidence, and publish output
 .claude/
 .learnings/

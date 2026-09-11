@@ -94,7 +94,7 @@ public partial class AttachedPanelView : UserControl
 
         MoreEntryButton.SetResourceReference(
             ForegroundProperty,
-            QuickActionsExpanded ? "ShellAccentBrush" : "ShellMutedBrush");
+            QuickActionsExpanded ? "ShellAccentBrush" : "ShellMutedTextBrush");
 
         UpdateProgressArc();
         if (_model is not null)

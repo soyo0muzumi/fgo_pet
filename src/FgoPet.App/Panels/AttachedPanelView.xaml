@@ -318,13 +318,13 @@
                           StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round"
                           Fill="Transparent" />
-                    <Grid Margin="14,14">
+                    <Grid Margin="34,30">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid>
+                        <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="CompactPhaseText"
                                        Text="{Binding PhaseText}"
                                        Foreground="{DynamicResource ShellAccentBrush}"
@@ -332,8 +332,8 @@
                             <TextBlock x:Name="CompactCycleText"
                                        Text="{Binding CycleText}"
                                        Foreground="{DynamicResource ShellMutedTextBrush}"
-                                       FontSize="12" HorizontalAlignment="Right" />
-                        </Grid>
+                                       FontSize="12" HorizontalAlignment="Center" />
+                        </StackPanel>
                         <TextBlock Grid.Row="1"
                                    Text="{Binding RemainingText}"
                                    Foreground="{DynamicResource ShellTextBrush}"
@@ -397,8 +397,8 @@
                 <Button x:Name="SpeechEntryButton"
                         Content="{StaticResource PetSpeechIcon}"
                         ContentTemplate="{StaticResource PetIconTemplate}"
-                        ToolTip="朗读"
-                        automation:AutomationProperties.Name="朗读"
+                        ToolTip="{Binding SpeechActionAutomationName}"
+                        automation:AutomationProperties.Name="{Binding SpeechActionAutomationName}"
                         Click="OnSpeechClick"
                         Margin="0,8,0,0">
                     <Button.Style>

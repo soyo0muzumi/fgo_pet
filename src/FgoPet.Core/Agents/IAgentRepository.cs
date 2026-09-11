@@ -19,6 +19,7 @@ public sealed record PersistedAgentConnection(
 public interface IAgentRepository
 {
     void SaveExecution(AgentExecution execution);
+    bool TryResumeUnknown(string executionId, DateTimeOffset at) => false;
     AgentExecution? GetExecution(string id);
     AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId);
     AgentExecution? GetLatestExecutionForTodo(string todoId) => null;

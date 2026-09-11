@@ -12,9 +12,9 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
+    <Border>
         <StackPanel Margin="4,4,14,18">
+            <TextBlock Text="主题" Style="{StaticResource SettingsCaptionStyle}"/><ContentControl x:Name="ThemeHost" HorizontalContentAlignment="Stretch"/>
             <Border Style="{StaticResource SettingsCardStyle}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -80,7 +80,7 @@
                     <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="恢复设置" />
                     <TextBlock Style="{StaticResource SettingsStatusStyle}"
                                Margin="0,0,0,12"
-                               Text="恢复会将缩放设为 50%，开启置顶和自动收起。主题选择由主题页面独立管理，不会被这里改动。" />
+                               Text="恢复会将缩放设为 50%，开启置顶和自动收起。主题选择不会被这里改动。" />
                     <Button x:Name="ResetButton"
                             Width="140"
                             HorizontalAlignment="Left"
@@ -101,5 +101,5 @@
                        TextWrapping="Wrap"
                        automation:AutomationProperties.LiveSetting="Assertive" />
         </StackPanel>
-    </ScrollViewer>
+    </Border>
 </UserControl>

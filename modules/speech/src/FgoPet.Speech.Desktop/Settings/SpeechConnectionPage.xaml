@@ -66,6 +66,21 @@
             </Border.Style>
         </Border>
 
+        <Border>
+            <Border.Style><Style TargetType="Border" BasedOn="{StaticResource SettingsCardStyle}"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsIndexTts}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
+            <StackPanel>
+                <TextBlock Text="IndexTTS 本机服务" Style="{StaticResource SettingsCaptionStyle}"/>
+                <TextBox Text="{Binding IndexTtsBaseUrl, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}" AutomationProperties.Name="IndexTTS 地址"/>
+                <TextBlock Text="连接你已启动的 IndexTTS WebUI。不会安装模型或启动服务。" TextWrapping="Wrap" Style="{StaticResource SettingsStatusStyle}" Margin="0,6"/>
+                <TextBlock Text="已保存音色" Style="{StaticResource SettingsCaptionStyle}"/>
+                <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding SelectedVoice}" DisplayMemberPath="Name" Style="{StaticResource SettingsComboBoxStyle}" AutomationProperties.Name="选择参考音色"/>
+                <Button Content="删除所选音色副本" Click="OnDeleteVoiceClick" HorizontalAlignment="Left" Margin="0,8" Style="{StaticResource SettingsSecondaryButtonStyle}"/>
+                <TextBlock Text="新音色名称" Style="{StaticResource SettingsCaptionStyle}" Margin="0,10,0,4"/>
+                <TextBox Text="{Binding VoiceName, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" Style="{StaticResource SettingsTextBoxStyle}" AutomationProperties.Name="新音色名称"/>
+                <Button Content="导入 WAV 并保存音色" Click="OnImportVoiceClick" HorizontalAlignment="Left" Margin="0,8" Style="{StaticResource SettingsSecondaryButtonStyle}"/>
+                <TextBlock Text="使用清晰、单人、无背景音乐的参考音频（WAV，最多 20 MB）。保存本机副本，克隆时发送给上方本机服务；不进行模型训练。切换音色后请保存朗读设置。" TextWrapping="Wrap" Style="{StaticResource SettingsStatusStyle}"/>
+            </StackPanel>
+        </Border>
         <Border Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
                 <TextBlock Text="播放" Style="{StaticResource SettingsCaptionStyle}" />
@@ -87,6 +102,7 @@
             <StackPanel>
                 <WrapPanel>
                     <Button Content="试听" Command="{Binding PreviewCommand}" Style="{StaticResource SettingsSecondaryButtonStyle}" automation:AutomationProperties.Name="朗读试听" />
+                    <Button Content="停止试听" Click="OnStopPreviewClick" Margin="8,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}"/>
                     <Button Content="保存朗读设置" Command="{Binding SaveCommand}" Margin="8,0,0,0" Style="{StaticResource SettingsPrimaryButtonStyle}" />
                 </WrapPanel>
                 <TextBlock Margin="0,10,0,0" Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap" />

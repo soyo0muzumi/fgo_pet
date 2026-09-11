@@ -7,6 +7,9 @@ namespace FgoPet.App.ViewModels;
 public sealed partial class TodoProposalViewModel : ObservableObject
 {
     private readonly TodoProposalService _service;
+    private TodoItem? _createdTodo;
+    public bool IsAdded => _createdTodo is not null;
+    public string? CreatedTodoId => _createdTodo?.Id;
 
     public TodoProposalViewModel(TodoProposal proposal, TodoProposalService service)
     {
@@ -42,12 +45,16 @@ public sealed partial class TodoProposalViewModel : ObservableObject
 
     public TodoItem Confirm()
     {
+        if (_createdTodo is not null) return _createdTodo;
         if (IsRemoved)
         {
             throw new InvalidOperationException("This Todo proposal has been removed.");
         }
 
         var todo = _service.Confirm(new TodoProposal(Title, Description, Priority, DueAt));
+        _createdTodo = todo;
+        OnPropertyChanged(nameof(IsAdded));
+        OnPropertyChanged(nameof(CreatedTodoId));
         ErrorText = string.Empty;
         Closed?.Invoke(this);
         return todo;
@@ -55,6 +62,7 @@ public sealed partial class TodoProposalViewModel : ObservableObject
 
     public void Remove()
     {
+        if (_createdTodo is not null) return;
         if (IsRemoved)
         {
             return;

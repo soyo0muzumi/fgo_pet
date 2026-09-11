@@ -29,8 +29,29 @@ public partial class SettingsWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         RefreshRoute();
         Closing += OnClosing;
+        PreviewMouseWheel += OnSettingsMouseWheel;
     }
 
+    private void OnSettingsMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        var node = e.OriginalSource as DependencyObject;
+        ComboBox? combo = null;
+        while (node is not null)
+        {
+            if (node is ComboBox candidate) { combo = candidate; break; }
+            node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
+        }
+        if (combo is null || combo.IsDropDownOpen) return;
+        node = System.Windows.Media.VisualTreeHelper.GetParent(combo);
+        while (node is not null && node is not ScrollViewer)
+            node = System.Windows.Media.VisualTreeHelper.GetParent(node);
+        if (node is ScrollViewer scroller)
+        {
+            e.Handled = true;
+            scroller.ScrollToVerticalOffset(scroller.VerticalOffset - e.Delta / 120.0 * SystemParameters.WheelScrollLines * 16);
+        }
+    }
     internal ListBox SettingsNavigation => SettingsShell.SettingsNavigation;
     internal ContentControl SettingsContent => SettingsShell.ContentHost;
     internal FrameworkElement PackageBreadcrumb => SettingsShell.Breadcrumb;

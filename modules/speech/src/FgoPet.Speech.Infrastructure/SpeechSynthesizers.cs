@@ -185,13 +185,15 @@ public sealed class SpeechSynthesizerRouter : ISpeechSynthesizer
 {
     private readonly OpenAiCompatibleSpeechSynthesizer _openAi;
     private readonly GptSoVitsSpeechSynthesizer _gptSoVits;
+    private readonly IndexTtsSpeechSynthesizer? _indexTts;
 
     public SpeechSynthesizerRouter(
         OpenAiCompatibleSpeechSynthesizer openAi,
-        GptSoVitsSpeechSynthesizer gptSoVits)
+        GptSoVitsSpeechSynthesizer gptSoVits, IndexTtsSpeechSynthesizer? indexTts = null)
     {
         _openAi = openAi ?? throw new ArgumentNullException(nameof(openAi));
         _gptSoVits = gptSoVits ?? throw new ArgumentNullException(nameof(gptSoVits));
+        _indexTts = indexTts;
     }
 
     public SpeechProviderKind Provider =>
@@ -203,6 +205,7 @@ public sealed class SpeechSynthesizerRouter : ISpeechSynthesizer
         request.Provider switch
         {
             SpeechProviderKind.OpenAiCompatible => _openAi.SynthesizeAsync(request, cancellationToken),
+            SpeechProviderKind.IndexTts when _indexTts is not null => _indexTts.SynthesizeAsync(request, cancellationToken),
             SpeechProviderKind.GptSoVits => _gptSoVits.SynthesizeAsync(request, cancellationToken),
             _ => throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "未知语音 provider。"),
         };
