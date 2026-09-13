@@ -12,6 +12,7 @@ public partial class DialogueWindow : Window
 {
     private readonly DialogueWindowViewModel _viewModel;
     private readonly TodoListViewModel? _todos;
+    private readonly FgoPet.App.Panels.AttachedPanelViewModel? _panel;
     private FgoPet.App.Views.TodoWorkspaceView? _workspace;
     private bool _showingTasks;
     private bool _composing;
@@ -29,8 +30,12 @@ public partial class DialogueWindow : Window
     {
         _viewModel = viewModel;
         _todos = todos;
+        _panel = panel;
         InitializeComponent();
         DataContext = viewModel;
+        FocusShortcutButton.IsEnabled = panel is not null;
+        FocusShortcutButton.ToolTip = panel is null ? "专注入口当前不可用" : "打开现有专注设置";
+        SizeChanged += (_, _) => UpdateResponsiveLayout();
         Loaded += async (_, _) => await viewModel.EnsureRoleInfoAsync();
         if (todoService is not null)
         {
@@ -81,6 +86,7 @@ public partial class DialogueWindow : Window
         Deactivated += (_, _) => viewModel.NotifyDeactivated();
         PreviewKeyDown += OnKeyDown;
         RefreshConversation();
+        UpdateResponsiveLayout();
     }
 
     private void OnOpenRequested() { Show(); Activate(); if (!_showingTasks) InputBox.Focus(); }
@@ -105,6 +111,16 @@ public partial class DialogueWindow : Window
         FailureNotice.Visibility = !string.IsNullOrWhiteSpace(error) && !stopped ? Visibility.Visible : Visibility.Collapsed;
         StoppedNotice.Visibility = stopped ? Visibility.Visible : Visibility.Collapsed;
         Welcome.Visibility = _viewModel.Conversation.Turns.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void UpdateResponsiveLayout()
+    {
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        var constrained = DialogueWindowViewModel.GetResponsiveLayoutState(width, height) == ResponsiveLayoutState.Constrained;
+        WelcomeSecondaryCopy.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
+        WelcomeShortcuts.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
+        HeaderSubtitle.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
+        ChatBody.Margin = constrained ? new Thickness(14, 12, 14, 12) : new Thickness(22, 16, 22, 14);
     }
     private void ShowTasks(bool tasks)
     {
@@ -136,6 +152,15 @@ public partial class DialogueWindow : Window
     }
     private void OnHistoryClick(object sender, RoutedEventArgs e) => OpenDrawer(false);
     private void OnTasksClick(object sender, RoutedEventArgs e) => ShowTasks(true);
+    private void OnFocusShortcutClick(object sender, RoutedEventArgs e)
+    {
+        if (_panel is null) return;
+        if (_panel.State == FgoPet.Core.Panels.AttachedPanelState.Collapsed)
+            _panel.PortraitClick();
+        if (_panel.State != FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus)
+            _panel.FocusClick();
+        Hide();
+    }
     private void OnChatClick(object sender, RoutedEventArgs e) => ShowTasks(false);
     private void OnCloseClick(object sender, RoutedEventArgs e) { CloseDrawers(); _drawerOrigin?.Focus(); }
     private void OnHideClick(object sender, RoutedEventArgs e) => Hide();

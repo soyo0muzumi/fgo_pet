@@ -3,13 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
              FontFamily="Segoe UI, Microsoft YaHei UI"
-             Foreground="{DynamicResource ShellTextBrush}"
+             Foreground="{DynamicResource Text.Primary}"
              UseLayoutRounding="True"
              MouseEnter="OnPointerEntered"
              MouseLeave="OnPointerLeft">
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FgoPet.App;component/UiFoundation/ThemeTokens.xaml" />
                 <ResourceDictionary Source="/FgoPet.App;component/Ui/Shell/ShellTokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
@@ -47,9 +48,9 @@
                 <Setter Property="Width" Value="36" />
                 <Setter Property="Height" Value="36" />
                 <Setter Property="Padding" Value="9" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellMutedTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource ShellWindowBackgroundBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}" />
+                <Setter Property="Background" Value="{DynamicResource Surface.Content}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Border.Control}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -66,14 +67,15 @@
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ShellRaisedBackgroundBrush}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Hover}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Action.Primary}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Pressed}" />
                                 </Trigger>
                                 <Trigger Property="IsKeyboardFocused" Value="True">
-                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Focus.Ring}" />
+                                    <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -91,8 +93,9 @@
                 <Setter Property="Width" Value="28" />
                 <Setter Property="Height" Value="18" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellMutedTextBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}" />
                 <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Border.Control}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Cursor" Value="Hand" />
@@ -100,12 +103,20 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Action.Primary}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Focus.Ring}" />
+                                    <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -117,9 +128,9 @@
                 <Setter Property="Width" Value="70" />
                 <Setter Property="Height" Value="30" />
                 <Setter Property="Padding" Value="4" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellWindowBackgroundBrush}" />
-                <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Action.OnPrimary}" />
+                <Setter Property="Background" Value="{DynamicResource Action.Primary}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Action.Primary}" />
                 <Setter Property="FontSize" Value="13" />
             </Style>
 
@@ -127,8 +138,9 @@
                 <Setter Property="Width" Value="24" />
                 <Setter Property="Height" Value="18" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellMutedTextBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}" />
                 <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Border.Control}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="FontSize" Value="16" />
                 <Setter Property="Cursor" Value="Hand" />
@@ -136,12 +148,20 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Action.Primary}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Focus.Ring}" />
+                                    <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -153,21 +173,26 @@
                 <Setter Property="Width" Value="52" />
                 <Setter Property="Height" Value="52" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellWindowBackgroundBrush}" />
-                <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Action.OnPrimary}" />
+                <Setter Property="Background" Value="{DynamicResource Action.Primary}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Action.Primary}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="26">
+                            <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="26">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource ShellRaisedBackgroundBrush}" />
-                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+                                    <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Hover}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Action.Primary}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Focus.Ring}" />
+                                    <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -179,9 +204,9 @@
                 <Setter Property="Placement" Value="Right" />
                 <Setter Property="HorizontalOffset" Value="8" />
                 <Setter Property="Padding" Value="8,5" />
-                <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource ShellWindowBackgroundBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+                <Setter Property="Background" Value="{DynamicResource Surface.Content}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Border.Control}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="HasDropShadow" Value="False" />
@@ -199,8 +224,8 @@
                 Grid.Column="1"
                 Margin="8,0,0,0"
                 VerticalAlignment="Top"
-                Background="{DynamicResource ShellPanelBackgroundBrush}"
-                BorderBrush="{DynamicResource ShellAccentBrush}"
+                Background="{DynamicResource Surface.Content}"
+                BorderBrush="{DynamicResource Border.Control}"
                 BorderThickness="1"
                 CornerRadius="12"
                 Width="220"
@@ -211,12 +236,12 @@
 
 
                 <Grid x:Name="FocusSetupCard" Width="196" Height="196" Visibility="Collapsed">
-                    <Ellipse Fill="{DynamicResource ShellWindowBackgroundBrush}"
-                             Stroke="{DynamicResource ShellAccentBrush}"
+                    <Ellipse Fill="{DynamicResource Surface.Content}"
+                             Stroke="{DynamicResource Action.Primary}"
                              StrokeThickness="3"
                              Opacity="0.85" />
                     <Ellipse Margin="8"
-                             Stroke="{DynamicResource ShellBorderBrush}"
+                             Stroke="{DynamicResource Border.Control}"
                              StrokeThickness="4"
                              Opacity="0.7" />
                     <Grid Margin="16,12">
@@ -229,7 +254,7 @@
                         <StackPanel Grid.Row="0" HorizontalAlignment="Center">
                             <TextBlock Text="循环"
                                        HorizontalAlignment="Center"
-                                       Foreground="{DynamicResource ShellTextBrush}"
+                                       Foreground="{DynamicResource Text.Primary}"
                                        FontSize="11" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                 <Button Content="‹" Tag="CyclesDown" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
@@ -237,7 +262,7 @@
                                            MinWidth="24"
                                            HorizontalAlignment="Center"
                                            TextAlignment="Center"
-                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           Foreground="{DynamicResource Text.Primary}"
                                            FontSize="18"
                                            FontWeight="SemiBold" />
                                 <Button Content="›" Tag="CyclesUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
@@ -252,17 +277,17 @@
                             <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                                 <TextBlock Text="专注"
                                            HorizontalAlignment="Center"
-                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           Foreground="{DynamicResource Text.Primary}"
                                            FontSize="11" />
                                 <Grid Width="62" Height="62" Margin="0,1,0,0">
-                                    <Ellipse Fill="{DynamicResource ShellPanelBackgroundBrush}"
-                                             Stroke="{DynamicResource ShellBorderBrush}"
+                                    <Ellipse Fill="{DynamicResource Surface.Subtle}"
+                                             Stroke="{DynamicResource Border.Control}"
                                              StrokeThickness="2" />
                                     <StackPanel VerticalAlignment="Center">
                                         <Button Content="⌃" Tag="FocusUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
                                         <TextBlock Text="{Binding CustomFocusMinutesText}"
                                                    HorizontalAlignment="Center"
-                                                   Foreground="{DynamicResource ShellTextBrush}"
+                                                   Foreground="{DynamicResource Text.Primary}"
                                                    FontSize="20"
                                                    FontWeight="SemiBold" />
                                         <Button Content="⌄" Tag="FocusDown" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
@@ -272,11 +297,11 @@
                             <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                                 <TextBlock Text="休息"
                                            HorizontalAlignment="Center"
-                                           Foreground="{DynamicResource ShellTextBrush}"
+                                           Foreground="{DynamicResource Text.Primary}"
                                            FontSize="11" />
                                 <Grid Width="62" Height="62" Margin="0,1,0,0">
-                                    <Ellipse Fill="{DynamicResource ShellPanelBackgroundBrush}"
-                                             Stroke="{DynamicResource ShellBorderBrush}"
+                                    <Ellipse Fill="{DynamicResource Surface.Subtle}"
+                                             Stroke="{DynamicResource Border.Control}"
                                              StrokeThickness="2" />
                                     <StackPanel VerticalAlignment="Center">
                                         <Button Content="⌃" Tag="BreakUp" Click="OnFocusAdjustClick" Style="{StaticResource PetDialChevronButtonStyle}" />
@@ -302,18 +327,18 @@
                     </Grid>
                 </Grid>
                 <Grid x:Name="CompactTimer" Width="196" Height="196" Visibility="Collapsed">
-                    <Ellipse Fill="{DynamicResource ShellWindowBackgroundBrush}"
-                             Stroke="{DynamicResource ShellBorderBrush}"
+                    <Ellipse Fill="{DynamicResource Surface.Content}"
+                             Stroke="{DynamicResource Border.Control}"
                              StrokeThickness="1" />
                     <Ellipse Margin="5"
-                             Stroke="{DynamicResource ShellBorderBrush}"
+                             Stroke="{DynamicResource Border.Control}"
                              StrokeThickness="5"
                              Opacity="0.55" />
                     <Path x:Name="FocusProgressArc"
                           Width="186" Height="186"
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center"
-                          Stroke="{DynamicResource ShellAccentBrush}"
+                          Stroke="{DynamicResource Action.Primary}"
                           StrokeThickness="5"
                           StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round"
@@ -327,16 +352,16 @@
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="CompactPhaseText"
                                        Text="{Binding PhaseText}"
-                                       Foreground="{DynamicResource ShellAccentBrush}"
+                                       Foreground="{DynamicResource Action.Primary}"
                                        FontSize="13" FontWeight="SemiBold" />
                             <TextBlock x:Name="CompactCycleText"
                                        Text="{Binding CycleText}"
-                                       Foreground="{DynamicResource ShellMutedTextBrush}"
+                                       Foreground="{DynamicResource Text.Secondary}"
                                        FontSize="12" HorizontalAlignment="Center" />
                         </StackPanel>
                         <TextBlock Grid.Row="1"
                                    Text="{Binding RemainingText}"
-                                   Foreground="{DynamicResource ShellTextBrush}"
+                                   Foreground="{DynamicResource Text.Primary}"
                                    FontFamily="Consolas"
                                    FontSize="26" FontWeight="SemiBold"
                                    HorizontalAlignment="Center"
@@ -375,11 +400,11 @@
                             Click="OnDialogueClick"
                             Style="{StaticResource PetEntryButtonStyle}" />
                     <Border x:Name="DialogueUnreadBadge"
-                            Background="{DynamicResource ShellAccentBrush}"
+                            Background="{DynamicResource Action.Primary}"
                             CornerRadius="7" MinWidth="14" Height="14" Padding="3,0"
                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0">
                         <TextBlock Text="{Binding DialogueUnreadCount}"
-                                   Foreground="{DynamicResource ShellWindowBackgroundBrush}"
+                                   Foreground="{DynamicResource Action.OnPrimary}"
                                    FontSize="11" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <Border.Style>
@@ -405,8 +430,8 @@
                         <Style TargetType="Button" BasedOn="{StaticResource PetEntryButtonStyle}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsAutoReadEnabled}" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
-                                    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Action.Primary}" />
+                                    <Setter Property="Background" Value="{DynamicResource Surface.Subtle}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>

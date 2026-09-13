@@ -94,7 +94,10 @@ public partial class AttachedPanelView : UserControl
 
         MoreEntryButton.SetResourceReference(
             ForegroundProperty,
-            QuickActionsExpanded ? "ShellAccentBrush" : "ShellMutedTextBrush");
+            QuickActionsExpanded ? "Action.Primary" : "Text.Secondary");
+        var moreCopy = QuickActionsExpanded ? "收起更多" : "更多";
+        MoreEntryButton.ToolTip = moreCopy;
+        System.Windows.Automation.AutomationProperties.SetName(MoreEntryButton, moreCopy);
 
         UpdateProgressArc();
         if (_model is not null)

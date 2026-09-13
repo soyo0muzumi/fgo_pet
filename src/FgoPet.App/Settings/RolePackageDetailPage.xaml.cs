@@ -31,6 +31,7 @@ public partial class RolePackageDetailPage : UserControl
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await RefreshAsync();
+    private void OnBackToPackagesClick(object sender, RoutedEventArgs e) => _viewModel.BackCommand.Execute(null);
     private void OnAppearanceSectionClick(object sender, RoutedEventArgs e) => _viewModel.SelectSection(RolePackageDetailSection.Appearance);
     private void OnAddressSectionClick(object sender, RoutedEventArgs e) => _viewModel.SelectSection(RolePackageDetailSection.Address);
     private void OnPackageInfoSectionClick(object sender, RoutedEventArgs e) => _viewModel.SelectSection(RolePackageDetailSection.PackageInfo);

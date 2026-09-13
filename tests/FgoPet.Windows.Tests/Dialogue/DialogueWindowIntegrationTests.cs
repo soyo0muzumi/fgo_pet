@@ -182,6 +182,154 @@ public sealed class DialogueWindowIntegrationTests
     }
 
     [Fact]
+    public void Empty_chat_keeps_character_art_in_the_header_and_exposes_only_focus_and_todo_shortcuts()
+    {
+        StaRun(() =>
+        {
+            var panel = new FgoPet.App.Panels.AttachedPanelViewModel(TimeProvider.System);
+            var window = new DialogueWindow(CreateViewModel(), panel: panel);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var welcome = Assert.IsType<StackPanel>(FindField(window, "Welcome"));
+                Assert.Empty(FindVisualChildren<Image>(welcome));
+                Assert.Single(FindVisualChildren<Image>(window));
+                var focus = Assert.IsType<Button>(FindField(window, "FocusShortcutButton"));
+                var todo = Assert.IsType<Button>(FindField(window, "TodoShortcutButton"));
+                Assert.Equal("开始专注", focus.Content);
+                Assert.Equal("查看待办", todo.Content);
+
+                focus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus, panel.State);
+
+                window.Show();
+                todo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
+                Assert.Equal(Visibility.Visible, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Welcome_leaves_the_chat_body_when_conversation_content_begins()
+    {
+        StaRun(() =>
+        {
+            var viewModel = CreateViewModel();
+            var window = new DialogueWindow(viewModel);
+            try
+            {
+                window.Show();
+                Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(FindField(window, "Welcome")).Visibility);
+
+                viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
+                    "assistant", ChatMessageRole.Assistant, "欢迎之后的第一条消息"));
+
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(FindField(window, "Welcome")).Visibility);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Constrained_chat_hides_secondary_welcome_content_and_keeps_a_scrollable_composer()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                Assert.Equal(720, window.Width);
+                Assert.Equal(640, window.Height);
+                Assert.Equal(500, window.MinWidth);
+                Assert.Equal(540, window.MinHeight);
+
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<TextBlock>(FindField(window, "WelcomeSecondaryCopy")).Visibility);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(FindField(window, "WelcomeShortcuts")).Visibility);
+                var composer = Assert.IsType<Border>(FindField(window, "ComposerBorder"));
+                Assert.True(composer.ActualHeight >= 76, $"Composer height was {composer.ActualHeight:0.##} DIP.");
+                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
+                Assert.Equal(ScrollBarVisibility.Auto, input.VerticalScrollBarVisibility);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Composer_border_uses_the_focus_ring_when_the_input_has_keyboard_focus()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
+            });
+            try
+            {
+                window.Show();
+                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
+                var composer = Assert.IsType<Border>(FindField(window, "ComposerBorder"));
+                var focusRing = Assert.IsType<SolidColorBrush>(window.FindResource("Focus.Ring"));
+                var controlBorder = Assert.IsType<SolidColorBrush>(window.FindResource("Border.Control"));
+                Assert.NotEqual(controlBorder.Color, focusRing.Color);
+
+                input.Focus();
+                Keyboard.Focus(input);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                Assert.True(input.IsKeyboardFocusWithin);
+                Assert.Equal(focusRing.Color, Assert.IsType<SolidColorBrush>(composer.BorderBrush).Color);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Wide_chat_keeps_the_reading_column_at_no_more_than_680_dip()
+    {
+        StaRun(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                window.Width = 1000;
+                window.Height = 720;
+                window.Show();
+                window.UpdateLayout();
+
+                var readingColumn = Assert.IsType<StackPanel>(FindField(window, "ReadingColumn"));
+                Assert.Equal(680, readingColumn.MaxWidth);
+                Assert.InRange(readingColumn.ActualWidth, 0, 680);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
     public void Service_registration_uses_one_dialogue_window_instance()
     {
         StaRun(() =>

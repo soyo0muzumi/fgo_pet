@@ -3,6 +3,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using FgoPet.App.Focus;
 using FgoPet.App.Panels;
 using FgoPet.App.Settings;
@@ -185,6 +187,90 @@ public sealed class AttachedPanelViewIntegrationTests
         });
     }
 
+    [Theory]
+    [InlineData("FgoLight", "#FFFFFFFF", "#FF7050B8")]
+    [InlineData("ModernGray", "#FF282332", "#FFC3A8FF")]
+    public void Focus_cards_consume_the_theme_surface_and_action_resources(string theme, string content, string action)
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var view = new AttachedPanelView { DataContext = model };
+            view.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative),
+            });
+            model.PortraitClick();
+            model.FocusClick();
+            view.Measure(new Size(240, 240));
+            view.Arrange(new Rect(0, 0, 240, 240));
+            view.UpdateLayout();
+
+            var card = Assert.IsType<Border>(view.FindName("CardSurface"));
+            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
+            var surface = Assert.IsType<SolidColorBrush>(card.Background);
+            Assert.Equal((Color)ColorConverter.ConvertFromString(content), surface.Color);
+            Assert.Equal(
+                (Color)ColorConverter.ConvertFromString(action),
+                Assert.IsType<SolidColorBrush>(Assert.IsType<Button>(view.FindName("StartFocusButton")).Background).Color);
+            Assert.Equal(
+                (Color)ColorConverter.ConvertFromString(content),
+                Assert.IsType<SolidColorBrush>(Assert.IsType<Ellipse>(setup.Children[0]).Fill).Color);
+        });
+    }
+
+    [Fact]
+    public void Focus_state_text_and_controls_remain_truthful_when_paused()
+    {
+        StaRun(() =>
+        {
+            var focus = new FakeFocusService();
+            var model = new AttachedPanelViewModel(TimeProvider.System, focus);
+            var view = new AttachedPanelView { DataContext = model };
+            model.PortraitClick();
+            model.SetActiveServant("servant-mash");
+            model.FocusClick();
+            focus.Start(FgoPet.App.Panels.FocusPresetCatalog.Short, "servant-mash");
+            focus.RaiseChanged();
+            view.Measure(new Size(240, 240));
+            view.Arrange(new Rect(0, 0, 240, 240));
+            view.UpdateLayout();
+
+            var phase = Assert.IsType<TextBlock>(view.FindName("CompactPhaseText"));
+            var pause = Assert.IsType<Button>(view.FindName("PauseResumeButton"));
+            Assert.Equal("专注中", phase.Text);
+            Assert.Equal("暂停专注", pause.ToolTip?.ToString());
+
+            focus.Pause();
+            focus.RaiseChanged();
+            view.UpdateLayout();
+
+            Assert.Equal("已暂停", phase.Text);
+            Assert.Equal("继续专注", pause.ToolTip?.ToString());
+            Assert.NotEqual(Visibility.Collapsed, pause.Visibility);
+        });
+    }
+
+    [Fact]
+    public void More_entry_exposes_explicit_expand_and_collapse_affordance()
+    {
+        StaRun(() =>
+        {
+            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var view = new AttachedPanelView { DataContext = model };
+            model.PortraitClick();
+            var more = Assert.IsType<Button>(view.FindName("MoreEntryButton"));
+
+            Assert.Equal("更多", more.ToolTip?.ToString());
+            Assert.Equal("更多", System.Windows.Automation.AutomationProperties.GetName(more));
+
+            more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("收起更多", more.ToolTip?.ToString());
+            Assert.Equal("收起更多", System.Windows.Automation.AutomationProperties.GetName(more));
+        });
+    }
+
     private static void StaRun(Action action)
     {
         Exception? failure = null;
@@ -225,8 +311,16 @@ public sealed class AttachedPanelViewIntegrationTests
 #pragma warning restore CS0067
         public void Start(FocusPreset preset, string servantId) =>
             Current = FocusSession.Start("fake-session", servantId, preset, DateTimeOffset.UtcNow);
-        public void Pause() { }
-        public void Resume() { }
+        public void Pause() => Current = Current.RestorePaused();
+        public void Resume() => Current = Current with
+        {
+            Status = Current.Status switch
+            {
+                FgoPet.Core.Focus.FocusStatus.PausedFocus => FgoPet.Core.Focus.FocusStatus.Focusing,
+                FgoPet.Core.Focus.FocusStatus.PausedBreak => FgoPet.Core.Focus.FocusStatus.Breaking,
+                _ => Current.Status,
+            },
+        };
         public void Stop() => Current = FocusSession.Idle;
         public void Tick() { }
         public void Restore() { }

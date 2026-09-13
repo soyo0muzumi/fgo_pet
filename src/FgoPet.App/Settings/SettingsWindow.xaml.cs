@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using FgoPet.App.Settings.Views;
 
 namespace FgoPet.App.Settings;
@@ -26,6 +27,11 @@ public partial class SettingsWindow : Window
         DataContext = viewModel;
         SettingsNavigation.ItemsSource = Categories;
         SettingsNavigation.SelectionChanged += SettingsNavigation_SelectionChanged;
+        SettingsNavigation.AddHandler(
+            Mouse.PreviewMouseUpEvent,
+            new MouseButtonEventHandler(SettingsNavigation_PreviewMouseLeftButtonUp),
+            true);
+        SettingsNavigation.PreviewKeyDown += SettingsNavigation_PreviewKeyDown;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         RefreshRoute();
         Closing += OnClosing;
@@ -63,8 +69,41 @@ public partial class SettingsWindow : Window
         if (!_refreshing && SettingsNavigation.SelectedValue is SettingsSection section &&
             section != _viewModel.SelectedSection)
         {
-            _viewModel.Select(section);
+            ActivateCategory(section);
         }
+    }
+
+    private void SettingsNavigation_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left &&
+            ItemsControl.ContainerFromElement(SettingsNavigation, e.OriginalSource as DependencyObject)
+            is ListBoxItem { DataContext: SettingsNavigationItem item })
+        {
+            ActivateCategory(item.Section);
+        }
+    }
+
+    private void SettingsNavigation_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space) ||
+            SettingsNavigation.SelectedValue is not SettingsSection section)
+        {
+            return;
+        }
+
+        ActivateCategory(section);
+        e.Handled = true;
+    }
+
+    private void ActivateCategory(SettingsSection section)
+    {
+        if (section == SettingsSection.Personalization)
+        {
+            _viewModel.BackToAppearanceCommand.Execute(null);
+            return;
+        }
+
+        _viewModel.Select(section);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -12,6 +12,7 @@ public partial class TodoWorkspaceView : UserControl
     private readonly TodoApplicationService _service;
     private readonly IAgentRepository? _agents;
     private string? _editingId;
+    private bool _saveActivationPending;
     private TodoItem? _undo;
     private readonly DispatcherTimer _undoTimer = new() { Interval = TimeSpan.FromSeconds(8) };
     public event Action? LegacyRequested;
@@ -72,30 +73,49 @@ public partial class TodoWorkspaceView : UserControl
     }
     public void BeginAdd()
     {
-        if (Editor.Visibility == Visibility.Visible) { TitleInput.Focus(); return; }
-        _editingId = null; TitleInput.Text = ""; DescriptionInput.Text = "";
-        EditorHeading.Text = "新增待办"; Editor.Visibility = Visibility.Visible; TitleInput.Focus();
+        TitleInput.Focus();
     }
-    private void OnAdd(object sender, RoutedEventArgs e) => BeginAdd();
     private void OnEdit(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: Row row }) return;
-        if (Editor.Visibility == Visibility.Visible) { StatusText.Text = "请先保存或取消当前编辑。"; return; }
+        if (_editingId is not null || !string.IsNullOrWhiteSpace(TitleInput.Text) || !string.IsNullOrWhiteSpace(DescriptionInput.Text))
+        { StatusText.Text = "请先保存或取消当前编辑。"; TitleInput.Focus(); return; }
         _editingId = row.Item.Id; TitleInput.Text = row.Item.Title; DescriptionInput.Text = row.Item.Description ?? "";
-        EditorHeading.Text = "编辑待办"; Editor.Visibility = Visibility.Visible; TitleInput.Focus();
+        EditorHeading.Text = "编辑待办"; ShowDescription(); TitleInput.Focus();
     }
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        if (_saveActivationPending) return;
+        _saveActivationPending = true;
         try
         {
             if (_editingId is null) _service.Create(TitleInput.Text, DescriptionInput.Text, TodoPriority.Normal, null);
             else _service.Update(_editingId, TitleInput.Text, DescriptionInput.Text);
-            Editor.Visibility = Visibility.Collapsed; StatusText.Text = "已保存"; AddButton.Focus();
+            ResetEditor(); StatusText.Text = "已保存"; TitleInput.Focus();
+            Dispatcher.BeginInvoke(new Action(() => _saveActivationPending = false), DispatcherPriority.Background);
         }
         catch (Exception ex) when (IsRecoverable(ex))
-        { StatusText.Text = ex is ArgumentException ? "请输入标题，并检查内容长度。" : "保存失败，输入已保留；任务可能仍有活动执行。"; }
+        {
+            _saveActivationPending = false;
+            StatusText.Text = ex is ArgumentException ? "请输入标题，并检查内容长度；输入已保留。" : "保存失败，输入已保留；任务可能仍有活动执行。";
+        }
     }
-    private void OnCancel(object sender, RoutedEventArgs e) { Editor.Visibility = Visibility.Collapsed; _editingId = null; AddButton.Focus(); }
+    private void OnRevealDescription(object sender, RoutedEventArgs e) { ShowDescription(); DescriptionInput.Focus(); }
+    private void OnCancel(object sender, RoutedEventArgs e) { ResetEditor(); StatusText.Text = "已取消"; TitleInput.Focus(); }
+    private void ShowDescription()
+    {
+        OptionalDescriptionPanel.Visibility = Visibility.Visible;
+        RevealDescriptionButton.Visibility = Visibility.Collapsed;
+    }
+    private void ResetEditor()
+    {
+        _editingId = null;
+        TitleInput.Text = "";
+        DescriptionInput.Text = "";
+        EditorHeading.Text = "快速新增";
+        OptionalDescriptionPanel.Visibility = Visibility.Collapsed;
+        RevealDescriptionButton.Visibility = Visibility.Visible;
+    }
     private void OnCopy(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: Row row }) return;
