@@ -247,16 +247,13 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                     lastFinishReason = finishReason;
                 }
 
-                if (!string.IsNullOrEmpty(textDelta))
-                {
-                    yield return new ChatStreamChunk(textDelta, FinishReason: finishReason);
-                    continue;
-                }
-
-                if (toolCallDelta is not null || reasoningDelta is not null || finishReason is not null)
+                // A single delta may carry content, reasoning, tool calls or a finish
+                // reason together; emitting the first match only would drop the rest.
+                if (!string.IsNullOrEmpty(textDelta) || toolCallDelta is not null
+                    || reasoningDelta is not null || finishReason is not null)
                 {
                     yield return new ChatStreamChunk(
-                        string.Empty,
+                        textDelta ?? string.Empty,
                         IsComplete: false,
                         FinishReason: finishReason,
                         ToolCallDelta: toolCallDelta,

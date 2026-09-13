@@ -21,17 +21,30 @@ public sealed class AttachedPanelVisualMetricsTests
         var builtin = AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.ExpandedFocus, false, false, 900);
         var custom = AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.ExpandedFocus, false, true, 900);
 
-        Assert.Equal(104, builtin);
-        Assert.Equal(104, custom);
+        // 132 DIP is the compact entry shell (three 36 DIP entries plus gaps); a custom
+        // preset must not add height of its own.
+        Assert.Equal(132, builtin);
+        Assert.Equal(132, custom);
     }
 
     [Fact]
     public void Compact_timer_and_message_use_the_current_budgets()
     {
-        Assert.Equal(104, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900));
+        Assert.Equal(132, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900));
         Assert.Equal(188, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, true, false, 900));
-        Assert.Equal(148, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900, true));
-        Assert.Equal(232, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, true, false, 900, true));
+        Assert.Equal(312, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900, true));
+        Assert.Equal(312, AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, true, false, 900, true));
+    }
+
+    [Fact]
+    public void Expanded_quick_actions_budget_covers_the_entry_buttons()
+    {
+        // The four quick-action entries are 36 DIP each with an 8 DIP gap, so the
+        // expanded budget must add at least 176 DIP over the compact entry shell.
+        var compact = AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900);
+        var expanded = AttachedPanelVisualMetrics.CalculateHeight(AttachedPanelState.Compact, false, false, 900, true);
+
+        Assert.True(expanded - compact >= 4 * 44, $"expanded={expanded} compact={compact}");
     }
 
     [Fact]

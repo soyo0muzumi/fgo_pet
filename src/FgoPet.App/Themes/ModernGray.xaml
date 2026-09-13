@@ -3,28 +3,48 @@
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
     <sys:String x:Key="FgoPet.ThemeDictionary">ModernGray</sys:String>
 
-    <Color x:Key="WindowBackgroundColor">#FF1B212B</Color>
-    <Color x:Key="SurfaceColor">#FF252C37</Color>
-    <Color x:Key="SurfaceRaisedColor">#FF303946</Color>
-    <Color x:Key="SurfaceHoverColor">#FF3A4452</Color>
-    <Color x:Key="SurfacePressedColor">#FF465364</Color>
-    <Color x:Key="SidebarColor">#FF171D25</Color>
-    <Color x:Key="SidebarForegroundColor">#FFB5C0CE</Color>
-    <Color x:Key="SidebarSelectedColor">#FF314052</Color>
-    <Color x:Key="SidebarSelectedTextColor">#FFF2F6FB</Color>
-    <Color x:Key="SidebarHoverColor">#FF222B36</Color>
-    <Color x:Key="TextColor">#FFF2F5F8</Color>
-    <Color x:Key="MutedTextColor">#FFB0BCC9</Color>
-    <Color x:Key="SubtleTextColor">#FF7E8B9A</Color>
-    <Color x:Key="TextOnAccentColor">#FF101820</Color>
-    <Color x:Key="AccentColor">#FF6EB7E8</Color>
-    <Color x:Key="AccentHoverColor">#FF89C8F0</Color>
-    <Color x:Key="AccentPressedColor">#FF4E9FD5</Color>
-    <Color x:Key="AccentSoftColor">#336EB7E8</Color>
-    <Color x:Key="BorderColor">#FF414D5C</Color>
-    <Color x:Key="BorderStrongColor">#FF657487</Color>
-    <Color x:Key="DividerColor">#33414D5C</Color>
-    <Color x:Key="FocusColor">#FF9AD5F4</Color>
+    <!-- Theme facts: compatibility resources below resolve from this semantic palette. -->
+    <Color x:Key="Semantic.AppColor">#FF16131D</Color>
+    <Color x:Key="Semantic.ContentColor">#FF282332</Color>
+    <Color x:Key="Semantic.SubtleColor">#FF3B3150</Color>
+    <Color x:Key="Semantic.HoverColor">#FF493D61</Color>
+    <Color x:Key="Semantic.PressedColor">#FF57486F</Color>
+    <Color x:Key="Semantic.PrimaryTextColor">#FFFAF8FF</Color>
+    <Color x:Key="Semantic.SecondaryTextColor">#FFCBC5D7</Color>
+    <Color x:Key="Semantic.TertiaryTextColor">#FFA9A1B7</Color>
+    <Color x:Key="Semantic.PrimaryActionColor">#FFC3A8FF</Color>
+    <Color x:Key="Semantic.OnPrimaryActionColor">#FF1A1324</Color>
+    <Color x:Key="Semantic.ActionHoverColor">#FFD2BDFF</Color>
+    <Color x:Key="Semantic.ActionPressedColor">#FFAA8DE8</Color>
+    <Color x:Key="Semantic.ActionSoftColor">#33C3A8FF</Color>
+    <Color x:Key="Semantic.BorderDecorativeColor">#FF494052</Color>
+    <Color x:Key="Semantic.BorderControlColor">#FF5A5069</Color>
+    <Color x:Key="Semantic.FocusColor">#FFD5C2FF</Color>
+    <Color x:Key="Semantic.RelationColor">#FFC9AE75</Color>
+    <Color x:Key="Semantic.OverlayColor">#990A0810</Color>
+
+    <Color x:Key="WindowBackgroundColor">#FF16131D</Color>
+    <Color x:Key="SurfaceColor">#FF282332</Color>
+    <Color x:Key="SurfaceRaisedColor">#FF3B3150</Color>
+    <Color x:Key="SurfaceHoverColor">#FF493D61</Color>
+    <Color x:Key="SurfacePressedColor">#FF57486F</Color>
+    <Color x:Key="SidebarColor">#FF282332</Color>
+    <Color x:Key="SidebarForegroundColor">#FFCBC5D7</Color>
+    <Color x:Key="SidebarSelectedColor">#FF3B3150</Color>
+    <Color x:Key="SidebarSelectedTextColor">#FFFAF8FF</Color>
+    <Color x:Key="SidebarHoverColor">#FF493D61</Color>
+    <Color x:Key="TextColor">#FFFAF8FF</Color>
+    <Color x:Key="MutedTextColor">#FFCBC5D7</Color>
+    <Color x:Key="SubtleTextColor">#FFA9A1B7</Color>
+    <Color x:Key="TextOnAccentColor">#FF1A1324</Color>
+    <Color x:Key="AccentColor">#FFC3A8FF</Color>
+    <Color x:Key="AccentHoverColor">#FFD2BDFF</Color>
+    <Color x:Key="AccentPressedColor">#FFAA8DE8</Color>
+    <Color x:Key="AccentSoftColor">#33C3A8FF</Color>
+    <Color x:Key="BorderColor">#FF494052</Color>
+    <Color x:Key="BorderStrongColor">#FF5A5069</Color>
+    <Color x:Key="DividerColor">#33494052</Color>
+    <Color x:Key="FocusColor">#FFD5C2FF</Color>
     <Color x:Key="WarningColor">#FFE5B75B</Color>
     <Color x:Key="WarningSoftColor">#33E5B75B</Color>
     <Color x:Key="DangerColor">#FFE37383</Color>
@@ -37,47 +57,47 @@
     <Color x:Key="InputDisabledColor">#FF2B323D</Color>
     <Color x:Key="DisabledTextColor">#FF6D7886</Color>
     <Color x:Key="DisabledBorderColor">#FF37414D</Color>
-    <Color x:Key="OverlayColor">#990A0E14</Color>
-    <Color x:Key="ShellWindowColor">#FF202127</Color>
-    <Color x:Key="ShellPanelColor">#FF292A33</Color>
-    <Color x:Key="ShellRaisedColor">#FF30313A</Color>
-    <Color x:Key="ShellTextColor">#FFECE9F1</Color>
-    <Color x:Key="ShellMutedColor">#FFAAA5B5</Color>
-    <Color x:Key="ShellLineColor">#FF44404E</Color>
-    <Color x:Key="ShellAccentColor">#FFC3AFE5</Color>
-    <Color x:Key="ShellAccentSoftColor">#33C3AFE5</Color>
-    <Color x:Key="ShellOverlayColor">#99000000</Color>
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="ContentBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="WindowForegroundBrush" Color="{StaticResource TextColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
-    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
-    <SolidColorBrush x:Key="SurfaceAltBrush" Color="{StaticResource SurfaceRaisedColor}" />
-    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHoverColor}" />
-    <SolidColorBrush x:Key="SurfacePressedBrush" Color="{StaticResource SurfacePressedColor}" />
-    <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
-    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{StaticResource SidebarColor}" />
-    <SolidColorBrush x:Key="SidebarForegroundBrush" Color="{StaticResource SidebarForegroundColor}" />
-    <SolidColorBrush x:Key="SidebarTextBrush" Color="{StaticResource SidebarForegroundColor}" />
-    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="{StaticResource SidebarSelectedColor}" />
-    <SolidColorBrush x:Key="SidebarSelectedTextBrush" Color="{StaticResource SidebarSelectedTextColor}" />
-    <SolidColorBrush x:Key="SidebarHoverBrush" Color="{StaticResource SidebarHoverColor}" />
-    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
-    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource TextColor}" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource MutedTextColor}" />
-    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource MutedTextColor}" />
-    <SolidColorBrush x:Key="SubtleTextBrush" Color="{StaticResource SubtleTextColor}" />
-    <SolidColorBrush x:Key="TertiaryTextBrush" Color="{StaticResource SubtleTextColor}" />
-    <SolidColorBrush x:Key="TextOnAccentBrush" Color="{StaticResource TextOnAccentColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
-    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource AccentPressedColor}" />
-    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoftColor}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
-    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrongColor}" />
+    <Color x:Key="OverlayColor">#990A0810</Color>
+    <Color x:Key="ShellWindowColor">#FF16131D</Color>
+    <Color x:Key="ShellPanelColor">#FF3B3150</Color>
+    <Color x:Key="ShellRaisedColor">#FF282332</Color>
+    <Color x:Key="ShellTextColor">#FFFAF8FF</Color>
+    <Color x:Key="ShellMutedColor">#FFCBC5D7</Color>
+    <Color x:Key="ShellLineColor">#FF5A5069</Color>
+    <Color x:Key="ShellAccentColor">#FFC3A8FF</Color>
+    <Color x:Key="ShellAccentSoftColor">#33C3A8FF</Color>
+    <Color x:Key="ShellOverlayColor">#990A0810</Color>
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource Semantic.AppColor}" />
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource Semantic.AppColor}" />
+    <SolidColorBrush x:Key="ContentBackgroundBrush" Color="{StaticResource Semantic.AppColor}" />
+    <SolidColorBrush x:Key="WindowForegroundBrush" Color="{StaticResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Semantic.ContentColor}" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource Semantic.SubtleColor}" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="{StaticResource Semantic.SubtleColor}" />
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource Semantic.HoverColor}" />
+    <SolidColorBrush x:Key="SurfacePressedBrush" Color="{StaticResource Semantic.PressedColor}" />
+    <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource Semantic.ContentColor}" />
+    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{StaticResource Semantic.ContentColor}" />
+    <SolidColorBrush x:Key="SidebarForegroundBrush" Color="{StaticResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="SidebarTextBrush" Color="{StaticResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="{StaticResource Semantic.SubtleColor}" />
+    <SolidColorBrush x:Key="SidebarSelectedTextBrush" Color="{StaticResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="SidebarHoverBrush" Color="{StaticResource Semantic.HoverColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="SubtleTextBrush" Color="{StaticResource Semantic.TertiaryTextColor}" />
+    <SolidColorBrush x:Key="TertiaryTextBrush" Color="{StaticResource Semantic.TertiaryTextColor}" />
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="{StaticResource Semantic.OnPrimaryActionColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Semantic.PrimaryActionColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource Semantic.ActionHoverColor}" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource Semantic.ActionPressedColor}" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource Semantic.ActionSoftColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Semantic.BorderDecorativeColor}" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource Semantic.BorderControlColor}" />
     <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource DividerColor}" />
-    <SolidColorBrush x:Key="FocusBrush" Color="{StaticResource FocusColor}" />
+    <SolidColorBrush x:Key="FocusBrush" Color="{StaticResource Semantic.FocusColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="WarningSoftBrush" Color="{StaticResource WarningSoftColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
@@ -90,21 +110,21 @@
     <SolidColorBrush x:Key="InputDisabledBrush" Color="{StaticResource InputDisabledColor}" />
     <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
     <SolidColorBrush x:Key="DisabledBorderBrush" Color="{StaticResource DisabledBorderColor}" />
-    <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource OverlayColor}" />
-    <SolidColorBrush x:Key="Surface.App" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="Surface.Content" Color="{StaticResource SurfaceColor}" />
-    <SolidColorBrush x:Key="Surface.Subtle" Color="{StaticResource SurfaceRaisedColor}" />
-    <SolidColorBrush x:Key="Surface.Hover" Color="{StaticResource SurfaceHoverColor}" />
-    <SolidColorBrush x:Key="Surface.Pressed" Color="{StaticResource SurfacePressedColor}" />
-    <SolidColorBrush x:Key="Text.Primary" Color="{StaticResource TextColor}" />
-    <SolidColorBrush x:Key="Text.Secondary" Color="{StaticResource MutedTextColor}" />
-    <SolidColorBrush x:Key="Action.Primary" Color="{StaticResource AccentColor}" />
-    <SolidColorBrush x:Key="Action.OnPrimary" Color="{StaticResource TextOnAccentColor}" />
-    <SolidColorBrush x:Key="Accent.Relation" Color="#FFC9AE75" />
+    <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource Semantic.OverlayColor}" />
+    <SolidColorBrush x:Key="Surface.App" Color="{StaticResource Semantic.AppColor}" />
+    <SolidColorBrush x:Key="Surface.Content" Color="{StaticResource Semantic.ContentColor}" />
+    <SolidColorBrush x:Key="Surface.Subtle" Color="{StaticResource Semantic.SubtleColor}" />
+    <SolidColorBrush x:Key="Surface.Hover" Color="{StaticResource Semantic.HoverColor}" />
+    <SolidColorBrush x:Key="Surface.Pressed" Color="{StaticResource Semantic.PressedColor}" />
+    <SolidColorBrush x:Key="Text.Primary" Color="{StaticResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="Text.Secondary" Color="{StaticResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="Action.Primary" Color="{StaticResource Semantic.PrimaryActionColor}" />
+    <SolidColorBrush x:Key="Action.OnPrimary" Color="{StaticResource Semantic.OnPrimaryActionColor}" />
+    <SolidColorBrush x:Key="Accent.Relation" Color="{StaticResource Semantic.RelationColor}" />
     <SolidColorBrush x:Key="State.Success" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="State.Pending" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="State.Danger" Color="{StaticResource DangerColor}" />
-    <SolidColorBrush x:Key="Border.Decorative" Color="{StaticResource BorderColor}" />
-    <SolidColorBrush x:Key="Border.Control" Color="{StaticResource BorderStrongColor}" />
-    <SolidColorBrush x:Key="Focus.Ring" Color="{StaticResource FocusColor}" />
+    <SolidColorBrush x:Key="Border.Decorative" Color="{StaticResource Semantic.BorderDecorativeColor}" />
+    <SolidColorBrush x:Key="Border.Control" Color="{StaticResource Semantic.BorderControlColor}" />
+    <SolidColorBrush x:Key="Focus.Ring" Color="{StaticResource Semantic.FocusColor}" />
 </ResourceDictionary>

@@ -10,7 +10,7 @@ public partial class PersonalizationPage : UserControl
     private readonly SettingsViewModel _settings;
     private bool _loaded;
 
-    public PersonalizationPage(PersonalizationViewModel viewModel, ServantLibraryViewModel library, SettingsViewModel settings)
+    public PersonalizationPage(PersonalizationViewModel viewModel, ServantLibraryViewModel library, SettingsViewModel settings, ThemePage? themePage = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         _library = library ?? throw new ArgumentNullException(nameof(library));
@@ -18,6 +18,7 @@ public partial class PersonalizationPage : UserControl
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = this;
+        ThemeHost.Content = themePage;
         Loaded += OnLoaded;
     }
 

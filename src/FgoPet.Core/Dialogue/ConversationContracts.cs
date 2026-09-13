@@ -37,6 +37,22 @@ internal static class Phase3Validation
 
         return Text(value, parameterName, maxLength);
     }
+
+    /// <summary>
+    /// Validates a streaming fragment. Fragments are concatenated verbatim, so a
+    /// leading or trailing space is part of the text and must never be trimmed;
+    /// trimming here runs English words together across deltas.
+    /// </summary>
+    public static string Fragment(string? value, string parameterName, int maxLength)
+    {
+        var fragment = value ?? string.Empty;
+        if (fragment.Length > maxLength)
+        {
+            throw new ArgumentException($"{parameterName} must be at most {maxLength} characters.", parameterName);
+        }
+
+        return fragment;
+    }
 }
 
 public enum ChatMessageRole
@@ -208,7 +224,8 @@ public sealed record ConversationUpdate(
     string? ReasoningDelta = null,
     ConversationRequestStage? RequestStage = null,
     int? HttpStatusCode = null,
-    string? ProviderErrorCode = null);
+    string? ProviderErrorCode = null,
+    FgoPet.Core.Portraits.ExpressionSemantic? Expression = null);
 
 public sealed record ChatRequest
 {
@@ -259,14 +276,16 @@ public sealed record ChatRequest
 
 public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null, ChatToolCallDelta? ToolCallDelta = null, string? ReasoningDelta = null)
 {
-    public string TextDelta { get; } = Phase3Validation.OptionalText(TextDelta, nameof(TextDelta), 4_096);
+    // Streaming fragments are concatenated as-is: never trim them or a provider that
+    // splits on word boundaries loses every space between English words.
+    public string TextDelta { get; } = Phase3Validation.Fragment(TextDelta, nameof(TextDelta), 4_096);
     public string? FinishReason { get; } = string.IsNullOrWhiteSpace(FinishReason)
         ? null
         : Phase3Validation.Id(FinishReason, nameof(FinishReason), 64);
     public ChatToolCallDelta? ToolCallDelta { get; } = ToolCallDelta;
-    public string? ReasoningDelta { get; } = string.IsNullOrWhiteSpace(ReasoningDelta)
+    public string? ReasoningDelta { get; } = ReasoningDelta is null
         ? null
-        : Phase3Validation.OptionalText(ReasoningDelta, nameof(ReasoningDelta), 4_096);
+        : Phase3Validation.Fragment(ReasoningDelta, nameof(ReasoningDelta), 4_096);
 }
 
 public sealed record ChatCompletion(

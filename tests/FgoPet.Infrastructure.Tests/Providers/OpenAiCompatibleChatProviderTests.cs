@@ -279,6 +279,45 @@ public sealed class OpenAiCompatibleChatProviderTests
     }
 
     [Fact]
+    public async Task Reasoning_deltas_keep_leading_spaces_between_english_words()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"The\"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" model\"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" is\"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" reasoning\"}}]}\n\n" +
+            "data: [DONE]\n\n"));
+        var provider = CreateProvider(handler, "secret-value");
+        var request = new ChatRequest(
+            "800100",
+            "conversation-1",
+            new[] { new PromptMessage(ChatMessageRole.User, "hello") });
+
+        var chunks = await StreamAll(provider, request);
+
+        var reasoning = string.Concat(chunks.Select(chunk => chunk.ReasoningDelta));
+        Assert.Equal("The model is reasoning", reasoning);
+    }
+
+    [Fact]
+    public async Task A_delta_carrying_both_reasoning_and_content_surfaces_both()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"先想\",\"content\":\"答案\"}}]}\n\n" +
+            "data: [DONE]\n\n"));
+        var provider = CreateProvider(handler, "secret-value");
+        var request = new ChatRequest(
+            "800100",
+            "conversation-1",
+            new[] { new PromptMessage(ChatMessageRole.User, "你好") });
+
+        var chunks = await StreamAll(provider, request);
+
+        Assert.Equal("先想", string.Concat(chunks.Select(chunk => chunk.ReasoningDelta)));
+        Assert.Equal("答案", string.Concat(chunks.Select(chunk => chunk.TextDelta)));
+    }
+
+    [Fact]
     public async Task Streams_without_reasoning_fields_behave_exactly_as_before()
     {
         var handler = new RecordingHandler(_ => StreamResponse(

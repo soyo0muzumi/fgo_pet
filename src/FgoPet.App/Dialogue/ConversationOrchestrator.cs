@@ -341,7 +341,8 @@ public sealed class ConversationOrchestrator
                 ServantId: servantId,
                 StructuredResponse: todoProposals is { Count: > 0 } ? structuredPayload : null,
                 TodoOutcome: finishOutcome,
-                TodoDetail: todoDetail));
+                TodoDetail: todoDetail,
+                Expression: requestCancellation.IsCancellationRequested ? null : output.Expression));
             Publish(new ConversationUpdate(
                 ConversationUpdateType.RequestStage,
                 conversationId,

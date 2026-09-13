@@ -25,7 +25,7 @@ namespace FgoPet.Windows.Tests.Panels;
 public sealed class DialoguePanelIntegrationTests
 {
     [Fact]
-    public void Attached_panel_keeps_dialogue_body_without_embedded_composer()
+    public void Attached_panel_never_embeds_a_dialogue_body_or_composer()
     {
         StaRun(() =>
         {
@@ -34,15 +34,16 @@ public sealed class DialoguePanelIntegrationTests
                 DataContext = new AttachedPanelViewModel(TimeProvider.System),
             };
 
-            Assert.IsAssignableFrom<FrameworkElement>(view.FindName("DialogueContent"));
-            Assert.NotNull(view.FindName("FocusButton"));
-            Assert.NotNull(view.FindName("TodayButton"));
-            Assert.NotNull(view.FindName("TodoButton"));
-            Assert.NotNull(view.FindName("DialogueButton"));
+            // Dialogue is owned by the main window; the panel must not grow a second one.
+            Assert.Null(view.FindName("DialogueContent"));
+            Assert.Null(view.FindName("DialogueEmptyState"));
+            Assert.Null(view.FindName("DialogueMessageList"));
+            Assert.Null(view.FindName("DialogueSettingsButton"));
             Assert.Null(view.FindName("DialogueInputBox"));
             Assert.Null(view.FindName("SendDialogueButton"));
             Assert.Null(view.FindName("DialogueComposer"));
             Assert.Null(view.FindName("NewConversationButton"));
+            Assert.NotNull(view.FindName("CompanionControlIsland"));
         });
     }
 
@@ -57,62 +58,51 @@ public sealed class DialoguePanelIntegrationTests
             };
             var island = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
 
-            Assert.Equal(230, island.MinWidth);
-            Assert.Equal(280, island.MaxWidth);
+            // The island stacks the compact entries; the panel width comes from
+            // AttachedPanelVisualMetrics.CalculateWidth, not from local Min/MaxWidth.
+            Assert.Equal(Orientation.Vertical, island.Orientation);
             Assert.NotNull(view.FindName("ChatEntryButton"));
-            Assert.NotNull(view.FindName("ToolsEntryButton"));
-            Assert.NotNull(view.FindName("AttentionEntryButton"));
+            Assert.NotNull(view.FindName("SpeechEntryButton"));
+            Assert.NotNull(view.FindName("MoreEntryButton"));
         });
     }
     [Fact]
-    public void Dialogue_presentation_state_switches_empty_configured_and_configuration_views()
+    public void Attached_panel_presents_no_dialogue_state()
     {
         StaRun(() =>
         {
             var viewModel = new AttachedPanelViewModel(TimeProvider.System);
             var view = new AttachedPanelView { DataContext = viewModel };
-            var emptyState = (FrameworkElement)view.FindName("DialogueEmptyState")!;
-            var messageList = (FrameworkElement)view.FindName("DialogueMessageList")!;
-            var settingsButton = (FrameworkElement)view.FindName("DialogueSettingsButton")!;
+            viewModel.PortraitClick();
 
-            Assert.Equal(Visibility.Visible, emptyState.Visibility);
-            Assert.Equal(Visibility.Collapsed, settingsButton.Visibility);
-
-            viewModel.Conversation = CreateConversationViewModel();
-            viewModel.Conversation.SetActiveServant("mash_kyrielight");
-
-            // A configured but still-empty conversation keeps showing the empty state.
-            Assert.Equal(Visibility.Visible, emptyState.Visibility);
-            Assert.Equal(Visibility.Collapsed, messageList.Visibility);
-            Assert.Equal(Visibility.Collapsed, settingsButton.Visibility);
-
-            viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
-                "message-1", ChatMessageRole.User, "你好"));
-
-            Assert.Equal(Visibility.Visible, messageList.Visibility);
-            Assert.Equal(Visibility.Collapsed, emptyState.Visibility);
-            Assert.Equal(Visibility.Collapsed, settingsButton.Visibility);
+            // Empty/configured/configuration-required presentation lives in the main
+            // window now; the panel only switches between the entry shell and focus.
+            Assert.Null(view.FindName("DialogueEmptyState"));
+            Assert.Null(view.FindName("DialogueMessageList"));
+            Assert.Null(view.FindName("DialogueSettingsButton"));
+            var shell = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
+            Assert.Equal(Visibility.Visible, shell.Visibility);
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("FocusSetupCard")).Visibility);
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("CompactTimer")).Visibility);
         });
     }
 
     [Fact]
-    public void Configuration_required_state_shows_the_settings_action()
+    public void Focus_entry_reveals_the_setup_card_with_its_start_action()
     {
         StaRun(() =>
         {
             var viewModel = new AttachedPanelViewModel(TimeProvider.System);
-            SettingsSection? requested = null;
-            var conversation = CreateConversationViewModel();
-            conversation.SettingsRequested += section => requested = section;
-            viewModel.Conversation = conversation;
             var view = new AttachedPanelView { DataContext = viewModel };
-            var settingsButton = (FrameworkElement)view.FindName("DialogueSettingsButton")!;
+            viewModel.PortraitClick();
+            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
+            Assert.Equal(Visibility.Collapsed, setup.Visibility);
 
-            conversation.NotifyConfigurationRequired();
-            conversation.OpenSettingsCommand.Execute(null);
+            Assert.IsType<Button>(view.FindName("FocusEntryButton"))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-            Assert.Equal(Visibility.Visible, settingsButton.Visibility);
-            Assert.Equal(SettingsSection.ModelConnection, requested);
+            Assert.Equal(Visibility.Visible, setup.Visibility);
+            Assert.NotNull(view.FindName("StartFocusButton"));
         });
     }
 

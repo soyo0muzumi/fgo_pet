@@ -180,9 +180,10 @@ public sealed class PortraitWindowIntegrationTests
                 var portrait = window.PortraitScreenBounds;
                 Assert.True(bounds.Right <= portrait.X || bounds.Left >= portrait.Right);
                 Assert.Equal(230, bounds.Width);
-                Assert.Equal(104, bounds.Height);
+                // The compact entry shell is three 36 DIP entries plus 8 DIP gaps.
+                Assert.Equal(132, bounds.Height);
                 var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
-                Assert.Equal(104, host.Height);
+                Assert.Equal(132, host.Height);
             }
             finally
             {
@@ -210,7 +211,7 @@ public sealed class PortraitWindowIntegrationTests
 
                 var messageBounds = window.ArrangeOverlayPanel(
                     geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
-                Assert.Equal(104, messageBounds.Height);
+                Assert.Equal(132, messageBounds.Height);
 
                 // Starting the session swaps the compact body to the timer; the host
                 // must grow so the countdown and buttons are not clipped.
@@ -223,8 +224,9 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactTimerVisible);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                Assert.True(timerBounds.Height <= 188,
-                    $"timer body height {timerBounds.Height} must stay within the compact budget");
+                // The timer ring is 196 DIP, so the focus surface budget is 220 DIP.
+                Assert.True(timerBounds.Height <= 220,
+                    $"timer body height {timerBounds.Height} must stay within the focus surface budget");
 
                 // Stopping restores the message budget exactly.
                 focus.Stop();

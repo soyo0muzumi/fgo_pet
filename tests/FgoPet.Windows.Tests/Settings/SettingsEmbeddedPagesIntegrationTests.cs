@@ -144,8 +144,9 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
                 shell.Select(SettingsSection.ModelConnection);
                 Assert.IsType<ModelConnectionPage>(window.SettingsContent.Content);
 
+                // Memory review is presented inside the "通用与数据" category.
                 shell.Select(SettingsSection.ConversationMemory);
-                Assert.IsType<ConversationMemoryPage>(window.SettingsContent.Content);
+                Assert.IsType<PrivacyPage>(window.SettingsContent.Content);
 
                 shell.Select(SettingsSection.Privacy);
                 Assert.IsType<PrivacyPage>(window.SettingsContent.Content);

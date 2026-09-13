@@ -26,7 +26,7 @@ public sealed record AppSettings(
 
     public IReadOnlyDictionary<string, ServantPreference> ServantPreferences { get; init; } = EmptyServantPreferences;
 
-    public AppTheme Theme { get; init; } = AppTheme.ModernGray;
+    public AppTheme Theme { get; init; } = AppTheme.FgoLight;
 
     public UserProfile? UserProfile { get; init; }
 

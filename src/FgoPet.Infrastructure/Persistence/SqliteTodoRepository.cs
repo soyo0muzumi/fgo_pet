@@ -10,6 +10,46 @@ public sealed class SqliteTodoRepository : ITodoRepository
 
     public SqliteTodoRepository(RuntimeDatabase database) => _database = database;
 
+    public bool TryUpdateLocal(TodoItem expected, TodoItem? replacement)
+    {
+        if (replacement is not null && replacement.Id != expected.Id) throw new ArgumentException("Identity cannot change.");
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = SelectSql + " WHERE todo_id=$id";
+            read.Parameters.AddWithValue("$id", expected.Id);
+            using var reader = read.ExecuteReader();
+            if (!reader.Read() || ReadTodo(reader) != expected || expected.Status == TodoStatus.Active) return false;
+        }
+        using (var active = connection.CreateCommand())
+        {
+            active.Transaction = transaction;
+            active.CommandText = "SELECT COUNT(*) FROM agent_executions WHERE todo_id=$id AND status IN ('dispatching','active','attention','dispatch_outcome_unknown')";
+            active.Parameters.AddWithValue("$id", expected.Id);
+            if (Convert.ToInt64(active.ExecuteScalar()) != 0) return false;
+        }
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        if (replacement is null)
+        {
+            command.CommandText = "DELETE FROM todo_items WHERE todo_id=$id";
+            command.Parameters.AddWithValue("$id", expected.Id);
+        }
+        else
+        {
+            command.CommandText = """
+                UPDATE todo_items SET title=$title, description=$description, priority=$priority,
+                    due_at_utc=$due, status=$status, created_at_utc=$created, updated_at_utc=$updated,
+                    completed_at_utc=$completed WHERE todo_id=$id
+                """;
+            AddTodoParameters(command, replacement);
+        }
+        var applied = command.ExecuteNonQuery() == 1;
+        transaction.Commit();
+        return applied;
+    }
     public void Save(TodoItem todo)
     {
         ArgumentNullException.ThrowIfNull(todo);

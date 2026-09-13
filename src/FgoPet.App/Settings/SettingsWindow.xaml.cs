@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using FgoPet.App.Settings.Views;
 
 namespace FgoPet.App.Settings;
@@ -26,11 +27,37 @@ public partial class SettingsWindow : Window
         DataContext = viewModel;
         SettingsNavigation.ItemsSource = Categories;
         SettingsNavigation.SelectionChanged += SettingsNavigation_SelectionChanged;
+        SettingsNavigation.AddHandler(
+            Mouse.PreviewMouseUpEvent,
+            new MouseButtonEventHandler(SettingsNavigation_PreviewMouseLeftButtonUp),
+            true);
+        SettingsNavigation.PreviewKeyDown += SettingsNavigation_PreviewKeyDown;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         RefreshRoute();
         Closing += OnClosing;
+        PreviewMouseWheel += OnSettingsMouseWheel;
     }
 
+    private void OnSettingsMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        var node = e.OriginalSource as DependencyObject;
+        ComboBox? combo = null;
+        while (node is not null)
+        {
+            if (node is ComboBox candidate) { combo = candidate; break; }
+            node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
+        }
+        if (combo is null || combo.IsDropDownOpen) return;
+        node = System.Windows.Media.VisualTreeHelper.GetParent(combo);
+        while (node is not null && node is not ScrollViewer)
+            node = System.Windows.Media.VisualTreeHelper.GetParent(node);
+        if (node is ScrollViewer scroller)
+        {
+            e.Handled = true;
+            scroller.ScrollToVerticalOffset(scroller.VerticalOffset - e.Delta / 120.0 * SystemParameters.WheelScrollLines * 16);
+        }
+    }
     internal ListBox SettingsNavigation => SettingsShell.SettingsNavigation;
     internal ContentControl SettingsContent => SettingsShell.ContentHost;
     internal FrameworkElement PackageBreadcrumb => SettingsShell.Breadcrumb;
@@ -42,8 +69,41 @@ public partial class SettingsWindow : Window
         if (!_refreshing && SettingsNavigation.SelectedValue is SettingsSection section &&
             section != _viewModel.SelectedSection)
         {
-            _viewModel.Select(section);
+            ActivateCategory(section);
         }
+    }
+
+    private void SettingsNavigation_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left &&
+            ItemsControl.ContainerFromElement(SettingsNavigation, e.OriginalSource as DependencyObject)
+            is ListBoxItem { DataContext: SettingsNavigationItem item })
+        {
+            ActivateCategory(item.Section);
+        }
+    }
+
+    private void SettingsNavigation_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space) ||
+            SettingsNavigation.SelectedValue is not SettingsSection section)
+        {
+            return;
+        }
+
+        ActivateCategory(section);
+        e.Handled = true;
+    }
+
+    private void ActivateCategory(SettingsSection section)
+    {
+        if (section == SettingsSection.Personalization)
+        {
+            _viewModel.BackToAppearanceCommand.Execute(null);
+            return;
+        }
+
+        _viewModel.Select(section);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

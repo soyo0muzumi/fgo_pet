@@ -189,10 +189,10 @@ public partial class PortraitWindow : Window
             Math.Max(1, (int)Math.Ceiling(panelWidthDip * dpi.X)),
             Math.Max(1, (int)Math.Ceiling(panelHeightDip * dpi.Y)));
         var panelWidth = Math.Min(desired.Width, workArea.Width);
-        var panelHeight = Math.Min(desired.Height, (int)Math.Floor(workArea.Height * 0.6));
+        var panelHeight = Math.Min(desired.Height, (int)Math.Floor(workArea.Height * AttachedPanelVisualMetrics.WorkAreaRatio));
         var reservedHeight = Math.Min(
             Math.Max(1, (int)Math.Ceiling(reservedHeightDip * dpi.Y)),
-            (int)Math.Floor(workArea.Height * 0.6));
+            (int)Math.Floor(workArea.Height * AttachedPanelVisualMetrics.WorkAreaRatio));
         var marginX = Math.Min((int)Math.Round(16 * dpi.X), Math.Max(0, (workArea.Width - panelWidth) / 2));
         var marginY = Math.Min((int)Math.Round(16 * dpi.Y), Math.Max(0, (workArea.Height - panelHeight) / 2));
         var gap = Math.Max(1, (int)Math.Round(12 * dpi.X));

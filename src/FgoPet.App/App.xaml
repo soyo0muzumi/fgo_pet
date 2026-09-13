@@ -9,7 +9,7 @@
                 <ResourceDictionary Source="/FgoPet.App;component/UiFoundation/Controls.xaml" />
                 <ResourceDictionary Source="Themes/SettingsControls.xaml" />
                 <ResourceDictionary Source="Themes/SettingsIcons.xaml" />
-                <ResourceDictionary Source="Themes/ModernGray.xaml" />
+                <ResourceDictionary Source="Themes/FgoLight.xaml" />
                 <ResourceDictionary Source="Ui/Shell/ShellTokens.xaml" />
                 <ResourceDictionary Source="Ui/Shell/ShellControls.xaml" />
             </ResourceDictionary.MergedDictionaries>

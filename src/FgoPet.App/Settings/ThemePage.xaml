@@ -12,12 +12,11 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
+    <Border>
         <StackPanel Margin="4,4,14,18">
             <TextBlock Margin="0,0,0,14"
                        Style="{StaticResource SettingsStatusStyle}"
-                       Text="选择后立即应用并保存。主题只影响设置窗口，运行时桌面宠物和对话面板继续使用既有深色终端配色。" />
+                       Text="选择浅色或深色，立即应用并保存。首次启动默认浅色；已有主题选择会保留。" />
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -63,7 +62,7 @@
                                    Foreground="{DynamicResource TextBrush}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   Text="Modern Gray" />
+                                   Text="深色" />
                         <TextBlock Grid.Row="2"
                                    Foreground="{DynamicResource MutedTextBrush}"
                                    TextWrapping="Wrap"
@@ -109,7 +108,7 @@
                                    Foreground="{DynamicResource TextBrush}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   Text="FGO Light" />
+                                   Text="浅色" />
                         <TextBlock Grid.Row="2"
                                    Foreground="{DynamicResource MutedTextBrush}"
                                    TextWrapping="Wrap"
@@ -124,5 +123,5 @@
                        Text="{Binding StatusText}"
                        automation:AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
-    </ScrollViewer>
+    </Border>
 </UserControl>

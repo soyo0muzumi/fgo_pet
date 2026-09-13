@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using FgoPet.App.Bootstrap;
 using FgoPet.App.Dialogue;
@@ -34,11 +35,16 @@ public sealed class SettingsWindowIntegrationTests
         {
             var viewModel = new SettingsViewModel();
             var createdContent = new Dictionary<SettingsSection, TextBox>();
+            // The real resolver returns singletons, so re-selecting a category must not
+            // rebuild its page; this also keeps the "cached content" contract testable.
             SettingsPageContentResolver resolver = (section, _) =>
             {
-                var content = new TextBox { Text = section.ToString() };
-                createdContent.Add(section, content);
-                return content;
+                if (!createdContent.TryGetValue(section, out var existing))
+                {
+                    existing = new TextBox { Text = section.ToString() };
+                    createdContent.Add(section, existing);
+                }
+                return existing;
             };
             var window = new SettingsWindow(viewModel, resolver);
             try
@@ -46,17 +52,19 @@ public sealed class SettingsWindowIntegrationTests
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 Assert.NotNull(window.SettingsNavigation);
                 Assert.NotNull(window.SettingsContent);
-                Assert.Equal(Enum.GetValues<SettingsSection>().Length, window.SettingsNavigation.Items.Count);
+                // Five user-goal categories; Theme and UserProfile resolve into them.
+                Assert.Equal(5, window.SettingsNavigation.Items.Count);
 
-                var profileContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
-                profileContent.Text = "unsaved session input";
+                var privacyContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
+                Assert.Equal(SettingsSection.Privacy.ToString(), privacyContent.Text);
+                privacyContent.Text = "unsaved session input";
 
                 viewModel.Select(SettingsSection.Theme);
-                Assert.Same(createdContent[SettingsSection.Theme], window.SettingsContent.Content);
+                Assert.Same(createdContent[SettingsSection.Personalization], window.SettingsContent.Content);
 
                 viewModel.Select(SettingsSection.UserProfile);
-                Assert.Same(profileContent, window.SettingsContent.Content);
-                Assert.Equal("unsaved session input", profileContent.Text);
+                Assert.Same(privacyContent, window.SettingsContent.Content);
+                Assert.Equal("unsaved session input", privacyContent.Text);
                 Assert.Equal(2, createdContent.Count);
             }
             finally
@@ -72,29 +80,152 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var viewModel = new SettingsViewModel(SettingsSection.RolePackages);
-            var packageList = new Border { Name = "PackageList" };
+            var packageList = new Border { Name = "PackageList", Height = 1200 };
             var packageDetail = new Border { Name = "PackageDetail" };
             SettingsPageContentResolver resolver = (_, route) => route is null ? packageList : packageDetail;
             var window = new SettingsWindow(viewModel, resolver);
             try
             {
+                window.Show();
+                window.UpdateLayout();
                 Assert.Same(packageList, window.SettingsContent.Content);
                 Assert.Equal(Visibility.Collapsed, window.PackageBreadcrumb.Visibility);
+                var contentScroll = Descendants<ScrollViewer>(window)
+                    .Single(scroller => ReferenceEquals(scroller.Content, window.SettingsContent));
+                contentScroll.ScrollToVerticalOffset(180);
+                window.UpdateLayout();
+                Assert.Equal(180, contentScroll.VerticalOffset);
 
                 viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("official.mash", "Mash Kyrielight"));
 
                 Assert.Same(packageDetail, window.SettingsContent.Content);
                 Assert.Equal(Visibility.Visible, window.PackageBreadcrumb.Visibility);
-                Assert.Equal("设置 / 角色包 / Mash Kyrielight", window.PackageBreadcrumbText.Text);
+                Assert.Equal("角色包 / Mash Kyrielight", window.PackageBreadcrumbText.Text);
 
                 viewModel.BackToPackagesCommand.Execute(null);
 
                 Assert.Same(packageList, window.SettingsContent.Content);
                 Assert.Equal(Visibility.Collapsed, window.PackageBreadcrumb.Visibility);
+                window.UpdateLayout();
+                Assert.Equal(180, contentScroll.VerticalOffset);
             }
             finally
             {
-                window.Close();
+                window.Hide();
+            }
+        });
+    }
+
+    [Fact]
+    public void Visible_role_package_back_controls_follow_the_parent_route_without_recreating_pages()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel(SettingsSection.RolePackages);
+            var packageList = new RolePackagesPage(
+                new ServantLibraryViewModel(
+                    new PackageRepository(),
+                    new PackageInstaller(),
+                    new PortraitController(),
+                    new FakeSettingsStore(AppSettings.Defaults),
+                    _ => { }),
+                viewModel);
+            var personalization = new Border { Name = "Personalization" };
+            RolePackageDetailPage? packageDetail = null;
+            SettingsPageContentResolver resolver = (section, route) => section switch
+            {
+                SettingsSection.RolePackages when route is null => packageList,
+                SettingsSection.RolePackages => packageDetail ??= new RolePackageDetailPage(
+                    new RolePackageDetailViewModel(
+                        route!,
+                        (ServantLibraryViewModel)packageList.DataContext,
+                        new FakeSettingsStore(AppSettings.Defaults),
+                        viewModel)),
+                _ => personalization,
+            };
+            var window = new SettingsWindow(viewModel, resolver);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var listBack = Descendants<Button>(packageList)
+                    .Single(button => Equals(button.Content, "← 外观与角色"));
+                listBack.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Same(personalization, window.SettingsContent.Content);
+
+                viewModel.Select(SettingsSection.RolePackages);
+                viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("preview.mash", "玛修"));
+                window.UpdateLayout();
+                var detailBack = Descendants<Button>(packageDetail!)
+                    .Single(button => Equals(button.Content, "← 角色包"));
+                detailBack.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(SettingsSection.RolePackages, viewModel.SelectedSection);
+                Assert.Null(viewModel.PackageDetail);
+                Assert.Same(packageList, window.SettingsContent.Content);
+            }
+            finally
+            {
+                window.Hide();
+            }
+        });
+    }
+
+    [Fact]
+    public void Mouse_and_keyboard_reactivation_of_selected_appearance_category_returns_to_its_home()
+    {
+        StaRun(() =>
+        {
+            var viewModel = new SettingsViewModel(SettingsSection.RolePackages);
+            var personalization = new Border { Name = "Personalization" };
+            var packageList = new Border { Name = "PackageList" };
+            var packageDetail = new Border { Name = "PackageDetail" };
+            var window = new SettingsWindow(viewModel, (section, route) =>
+                section == SettingsSection.RolePackages
+                    ? route is null ? packageList : packageDetail
+                    : personalization);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var appearanceItem = Assert.IsType<ListBoxItem>(
+                    window.SettingsNavigation.ItemContainerGenerator.ContainerFromItem(
+                        window.SettingsNavigation.SelectedItem));
+
+                appearanceItem.RaiseEvent(new MouseButtonEventArgs(
+                    Mouse.PrimaryDevice,
+                    Environment.TickCount,
+                    MouseButton.Left)
+                {
+                    RoutedEvent = Mouse.PreviewMouseUpEvent,
+                    Source = appearanceItem,
+                });
+
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Same(personalization, window.SettingsContent.Content);
+
+                viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("preview.mash", "玛修"));
+                appearanceItem.Focus();
+                appearanceItem.RaiseEvent(new KeyEventArgs(
+                    Keyboard.PrimaryDevice,
+                    PresentationSource.FromVisual(window),
+                    Environment.TickCount,
+                    Key.Enter)
+                {
+                    RoutedEvent = Keyboard.PreviewKeyDownEvent,
+                    Source = appearanceItem,
+                });
+
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Null(viewModel.PackageDetail);
+                Assert.Same(personalization, window.SettingsContent.Content);
+            }
+            finally
+            {
+                window.Hide();
             }
         });
     }
@@ -446,13 +577,17 @@ public sealed class SettingsWindowIntegrationTests
             var viewModel = provider.GetRequiredService<SettingsViewModel>();
             try
             {
-                Assert.IsType<UserProfilePage>(window.SettingsContent.Content);
+                // UserProfile resolves into the "通用与数据" category.
+                Assert.IsType<PrivacyPage>(window.SettingsContent.Content);
 
                 viewModel.Select(SettingsSection.Personalization);
                 Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
 
+                // Theme has no category of its own: its control is embedded in the
+                // personalization page, which keeps the reachable-entry contract.
                 viewModel.Select(SettingsSection.Theme);
-                Assert.IsType<ThemePage>(window.SettingsContent.Content);
+                var personalization = Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
+                Assert.IsType<ThemePage>(personalization.ThemeHost.Content);
             }
             finally
             {
@@ -467,7 +602,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var themeService = new ThemeService(store, resources, ThemeService.CreateTestDictionary);
             themeService.Initialize();
             var page = new ThemePage(themeService);
@@ -492,7 +627,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults);
+            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var themeService = new ThemeService(
                 store,
                 resources,
@@ -517,12 +652,10 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var viewModel = new SettingsViewModel();
-            var profileContent = new Border { Name = "Profile" };
-            var themeContent = new Border { Name = "Theme" };
+            var personalizationContent = new Border { Name = "Personalization" };
             SettingsPageContentResolver resolver = (section, _) => section switch
             {
-                SettingsSection.UserProfile => profileContent,
-                SettingsSection.Theme => themeContent,
+                SettingsSection.Personalization => personalizationContent,
                 _ => new Border { Name = section.ToString() },
             };
             var window = new SettingsWindow(viewModel, resolver);
@@ -532,10 +665,10 @@ public sealed class SettingsWindowIntegrationTests
                 var handle = new WindowInteropHelper(window).Handle;
                 Assert.NotEqual(IntPtr.Zero, handle);
 
-                window.SettingsNavigation.SelectedValue = SettingsSection.Theme;
+                window.SettingsNavigation.SelectedValue = SettingsSection.Personalization;
 
-                Assert.Equal(SettingsSection.Theme, viewModel.SelectedSection);
-                Assert.Same(themeContent, window.SettingsContent.Content);
+                Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+                Assert.Same(personalizationContent, window.SettingsContent.Content);
                 Assert.Equal(handle, new WindowInteropHelper(window).Handle);
             }
             finally
@@ -602,6 +735,93 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
+    public void Appearance_page_exposes_soft_purple_hierarchy_and_semantic_preview_fallback()
+    {
+        StaRun(() =>
+        {
+            var page = new PersonalizationPage(
+                new PersonalizationViewModel(new FakeSettingsStore(AppSettings.Defaults)),
+                CreateLibrary(),
+                new SettingsViewModel());
+            try
+            {
+                page.Resources["TextBrush"] = new SolidColorBrush(Colors.Red);
+                page.Resources["SurfaceBrush"] = new SolidColorBrush(Colors.Red);
+                page.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+                {
+                    Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
+                });
+                page.Measure(new Size(640, 480));
+                page.Arrange(new Rect(0, 0, 640, 480));
+                page.UpdateLayout();
+
+                Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "外观与角色");
+                Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "当前角色");
+                Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "未提供预览");
+
+                var currentRole = Descendants<TextBlock>(page).Single(text => text.Text == "当前角色");
+                Assert.Equal(Color.FromRgb(0x25, 0x21, 0x37), Assert.IsType<SolidColorBrush>(currentRole.Foreground).Color);
+            }
+            finally
+            {
+                page.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Role_package_pages_keep_trust_copy_and_single_shell_scroll_with_wrapped_detail_text()
+    {
+        await StaRun(async () =>
+        {
+            var library = CreateLibrary();
+            var settings = new SettingsViewModel(SettingsSection.RolePackages);
+            var list = new RolePackagesPage(library, settings);
+            var detail = new RolePackageDetailPage(
+                new RolePackageDetailViewModel(
+                    new PackageDetailRoute("preview.mash", "玛修"),
+                    library,
+                    new FakeSettingsStore(AppSettings.Defaults),
+                    settings));
+            try
+            {
+                await library.LoadAsync();
+                list.Measure(new Size(640, 640));
+                list.Arrange(new Rect(0, 0, 640, 640));
+                list.UpdateLayout();
+                detail.Measure(new Size(640, 640));
+                detail.Arrange(new Rect(0, 0, 640, 640));
+                detail.UpdateLayout();
+                Assert.Contains(Descendants<TextBlock>(list), text => text.Text == "来源、兼容与隐私");
+                Assert.Contains(Descendants<TextBlock>(list), text => text.Text?.Contains("仅处理本机", StringComparison.Ordinal) == true);
+                Assert.Contains(Descendants<TextBlock>(list), text => text.Text == "未提供预览");
+                Assert.Contains(Descendants<Button>(list), button => Equals(button.Content, "安装"));
+                Assert.Contains(Descendants<Button>(list), button => Equals(button.Content, "重新扫描"));
+                Assert.Contains(Descendants<Button>(list), button => Equals(button.Content, "打开角色包目录"));
+                var card = Assert.Single(library.FilteredServants);
+                Assert.Equal("来源未验证", card.SourceBadge);
+
+                Assert.Empty(Descendants<ScrollViewer>(detail));
+                var summary = Descendants<TextBlock>(detail).Single(text => text.Text == "包摘要");
+                Assert.Equal(TextWrapping.Wrap, summary.TextWrapping);
+                Assert.Contains(Descendants<TextBlock>(detail), text => text.Text == "未提供预览");
+                detail.Measure(new Size(496, 480));
+                Assert.True(detail.DesiredSize.Width <= 496, $"detail width was {detail.DesiredSize.Width}");
+                var window = new SettingsWindow(settings, (_, route) => route is null ? list : detail);
+                Assert.Equal(680d, window.MinWidth);
+                Assert.Equal(520d, window.MinHeight);
+                await detail.RefreshAsync();
+                Assert.Equal("未声明最低应用版本", ((RolePackageDetailViewModel)detail.DataContext).CompatibilityText);
+            }
+            finally
+            {
+                list.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+                detail.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            }
+        });
+    }
+
+    [Fact]
     public void Service_registration_resolves_role_package_list_and_details_without_a_legacy_window()
     {
         StaRun(() =>
@@ -636,12 +856,22 @@ public sealed class SettingsWindowIntegrationTests
             {
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 var shell = Assert.IsType<SettingsShellView>(window.FindName("SettingsShell"));
-                Assert.Equal(42d, shell.Header.Height);
-                Assert.Equal("FGO Pet · 设置", shell.HeaderText.Text);
-                Assert.Equal(new GridLength(190), shell.NavigationColumn.Width);
-                Assert.Equal(new Thickness(26), shell.Body.Margin);
-                Assert.NotNull(window.TryFindResource("ShellToolbarButtonStyle"));
-                Assert.NotNull(window.TryFindResource("ShellSurfaceStyle"));
+                // The header height lives on the shell's fixed 86 DIP row, not on the border.
+                shell.Measure(new Size(960, 720));
+                shell.Arrange(new Rect(0, 0, 960, 720));
+                shell.UpdateLayout();
+                Assert.Equal(86d, shell.Header.ActualHeight);
+                Assert.Equal("设置", shell.HeaderText.Text);
+                Assert.Equal(new GridLength(184), shell.NavigationColumn.Width);
+                Assert.Equal(new Thickness(28, 28, 28, 20), shell.Body.Margin);
+                // The window is built without the application resource dictionaries, so the
+                // shell controls are supplied here before asserting on their styles.
+                shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+                {
+                    Source = new Uri("/FgoPet.App;component/Ui/Shell/ShellControls.xaml", UriKind.Relative),
+                });
+                Assert.NotNull(shell.TryFindResource("ShellToolbarButtonStyle"));
+                Assert.NotNull(shell.TryFindResource("ShellSurfaceStyle"));
 
                 var captureDirectory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
                 if (!string.IsNullOrWhiteSpace(captureDirectory))
@@ -670,14 +900,20 @@ public sealed class SettingsWindowIntegrationTests
         });
     }
     [Theory]
-    [InlineData("ModernGray", "#FF202127")]
-    [InlineData("FgoLight", "#FFFBFAFC")]
+    [InlineData("ModernGray", "#FF16131D")]
+    [InlineData("FgoLight", "#FFF7F6FB")]
     public void Settings_shell_uses_the_approved_html_palette(string theme, string expectedBackground)
     {
         StaRun(() =>
         {
             var shell = new SettingsShellView();
+            // Shell brushes come from ShellTokens and take their colours from the theme,
+            // so both dictionaries are needed for the palette to resolve.
             shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+            {
+                Source = new Uri("/FgoPet.App;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
+            });
+            shell.Resources.MergedDictionaries.Insert(1, new ResourceDictionary
             {
                 Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative),
             });
@@ -690,6 +926,13 @@ public sealed class SettingsWindowIntegrationTests
             Assert.Equal(expected, actual);
         });
     }
+    private static ServantLibraryViewModel CreateLibrary() => new(
+        new PackageRepository(),
+        new PackageInstaller(),
+        new PortraitController(),
+        new FakeSettingsStore(AppSettings.Defaults),
+        _ => { });
+
     private static void StaRun(Action action)
     {
         Exception? failure = null;
@@ -712,13 +955,17 @@ public sealed class SettingsWindowIntegrationTests
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
-    private static void StaRun(Func<Task> action)
+    private static Task StaRun(Func<Task> action)
     {
-        Exception? failure = null;
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { action().GetAwaiter().GetResult(); }
-            catch (Exception error) { failure = error; }
+            try
+            {
+                action().GetAwaiter().GetResult();
+                completion.SetResult(null);
+            }
+            catch (Exception error) { completion.SetException(error); }
             finally
             {
                 var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
@@ -730,8 +977,7 @@ public sealed class SettingsWindowIntegrationTests
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join();
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+        return completion.Task;
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject

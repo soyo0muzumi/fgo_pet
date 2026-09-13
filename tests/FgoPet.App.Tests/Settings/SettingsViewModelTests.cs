@@ -81,6 +81,43 @@ public sealed class SettingsViewModelTests
         Assert.Null(viewModel.Breadcrumb);
     }
 
+    [Fact]
+    public void Back_to_appearance_from_package_list_selects_the_parent_category()
+    {
+        var viewModel = new SettingsViewModel(SettingsSection.RolePackages);
+
+        viewModel.BackToAppearanceCommand.Execute(null);
+
+        Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
+        Assert.Null(viewModel.PackageDetail);
+    }
+
+    [Fact]
+    public void Back_to_packages_from_detail_clears_only_the_detail_route()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("official.mash", "Mash Kyrielight"));
+
+        viewModel.BackToPackagesCommand.Execute(null);
+
+        Assert.Equal(SettingsSection.RolePackages, viewModel.SelectedSection);
+        Assert.Null(viewModel.PackageDetail);
+    }
+
+    [Fact]
+    public void Back_to_appearance_after_detail_prevents_old_detail_from_returning()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("official.mash", "Mash Kyrielight"));
+
+        viewModel.BackToAppearanceCommand.Execute(null);
+        viewModel.Select(SettingsSection.RolePackages);
+
+        Assert.Equal(SettingsSection.RolePackages, viewModel.SelectedSection);
+        Assert.Null(viewModel.PackageDetail);
+        Assert.Equal("角色包", viewModel.PageTitle);
+    }
+
     private static void AssertItem(
         SettingsNavigationItem item,
         SettingsSection section,
