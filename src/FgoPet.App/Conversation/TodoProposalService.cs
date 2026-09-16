@@ -96,9 +96,14 @@ public sealed partial class TodoProposalService
     }
 
     public TodoItem Confirm(TodoProposal proposal)
+        => Confirm(proposal, null);
+
+    public TodoItem Confirm(TodoProposal proposal, string? stableTodoId)
     {
         ArgumentNullException.ThrowIfNull(proposal);
-        return _todos.Create(proposal.Title, proposal.Description, proposal.Priority, proposal.DueAt, proposal.StepTitles);
+        return stableTodoId is null
+            ? _todos.Create(proposal.Title, proposal.Description, proposal.Priority, proposal.DueAt, proposal.StepTitles)
+            : _todos.CreateWithId(stableTodoId, proposal.Title, proposal.Description, proposal.Priority, proposal.DueAt, proposal.StepTitles);
     }
 
     internal TodoItem? GetCreated(string id) => _todos.Get(id);

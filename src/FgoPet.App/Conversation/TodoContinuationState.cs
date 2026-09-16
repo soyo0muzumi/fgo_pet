@@ -108,7 +108,9 @@ public sealed class TodoContinuationState
         {
             // A common goal normally produces one parent Todo, while independent
             // goals may produce several. Commit the full bounded envelope once.
-            var todos = draft.Proposals.Select(_proposals.Confirm).ToArray();
+            var todos = draft.Proposals
+                .Select((proposal, index) => _proposals.Confirm(proposal, StableTodoId(draft, index)))
+                .ToArray();
             var todo = todos[0];
             var committed = confirming with { Status = TodoDraftStatus.Committed, CreatedTodoId = todo.Id };
             _drafts[key] = committed;
@@ -124,4 +126,7 @@ public sealed class TodoContinuationState
     }
 
     private static string Key(string conversationId, string servantId) => servantId.Trim() + "/" + conversationId.Trim();
+
+    private static string StableTodoId(PendingTodoDraft draft, int index) =>
+        $"draft-{draft.DraftId}-{draft.Version}-{index}";
 }

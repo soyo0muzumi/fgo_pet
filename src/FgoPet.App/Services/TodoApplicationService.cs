@@ -20,11 +20,16 @@ public sealed class TodoApplicationService
 
     public TodoItem Create(string title, string? description, TodoPriority priority, DateTimeOffset? dueAt,
         IReadOnlyList<string>? stepTitles = null)
+        => CreateWithId(Guid.NewGuid().ToString("N"), title, description, priority, dueAt, stepTitles);
+
+    public TodoItem CreateWithId(string id, string title, string? description, TodoPriority priority, DateTimeOffset? dueAt,
+        IReadOnlyList<string>? stepTitles = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
         var now = _time.GetUtcNow();
         var steps = stepTitles?.Select((title, index) =>
             new TodoStep($"step-{Guid.NewGuid():N}", title, index)).ToArray();
-        var todo = new TodoItem(Guid.NewGuid().ToString("N"), title, description, priority, dueAt, now, now, steps: steps);
+        var todo = new TodoItem(id, title, description, priority, dueAt, now, now, steps: steps);
         Persist(todo);
         return todo;
     }

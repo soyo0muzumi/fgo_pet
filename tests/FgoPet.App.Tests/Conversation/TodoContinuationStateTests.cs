@@ -1,3 +1,4 @@
+using System.IO;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Services;
 using FgoPet.Core.Todo;
@@ -57,6 +58,28 @@ public sealed class TodoContinuationStateTests
     }
 
     [Fact]
+    public void Confirm_retry_after_partial_failure_reuses_the_same_todo_ids()
+    {
+        var repository = new FakeTodoRepository { ThrowOnSaveNumber = 3 };
+        var state = CreateState(repository);
+        var draft = state.Replace("conversation", "servant", [
+            new TodoProposal("first"),
+            new TodoProposal("second"),
+            new TodoProposal("third"),
+        ]);
+
+        var failed = state.Confirm("conversation", "servant", draft.DraftId, draft.Version, "confirm-partial");
+        repository.ThrowOnSaveNumber = null;
+        var retried = state.Confirm("conversation", "servant", draft.DraftId, draft.Version, "confirm-partial");
+
+        Assert.Equal(TodoDraftResultKind.Unknown, failed.Kind);
+        Assert.Equal(TodoDraftResultKind.Committed, retried.Kind);
+        Assert.Equal(3, retried.Todos.Count);
+        Assert.Equal(3, repository.Items.Count);
+        Assert.Equal(3, repository.Items.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public void Stale_confirmation_and_cancel_do_not_write()
     {
         var repository = new FakeTodoRepository();
@@ -78,7 +101,15 @@ public sealed class TodoContinuationStateTests
     private sealed class FakeTodoRepository : ITodoRepository
     {
         public List<TodoItem> Items { get; } = [];
-        public void Save(TodoItem todo) { Items.RemoveAll(item => item.Id == todo.Id); Items.Add(todo); }
+        public int? ThrowOnSaveNumber { get; set; }
+        private int _saveCount;
+        public void Save(TodoItem todo)
+        {
+            _saveCount++;
+            if (ThrowOnSaveNumber == _saveCount) throw new IOException("simulated partial write");
+            Items.RemoveAll(item => item.Id == todo.Id);
+            Items.Add(todo);
+        }
         public TodoItem? Get(string id) => Items.SingleOrDefault(item => item.Id == id);
         public IReadOnlyList<TodoItem> List(TodoStatus? status = null) => status is null ? Items.ToArray() : Items.Where(item => item.Status == status).ToArray();
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => [];
