@@ -7,6 +7,7 @@ using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Todo;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -206,7 +207,7 @@ public sealed class ConversationOrchestrator
                     {
                         TodoDraftResultKind.Committed or TodoDraftResultKind.AlreadyCommitted when committed.Todo is not null =>
                             PersistLocalTodoReply(conversationId, servantId, contentContext,
-                                $"已创建待办“{committed.Todo.Title}”，包含 {committed.Todo.Steps.Count} 个步骤。", TodoToolCallOutcome.Confirmed, committed.Todo.Id),
+                                FormatCommittedTodoReply(committed.Todos), TodoToolCallOutcome.Confirmed, committed.Todo.Id),
                         TodoDraftResultKind.Unknown => PersistLocalTodoReply(conversationId, servantId, contentContext,
                             "待办写入结果暂时无法确认，草稿已保留，请稍后重试。", TodoToolCallOutcome.CommitUnknown),
                         _ => PersistLocalTodoReply(conversationId, servantId, contentContext,
@@ -666,6 +667,19 @@ public sealed class ConversationOrchestrator
         return "我整理了以下待办草稿：\n"
             + string.Join("\n", lines)
             + "\n尚未创建；你可以继续修改，确认后才会加入待办。";
+    }
+
+    private static string FormatCommittedTodoReply(IReadOnlyList<TodoItem> todos)
+    {
+        if (todos.Count == 1)
+        {
+            var todo = todos[0];
+            return $"已创建待办“{todo.Title}”，包含 {todo.Steps.Count} 个步骤。";
+        }
+
+        return $"已创建 {todos.Count} 个待办：\n"
+            + string.Join("\n", todos.Select((todo, index) =>
+                $"{index + 1}. “{todo.Title}”（{todo.Steps.Count} 个步骤）"));
     }
 
     private static string DescribePendingDraft(PendingTodoDraft draft)

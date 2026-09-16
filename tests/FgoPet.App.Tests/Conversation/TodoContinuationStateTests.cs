@@ -38,6 +38,25 @@ public sealed class TodoContinuationStateTests
     }
 
     [Fact]
+    public void Confirm_exposes_every_created_todo_for_a_multi_goal_draft()
+    {
+        var repository = new FakeTodoRepository();
+        var state = CreateState(repository);
+        var draft = state.Replace("conversation", "servant", [
+            new TodoProposal("first"),
+            new TodoProposal("second", stepTitles: ["check"]),
+        ]);
+
+        var result = state.Confirm("conversation", "servant", draft.DraftId, draft.Version, "confirm-multi");
+
+        Assert.Equal(TodoDraftResultKind.Committed, result.Kind);
+        Assert.Equal(2, result.Todos.Count);
+        Assert.Equal(["first", "second"], result.Todos.Select(todo => todo.Title).ToArray());
+        Assert.Equal(result.Todos[0].Id, result.Todo?.Id);
+        Assert.Equal(2, repository.Items.Count);
+    }
+
+    [Fact]
     public void Stale_confirmation_and_cancel_do_not_write()
     {
         var repository = new FakeTodoRepository();

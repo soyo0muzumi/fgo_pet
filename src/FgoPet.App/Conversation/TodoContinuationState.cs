@@ -32,14 +32,22 @@ public enum TodoDraftResultKind
     Failed,
 }
 
-public sealed record TodoDraftResult(TodoDraftResultKind Kind, PendingTodoDraft? Draft = null, TodoItem? Todo = null);
+public sealed record TodoDraftResult(
+    TodoDraftResultKind Kind,
+    PendingTodoDraft? Draft = null,
+    TodoItem? Todo = null,
+    IReadOnlyList<TodoItem>? CreatedTodos = null)
+{
+    /// <summary>Every Todo created by this confirmation, with Todo retained as the first-item compatibility shortcut.</summary>
+    public IReadOnlyList<TodoItem> Todos => CreatedTodos ?? (Todo is null ? Array.Empty<TodoItem>() : [Todo]);
+}
 
 /// <summary>Session-only continuation state. It deliberately has no persistence dependency.</summary>
 public sealed class TodoContinuationState
 {
     private readonly TodoProposalService _proposals;
     private readonly ConcurrentDictionary<string, PendingTodoDraft> _drafts = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, (string DraftId, string TodoId)> _idempotency = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string DraftId, IReadOnlyList<string> TodoIds)> _idempotency = new(StringComparer.Ordinal);
 
     public TodoContinuationState(TodoProposalService proposals) => _proposals = proposals ?? throw new ArgumentNullException(nameof(proposals));
 
@@ -82,7 +90,12 @@ public sealed class TodoContinuationState
         var key = Key(conversationId, servantId);
         if (_idempotency.TryGetValue(idempotencyKey, out var prior))
         {
-            return new(TodoDraftResultKind.AlreadyCommitted, Get(conversationId, servantId), _proposals.GetCreated(prior.TodoId));
+            var todos = prior.TodoIds
+                .Select(_proposals.GetCreated)
+                .Where(todo => todo is not null)
+                .Cast<TodoItem>()
+                .ToArray();
+            return new(TodoDraftResultKind.AlreadyCommitted, Get(conversationId, servantId), todos.FirstOrDefault(), todos);
         }
 
         if (!_drafts.TryGetValue(key, out var draft)) return new(TodoDraftResultKind.Stale);
@@ -93,15 +106,15 @@ public sealed class TodoContinuationState
         _drafts[key] = confirming;
         try
         {
-            // The canonical flow is one logical parent Todo. The parser still accepts
-            // the legacy bounded envelope; each proposal is committed only once.
+            // A common goal normally produces one parent Todo, while independent
+            // goals may produce several. Commit the full bounded envelope once.
             var todos = draft.Proposals.Select(_proposals.Confirm).ToArray();
             var todo = todos[0];
             var committed = confirming with { Status = TodoDraftStatus.Committed, CreatedTodoId = todo.Id };
             _drafts[key] = committed;
-            _idempotency.TryAdd(idempotencyKey, (draft.DraftId, todo.Id));
+            _idempotency.TryAdd(idempotencyKey, (draft.DraftId, todos.Select(item => item.Id).ToArray()));
             _drafts.TryRemove(key, out _);
-            return new(TodoDraftResultKind.Committed, committed, todo);
+            return new(TodoDraftResultKind.Committed, committed, todo, todos);
         }
         catch (Exception)
         {
