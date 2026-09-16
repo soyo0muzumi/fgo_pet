@@ -36,6 +36,9 @@ public partial class RolePackagesPage : UserControl
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await RefreshAsync();
 
+    private void OnBackToAppearanceClick(object sender, RoutedEventArgs e) =>
+        _settings.BackToAppearanceCommand.Execute(null);
+
     private void OnOpenPackageClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ServantCardViewModel card) return;

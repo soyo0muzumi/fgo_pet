@@ -38,6 +38,7 @@ public sealed class SettingsViewModel : ObservableObject
         _selectedSection = selectedSection;
         OpenPackageCommand = new RelayCommand<PackageDetailRoute>(OpenPackage);
         BackToPackagesCommand = new RelayCommand(BackToPackages);
+        BackToAppearanceCommand = new RelayCommand(BackToAppearance);
     }
 
     public IReadOnlyList<SettingsNavigationItem> NavigationItems => Items;
@@ -83,6 +84,8 @@ public sealed class SettingsViewModel : ObservableObject
 
     public IRelayCommand BackToPackagesCommand { get; }
 
+    public IRelayCommand BackToAppearanceCommand { get; }
+
     public void Select(SettingsSection section)
     {
         if (!Enum.IsDefined(section))
@@ -107,4 +110,10 @@ public sealed class SettingsViewModel : ObservableObject
     }
 
     private void BackToPackages() => PackageDetail = null;
+
+    private void BackToAppearance()
+    {
+        PackageDetail = null;
+        Select(SettingsSection.Personalization);
+    }
 }

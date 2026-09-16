@@ -31,6 +31,23 @@ public sealed class AgentReconciliationServiceTests
         Assert.Null(repository.RelayCalls);
     }
 
+    [Fact]
+    public async Task Confirming_active_does_not_consume_remote_sequence_or_block_completion()
+    {
+        var at = DateTimeOffset.Parse("2026-09-02T08:00:00Z");
+        var execution = new AgentExecution("execution-1", "todo-1", "codex", "instance-1", "task-1", "dispatch-1", at,
+            AgentExecutionStatus.DispatchOutcomeUnknown);
+        var repository = new FakeAgentRepository(execution);
+        var projector = new AgentEventProjector(repository);
+        projector.Restore(execution);
+        var service = new AgentReconciliationService(repository, new FixedTimeProvider(at), projector);
+        Assert.True((await service.ConfirmAsync(projector.Get("codex/instance-1/task-1")!, AgentExecutionStatus.Active)).Applied);
+        Assert.Null(repository.LastEvent);
+        Assert.Equal(AgentExecutionStatus.Active, projector.Get("codex/instance-1/task-1")!.Status);
+        projector.Apply(new AgentEvent("codex", "instance-1", "task-1", 2, AgentEventType.TaskCompleted, at.AddMinutes(1),
+            TodoId: "todo-1", DispatchRequestId: "dispatch-1"));
+        Assert.Equal(AgentExecutionStatus.Completed, repository.Execution!.Status);
+    }
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
@@ -42,6 +59,12 @@ public sealed class AgentReconciliationServiceTests
         public AgentEvent? LastEvent { get; private set; }
         public object? RelayCalls { get; private set; }
         public void SaveExecution(AgentExecution execution) => Execution = execution;
+        public bool TryResumeUnknown(string executionId, DateTimeOffset at)
+        {
+            if (Execution is null || Execution.Id != executionId || Execution.Status != AgentExecutionStatus.DispatchOutcomeUnknown) return false;
+            Execution = Execution.MarkResumed(at);
+            return true;
+        }
         public AgentExecution? GetExecution(string id) => Execution?.Id == id ? Execution : null;
         public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) =>
             Execution is { } value && value.SourceType == sourceType && value.SourceInstance == sourceInstance && value.TaskId == taskId ? value : null;

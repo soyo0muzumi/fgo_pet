@@ -30,6 +30,9 @@ public enum TodoNoticeKind
 
 public sealed partial class ConversationViewModel : ObservableObject
 {
+    // Legacy tool-only turns have no user-facing text. This exact assistant/completed
+    // sentinel is the only history entry hidden here; ordinary user text is untouched.
+    private const string ToolProposalHistoryPlaceholder = "[工具调用：待办提案]";
     private readonly ConversationOrchestrator _orchestrator;
     private readonly IAppSettingsStore _settings;
     private readonly ModelConnectionViewModel? _modelConnection;
@@ -37,8 +40,11 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly ArchiveDraftService? _archiveDrafts;
     private readonly IConfiguredModelAuthority? _modelAuthority;
     private string _activeConversationId = string.Empty;
+    public string CurrentConversationId => _activeConversationId;
     private bool _configurationRequired;
     private readonly StringBuilder _pendingReasoning = new();
+    private readonly HashSet<string> _completedNotifications = new(StringComparer.Ordinal);
+    public event Action<FgoPet.Core.Portraits.ExpressionSemantic>? ExpressionRequested;
     private long _thinkingStartedTicks;
     private System.Timers.Timer? _thinkingTimer;
 
@@ -120,6 +126,12 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     [ObservableProperty]
     private string _requestStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string? _pendingTodoDraftId;
+
+    [ObservableProperty]
+    private int? _pendingTodoDraftVersion;
 
     [ObservableProperty]
     private int? _lastHttpStatusCode;
@@ -300,6 +312,13 @@ public sealed partial class ConversationViewModel : ObservableObject
             _activeConversationId = conversationId;
             foreach (var message in messages.Where(m => m.Role is ChatMessageRole.User or ChatMessageRole.Assistant))
             {
+                if (message.Role == ChatMessageRole.Assistant
+                    && message.Status == ChatMessageStatus.Completed
+                    && string.Equals(message.Text, ToolProposalHistoryPlaceholder, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 Turns.Add(new ConversationTurnViewModel(message.MessageId, message.Role, message.Text));
             }
             ErrorText = string.Empty;
@@ -405,6 +424,19 @@ public sealed partial class ConversationViewModel : ObservableObject
                 break;
             case TodoToolCallOutcome.TextFallback:
                 SetTodoNotice("当前模型不支持工具箱，已使用文本提案兜底。", TodoNoticeKind.Fallback);
+                break;
+            case TodoToolCallOutcome.Confirmed:
+                PendingTodoDraftId = null;
+                PendingTodoDraftVersion = null;
+                SetTodoNotice(string.Empty, TodoNoticeKind.None);
+                break;
+            case TodoToolCallOutcome.Cancelled:
+                PendingTodoDraftId = null;
+                PendingTodoDraftVersion = null;
+                SetTodoNotice(string.Empty, TodoNoticeKind.None);
+                break;
+            case TodoToolCallOutcome.CommitUnknown:
+                SetTodoNotice("待办写入结果暂时无法确认，草稿已保留。", TodoNoticeKind.Error);
                 break;
         }
     }
@@ -572,6 +604,7 @@ public sealed partial class ConversationViewModel : ObservableObject
                 turn.Append(update.TextDelta ?? string.Empty);
                 break;
             case ConversationUpdateType.AssistantCompleted:
+                if (update.MessageId is not null && !_completedNotifications.Add(update.ConversationId + "/" + update.MessageId)) break;
                 var completedTurn = Turns.FirstOrDefault(item => item.MessageId == update.MessageId);
                 if (completedTurn is not null)
                 {
@@ -580,11 +613,27 @@ public sealed partial class ConversationViewModel : ObservableObject
                     {
                         completedTurn.IsThinkingActive = false;
                     }
+
+                    // The identity belongs to this assistant reply, not to a global
+                    // "latest Todo" slot. History turns intentionally remain without
+                    // an ID because the persisted chat contract has no such field.
+                    completedTurn.CreatedTodoId = update.TodoOutcome == TodoToolCallOutcome.Confirmed
+                        && !string.IsNullOrWhiteSpace(update.CreatedTodoId)
+                        ? update.CreatedTodoId
+                        : null;
                 }
+                if (completedTurn is not null && update.Expression is { } expression) ExpressionRequested?.Invoke(expression);
                 RequestStatusText = string.Empty;
                 StopThinkingTimer();
                 _pendingReasoning.Clear();
-                TryLoadTodoProposals(update.StructuredResponse);
+                PendingTodoDraftId = update.TodoDraftId;
+                PendingTodoDraftVersion = update.TodoDraftVersion;
+                // New C01 flow keeps the structured proposal in session state. The
+                // legacy loader remains for old history/card compatibility only.
+                if (string.IsNullOrWhiteSpace(update.TodoDraftId))
+                {
+                    TryLoadTodoProposals(update.StructuredResponse);
+                }
                 ApplyTodoOutcome(update.TodoOutcome, update.TodoDetail, update.StructuredResponse);
                 if (completedTurn is { CanReadAloud: true })
                 {
@@ -714,7 +763,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         TodoProposals.Clear();
     }
 
-    private void OnTodoProposalClosed(TodoProposalViewModel proposal) => TodoProposals.Remove(proposal);
+    private void OnTodoProposalClosed(TodoProposalViewModel proposal) { if (proposal.IsRemoved) TodoProposals.Remove(proposal); }
 
     public void ShowArchiveDraft(ArchiveDraft draft)
     {

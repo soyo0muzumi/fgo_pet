@@ -355,8 +355,13 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
     }
 
     public string ActiveServantDisplayName =>
-        _library?.SelectedServant?.DisplayName
-        ?? (string.IsNullOrWhiteSpace(_conversation.ActiveServantId) ? "尚未选择从者" : _conversation.ActiveServantId);
+        SelectedServant is { } role && !string.IsNullOrWhiteSpace(role.DisplayName) && role.DisplayName != role.ServantId
+            ? role.DisplayName : string.IsNullOrWhiteSpace(_conversation.ActiveServantId) ? "尚未选择角色" : "当前角色";
+
+    public async Task EnsureRoleInfoAsync()
+    {
+        if (_library is not null && _library.Servants.Count == 0 && !_library.IsBusy) await _library.LoadAsync();
+    }
 
     public ServantCardViewModel? SelectedServant => _library?.SelectedServant;
 

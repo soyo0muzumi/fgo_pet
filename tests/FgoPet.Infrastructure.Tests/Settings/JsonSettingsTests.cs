@@ -19,6 +19,28 @@ public sealed class JsonSettingsTests : IDisposable
         _store = new JsonAppSettingsStore(_storage);
     }
 
+    [Fact]
+    public void Index_voice_settings_round_trip_without_changing_saved_dark_theme()
+    {
+        var voice = new FgoPet.Core.Speech.ReferenceVoice("voice1", "参考音色", "C:/voices/one.wav");
+        var settings = AppSettings.Defaults with
+        {
+            Theme = AppTheme.ModernGray,
+            SpeechConnection = new FgoPet.Core.Speech.SpeechConnectionSettings
+            {
+                Provider = FgoPet.Core.Speech.SpeechProviderKind.IndexTts,
+                IndexTtsVoiceId = voice.Id,
+                IndexTtsVoices = new[] { voice },
+                DoNotDisturb = true,
+            },
+        };
+        _store.Save(settings);
+        var loaded = _store.Load();
+        Assert.Equal(AppTheme.ModernGray, loaded.Theme);
+        Assert.Equal(voice, Assert.Single(loaded.SpeechConnection.IndexTtsVoices));
+        Assert.Equal(voice.Id, loaded.SpeechConnection.IndexTtsVoiceId);
+        Assert.True(loaded.SpeechConnection.DoNotDisturb);
+    }
     public void Dispose()
     {
         try
@@ -55,7 +77,7 @@ public sealed class JsonSettingsTests : IDisposable
         Assert.Null(settings.ModelConnection);
         Assert.True(settings.MemoryEnabled);
         Assert.Empty(settings.ServantPreferences);
-        Assert.Equal(AppTheme.ModernGray, settings.Theme);
+        Assert.Equal(AppTheme.FgoLight, settings.Theme);
         Assert.Null(settings.UserProfile);
         Assert.Empty(settings.PackageSettings);
         Assert.False(settings.AgentConnection.Enabled);
@@ -140,7 +162,7 @@ public sealed class JsonSettingsTests : IDisposable
     }
 
     [Fact]
-    public void Load_uses_modern_gray_for_an_unknown_theme_without_quarantining_settings()
+    public void Load_uses_light_for_an_unknown_theme_without_quarantining_settings()
     {
         File.WriteAllText(Path.Combine(_storage, "settings.json"), """
             {
@@ -155,7 +177,7 @@ public sealed class JsonSettingsTests : IDisposable
 
         var loaded = _store.Load();
 
-        Assert.Equal(AppTheme.ModernGray, loaded.Theme);
+        Assert.Equal(AppTheme.FgoLight, loaded.Theme);
         Assert.Empty(Directory.GetFiles(_storage, "settings.json.corrupt.*"));
     }
 

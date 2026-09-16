@@ -34,7 +34,7 @@ public sealed class ThemeService
         _resources = resources ?? throw new ArgumentNullException(nameof(resources));
         _resourceLoader = resourceLoader ?? LoadThemeDictionary;
         _dispatcher = Application.Current?.Dispatcher;
-        CurrentTheme = AppTheme.ModernGray;
+        CurrentTheme = AppTheme.FgoLight;
         StatusText = "主题尚未初始化";
     }
 
@@ -89,7 +89,7 @@ public sealed class ThemeService
     private void InitializeCore()
     {
         MarkThemeSources();
-        var savedTheme = AppTheme.ModernGray;
+        var savedTheme = AppTheme.FgoLight;
         var loadStatus = string.Empty;
         try
         {
@@ -98,7 +98,7 @@ public sealed class ThemeService
         catch (Exception)
         {
             // A settings read failure should not prevent the shell from starting with its default palette.
-            loadStatus = $"设置读取失败，已使用{DisplayName(AppTheme.ModernGray)}";
+            loadStatus = $"设置读取失败，已使用{DisplayName(AppTheme.FgoLight)}";
         }
 
         if (TryApplyDictionary(savedTheme, allowFallback: true))
@@ -155,8 +155,8 @@ public sealed class ThemeService
             {
                 next = CreateFallbackDictionary();
                 _resources.MergedDictionaries.Add(next);
-                CurrentTheme = AppTheme.ModernGray;
-                StatusText = "主题资源加载失败，已使用现代灰回退";
+                CurrentTheme = AppTheme.FgoLight;
+                StatusText = "主题资源加载失败，已使用浅色回退";
             }
             else
             {
@@ -225,46 +225,130 @@ public sealed class ThemeService
 
     private static ResourceDictionary CreateFallbackDictionary()
     {
-        var dictionary = new ResourceDictionary
-        {
-            [ThemeDictionaryMarker] = AppTheme.ModernGray.ToString(),
-        };
+        var dictionary = new ResourceDictionary { [ThemeDictionaryMarker] = AppTheme.FgoLight.ToString() };
+        dictionary["Semantic.AppColor"] = (Color)ColorConverter.ConvertFromString("#FFF7F6FB");
+        dictionary["Semantic.ContentColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["Semantic.SubtleColor"] = (Color)ColorConverter.ConvertFromString("#FFEEE8FA");
+        dictionary["Semantic.HoverColor"] = (Color)ColorConverter.ConvertFromString("#FFE5DCF4");
+        dictionary["Semantic.PressedColor"] = (Color)ColorConverter.ConvertFromString("#FFD9CCEE");
+        dictionary["Semantic.PrimaryTextColor"] = (Color)ColorConverter.ConvertFromString("#FF252137");
+        dictionary["Semantic.SecondaryTextColor"] = (Color)ColorConverter.ConvertFromString("#FF6D687B");
+        dictionary["Semantic.TertiaryTextColor"] = (Color)ColorConverter.ConvertFromString("#FF817A8F");
+        dictionary["Semantic.PrimaryActionColor"] = (Color)ColorConverter.ConvertFromString("#FF7050B8");
+        dictionary["Semantic.OnPrimaryActionColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["Semantic.ActionHoverColor"] = (Color)ColorConverter.ConvertFromString("#FF8062C3");
+        dictionary["Semantic.ActionPressedColor"] = (Color)ColorConverter.ConvertFromString("#FF60429F");
+        dictionary["Semantic.ActionSoftColor"] = (Color)ColorConverter.ConvertFromString("#337050B8");
+        dictionary["Semantic.BorderDecorativeColor"] = (Color)ColorConverter.ConvertFromString("#FFD8D1E2");
+        dictionary["Semantic.BorderControlColor"] = (Color)ColorConverter.ConvertFromString("#FF827A70");
+        dictionary["Semantic.FocusColor"] = (Color)ColorConverter.ConvertFromString("#FF5B3F9A");
+        dictionary["Semantic.RelationColor"] = (Color)ColorConverter.ConvertFromString("#FFA58B57");
+        dictionary["Semantic.OverlayColor"] = (Color)ColorConverter.ConvertFromString("#660D0A14");
+        dictionary["WindowBackgroundColor"] = (Color)ColorConverter.ConvertFromString("#FFF7F6FB");
+        dictionary["SurfaceColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["SurfaceRaisedColor"] = (Color)ColorConverter.ConvertFromString("#FFEEE8FA");
+        dictionary["SurfaceHoverColor"] = (Color)ColorConverter.ConvertFromString("#FFE5DCF4");
+        dictionary["SurfacePressedColor"] = (Color)ColorConverter.ConvertFromString("#FFD9CCEE");
+        dictionary["SidebarColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["SidebarForegroundColor"] = (Color)ColorConverter.ConvertFromString("#FF6D687B");
+        dictionary["SidebarSelectedColor"] = (Color)ColorConverter.ConvertFromString("#FFEEE8FA");
+        dictionary["SidebarSelectedTextColor"] = (Color)ColorConverter.ConvertFromString("#FF252137");
+        dictionary["SidebarHoverColor"] = (Color)ColorConverter.ConvertFromString("#FFE5DCF4");
+        dictionary["TextColor"] = (Color)ColorConverter.ConvertFromString("#FF252137");
+        dictionary["MutedTextColor"] = (Color)ColorConverter.ConvertFromString("#FF6D687B");
+        dictionary["SubtleTextColor"] = (Color)ColorConverter.ConvertFromString("#FF817A8F");
+        dictionary["TextOnAccentColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["AccentColor"] = (Color)ColorConverter.ConvertFromString("#FF7050B8");
+        dictionary["AccentHoverColor"] = (Color)ColorConverter.ConvertFromString("#FF8062C3");
+        dictionary["AccentPressedColor"] = (Color)ColorConverter.ConvertFromString("#FF60429F");
+        dictionary["AccentSoftColor"] = (Color)ColorConverter.ConvertFromString("#337050B8");
+        dictionary["BorderColor"] = (Color)ColorConverter.ConvertFromString("#FFD8D1E2");
+        dictionary["BorderStrongColor"] = (Color)ColorConverter.ConvertFromString("#FF827A70");
+        dictionary["DividerColor"] = (Color)ColorConverter.ConvertFromString("#33D8D1E2");
+        dictionary["FocusColor"] = (Color)ColorConverter.ConvertFromString("#FF5B3F9A");
+        dictionary["WarningColor"] = (Color)ColorConverter.ConvertFromString("#FFAA7626");
+        dictionary["WarningSoftColor"] = (Color)ColorConverter.ConvertFromString("#33AA7626");
+        dictionary["DangerColor"] = (Color)ColorConverter.ConvertFromString("#FFB44C5D");
+        dictionary["DangerHoverColor"] = (Color)ColorConverter.ConvertFromString("#FFD06978");
+        dictionary["DangerSoftColor"] = (Color)ColorConverter.ConvertFromString("#33B44C5D");
+        dictionary["SuccessColor"] = (Color)ColorConverter.ConvertFromString("#FF2D805D");
+        dictionary["SuccessSoftColor"] = (Color)ColorConverter.ConvertFromString("#332D805D");
+        dictionary["CardShadowColor"] = (Color)ColorConverter.ConvertFromString("#263D536C");
+        dictionary["InputBackgroundColor"] = (Color)ColorConverter.ConvertFromString("#FFF7F9FB");
+        dictionary["InputDisabledColor"] = (Color)ColorConverter.ConvertFromString("#FFE8EDF2");
+        dictionary["DisabledTextColor"] = (Color)ColorConverter.ConvertFromString("#FF9AA7B4");
+        dictionary["DisabledBorderColor"] = (Color)ColorConverter.ConvertFromString("#FFD6DEE7");
+        dictionary["OverlayColor"] = (Color)ColorConverter.ConvertFromString("#660D0A14");
+        dictionary["ShellWindowColor"] = (Color)ColorConverter.ConvertFromString("#FFF7F6FB");
+        dictionary["ShellPanelColor"] = (Color)ColorConverter.ConvertFromString("#FFEEE8FA");
+        dictionary["ShellRaisedColor"] = (Color)ColorConverter.ConvertFromString("#FFFFFFFF");
+        dictionary["ShellTextColor"] = (Color)ColorConverter.ConvertFromString("#FF252137");
+        dictionary["ShellMutedColor"] = (Color)ColorConverter.ConvertFromString("#FF6D687B");
+        dictionary["ShellLineColor"] = (Color)ColorConverter.ConvertFromString("#FF827A70");
+        dictionary["ShellAccentColor"] = (Color)ColorConverter.ConvertFromString("#FF7050B8");
+        dictionary["ShellAccentSoftColor"] = (Color)ColorConverter.ConvertFromString("#337050B8");
+        dictionary["ShellOverlayColor"] = (Color)ColorConverter.ConvertFromString("#660D0A14");
 
-        AddBrushes(dictionary, Color.FromRgb(27, 33, 43), "WindowBackgroundBrush", "BackgroundBrush", "ContentBackgroundBrush");
-        AddBrushes(dictionary, Color.FromRgb(242, 245, 248), "WindowForegroundBrush", "TextBrush", "PrimaryTextBrush");
-        AddBrush(dictionary, "SurfaceBrush", Color.FromRgb(37, 44, 55));
-        AddBrushes(dictionary, Color.FromRgb(48, 57, 70), "SurfaceRaisedBrush", "SurfaceAltBrush");
-        AddBrush(dictionary, "SurfaceHoverBrush", Color.FromRgb(58, 68, 82));
-        AddBrush(dictionary, "SurfacePressedBrush", Color.FromRgb(70, 83, 100));
-        AddBrushes(dictionary, Color.FromRgb(23, 29, 37), "SidebarBrush", "SidebarBackgroundBrush");
-        AddBrushes(dictionary, Color.FromRgb(181, 192, 206), "SidebarForegroundBrush", "SidebarTextBrush");
-        AddBrush(dictionary, "SidebarSelectedBrush", Color.FromRgb(49, 64, 82));
-        AddBrush(dictionary, "SidebarSelectedTextBrush", Color.FromRgb(242, 246, 251));
-        AddBrush(dictionary, "SidebarHoverBrush", Color.FromRgb(34, 43, 54));
-        AddBrushes(dictionary, Color.FromRgb(176, 188, 201), "MutedTextBrush", "SecondaryTextBrush");
-        AddBrushes(dictionary, Color.FromRgb(126, 139, 154), "SubtleTextBrush", "TertiaryTextBrush");
-        AddBrush(dictionary, "TextOnAccentBrush", Color.FromRgb(16, 24, 32));
-        AddBrush(dictionary, "AccentBrush", Color.FromRgb(110, 183, 232));
-        AddBrush(dictionary, "AccentHoverBrush", Color.FromRgb(137, 200, 240));
-        AddBrush(dictionary, "AccentPressedBrush", Color.FromRgb(78, 159, 213));
-        AddBrush(dictionary, "AccentSoftBrush", Color.FromArgb(51, 110, 183, 232));
-        AddBrush(dictionary, "BorderBrush", Color.FromRgb(65, 77, 92));
-        AddBrush(dictionary, "BorderStrongBrush", Color.FromRgb(101, 116, 135));
-        AddBrush(dictionary, "DividerBrush", Color.FromArgb(51, 65, 77, 92));
-        AddBrush(dictionary, "FocusBrush", Color.FromRgb(154, 213, 244));
-        AddBrush(dictionary, "WarningBrush", Color.FromRgb(229, 183, 91));
-        AddBrush(dictionary, "WarningSoftBrush", Color.FromArgb(51, 229, 183, 91));
-        AddBrush(dictionary, "DangerBrush", Color.FromRgb(227, 115, 131));
-        AddBrush(dictionary, "DangerHoverBrush", Color.FromRgb(242, 138, 152));
-        AddBrush(dictionary, "DangerSoftBrush", Color.FromArgb(51, 227, 115, 131));
-        AddBrush(dictionary, "SuccessBrush", Color.FromRgb(121, 201, 156));
-        AddBrush(dictionary, "SuccessSoftBrush", Color.FromArgb(51, 121, 201, 156));
-        AddBrush(dictionary, "CardShadowBrush", Color.FromArgb(102, 0, 0, 0));
-        AddBrush(dictionary, "InputBackgroundBrush", Color.FromRgb(32, 39, 51));
-        AddBrush(dictionary, "InputDisabledBrush", Color.FromRgb(43, 50, 61));
-        AddBrush(dictionary, "DisabledTextBrush", Color.FromRgb(109, 120, 134));
-        AddBrush(dictionary, "DisabledBorderBrush", Color.FromRgb(55, 65, 77));
-        AddBrush(dictionary, "OverlayBrush", Color.FromArgb(153, 10, 14, 20));
+        AddBrush(dictionary, "WindowBackgroundBrush", (Color)ColorConverter.ConvertFromString("#FFF7F6FB"));
+        AddBrush(dictionary, "BackgroundBrush", (Color)ColorConverter.ConvertFromString("#FFF7F6FB"));
+        AddBrush(dictionary, "ContentBackgroundBrush", (Color)ColorConverter.ConvertFromString("#FFF7F6FB"));
+        AddBrush(dictionary, "WindowForegroundBrush", (Color)ColorConverter.ConvertFromString("#FF252137"));
+        AddBrush(dictionary, "SurfaceBrush", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "SurfaceRaisedBrush", (Color)ColorConverter.ConvertFromString("#FFEEE8FA"));
+        AddBrush(dictionary, "SurfaceAltBrush", (Color)ColorConverter.ConvertFromString("#FFEEE8FA"));
+        AddBrush(dictionary, "SurfaceHoverBrush", (Color)ColorConverter.ConvertFromString("#FFE5DCF4"));
+        AddBrush(dictionary, "SurfacePressedBrush", (Color)ColorConverter.ConvertFromString("#FFD9CCEE"));
+        AddBrush(dictionary, "SidebarBrush", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "SidebarBackgroundBrush", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "SidebarForegroundBrush", (Color)ColorConverter.ConvertFromString("#FF6D687B"));
+        AddBrush(dictionary, "SidebarTextBrush", (Color)ColorConverter.ConvertFromString("#FF6D687B"));
+        AddBrush(dictionary, "SidebarSelectedBrush", (Color)ColorConverter.ConvertFromString("#FFEEE8FA"));
+        AddBrush(dictionary, "SidebarSelectedTextBrush", (Color)ColorConverter.ConvertFromString("#FF252137"));
+        AddBrush(dictionary, "SidebarHoverBrush", (Color)ColorConverter.ConvertFromString("#FFE5DCF4"));
+        AddBrush(dictionary, "TextBrush", (Color)ColorConverter.ConvertFromString("#FF252137"));
+        AddBrush(dictionary, "PrimaryTextBrush", (Color)ColorConverter.ConvertFromString("#FF252137"));
+        AddBrush(dictionary, "MutedTextBrush", (Color)ColorConverter.ConvertFromString("#FF6D687B"));
+        AddBrush(dictionary, "SecondaryTextBrush", (Color)ColorConverter.ConvertFromString("#FF6D687B"));
+        AddBrush(dictionary, "SubtleTextBrush", (Color)ColorConverter.ConvertFromString("#FF817A8F"));
+        AddBrush(dictionary, "TertiaryTextBrush", (Color)ColorConverter.ConvertFromString("#FF817A8F"));
+        AddBrush(dictionary, "TextOnAccentBrush", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "AccentBrush", (Color)ColorConverter.ConvertFromString("#FF7050B8"));
+        AddBrush(dictionary, "AccentHoverBrush", (Color)ColorConverter.ConvertFromString("#FF8062C3"));
+        AddBrush(dictionary, "AccentPressedBrush", (Color)ColorConverter.ConvertFromString("#FF60429F"));
+        AddBrush(dictionary, "AccentSoftBrush", (Color)ColorConverter.ConvertFromString("#337050B8"));
+        AddBrush(dictionary, "BorderBrush", (Color)ColorConverter.ConvertFromString("#FFD8D1E2"));
+        AddBrush(dictionary, "BorderStrongBrush", (Color)ColorConverter.ConvertFromString("#FF827A70"));
+        AddBrush(dictionary, "DividerBrush", (Color)ColorConverter.ConvertFromString("#33D8D1E2"));
+        AddBrush(dictionary, "FocusBrush", (Color)ColorConverter.ConvertFromString("#FF5B3F9A"));
+        AddBrush(dictionary, "WarningBrush", (Color)ColorConverter.ConvertFromString("#FFAA7626"));
+        AddBrush(dictionary, "WarningSoftBrush", (Color)ColorConverter.ConvertFromString("#33AA7626"));
+        AddBrush(dictionary, "DangerBrush", (Color)ColorConverter.ConvertFromString("#FFB44C5D"));
+        AddBrush(dictionary, "DangerHoverBrush", (Color)ColorConverter.ConvertFromString("#FFD06978"));
+        AddBrush(dictionary, "DangerSoftBrush", (Color)ColorConverter.ConvertFromString("#33B44C5D"));
+        AddBrush(dictionary, "SuccessBrush", (Color)ColorConverter.ConvertFromString("#FF2D805D"));
+        AddBrush(dictionary, "SuccessSoftBrush", (Color)ColorConverter.ConvertFromString("#332D805D"));
+        AddBrush(dictionary, "CardShadowBrush", (Color)ColorConverter.ConvertFromString("#263D536C"));
+        AddBrush(dictionary, "InputBackgroundBrush", (Color)ColorConverter.ConvertFromString("#FFF7F9FB"));
+        AddBrush(dictionary, "InputDisabledBrush", (Color)ColorConverter.ConvertFromString("#FFE8EDF2"));
+        AddBrush(dictionary, "DisabledTextBrush", (Color)ColorConverter.ConvertFromString("#FF9AA7B4"));
+        AddBrush(dictionary, "DisabledBorderBrush", (Color)ColorConverter.ConvertFromString("#FFD6DEE7"));
+        AddBrush(dictionary, "OverlayBrush", (Color)ColorConverter.ConvertFromString("#660D0A14"));
+        AddBrush(dictionary, "Surface.App", (Color)ColorConverter.ConvertFromString("#FFF7F6FB"));
+        AddBrush(dictionary, "Surface.Content", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "Surface.Subtle", (Color)ColorConverter.ConvertFromString("#FFEEE8FA"));
+        AddBrush(dictionary, "Surface.Hover", (Color)ColorConverter.ConvertFromString("#FFE5DCF4"));
+        AddBrush(dictionary, "Surface.Pressed", (Color)ColorConverter.ConvertFromString("#FFD9CCEE"));
+        AddBrush(dictionary, "Text.Primary", (Color)ColorConverter.ConvertFromString("#FF252137"));
+        AddBrush(dictionary, "Text.Secondary", (Color)ColorConverter.ConvertFromString("#FF6D687B"));
+        AddBrush(dictionary, "Action.Primary", (Color)ColorConverter.ConvertFromString("#FF7050B8"));
+        AddBrush(dictionary, "Action.OnPrimary", (Color)ColorConverter.ConvertFromString("#FFFFFFFF"));
+        AddBrush(dictionary, "Accent.Relation", (Color)ColorConverter.ConvertFromString("#FFA58B57"));
+        AddBrush(dictionary, "State.Success", (Color)ColorConverter.ConvertFromString("#FF2D805D"));
+        AddBrush(dictionary, "State.Pending", (Color)ColorConverter.ConvertFromString("#FFAA7626"));
+        AddBrush(dictionary, "State.Danger", (Color)ColorConverter.ConvertFromString("#FFB44C5D"));
+        AddBrush(dictionary, "Border.Decorative", (Color)ColorConverter.ConvertFromString("#FFD8D1E2"));
+        AddBrush(dictionary, "Border.Control", (Color)ColorConverter.ConvertFromString("#FF827A70"));
+        AddBrush(dictionary, "Focus.Ring", (Color)ColorConverter.ConvertFromString("#FF5B3F9A"));
         return dictionary;
     }
 
@@ -284,7 +368,7 @@ public sealed class ThemeService
         source?.OriginalString.Contains("/Themes/FgoLight.xaml", StringComparison.OrdinalIgnoreCase) == true;
 
     private static AppTheme Normalize(AppTheme theme) =>
-        Enum.IsDefined(theme) ? theme : AppTheme.ModernGray;
+        Enum.IsDefined(theme) ? theme : AppTheme.FgoLight;
 
     private static string DisplayName(AppTheme theme) =>
         theme == AppTheme.FgoLight ? "FGO Light" : "现代灰";

@@ -250,6 +250,7 @@ public static class ServiceRegistration
         .AddSingleton<HttpClient>()
         .AddSingleton<OpenAiCompatibleSpeechSynthesizer>()
         .AddSingleton<GptSoVitsSpeechSynthesizer>()
+        .AddSingleton(_ => new IndexTtsSpeechSynthesizer(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { Timeout = TimeSpan.FromMinutes(5) }))
         .AddSingleton<ISpeechSynthesizer, SpeechSynthesizerRouter>()
          .AddSingleton<ISpeechAudioPlayer, WpfSpeechAudioPlayer>()
          .AddSingleton<SpeechPlaybackCoordinator>()
@@ -262,7 +263,11 @@ public static class ServiceRegistration
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionPage>()
-         .AddSingleton<SpeechConnectionViewModel>()
+         .AddSingleton<SpeechConnectionViewModel>(provider => new SpeechConnectionViewModel(
+             provider.GetRequiredService<IAppSettingsStore>(),
+             provider.GetRequiredService<FgoPet.Core.Secrets.ICredentialStore>(),
+             provider.GetRequiredService<SpeechPlaybackCoordinator>(),
+             Path.Combine(paths.StorageRoot, "voices")))
          .AddSingleton<SpeechConnectionPage>()
         .AddSingleton<SettingsViewModel>()
         .AddSingleton<UserProfileViewModel>()
@@ -271,7 +276,7 @@ public static class ServiceRegistration
         .AddSingleton<PersonalizationPage>(provider => new PersonalizationPage(
             provider.GetRequiredService<PersonalizationViewModel>(),
             provider.GetRequiredService<ServantLibraryViewModel>(),
-            provider.GetRequiredService<SettingsViewModel>()))
+            provider.GetRequiredService<SettingsViewModel>(), provider.GetRequiredService<ThemePage>()))
         .AddSingleton<ThemePage>()
         .AddSingleton<RolePackagesPage>()
         .AddSingleton<SettingsPageContentResolver>(provider => (section, route) => section switch

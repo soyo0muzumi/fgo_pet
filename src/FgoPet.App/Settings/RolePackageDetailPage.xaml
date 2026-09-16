@@ -11,44 +11,75 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </UserControl.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel>
-        <Border Style="{StaticResource SettingsCardStyle}">
+    <!-- The Settings shell owns the single vertical scroll host for this route. -->
+      <StackPanel Margin="0,0,0,6">
+        <Button x:Name="BackToPackagesButton"
+                Margin="0,0,0,12"
+                HorizontalAlignment="Left"
+                Style="{StaticResource SettingsSecondaryButtonStyle}"
+                Content="← 角色包"
+                Click="OnBackToPackagesClick"
+                automation:AutomationProperties.Name="返回角色包" />
+
+        <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="150" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Width="132" Height="164"
-                        Background="{DynamicResource SurfaceRaisedBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
+                        Background="{DynamicResource Surface.Subtle}"
+                        BorderBrush="{DynamicResource Border.Decorative}"
                         BorderThickness="1"
                         CornerRadius="6">
-                    <Image x:Name="PackagePreview" Source="{Binding PreviewSource}" Stretch="UniformToFill" />
+                    <Grid>
+                        <Image x:Name="PackagePreview" Source="{Binding PreviewSource}" Stretch="UniformToFill" />
+                        <TextBlock Text="未提供预览" Foreground="{DynamicResource Text.Secondary}" FontSize="11"
+                                   TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PreviewSource}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding PreviewSource}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                 </Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource TextBrush}" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Margin="0,7,0,0" Text="{Binding PackageId}" Foreground="{DynamicResource MutedTextBrush}" />
-                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource MutedTextBrush}">
+                    <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Text.Primary}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Margin="0,7,0,0" Text="{Binding PackageId}" Foreground="{DynamicResource Text.Secondary}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource Text.Secondary}" TextWrapping="Wrap">
                         <Run Text="版本 " /><Run Text="{Binding PackageVersion, Mode=OneWay}" />
                         <Run Text="  ·  " /><Run Text="{Binding SourceBadge, Mode=OneWay}" />
                     </TextBlock>
-                    <TextBlock Margin="0,5,0,0" Text="{Binding PackageSummary}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
-                    <TextBlock Margin="0,4,0,0" Text="{Binding CompatibilityText}" Style="{StaticResource SettingsStatusStyle}" />
-                    <TextBlock Margin="0,8,0,0" Text="当前角色包" Foreground="{DynamicResource AccentBrush}"
+                    <TextBlock Margin="0,10,0,0" Text="包摘要" Foreground="{DynamicResource Text.Secondary}" FontSize="11" FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                    <TextBlock Margin="0,2,0,0" Text="{Binding PackageSummary}" Foreground="{DynamicResource Text.Secondary}" FontSize="11"
+                               TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0" Text="{Binding CompatibilityText}" Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,8,0,0" Text="当前角色包" Foreground="{DynamicResource Action.Primary}"
                                Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
             </Grid>
         </Border>
 
-        <Border Style="{StaticResource SettingsCardStyle}" Padding="8">
+        <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}" Padding="8">
             <UniformGrid Columns="3">
                 <Button x:Name="AppearanceSectionButton" Margin="3"
                         Style="{StaticResource SettingsSecondaryButtonStyle}"
                         Click="OnAppearanceSectionClick" automation:AutomationProperties.Name="从者与外观">
                     <StackPanel Orientation="Horizontal">
                         <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
-                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Stroke="{DynamicResource Text.Primary}" StrokeThickness="1.3"
                               Data="{StaticResource IconAppearanceGeometry}" />
                         <TextBlock Text="从者与外观" />
                     </StackPanel>
@@ -58,7 +89,7 @@
                         Click="OnAddressSectionClick" automation:AutomationProperties.Name="称呼设置">
                     <StackPanel Orientation="Horizontal">
                         <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
-                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Stroke="{DynamicResource Text.Primary}" StrokeThickness="1.3"
                               Data="{StaticResource IconAddressGeometry}" />
                         <TextBlock Text="称呼设置" />
                     </StackPanel>
@@ -68,7 +99,7 @@
                         Click="OnPackageInfoSectionClick" automation:AutomationProperties.Name="包设置">
                     <StackPanel Orientation="Horizontal">
                         <Path Width="16" Height="16" Margin="0,0,7,0" Stretch="Uniform"
-                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.3"
+                              Stroke="{DynamicResource Text.Primary}" StrokeThickness="1.3"
                               Data="{StaticResource IconPackageInfoGeometry}" />
                         <TextBlock Text="包设置" />
                     </StackPanel>
@@ -76,15 +107,21 @@
             </UniformGrid>
         </Border>
 
-        <Border x:Name="AppearanceSection" Style="{StaticResource SettingsCardStyle}"
+        <Border x:Name="AppearanceSection" Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}"
                 Visibility="{Binding IsAppearanceSection, Converter={StaticResource BoolToVisibility}}">
             <StackPanel>
                 <TextBlock Text="外观" Style="{StaticResource SettingsCaptionStyle}" />
                 <ComboBox x:Name="AppearanceSelector"
                           Style="{StaticResource SettingsComboBoxStyle}"
                           ItemsSource="{Binding Appearances}"
-                          SelectedItem="{Binding SelectedAppearance}"
-                          DisplayMemberPath="Display" />
+                          SelectedItem="{Binding SelectedAppearance}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Display}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <TextBlock Margin="0,5,0,0" Text="设为当前从者后生效；可从下拉列表选择其他外观。"
                            Style="{StaticResource SettingsStatusStyle}" />
                 <WrapPanel Margin="0,12,0,0">
@@ -99,14 +136,15 @@
             </StackPanel>
         </Border>
 
-        <Border x:Name="AddressSection" Style="{StaticResource SettingsCardStyle}"
+        <Border x:Name="AddressSection" Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}"
                 Visibility="{Binding IsAddressSection, Converter={StaticResource BoolToVisibility}}">
             <StackPanel>
-                <TextBlock Text="称呼设置" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Text="称呼设置" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" />
                 <TextBlock Margin="0,4,0,10" Text="称呼按 servant_id 保存，不使用全局资料显示名。"
                            Style="{StaticResource SettingsStatusStyle}" />
                 <RadioButton Content="使用角色包默认称呼" IsChecked="{Binding UsePackageDefaultAddress}" />
-                <TextBlock Margin="24,3,0,0" Text="{Binding DefaultAddressText}" Foreground="{DynamicResource MutedTextBrush}" FontStyle="Italic" />
+                <TextBlock Margin="24,3,0,0" Text="{Binding DefaultAddressText}" Foreground="{DynamicResource Text.Secondary}" FontStyle="Italic" />
                 <RadioButton Margin="0,7,0,0" Content="使用自定义称呼" IsChecked="{Binding UseCustomAddress}" />
                 <TextBox Margin="0,8,0,0" MaxLength="256"
                          Style="{StaticResource SettingsTextBoxStyle}"
@@ -126,11 +164,12 @@
                     BorderBrush="{DynamicResource WarningBrush}"
                     BorderThickness="1" CornerRadius="5"
                     Visibility="{Binding IsMigrationNoticeVisible, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="{Binding MigrationNotice}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding MigrationNotice}" Foreground="{DynamicResource Text.Primary}" TextWrapping="Wrap" />
             </Border>
-            <Border Style="{StaticResource SettingsCardStyle}">
+            <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                    Style="{StaticResource SettingsCardStyle}">
                 <StackPanel>
-                    <TextBlock Text="角色包声明设置" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                    <TextBlock Text="角色包声明设置" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" />
                     <TextBlock Margin="0,4,0,10" Text="仅显示应用批准的开关、选择和文本字段。" Style="{StaticResource SettingsStatusStyle}" />
                     <ItemsControl x:Name="PackageSettingsItems" ItemsSource="{Binding PackageSettings}"
                                   Visibility="{Binding HasPackageSettings, Converter={StaticResource BoolToVisibility}}">
@@ -166,10 +205,9 @@
                 BorderThickness="1" CornerRadius="5"
                 Visibility="{Binding IsDiagnosticVisible, Converter={StaticResource BoolToVisibility}}">
             <StackPanel>
-                <TextBlock Text="{Binding Diagnostic.Heading}" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold" />
-                <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Diagnostic.Heading}" Foreground="{DynamicResource State.Pending}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource Text.Primary}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
       </StackPanel>
-    </ScrollViewer>
 </UserControl>

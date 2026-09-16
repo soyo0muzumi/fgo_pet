@@ -11,8 +11,29 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </UserControl.Resources>
-    <StackPanel>
-        <Border Style="{StaticResource SettingsCardStyle}">
+    <StackPanel Margin="0,0,0,6">
+        <Button x:Name="BackToAppearanceButton"
+                Width="40"
+                Height="36"
+                Margin="0,0,0,12"
+                HorizontalAlignment="Left"
+                Style="{StaticResource SettingsSecondaryButtonStyle}"
+                Click="OnBackToAppearanceClick"
+                ToolTip="返回外观与角色"
+                automation:AutomationProperties.Name="返回外观与角色">
+            <Path Data="{StaticResource IconBackGeometry}"
+                  Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource Text.Primary}"
+                  StrokeThickness="1.8"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" />
+        </Button>
+
+        <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
                 <TextBlock Text="查找已安装的角色包" Style="{StaticResource SettingsCaptionStyle}" />
                 <TextBox x:Name="PackageSearchBox"
@@ -25,7 +46,8 @@
         <ItemsControl x:Name="PackageList" ItemsSource="{Binding FilteredServants}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border Style="{StaticResource SettingsCardStyle}">
+                    <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                            Style="{StaticResource SettingsCardStyle}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="92" />
@@ -33,16 +55,34 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Width="78" Height="92"
-                                    Background="{DynamicResource SurfaceRaisedBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    Background="{DynamicResource Surface.Subtle}"
+                                    BorderBrush="{DynamicResource Border.Decorative}"
                                     BorderThickness="1"
                                     CornerRadius="5">
-                                <Image Source="{Binding PreviewSource}" Stretch="UniformToFill" />
+                                <Grid>
+                                    <Image Source="{Binding PreviewSource}" Stretch="UniformToFill" />
+                                    <TextBlock Text="未提供预览" Foreground="{DynamicResource Text.Secondary}" FontSize="10"
+                                               TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding PreviewSource}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding PreviewSource}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
                             </Border>
                             <StackPanel Grid.Column="1" Margin="14,0,18,0" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding DisplayName}"
-                                               Foreground="{DynamicResource TextBrush}"
+                                            Foreground="{DynamicResource Text.Primary}"
                                                FontSize="16"
                                                FontWeight="SemiBold" />
                                     <Border Margin="8,0,0,0" Padding="6,2"
@@ -53,10 +93,10 @@
                                     </Border>
                                 </StackPanel>
                                 <TextBlock Margin="0,5,0,0" Text="{Binding PackageId}"
-                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                            Foreground="{DynamicResource Text.Secondary}" TextWrapping="Wrap" />
                                 <TextBlock Margin="0,3,0,0" Foreground="{DynamicResource MutedTextBrush}">
                                     <Run Text="版本 " /><Run Text="{Binding PackageVersion, Mode=OneWay}" />
-                                    <Run Text="  ·  " /><Run Text="{Binding SourceBadge, Mode=OneWay}" />
+                                            <Run Text="  ·  " /><Run Text="{Binding SourceBadge, Mode=OneWay}" />
                                 </TextBlock>
                             </StackPanel>
                             <Button Grid.Column="2"
@@ -71,9 +111,10 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Border Style="{StaticResource SettingsCardStyle}">
+        <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                Style="{StaticResource SettingsCardStyle}">
             <StackPanel>
-                <TextBlock Text="安装本地角色包" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                <TextBlock Text="安装本地角色包" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" />
                 <TextBlock Margin="0,4,0,10" Text="选择 .fgopetpack 文件。安装完成后不会自动切换当前从者。"
                            Style="{StaticResource SettingsStatusStyle}" />
                 <Grid>
@@ -107,6 +148,15 @@
             </StackPanel>
         </Border>
 
+        <Border Background="{DynamicResource Surface.Subtle}" BorderBrush="{DynamicResource Border.Decorative}"
+                BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="来源、兼容与隐私" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,5,0,0" Foreground="{DynamicResource Text.Secondary}" TextWrapping="Wrap"
+                           Text="仅处理本机已选择的 .fgopetpack 文件；安装前会验证包声明、兼容版本和内容边界。来源未验证不代表官方或在线商店认证，角色包内容不会自动上传。" />
+            </StackPanel>
+        </Border>
+
         <Border Padding="12"
                 Margin="0,0,0,12"
                 Background="{DynamicResource WarningSoftBrush}"
@@ -115,8 +165,8 @@
                 CornerRadius="5"
                 Visibility="{Binding IsDiagnosticVisible, Converter={StaticResource BoolToVisibility}}">
             <StackPanel>
-                <TextBlock Text="{Binding Diagnostic.Heading}" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold" />
-                <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Diagnostic.Heading}" Foreground="{DynamicResource State.Pending}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,4,0,0" Text="{Binding Diagnostic.Text}" Foreground="{DynamicResource Text.Primary}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
     </StackPanel>

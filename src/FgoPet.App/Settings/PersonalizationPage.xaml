@@ -12,28 +12,50 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
+    <Border>
         <StackPanel Margin="4,4,14,18">
-            <Border Style="{StaticResource SettingsCardStyle}">
+            <TextBlock Text="主题" Foreground="{DynamicResource Text.Secondary}" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <ContentControl x:Name="ThemeHost" HorizontalContentAlignment="Stretch"/>
+            <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                    Style="{StaticResource SettingsCardStyle}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="96" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="82" Height="108" Background="{DynamicResource SurfaceRaisedBrush}" CornerRadius="10" HorizontalAlignment="Left">
-                        <Image Source="{Binding Library.SelectedServant.PreviewSource}" Stretch="Uniform" />
+                    <Border Width="82" Height="108" Background="{DynamicResource Surface.Subtle}" BorderBrush="{DynamicResource Border.Decorative}"
+                            BorderThickness="1" CornerRadius="10" HorizontalAlignment="Left">
+                        <Grid>
+                            <Image Source="{Binding Library.SelectedServant.PreviewSource}" Stretch="Uniform" />
+                            <TextBlock Text="未提供预览" Foreground="{DynamicResource Text.Secondary}" FontSize="10"
+                                       TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Library.SelectedServant.PreviewSource}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Library.SelectedServant.PreviewSource}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" Margin="16,4,12,4" VerticalAlignment="Center">
-                        <TextBlock Text="当前角色" Style="{StaticResource SettingsCaptionStyle}" />
-                        <TextBlock Text="{Binding Library.SelectedServant.DisplayName, TargetNullValue=尚未选择角色}" Foreground="{DynamicResource TextBrush}" FontSize="18" FontWeight="SemiBold" Margin="0,5,0,0" />
+                        <TextBlock Text="当前角色" Foreground="{DynamicResource Text.Primary}" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Library.SelectedServant.DisplayName, TargetNullValue=尚未选择角色}" Foreground="{DynamicResource Text.Primary}" FontSize="18" FontWeight="SemiBold" Margin="0,5,0,0" />
                         <TextBlock Text="当前使用的角色与立绘外观" Style="{StaticResource SettingsStatusStyle}" Margin="0,5,0,0" />
                     </StackPanel>
                     <Button Grid.Column="2" Content="更换角色" Style="{StaticResource SettingsSecondaryButtonStyle}" Click="OnChangeServantClick" VerticalAlignment="Center" />
                 </Grid>
             </Border>
-            <Border Style="{StaticResource SettingsCardStyle}">
+            <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                    Style="{StaticResource SettingsCardStyle}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="桌宠显示" />
                     <TextBlock Margin="0,0,0,10"
@@ -56,7 +78,8 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
+            <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                    Style="{StaticResource SettingsCardStyle}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="窗口行为" />
                     <CheckBox x:Name="TopmostCheckBox"
@@ -75,12 +98,13 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
+            <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
+                    Style="{StaticResource SettingsCardStyle}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SettingsCaptionStyle}" Text="恢复设置" />
                     <TextBlock Style="{StaticResource SettingsStatusStyle}"
                                Margin="0,0,0,12"
-                               Text="恢复会将缩放设为 50%，开启置顶和自动收起。主题选择由主题页面独立管理，不会被这里改动。" />
+                               Text="恢复会将缩放设为 50%，开启置顶和自动收起。主题选择不会被这里改动。" />
                     <Button x:Name="ResetButton"
                             Width="140"
                             HorizontalAlignment="Left"
@@ -101,5 +125,5 @@
                        TextWrapping="Wrap"
                        automation:AutomationProperties.LiveSetting="Assertive" />
         </StackPanel>
-    </ScrollViewer>
+    </Border>
 </UserControl>

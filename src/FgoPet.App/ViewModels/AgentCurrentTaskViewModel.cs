@@ -169,7 +169,8 @@ public sealed partial class AgentCurrentTaskViewModel : ObservableObject
                 or AgentExecutionStatus.Active
                 or AgentExecutionStatus.Attention
                 or AgentExecutionStatus.DispatchOutcomeUnknown)
-            .OrderByDescending(item => item.UpdatedAt)
+            .OrderByDescending(item => item.Status == AgentExecutionStatus.DispatchOutcomeUnknown)
+            .ThenByDescending(item => item.UpdatedAt)
             .ToArray();
         CurrentProjection = active.FirstOrDefault();
         CurrentTaskId = CurrentProjection?.TaskId ?? string.Empty;

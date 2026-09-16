@@ -1,15 +1,15 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
-    <SolidColorBrush x:Key="ShellWindowBackgroundBrush" Color="{DynamicResource ShellWindowColor}" />
-    <SolidColorBrush x:Key="ShellPanelBackgroundBrush" Color="{DynamicResource ShellPanelColor}" />
-    <SolidColorBrush x:Key="ShellRaisedBackgroundBrush" Color="{DynamicResource ShellRaisedColor}" />
-    <SolidColorBrush x:Key="ShellTextBrush" Color="{DynamicResource ShellTextColor}" />
-    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{DynamicResource ShellMutedColor}" />
-    <SolidColorBrush x:Key="ShellBorderBrush" Color="{DynamicResource ShellLineColor}" />
-    <SolidColorBrush x:Key="ShellAccentBrush" Color="{DynamicResource ShellAccentColor}" />
-    <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="{DynamicResource ShellAccentSoftColor}" />
-    <SolidColorBrush x:Key="ShellOverlayBrush" Color="{DynamicResource ShellOverlayColor}" />
+    <SolidColorBrush x:Key="ShellWindowBackgroundBrush" Color="{DynamicResource Semantic.AppColor}" />
+    <SolidColorBrush x:Key="ShellPanelBackgroundBrush" Color="{DynamicResource Semantic.SubtleColor}" />
+    <SolidColorBrush x:Key="ShellRaisedBackgroundBrush" Color="{DynamicResource Semantic.ContentColor}" />
+    <SolidColorBrush x:Key="ShellTextBrush" Color="{DynamicResource Semantic.PrimaryTextColor}" />
+    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="{DynamicResource Semantic.SecondaryTextColor}" />
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="{DynamicResource Semantic.BorderControlColor}" />
+    <SolidColorBrush x:Key="ShellAccentBrush" Color="{DynamicResource Semantic.PrimaryActionColor}" />
+    <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="{DynamicResource Semantic.ActionSoftColor}" />
+    <SolidColorBrush x:Key="ShellOverlayBrush" Color="{DynamicResource Semantic.OverlayColor}" />
 
     <sys:Double x:Key="ShellTitleHeight">42</sys:Double>
     <GridLength x:Key="ShellTitleGridLength">42</GridLength>

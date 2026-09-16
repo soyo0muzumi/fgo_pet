@@ -1,18 +1,47 @@
 <UserControl x:Class="FgoPet.App.Views.TodoProposalCard"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <Border Background="#3314243B" BorderBrush="#6642DFF5" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,7">
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <UserControl.Resources>
+  <ResourceDictionary>
+   <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="/FgoPet.App;component/Ui/Shell/ChatControls.xaml"/>
+   </ResourceDictionary.MergedDictionaries>
+   <StreamGeometry x:Key="TodoProposalExpandGeometry">M3,6 L8,11 L13,6</StreamGeometry>
+  </ResourceDictionary>
+ </UserControl.Resources>
+ <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,8">
+  <StackPanel>
+   <TextBlock Text="待办建议" Foreground="{DynamicResource MutedTextBrush}"/>
+   <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" Margin="0,6"/>
+   <TextBlock Text="{Binding DescriptionPreview}" TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" Margin="0,0,0,6">
+    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding HasDescription}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+   </TextBlock>
+   <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Foreground="{DynamicResource TextBrush}" AutomationProperties.Name="展开编辑">
+    <Expander.Header>
+     <StackPanel Orientation="Horizontal">
+      <Path Data="{StaticResource TodoProposalExpandGeometry}" Width="12" Height="12" Stretch="Uniform" Stroke="{DynamicResource Text.Secondary}" StrokeThickness="1.5" Margin="0,0,6,0"/>
+      <TextBlock Text="展开编辑"/>
+     </StackPanel>
+    </Expander.Header>
     <StackPanel>
-      <TextBlock Text="TODO 提案 · 请确认" Foreground="#FF70E7F5" FontSize="9" FontWeight="Bold"/>
-      <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" Foreground="#FFF0F5FF" Background="#33101C2E" BorderBrush="#6638516C" BorderThickness="1" Padding="5" Margin="0,5,0,4"/>
-      <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" Foreground="#FFF0F5FF" Background="#33101C2E" BorderBrush="#6638516C" BorderThickness="1" Padding="5" MinHeight="32" TextWrapping="Wrap" AcceptsReturn="True"/>
-      <Grid Margin="0,5,0,0">
-        <TextBlock Text="{Binding ErrorText}" Foreground="#FFD242E8" FontSize="8" VerticalAlignment="Center"/>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-          <Button Content="移除" Click="OnRemoveClick" Foreground="#FF9FB2D8" Background="Transparent" BorderThickness="0" Padding="5,3" FontSize="9"/>
-          <Button Content="确认写入" Click="OnConfirmClick" Foreground="#FF70E7F5" Background="#2642DFF5" BorderBrush="#CC42DFF5" BorderThickness="1" Padding="7,3" FontSize="9" FontWeight="Bold"/>
-        </StackPanel>
-      </Grid>
+     <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding IsAdded}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+     <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" Margin="0,6" AutomationProperties.Name="建议标题"/>
+     <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" MaxLength="4000" MinHeight="64" TextWrapping="Wrap" AcceptsReturn="True" AutomationProperties.Name="建议备注"/>
     </StackPanel>
-  </Border>
+   </Expander>
+   <TextBlock Text="{Binding ErrorText}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,6" AutomationProperties.LiveSetting="Assertive"/>
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+    <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding IsAdded}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+    <Button Content="{StaticResource ChatNew}" ContentTemplate="{StaticResource ChatIcon}" Click="OnConfirmClick" Style="{StaticResource ChatMessageAction}" ToolTip="加入待办" AutomationProperties.Name="加入待办"/>
+    <Button Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnRemoveClick" Style="{StaticResource ChatMessageAction}" ToolTip="忽略建议" AutomationProperties.Name="忽略建议" Margin="8,0,0,0"/>
+   </StackPanel>
+   <StackPanel Orientation="Horizontal">
+    <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsAdded}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+    <Path Data="{StaticResource ChatCopied}" Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource SuccessBrush}" StrokeThickness="1.5" VerticalAlignment="Center" Margin="0,0,6,0"/>
+    <TextBlock Text="已加入：" Foreground="{DynamicResource SuccessBrush}" VerticalAlignment="Center"/>
+    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+    <Button Content="{StaticResource ChatTasks}" ContentTemplate="{StaticResource ChatIcon}" Click="OnViewClick" Style="{StaticResource ChatMessageAction}" ToolTip="查看待办" AutomationProperties.Name="查看待办" Margin="8,0,0,0"/>
+   </StackPanel>
+  </StackPanel>
+ </Border>
 </UserControl>

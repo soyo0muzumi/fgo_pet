@@ -24,6 +24,8 @@ public sealed class DataExportServiceTests : IDisposable
             command.CommandText = """
                 INSERT INTO todo_items(todo_id, title, description, priority, due_at_utc, status, created_at_utc, updated_at_utc, completed_at_utc)
                 VALUES('todo-1', 'Export me', NULL, 'normal', NULL, 'planned', '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z', NULL);
+                INSERT INTO todo_steps(step_id, todo_id, title, is_completed, sort_order)
+                VALUES('step-1', 'todo-1', 'Prepare export', 1, 0);
                 INSERT INTO work_archives(archive_id, archive_date, source_types, summary, created_at_utc)
                 VALUES('archive-1', '2026-08-30', 'codex', 'Safe summary', '2026-08-30T00:00:00Z');
                 """;
@@ -36,6 +38,8 @@ public sealed class DataExportServiceTests : IDisposable
         using var reader = new StreamReader(archive.GetEntry("data.json")!.Open(), Encoding.UTF8);
         var text = await reader.ReadToEndAsync();
         Assert.Contains("Export me", text, StringComparison.Ordinal);
+        Assert.Contains("Prepare export", text, StringComparison.Ordinal);
+        Assert.Contains("todo_steps", text, StringComparison.Ordinal);
         Assert.Contains("Safe summary", text, StringComparison.Ordinal);
         Assert.DoesNotContain("credentials", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("prompt", text, StringComparison.OrdinalIgnoreCase);

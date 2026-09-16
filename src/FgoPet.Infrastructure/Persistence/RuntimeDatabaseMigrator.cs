@@ -336,7 +336,19 @@ public sealed class RuntimeDatabaseMigrator
               captured_at_utc TEXT NOT NULL);
             CREATE INDEX ix_agent_project_snapshots_target
               ON agent_project_snapshots(target_id, captured_at_utc DESC);
-            """),    };
+            """),
+        new(11, """
+            CREATE TABLE todo_steps(
+              step_id TEXT PRIMARY KEY,
+              todo_id TEXT NOT NULL REFERENCES todo_items(todo_id) ON DELETE CASCADE,
+              title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 200),
+              is_completed INTEGER NOT NULL DEFAULT 0 CHECK(is_completed IN (0,1)),
+              sort_order INTEGER NOT NULL CHECK(sort_order BETWEEN 0 AND 19),
+              UNIQUE(todo_id, sort_order));
+            CREATE INDEX ix_todo_steps_todo_order
+              ON todo_steps(todo_id, sort_order, step_id);
+            """)
+    };
 
     public static long CurrentSchemaVersion => Migrations.Count;
 

@@ -143,6 +143,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
             }
 
             SelectedServant = cards.FirstOrDefault(card => card.PackageId == previousPackageId)
+                ?? cards.FirstOrDefault(card => card.PackageId == activeSelection?.PackageId)
                 ?? cards.FirstOrDefault();
 
             var restoredServant = SelectedServant;

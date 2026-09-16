@@ -184,6 +184,10 @@ MemoryEnabled = settings.MemoryEnabled,
         [property: JsonPropertyName("rate")] double? Rate,
         [property: JsonPropertyName("volume")] double? Volume)
     {
+        [JsonPropertyName("index_tts_base_url")] public string? IndexTtsBaseUrl { get; init; }
+        [JsonPropertyName("index_tts_voice_id")] public string? IndexTtsVoiceId { get; init; }
+        [JsonPropertyName("index_tts_voices")] public ReferenceVoice[]? IndexTtsVoices { get; init; }
+        [JsonPropertyName("do_not_disturb")] public bool DoNotDisturb { get; init; }
         public SpeechConnectionSettings ToModel()
         {
             var provider = string.IsNullOrWhiteSpace(Provider)
@@ -194,6 +198,10 @@ MemoryEnabled = settings.MemoryEnabled,
             return new SpeechConnectionSettings
             {
                 Enabled = Enabled,
+                IndexTtsBaseUrl = IndexTtsBaseUrl ?? SpeechConnectionSettings.Defaults.IndexTtsBaseUrl,
+                IndexTtsVoiceId = IndexTtsVoiceId ?? string.Empty,
+                IndexTtsVoices = IndexTtsVoices ?? Array.Empty<ReferenceVoice>(),
+                DoNotDisturb = DoNotDisturb,
                 Provider = provider,
                 OpenAiBaseUrl = OpenAiBaseUrl ?? string.Empty,
                 OpenAiModel = OpenAiModel ?? string.Empty,
@@ -229,7 +237,13 @@ MemoryEnabled = settings.MemoryEnabled,
                 normalized.AutoReadEnabled,
                 normalized.AutoReadLimit,
                 normalized.Rate,
-                normalized.Volume);
+                normalized.Volume)
+            {
+                IndexTtsBaseUrl = normalized.IndexTtsBaseUrl,
+                IndexTtsVoiceId = normalized.IndexTtsVoiceId,
+                IndexTtsVoices = normalized.IndexTtsVoices.ToArray(),
+                DoNotDisturb = normalized.DoNotDisturb,
+            };
         }
     }
     private sealed record AgentConnectionDto(
@@ -338,7 +352,7 @@ MemoryEnabled = settings.MemoryEnabled,
     {
         "fgo_light" => AppTheme.FgoLight,
         "modern_gray" => AppTheme.ModernGray,
-        _ => AppTheme.ModernGray,
+        _ => AppTheme.FgoLight,
     };
 
     private static string FormatTheme(AppTheme theme) => theme switch

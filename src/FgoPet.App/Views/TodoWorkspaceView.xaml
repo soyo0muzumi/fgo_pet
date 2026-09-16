@@ -1,0 +1,102 @@
+<UserControl x:Class="FgoPet.App.Views.TodoWorkspaceView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml"/><ResourceDictionary Source="/FgoPet.App;component/Ui/Shell/ChatControls.xaml"/></ResourceDictionary.MergedDictionaries><Style TargetType="Expander"><Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}"/></Style><Style TargetType="Button" BasedOn="{StaticResource SettingsSecondaryButtonStyle}"/><Style TargetType="TextBox" BasedOn="{StaticResource SettingsTextBoxStyle}"/>
+<BooleanToVisibilityConverter x:Key="Bool"/>
+<StreamGeometry x:Key="TodoEditGeometry">M3,13 L4.5,9.5 L11.5,2.5 L14,5 L7,12 Z M10,4 L12.5,6.5 M3,13 L6.5,12.5</StreamGeometry>
+  <StreamGeometry x:Key="TodoMoreGeometry">M3,8 A1,1 0 1 0 3,8.1 M8,8 A1,1 0 1 0 8,8.1 M13,8 A1,1 0 1 0 13,8.1</StreamGeometry>
+ <StreamGeometry x:Key="TodoUndoGeometry">M14,5 H6 A4,4 0 1 0 10,13 H14 M6,2 L3,5 L6,8</StreamGeometry>
+<Style x:Key="TodoIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ChatMessageAction}"><Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/><Setter Property="Padding" Value="9"/><Setter Property="Focusable" Value="True"/><Setter Property="ToolTipService.ShowOnDisabled" Value="True"/></Style>
+<Style x:Key="TodoConfirmationButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsSecondaryButtonStyle}"><Setter Property="ContentTemplate" Value="{x:Null}"/><Setter Property="Width" Value="Auto"/><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="10,4"/><Setter Property="Focusable" Value="True"/></Style>
+<Style TargetType="ContextMenu"><Setter Property="Background" Value="{DynamicResource Surface.Content}"/><Setter Property="BorderBrush" Value="{DynamicResource Border.Control}"/><Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/></Style>
+<Style TargetType="MenuItem"><Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="10,6"/><Setter Property="ToolTipService.ShowOnDisabled" Value="True"/><Style.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter Property="Background" Value="{DynamicResource Surface.Hover}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger></Style.Triggers></Style>
+<Style x:Key="TodoRowFocusVisualStyle" TargetType="{x:Type Control}">
+<Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type Control}"><Border BorderBrush="{DynamicResource Focus.Ring}" BorderThickness="2" CornerRadius="6" IsHitTestVisible="False"/></ControlTemplate></Setter.Value></Setter>
+</Style>
+<Style x:Key="TodoRowItemContainerStyle" TargetType="{x:Type ContentPresenter}">
+<Setter Property="Focusable" Value="True"/><Setter Property="FocusVisualStyle" Value="{StaticResource TodoRowFocusVisualStyle}"/>
+</Style>
+<DataTemplate x:Key="TodoRow">
+<Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1" Padding="0,14">
+<Border.Style><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/><Style.Triggers><DataTrigger Binding="{Binding IsHighlighted}" Value="True"><Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}"/></DataTrigger></Style.Triggers></Style></Border.Style>
+<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+<CheckBox IsChecked="{Binding IsCompleted, Mode=OneWay}" IsEnabled="{Binding CanComplete}" Click="OnComplete" Tag="{Binding}" VerticalAlignment="Top" Margin="0,4,0,0" AutomationProperties.Name="{Binding CompletionLabel}"/>
+<Expander Grid.Column="1" Foreground="{DynamicResource ShellTextBrush}" HorizontalContentAlignment="Stretch" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+<Expander.Header><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Item.Title}" TextWrapping="Wrap" FontSize="16"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding IsCompleted}" Value="True"><Setter Property="TextDecorations" Value="Strikethrough"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock><TextBlock Grid.Column="1" Text="{Binding StepProgressText}" Visibility="{Binding HasSteps, Converter={StaticResource Bool}}" Foreground="{DynamicResource ShellMutedTextBrush}" FontSize="12" VerticalAlignment="Center" Margin="10,3,0,0"/></Grid></Expander.Header>
+ <StackPanel><StackPanel x:Name="RowDetails" Margin="8,10,0,0">
+ <WrapPanel x:Name="ParentActions" Margin="0,0,0,8" ItemWidth="36">
+ <Button Content="{StaticResource ChatCopy}" ContentTemplate="{StaticResource ChatIcon}" Click="OnCopy" Tag="{Binding}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="复制任务说明" AutomationProperties.Name="复制任务说明" Margin="0,0,8,0"/>
+ <Button Content="{StaticResource TodoEditGeometry}" ContentTemplate="{StaticResource ChatIcon}" Click="OnEdit" Tag="{Binding}" IsEnabled="{Binding CanEditContent}" Visibility="{Binding CanEditContent, Converter={StaticResource Bool}}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="编辑任务" AutomationProperties.Name="编辑" Margin="0,0,8,0"/>
+ <Button Content="{StaticResource TodoMoreGeometry}" ContentTemplate="{StaticResource ChatIcon}" Click="OnMore" Tag="{Binding}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="更多操作" AutomationProperties.Name="更多操作">
+ <Button.ContextMenu><ContextMenu DataContext="{Binding}" Opened="OnTodoContextMenuOpened"><MenuItem Header="删除" Tag="{Binding}" Click="OnDelete" IsEnabled="{Binding CanEdit}" ToolTip="删除待办" AutomationProperties.Name="删除待办"/></ContextMenu></Button.ContextMenu>
+ </Button>
+ </WrapPanel>
+ <ItemsControl x:Name="StepItems" ItemsSource="{Binding Steps}" Margin="0,0,0,4">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Grid Margin="0,3">
+<Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+<CheckBox Grid.Column="0" IsChecked="{Binding Item.IsCompleted, Mode=OneWay}" IsEnabled="{Binding CanEditSteps}" Click="OnStepComplete" Tag="{Binding}" VerticalAlignment="Top" Margin="0,3,0,0" AutomationProperties.Name="{Binding CompletionLabel}"/>
+<TextBlock x:Name="StepText" Grid.Column="1" Text="{Binding Item.Title}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+<TextBox x:Name="StepTitleInput" Grid.Column="1" Text="{Binding DraftTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MaxLength="200" TextWrapping="NoWrap" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" Padding="6,3" Visibility="Collapsed" Tag="{Binding}" AutomationProperties.Name="步骤标题"/>
+<StackPanel x:Name="StepDeleteConfirmation" Grid.Column="1" Grid.ColumnSpan="2" Visibility="Collapsed">
+<TextBlock Text="删除这一步？"/>
+<WrapPanel Margin="0,4,0,0"><Button Content="确认删除" Click="OnConfirmDeleteStep" Tag="{Binding}" Style="{StaticResource TodoConfirmationButtonStyle}" ToolTip="确认删除步骤" AutomationProperties.Name="确认删除步骤"/><Button Content="取消" Click="OnCancelDeleteStep" Tag="{Binding}" Style="{StaticResource TodoConfirmationButtonStyle}" ToolTip="取消删除步骤" AutomationProperties.Name="取消删除步骤" Margin="6,0,0,0"/></WrapPanel>
+</StackPanel>
+<WrapPanel x:Name="StepActions" Grid.Column="2" Margin="8,0,0,0">
+ <Button x:Name="StepEditButton" Content="{StaticResource TodoEditGeometry}" ContentTemplate="{StaticResource ChatIcon}" Click="OnBeginStepEdit" Tag="{Binding}" IsEnabled="{Binding CanEditSteps}" Visibility="{Binding CanEditSteps, Converter={StaticResource Bool}}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="编辑步骤" AutomationProperties.Name="编辑步骤"/>
+<Button x:Name="StepSaveButton" Content="{StaticResource ChatCopied}" ContentTemplate="{StaticResource ChatIcon}" Click="OnSaveStepEdit" Tag="{Binding}" IsEnabled="{Binding CanSaveTitle}" Visibility="Collapsed" Style="{StaticResource TodoIconButtonStyle}" ToolTip="保存步骤编辑" AutomationProperties.Name="保存步骤编辑" Margin="6,0,0,0"/>
+<Button x:Name="StepCancelButton" Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnCancelStepEdit" Tag="{Binding}" Visibility="Collapsed" Style="{StaticResource TodoIconButtonStyle}" ToolTip="取消步骤编辑" AutomationProperties.Name="取消步骤编辑" Margin="6,0,0,0"/>
+ <Button x:Name="StepMoreButton" Content="{StaticResource TodoMoreGeometry}" ContentTemplate="{StaticResource ChatIcon}" Click="OnMore" Tag="{Binding}" IsEnabled="{Binding CanDelete}" Visibility="{Binding CanEditSteps, Converter={StaticResource Bool}}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="更多步骤操作" AutomationProperties.Name="更多步骤操作">
+<Button.ContextMenu><ContextMenu Opened="OnStepContextMenuOpened"><MenuItem Header="上移步骤" Click="OnMoveStepUp" ToolTip="上移步骤" AutomationProperties.Name="上移步骤"/><MenuItem Header="下移步骤" Click="OnMoveStepDown" ToolTip="下移步骤" AutomationProperties.Name="下移步骤"/><MenuItem Header="删除步骤" Click="OnBeginDeleteStep" ToolTip="删除步骤" AutomationProperties.Name="删除步骤"/></ContextMenu></Button.ContextMenu>
+</Button>
+</WrapPanel>
+</Grid>
+<DataTemplate.Triggers>
+<DataTrigger Binding="{Binding IsEditing}" Value="True"><Setter TargetName="StepText" Property="Visibility" Value="Collapsed"/><Setter TargetName="StepTitleInput" Property="Visibility" Value="Visible"/><Setter TargetName="StepEditButton" Property="Visibility" Value="Collapsed"/><Setter TargetName="StepSaveButton" Property="Visibility" Value="Visible"/><Setter TargetName="StepCancelButton" Property="Visibility" Value="Visible"/><Setter TargetName="StepMoreButton" Property="Visibility" Value="Collapsed"/></DataTrigger>
+<DataTrigger Binding="{Binding IsConfirmingDelete}" Value="True"><Setter TargetName="StepText" Property="Visibility" Value="Collapsed"/><Setter TargetName="StepTitleInput" Property="Visibility" Value="Collapsed"/><Setter TargetName="StepActions" Property="Visibility" Value="Collapsed"/><Setter TargetName="StepDeleteConfirmation" Property="Visibility" Value="Visible"/></DataTrigger>
+</DataTemplate.Triggers>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+ <Button x:Name="AddStepButton" Content="{StaticResource ChatNew}" ContentTemplate="{StaticResource ChatIcon}" Click="OnBeginAddStep" Tag="{Binding}" IsEnabled="{Binding CanAddStep}" Visibility="{Binding CanEditSteps, Converter={StaticResource Bool}}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="添加步骤" AutomationProperties.Name="添加步骤" HorizontalAlignment="Left" Margin="30,0,0,4"/>
+<StackPanel x:Name="AddStepEditor" Visibility="Collapsed" Margin="0,2,0,8">
+<TextBox x:Name="NewStepTitleInput" Text="{Binding NewStepDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MaxLength="200" TextWrapping="NoWrap" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" Padding="6,3" AutomationProperties.Name="新步骤标题"/>
+<WrapPanel Margin="0,6,0,0"><Button x:Name="SaveNewStepButton" Content="{StaticResource ChatCopied}" ContentTemplate="{StaticResource ChatIcon}" Click="OnSaveNewStep" Tag="{Binding}" IsEnabled="{Binding CanSaveNewStep}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="保存步骤" AutomationProperties.Name="保存步骤"/><Button x:Name="CancelNewStepButton" Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnCancelNewStep" Tag="{Binding}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="取消添加步骤" AutomationProperties.Name="取消添加步骤" Margin="6,0,0,0"/></WrapPanel>
+</StackPanel>
+<StackPanel x:Name="CompletionConfirmation" Visibility="Collapsed" Margin="0,2,0,8">
+<TextBlock Text="{Binding CompletionConfirmationText}" TextWrapping="Wrap"/>
+<WrapPanel Margin="0,6,0,0"><Button Content="仍然完成" Click="OnConfirmCompletion" Tag="{Binding}" Style="{StaticResource TodoConfirmationButtonStyle}" ToolTip="仍然完成任务" AutomationProperties.Name="仍然完成"/><Button Content="取消" Click="OnCancelCompletion" Tag="{Binding}" Style="{StaticResource TodoConfirmationButtonStyle}" ToolTip="取消完成任务" AutomationProperties.Name="取消完成" Margin="6,0,0,0"/></WrapPanel>
+</StackPanel>
+ <TextBlock x:Name="DescriptionText" Text="{Binding Item.Description}" TextWrapping="Wrap" Visibility="{Binding HasDescription, Converter={StaticResource Bool}}"/>
+<TextBlock Text="{Binding ExecutionStatus}" TextWrapping="Wrap" Margin="0,8" Foreground="{DynamicResource ShellMutedTextBrush}" Visibility="{Binding HasExecution, Converter={StaticResource Bool}}"/>
+ </StackPanel>
+<StackPanel x:Name="RowEditor" Visibility="Collapsed" Margin="8,10,0,0">
+<TextBlock Text="标题" Margin="0,0,0,4"/>
+<TextBox Tag="{Binding}" Text="{Binding DraftTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" TextWrapping="Wrap" Padding="8" PreviewTextInput="OnTextInput" AutomationProperties.Name="待办标题"/>
+<TextBlock Text="备注" Margin="0,10,0,4"/>
+<TextBox Tag="{Binding}" Text="{Binding DraftDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" VerticalScrollBarVisibility="Disabled" Padding="8" PreviewTextInput="OnTextInput" AutomationProperties.Name="待办备注"/>
+<WrapPanel Margin="0,12,0,0">
+<Button Content="{StaticResource ChatCopied}" ContentTemplate="{StaticResource ChatIcon}" Click="OnRowSave" Tag="{Binding}" IsEnabled="{Binding CanSaveDraft}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="保存编辑" AutomationProperties.Name="保存编辑"/>
+<Button Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnRowCancel" Tag="{Binding}" Style="{StaticResource TodoIconButtonStyle}" ToolTip="取消编辑" AutomationProperties.Name="取消编辑" Margin="8,0,0,0"/>
+</WrapPanel></StackPanel></StackPanel></Expander></Grid></Border>
+<DataTemplate.Triggers><DataTrigger Binding="{Binding IsEditing}" Value="True"><Setter TargetName="RowDetails" Property="Visibility" Value="Collapsed"/><Setter TargetName="RowEditor" Property="Visibility" Value="Visible"/></DataTrigger><DataTrigger Binding="{Binding IsAddingStep}" Value="True"><Setter TargetName="AddStepButton" Property="Visibility" Value="Collapsed"/><Setter TargetName="AddStepEditor" Property="Visibility" Value="Visible"/></DataTrigger><DataTrigger Binding="{Binding IsConfirmingCompletion}" Value="True"><Setter TargetName="CompletionConfirmation" Property="Visibility" Value="Visible"/></DataTrigger></DataTemplate.Triggers>
+</DataTemplate>
+</ResourceDictionary></UserControl.Resources>
+  <Grid Margin="24,18" MaxWidth="760" HorizontalAlignment="Stretch" ClipToBounds="True"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <Grid x:Name="TodoHeader" MinHeight="38" Margin="0,0,0,4" ClipToBounds="True">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock Text="待办" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource ShellMutedTextBrush}" VerticalAlignment="Center" Margin="14,0,8,0"/>
+    <Button x:Name="UndoButton" Grid.Column="2" Content="{StaticResource TodoUndoGeometry}" ContentTemplate="{StaticResource ChatIcon}" Click="OnUndo" Style="{StaticResource TodoIconButtonStyle}" ToolTip="撤销完成" AutomationProperties.Name="撤销完成" Visibility="Collapsed"/>
+   </Grid>
+   <ScrollViewer x:Name="TodoScrollViewer" Grid.Row="1" Margin="0,4,0,0" Padding="0,0,0,8" ClipToBounds="True" CanContentScroll="False" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+ <StackPanel><TextBlock x:Name="EmptyText" Text="还没有待办，可以直接新增，也可以从聊天中加入。" Foreground="{DynamicResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,18"/>
+ <ItemsControl x:Name="ActiveItems" ItemTemplate="{StaticResource TodoRow}" ItemContainerStyle="{StaticResource TodoRowItemContainerStyle}"/>
+ <Button x:Name="AddTaskButton" Content="{StaticResource ChatNew}" ContentTemplate="{StaticResource ChatIcon}" Click="OnBeginAdd" Style="{StaticResource TodoIconButtonStyle}" ToolTip="添加任务" AutomationProperties.Name="添加任务" HorizontalAlignment="Left" Margin="0,14,0,0"/>
+ <Border x:Name="QuickAddEditor" Visibility="Collapsed" Background="{DynamicResource ShellPanelBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,12,0,0">
+ <StackPanel><TextBlock x:Name="EditorHeading" Text="快速新增" FontWeight="SemiBold"/><TextBlock Text="标题" Margin="0,10,0,4"/><TextBox x:Name="TitleInput" MaxLength="500" Padding="8" TextWrapping="Wrap" TextChanged="OnTitleTextChanged" AutomationProperties.Name="待办标题"/>
+  <StackPanel x:Name="OptionalDescriptionPanel" Visibility="Collapsed"><TextBlock Text="备注" Margin="0,10,0,4"/><TextBox x:Name="DescriptionInput" MaxLength="4000" MinHeight="80" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Disabled" Padding="8" TextChanged="OnEditorTextChanged" AutomationProperties.Name="待办备注"/></StackPanel>
+ <WrapPanel Margin="0,12,0,0"><Button x:Name="SaveButton" Content="保存" Click="OnSave" IsEnabled="False" Style="{StaticResource SettingsPrimaryButtonStyle}" Padding="16,6"/><Button x:Name="RevealDescriptionButton" Content="添加备注" Click="OnRevealDescription" Padding="12,6" Margin="8,0,0,0"/><Button Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnCancel" Style="{StaticResource TodoIconButtonStyle}" ToolTip="取消新增" AutomationProperties.Name="取消" Margin="8,0,0,0"/></WrapPanel></StackPanel>
+ </Border>
+ <Expander x:Name="CompletedSection" Header="已完成" Margin="0,20,0,0" HorizontalContentAlignment="Stretch"><ItemsControl x:Name="CompletedItems" ItemTemplate="{StaticResource TodoRow}" ItemContainerStyle="{StaticResource TodoRowItemContainerStyle}"/></Expander>
+ </StackPanel></ScrollViewer>
+</Grid></UserControl>

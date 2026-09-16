@@ -11,7 +11,7 @@ public sealed record AgentReconciliationResult(string Result, string? SafeError 
 /// <summary>
 /// Applies an explicitly confirmed local outcome to a dispatch whose transport
 /// result was unknown. It never calls Relay or creates a new dispatch request.
-/// A max-sequence local event prevents a late remote replay from reopening the
+/// Only a confirmed terminal outcome uses a max-sequence local event to prevent a late remote replay from reopening the
 /// execution after the user has confirmed the observed state.
 /// </summary>
 public sealed class AgentReconciliationService
@@ -56,6 +56,16 @@ public sealed class AgentReconciliationService
             return Task.FromResult(new AgentReconciliationResult("already_applied"));
         }
 
+        if (status == AgentExecutionStatus.Active)
+        {
+            // Local observation must not consume the remote sequence space.
+            // The conditional write cannot overwrite a concurrently completed execution.
+            if (!_agents.TryResumeUnknown(execution.Id, _time.GetUtcNow()))
+                return Task.FromResult(new AgentReconciliationResult("already_applied"));
+            var current = _agents.GetExecution(execution.Id);
+            if (current is not null) _projector?.Synchronize(current);
+            return Task.FromResult(new AgentReconciliationResult("applied"));
+        }
         var eventType = status switch
         {
             AgentExecutionStatus.Active => AgentEventType.TaskResumed,

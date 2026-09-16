@@ -43,6 +43,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
                      "conversations", "chat_messages", "conversation_summaries",
                      "memory_candidates", "memories", "content_bindings",
                      "todo_items", "agent_executions", "agent_event_receipts",
+                     "todo_steps",
                      "agent_connections", "agent_project_targets", "work_archives", "work_archive_items",
                      "long_work_archives", "agent_archive_batches", "agent_archive_items", "agent_project_snapshots",
                  })
@@ -50,6 +51,27 @@ public sealed class RuntimeDatabaseTests : IDisposable
             Assert.Equal(1L, Scalar<long>(connection,
                 $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{table}'"));
         }
+    }
+
+    [Fact]
+    public void Migration_11_adds_empty_steps_without_rewriting_legacy_description()
+    {
+        var database = new RuntimeDatabase(_path);
+        new RuntimeDatabaseMigrator(database).Migrate();
+
+        using (var connection = database.Open())
+        {
+            Execute(connection, "INSERT INTO todo_items(todo_id, title, description, priority, due_at_utc, status, created_at_utc, updated_at_utc, completed_at_utc) VALUES('legacy', 'Legacy', '1. Keep this text\n2. Do not convert', 'normal', NULL, 'planned', '2026-09-13T00:00:00Z', '2026-09-13T00:00:00Z', NULL)");
+            Execute(connection, "DROP TABLE todo_steps");
+            Execute(connection, "DELETE FROM schema_migrations WHERE version=11");
+        }
+
+        new RuntimeDatabaseMigrator(database).Migrate();
+
+        using var verify = database.Open();
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+        Assert.Equal(0L, Scalar<long>(verify, "SELECT COUNT(*) FROM todo_steps"));
+        Assert.Equal("1. Keep this text\n2. Do not convert", Scalar<string>(verify, "SELECT description FROM todo_items WHERE todo_id='legacy'"));
     }
 
     [Fact]

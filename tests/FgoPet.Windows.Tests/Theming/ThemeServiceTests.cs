@@ -63,7 +63,7 @@ public sealed class ThemeServiceTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new MemorySettingsStore(AppSettings.Defaults);
+            var store = new MemorySettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
             var service = new ThemeService(
                 store,
                 resources,
@@ -106,7 +106,7 @@ public sealed class ThemeServiceTests
     }
 
     [Fact]
-    public void Initialize_uses_a_complete_modern_gray_fallback_when_the_initial_dictionary_cannot_load()
+    public void Initialize_uses_a_complete_light_fallback_when_the_initial_dictionary_cannot_load()
     {
         StaRun(() =>
         {
@@ -118,12 +118,19 @@ public sealed class ThemeServiceTests
 
             service.Initialize();
 
-            Assert.Equal(AppTheme.ModernGray, service.CurrentTheme);
+            Assert.Equal(AppTheme.FgoLight, service.CurrentTheme);
             var fallback = Assert.Single(resources.MergedDictionaries.Where(ThemeService.IsMarkedThemeDictionary));
             foreach (var key in RequiredStyleBrushKeys)
             {
                 Assert.IsAssignableFrom<Brush>(fallback[key]);
             }
+            AssertColor(fallback, "Semantic.AppColor", "#FFF7F6FB");
+            AssertColor(fallback, "Semantic.ContentColor", "#FFFFFFFF");
+            AssertColor(fallback, "Semantic.SubtleColor", "#FFEEE8FA");
+            AssertColor(fallback, "Semantic.PrimaryTextColor", "#FF252137");
+            AssertColor(fallback, "Semantic.SecondaryTextColor", "#FF6D687B");
+            AssertColor(fallback, "Semantic.PrimaryActionColor", "#FF7050B8");
+            AssertColor(fallback, "Semantic.OnPrimaryActionColor", "#FFFFFFFF");
             Assert.Contains("回退", service.StatusText, StringComparison.Ordinal);
         });
     }
@@ -154,6 +161,81 @@ public sealed class ThemeServiceTests
             {
                 Assert.IsAssignableFrom<Geometry>(icons[key]);
             }
+        });
+    }
+
+    [Theory]
+    [InlineData("FgoLight.xaml", "#FFF7F6FB", "#FFFFFFFF", "#FFEEE8FA", "#FF252137", "#FF6D687B", "#FF827A70", "#FF7050B8", "#FFFFFFFF")]
+    [InlineData("ModernGray.xaml", "#FF16131D", "#FF282332", "#FF3B3150", "#FFFAF8FF", "#FFCBC5D7", "#FF5A5069", "#FFC3A8FF", "#FF1A1324")]
+    public void Theme_palettes_resolve_approved_semantics_compatibility_mappings_and_contrast(
+        string fileName,
+        string app,
+        string content,
+        string subtle,
+        string primaryText,
+        string secondaryText,
+        string controlBorder,
+        string primaryAction,
+        string onPrimaryAction)
+    {
+        StaRun(() =>
+        {
+            var theme = LoadDictionary(fileName);
+
+            AssertColor(theme, "Semantic.AppColor", app);
+            AssertColor(theme, "Semantic.ContentColor", content);
+            AssertColor(theme, "Semantic.SubtleColor", subtle);
+            AssertColor(theme, "Semantic.PrimaryTextColor", primaryText);
+            AssertColor(theme, "Semantic.SecondaryTextColor", secondaryText);
+            AssertColor(theme, "Semantic.BorderControlColor", controlBorder);
+            AssertColor(theme, "Semantic.PrimaryActionColor", primaryAction);
+            AssertColor(theme, "Semantic.OnPrimaryActionColor", onPrimaryAction);
+
+            AssertCompatibilityColor(theme, "Semantic.AppColor", "WindowBackgroundColor", "ShellWindowColor");
+            AssertCompatibilityColor(theme, "Semantic.ContentColor", "SurfaceColor", "ShellRaisedColor");
+            AssertCompatibilityColor(theme, "Semantic.SubtleColor", "SurfaceRaisedColor", "SidebarSelectedColor", "ShellPanelColor");
+            AssertCompatibilityColor(theme, "Semantic.PrimaryTextColor", "TextColor", "SidebarSelectedTextColor", "ShellTextColor");
+            AssertCompatibilityColor(theme, "Semantic.SecondaryTextColor", "MutedTextColor", "SidebarForegroundColor", "ShellMutedColor");
+            AssertCompatibilityColor(theme, "Semantic.PrimaryActionColor", "AccentColor", "ShellAccentColor");
+            AssertCompatibilityColor(theme, "Semantic.OnPrimaryActionColor", "TextOnAccentColor");
+            AssertCompatibilityColor(theme, "Semantic.BorderControlColor", "BorderStrongColor", "ShellLineColor");
+
+            Assert.True(ContrastRatio(ColorOf(theme, "Semantic.PrimaryTextColor"), ColorOf(theme, "Semantic.AppColor")) >= 4.5);
+            Assert.True(ContrastRatio(ColorOf(theme, "Semantic.SecondaryTextColor"), ColorOf(theme, "Semantic.AppColor")) >= 4.5);
+            Assert.True(ContrastRatio(ColorOf(theme, "Semantic.PrimaryTextColor"), ColorOf(theme, "Semantic.ContentColor")) >= 4.5);
+            Assert.True(ContrastRatio(ColorOf(theme, "Semantic.SecondaryTextColor"), ColorOf(theme, "Semantic.ContentColor")) >= 4.5);
+            Assert.True(ContrastRatio(ColorOf(theme, "Semantic.OnPrimaryActionColor"), ColorOf(theme, "Semantic.PrimaryActionColor")) >= 4.5);
+        });
+    }
+
+    [Theory]
+    [InlineData("FgoLight.xaml", "#FFF7F6FB", "#FFFFFFFF", "#FF252137", "#FF6D687B", "#FF7050B8")]
+    [InlineData("ModernGray.xaml", "#FF16131D", "#FF282332", "#FFFAF8FF", "#FFCBC5D7", "#FFC3A8FF")]
+    public void Ui_foundation_and_shell_brushes_follow_the_loaded_theme_dictionary(
+        string fileName,
+        string app,
+        string content,
+        string primaryText,
+        string secondaryText,
+        string primaryAction)
+    {
+        StaRun(() =>
+        {
+            var host = new Border();
+            host.Resources.MergedDictionaries.Add(LoadComponentDictionary("UiFoundation/ThemeTokens.xaml"));
+            host.Resources.MergedDictionaries.Add(LoadDictionary(fileName));
+            host.Resources.MergedDictionaries.Add(LoadComponentDictionary("Ui/Shell/ShellTokens.xaml"));
+
+            Assert.Equal(app, ResolvedBrushColor(host, "Surface.App").ToString());
+            Assert.Equal(app, ResolvedBrushColor(host, "ShellWindowBackgroundBrush").ToString());
+            Assert.Equal(content, ResolvedBrushColor(host, "Surface.Content").ToString());
+            Assert.Equal(content, ResolvedBrushColor(host, "ShellRaisedBackgroundBrush").ToString());
+            Assert.Equal(primaryText, ResolvedBrushColor(host, "Text.Primary").ToString());
+            Assert.Equal(primaryText, ResolvedBrushColor(host, "ShellTextBrush").ToString());
+            Assert.Equal(secondaryText, ResolvedBrushColor(host, "Text.Secondary").ToString());
+            Assert.Equal(secondaryText, ResolvedBrushColor(host, "ShellMutedTextBrush").ToString());
+            Assert.Equal(primaryAction, ResolvedBrushColor(host, "Action.Primary").ToString());
+            Assert.Equal(primaryAction, ResolvedBrushColor(host, "ShellAccentBrush").ToString());
         });
     }
 
@@ -196,7 +278,7 @@ public sealed class ThemeServiceTests
             Assert.True(focusControl.ApplyTemplate());
             var focusBorder = Assert.IsType<Border>(VisualTreeHelper.GetChild(focusControl, 0));
 
-            Assert.Equal("#FF9AD5F4", ((SolidColorBrush)focusBorder.BorderBrush).Color.ToString());
+            Assert.Equal("#FFD5C2FF", ((SolidColorBrush)focusBorder.BorderBrush).Color.ToString());
             Assert.Equal(new Thickness(2), focusBorder.BorderThickness);
         });
     }
@@ -255,10 +337,26 @@ public sealed class ThemeServiceTests
         "SidebarHoverBrush",
         "SidebarSelectedBrush",
         "SidebarSelectedTextBrush",
+        "Surface.App",
+        "Surface.Content",
+        "Surface.Subtle",
+        "Surface.Hover",
+        "Surface.Pressed",
         "SurfaceBrush",
         "SurfaceRaisedBrush",
+        "Text.Primary",
+        "Text.Secondary",
         "TextBrush",
         "TextOnAccentBrush",
+        "Action.Primary",
+        "Action.OnPrimary",
+        "Accent.Relation",
+        "State.Success",
+        "State.Pending",
+        "State.Danger",
+        "Border.Decorative",
+        "Border.Control",
+        "Focus.Ring",
         "WarningBrush",
         "WindowBackgroundBrush",
     ];
@@ -295,11 +393,59 @@ public sealed class ThemeServiceTests
         "IconPackageInfoGeometry",
     ];
 
-    private static ResourceDictionary LoadDictionary(string fileName) =>
-        new()
+    private static ResourceDictionary LoadDictionary(string fileName)
+    {
+        return LoadComponentDictionary($"Themes/{fileName}");
+    }
+
+    private static ResourceDictionary LoadComponentDictionary(string componentPath)
+    {
+        Application.ResourceAssembly ??= typeof(FgoPet.App.App).Assembly;
+        return new ResourceDictionary
         {
-            Source = new Uri($"/FgoPet.App;component/Themes/{fileName}", UriKind.Relative),
+            Source = new Uri($"/FgoPet.App;component/{componentPath}", UriKind.Relative),
         };
+    }
+
+    private static Color ResolvedBrushColor(Border host, string resourceKey)
+    {
+        host.SetResourceReference(Border.BackgroundProperty, resourceKey);
+        return Assert.IsType<SolidColorBrush>(host.Background).Color;
+    }
+
+    private static void AssertColor(ResourceDictionary dictionary, string key, string expected) =>
+        Assert.Equal(expected, ColorOf(dictionary, key).ToString());
+
+    private static void AssertCompatibilityColor(ResourceDictionary dictionary, string semanticKey, params string[] compatibilityKeys)
+    {
+        var semantic = ColorOf(dictionary, semanticKey);
+        foreach (var key in compatibilityKeys)
+        {
+            Assert.Equal(semantic, ColorOf(dictionary, key));
+        }
+    }
+
+    private static Color ColorOf(ResourceDictionary dictionary, string key) =>
+        Assert.IsType<Color>(dictionary[key]);
+
+    private static double ContrastRatio(Color foreground, Color background)
+    {
+        static double Luminance(Color color)
+        {
+            static double Linear(byte channel)
+            {
+                var value = channel / 255d;
+                return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+            }
+
+            return (0.2126 * Linear(color.R)) + (0.7152 * Linear(color.G)) + (0.0722 * Linear(color.B));
+        }
+
+        var foregroundLuminance = Luminance(foreground);
+        var backgroundLuminance = Luminance(background);
+        return (Math.Max(foregroundLuminance, backgroundLuminance) + 0.05) /
+               (Math.Min(foregroundLuminance, backgroundLuminance) + 0.05);
+    }
 
     private static Setter FindSetter(Style style, DependencyProperty property) =>
         Assert.Single(style.Setters.OfType<Setter>().Where(setter => setter.Property == property));
