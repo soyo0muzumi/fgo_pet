@@ -94,6 +94,7 @@ public sealed class ConversationOrchestrator
     private readonly ConversationSummaryService? _summaries;
     private readonly TodoProposalService? _todoProposals;
     private readonly ILogger<ConversationOrchestrator>? _logger;
+    private readonly TodoContinuationState? _todoDrafts;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
@@ -119,6 +120,7 @@ public sealed class ConversationOrchestrator
         _settings = settings;
         _summaries = summaries;
         _todoProposals = todoProposals;
+        _todoDrafts = todoProposals is null ? null : new TodoContinuationState(todoProposals);
         _logger = logger;
     }
 
@@ -182,14 +184,50 @@ public sealed class ConversationOrchestrator
                 userMessage.Text,
                 ServantId: servantId));
 
+            if (_todoDrafts?.Get(conversationId, servantId) is { } pending
+                && ClassifyTodoIntent(userText) is var intent
+                && intent != TodoIntent.Modification)
+            {
+                if (intent == TodoIntent.Cancel)
+                {
+                    _todoDrafts.Cancel(conversationId, servantId, pending.DraftId);
+                    return PersistLocalTodoReply(conversationId, servantId, contentContext, "好的，这份待办草稿已取消，没有写入待办。", TodoToolCallOutcome.Cancelled);
+                }
+
+                if (intent == TodoIntent.Confirm)
+                {
+                    var committed = _todoDrafts.Confirm(
+                        conversationId,
+                        servantId,
+                        pending.DraftId,
+                        pending.Version,
+                        $"todo-confirm:{conversationId}:{pending.DraftId}:{pending.Version}");
+                    return committed.Kind switch
+                    {
+                        TodoDraftResultKind.Committed or TodoDraftResultKind.AlreadyCommitted when committed.Todo is not null =>
+                            PersistLocalTodoReply(conversationId, servantId, contentContext,
+                                $"已创建待办“{committed.Todo.Title}”，包含 {committed.Todo.Steps.Count} 个步骤。", TodoToolCallOutcome.Confirmed, committed.Todo.Id),
+                        TodoDraftResultKind.Unknown => PersistLocalTodoReply(conversationId, servantId, contentContext,
+                            "待办写入结果暂时无法确认，草稿已保留，请稍后重试。", TodoToolCallOutcome.CommitUnknown),
+                        _ => PersistLocalTodoReply(conversationId, servantId, contentContext,
+                            "这份待办草稿已发生变化，请重新确认当前内容。", TodoToolCallOutcome.ConfirmationUnknown),
+                    };
+                }
+            }
+
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
+            var runtimeState = _todoProposals?.BuildRuntimeState(userText) ?? string.Empty;
+            if (_todoDrafts?.Get(conversationId, servantId) is { } activeDraft)
+            {
+                runtimeState = string.IsNullOrWhiteSpace(runtimeState) ? DescribePendingDraft(activeDraft) : runtimeState + "\n" + DescribePendingDraft(activeDraft);
+            }
             var prompt = _composer.Compose(new PromptContext(
                 binding.Context,
                 persona,
                 binding.Knowledge,
                 IsMemoryEnabled() ? _memories.ListEnabledMemories(servantId) : Array.Empty<StoredMemory>(),
-                _todoProposals?.BuildRuntimeState(userText) ?? string.Empty,
+                runtimeState,
                 existing.Select(message => new PromptMessage(message.Role, message.Text)).ToArray(),
                 userText,
                 requestContext));
@@ -206,6 +244,7 @@ public sealed class ConversationOrchestrator
             string? todoDetail = null;
             IReadOnlyList<TodoProposal>? todoProposals = null;
             string? structuredPayload = null;
+            PendingTodoDraft? pendingDraft = null;
 
             if (aggregatedCall is not null)
             {
@@ -214,6 +253,11 @@ public sealed class ConversationOrchestrator
                 {
                     finishOutcome = TodoToolCallOutcome.InvalidToolCall;
                     todoDetail = "模型同时调用了多个工具调用。";
+                }
+                else if (string.IsNullOrWhiteSpace(aggregatedCall.CallId))
+                {
+                    finishOutcome = TodoToolCallOutcome.InvalidToolCall;
+                    todoDetail = "工具调用缺少 call_id。";
                 }
                 else if (!string.Equals(aggregatedCall.Name, TodoToolContracts.SubmitTodoProposalsToolName, StringComparison.Ordinal))
                 {
@@ -225,11 +269,12 @@ public sealed class ConversationOrchestrator
                     var parsed = _todoProposals.TryParseToolCall(arguments);
                     if (parsed.Success)
                     {
-                        todoProposals = parsed.Proposals;
+                        todoProposals = parsed.Proposals!;
                         finishOutcome = TodoToolCallOutcome.ProposalsReady;
                         // Tool arguments already use the {todos:[…]} envelope shape the
                         // view model re-parses, so pass them through unchanged.
                         structuredPayload = aggregatedCall.Arguments;
+                        pendingDraft = _todoDrafts?.Replace(conversationId, servantId, todoProposals);
                     }
                     else
                     {
@@ -269,6 +314,7 @@ public sealed class ConversationOrchestrator
                         {
                             finishOutcome = TodoToolCallOutcome.TextFallback;
                             structuredPayload = responseText.ToString();
+                            pendingDraft = _todoDrafts?.Replace(conversationId, servantId, todoProposals);
                         }
                     }
                     catch (FormatException)
@@ -280,6 +326,10 @@ public sealed class ConversationOrchestrator
             }
 
             var rawText = responseText.ToString();
+            if (sawToolCalls && todoProposals is { Count: > 0 } && string.IsNullOrWhiteSpace(rawText))
+            {
+                rawText = BuildPendingDraftReply(todoProposals);
+            }
             // Tool-call turns carry the reply in tool arguments, not in message
             // content; an empty text is legal there and must skip text validation.
             var output = sawToolCalls
@@ -342,7 +392,9 @@ public sealed class ConversationOrchestrator
                 StructuredResponse: todoProposals is { Count: > 0 } ? structuredPayload : null,
                 TodoOutcome: finishOutcome,
                 TodoDetail: todoDetail,
-                Expression: requestCancellation.IsCancellationRequested ? null : output.Expression));
+                Expression: requestCancellation.IsCancellationRequested ? null : output.Expression,
+                TodoDraftId: pendingDraft?.DraftId,
+                TodoDraftVersion: pendingDraft?.Version));
             Publish(new ConversationUpdate(
                 ConversationUpdateType.RequestStage,
                 conversationId,
@@ -602,6 +654,80 @@ public sealed class ConversationOrchestrator
         _ => "工具调用无法解析。",
     };
 
+    private static string BuildPendingDraftReply(IReadOnlyList<TodoProposal> proposals)
+    {
+        var lines = proposals.Select((proposal, index) =>
+        {
+            var steps = proposal.StepTitles.Count == 0
+                ? "无步骤"
+                : string.Join("、", proposal.StepTitles.Select((title, stepIndex) => $"{stepIndex + 1}. {title}"));
+            return $"{index + 1}. {proposal.Title}（步骤：{steps}）";
+        });
+        return "我整理了以下待办草稿：\n"
+            + string.Join("\n", lines)
+            + "\n尚未创建；你可以继续修改，确认后才会加入待办。";
+    }
+
+    private static string DescribePendingDraft(PendingTodoDraft draft)
+    {
+        var proposal = draft.Proposals[0];
+        var steps = proposal.StepTitles.Count == 0 ? "无步骤" : string.Join("；", proposal.StepTitles);
+        return $"当前待确认 Todo 草稿（第 {draft.Version} 版，尚未创建）：标题={proposal.Title}；步骤={steps}。用户可以修改或明确确认。";
+    }
+
+    private enum TodoIntent { Modification, Confirm, Cancel }
+
+    private static TodoIntent ClassifyTodoIntent(string text)
+    {
+        var normalized = text.Trim().TrimEnd('。', '.', '！', '!', '？', '?', '，', ',');
+        if (normalized.Length <= 12 && (normalized.Contains("取消", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("不用", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("算了", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("不创建", StringComparison.OrdinalIgnoreCase)))
+        {
+            return TodoIntent.Cancel;
+        }
+
+        if (normalized.Length <= 16 && (normalized.Equals("确认", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("确定", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("确认创建", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("就这样", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("加入待办", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("好的", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("可以", StringComparison.OrdinalIgnoreCase)))
+        {
+            return TodoIntent.Confirm;
+        }
+
+        return TodoIntent.Modification;
+    }
+
+    private ConversationSendResult PersistLocalTodoReply(
+        string conversationId,
+        string servantId,
+        ContentContextKey? context,
+        string reply,
+        TodoToolCallOutcome outcome,
+        string? createdTodoId = null)
+    {
+        var messageId = "message-" + Guid.NewGuid().ToString("N");
+        _conversations.Append(new ChatMessage(
+            messageId,
+            conversationId,
+            servantId,
+            ChatMessageRole.Assistant,
+            reply,
+            ChatMessageStatus.Completed,
+            _time.GetUtcNow(),
+            context ?? throw new InvalidOperationException("Conversation context is unavailable."),
+            _conversations.LoadMessages(conversationId, servantId).Count + 1));
+        Publish(new ConversationUpdate(ConversationUpdateType.AssistantDelta, conversationId, messageId, reply, ServantId: servantId));
+        Publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, messageId, reply,
+            ServantId: servantId, TodoOutcome: outcome, CreatedTodoId: createdTodoId));
+        Publish(new ConversationUpdate(ConversationUpdateType.RequestStage, conversationId, RequestStage: ConversationRequestStage.Completed, ServantId: servantId));
+        return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, messageId);
+    }
+
     public void StartNewConversation(string servantId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
@@ -609,6 +735,7 @@ public sealed class ConversationOrchestrator
         {
             _conversationIds.Remove(servantId);
             _conversations.DeleteState(ActiveConversationStateKey(servantId));
+            _todoDrafts?.ClearServant(servantId);
         }
     }
 

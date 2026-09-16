@@ -74,6 +74,26 @@ public sealed class RolePackageDetailViewModelTests
     }
 
     [Fact]
+    public async Task Appearance_options_expose_id_and_version_without_replacing_selection_objects()
+    {
+        var fixture = CreateFixture(AppSettings.Defaults);
+
+        await fixture.Detail.LoadAsync();
+
+        Assert.Collection(
+            fixture.Detail.Appearances,
+            appearance => Assert.Equal("casual (v1.1.0)", appearance.Display),
+            appearance => Assert.Equal("combat (v1.1.0)", appearance.Display));
+        Assert.Same(fixture.Detail.Appearances[0], fixture.Detail.SelectedAppearance);
+
+        fixture.Detail.SelectedAppearance = fixture.Detail.Appearances[1];
+
+        Assert.Same(fixture.Detail.Appearances[1], fixture.Detail.SelectedAppearance);
+        Assert.Equal("combat", fixture.Detail.SelectedAppearance.AppearanceId);
+        Assert.Equal("1.1.0", fixture.Detail.SelectedAppearance.PackageVersion);
+    }
+
+    [Fact]
     public async Task Address_is_saved_only_under_the_stable_servant_id()
     {
         var fixture = CreateFixture(AppSettings.Defaults with

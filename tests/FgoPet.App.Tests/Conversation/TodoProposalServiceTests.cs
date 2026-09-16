@@ -24,6 +24,25 @@ public sealed class TodoProposalServiceTests
     }
 
     [Fact]
+    public void Parses_bounded_step_titles_without_model_control_fields()
+    {
+        var service = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+
+        var proposal = Assert.Single(service.Parse("""{"todos":[{"title":"Ship","steps":[{"title":"准备"},{"title":"检查"}]}]}"""));
+
+        Assert.Equal(["准备", "检查"], proposal.StepTitles);
+    }
+
+    [Fact]
+    public void Rejects_step_ids_order_completion_and_non_array_steps()
+    {
+        var service = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+
+        Assert.Throws<FormatException>(() => service.Parse("""{"todos":[{"title":"Ship","steps":[{"title":"准备","id":"model-id"}]}]}"""));
+        Assert.Throws<FormatException>(() => service.Parse("""{"todos":[{"title":"Ship","steps":{}}]}"""));
+    }
+
+    [Fact]
     public void Rejects_execution_and_workspace_fields_from_model_output()
     {
         var service = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));

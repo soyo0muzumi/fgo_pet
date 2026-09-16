@@ -32,6 +32,8 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
     public DialogueMessageActionsViewModel Actions { get; }
     public ChatMessageRole Role { get; }
     public bool IsAssistant => Role == ChatMessageRole.Assistant;
+    /// <summary>Whether the turn has user-visible answer text (whitespace is not content).</summary>
+    public bool HasVisibleText => !string.IsNullOrWhiteSpace(Text);
     public bool CanReadAloud => IsAssistant && !IsStreaming && !string.IsNullOrWhiteSpace(Text);
 
     [ObservableProperty]
@@ -62,7 +64,20 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
     [ObservableProperty]
     private string _text;
 
-    partial void OnTextChanged(string value) => OnPropertyChanged(nameof(CanReadAloud));
+    /// <summary>Persisted Todo identity created by this live assistant reply.</summary>
+    [ObservableProperty]
+    private string? _createdTodoId;
+
+    /// <summary>Only a confirmed live Todo with a real identity can expose navigation.</summary>
+    public bool CanViewTodo => IsAssistant && !string.IsNullOrWhiteSpace(CreatedTodoId);
+
+    partial void OnCreatedTodoIdChanged(string? value) => OnPropertyChanged(nameof(CanViewTodo));
+
+    partial void OnTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanReadAloud));
+        OnPropertyChanged(nameof(HasVisibleText));
+    }
 
     [ObservableProperty]
     private bool _isStreaming;
@@ -87,7 +102,7 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
 
     /// <summary>Well collapsed after the first content delta; user can re-expand.</summary>
     [ObservableProperty]
-    private bool _isReasoningExpanded = true;
+    private bool _isReasoningExpanded;
 
     public void Append(string text)
     {

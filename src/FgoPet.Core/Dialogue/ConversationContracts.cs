@@ -209,6 +209,11 @@ public enum TodoToolCallOutcome
     InvalidToolCall,
     NoProposal,
     TextFallback,
+    PendingDraftReplaced,
+    ConfirmationUnknown,
+    Cancelled,
+    Confirmed,
+    CommitUnknown,
 }
 
 public sealed record ConversationUpdate(
@@ -225,7 +230,10 @@ public sealed record ConversationUpdate(
     ConversationRequestStage? RequestStage = null,
     int? HttpStatusCode = null,
     string? ProviderErrorCode = null,
-    FgoPet.Core.Portraits.ExpressionSemantic? Expression = null);
+    FgoPet.Core.Portraits.ExpressionSemantic? Expression = null,
+    string? TodoDraftId = null,
+    int? TodoDraftVersion = null,
+    string? CreatedTodoId = null);
 
 public sealed record ChatRequest
 {

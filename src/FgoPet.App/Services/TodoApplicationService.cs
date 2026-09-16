@@ -18,10 +18,13 @@ public sealed class TodoApplicationService
         _agents = agents;
     }
 
-    public TodoItem Create(string title, string? description, TodoPriority priority, DateTimeOffset? dueAt)
+    public TodoItem Create(string title, string? description, TodoPriority priority, DateTimeOffset? dueAt,
+        IReadOnlyList<string>? stepTitles = null)
     {
         var now = _time.GetUtcNow();
-        var todo = new TodoItem(Guid.NewGuid().ToString("N"), title, description, priority, dueAt, now, now);
+        var steps = stepTitles?.Select((title, index) =>
+            new TodoStep($"step-{Guid.NewGuid():N}", title, index)).ToArray();
+        var todo = new TodoItem(Guid.NewGuid().ToString("N"), title, description, priority, dueAt, now, now, steps: steps);
         Persist(todo);
         return todo;
     }
@@ -38,18 +41,46 @@ public sealed class TodoApplicationService
     public bool IsProtected(TodoItem todo) => todo.Status == TodoStatus.Active
         || _agents?.GetLatestExecutionForTodo(todo.Id) is { IsTerminal: false };
 
-    public TodoItem Update(string id, string title, string? description)
+    public TodoItem Update(string id, string title, string? description, IReadOnlyList<TodoStep>? steps = null)
     {
         var current = RequireEditable(id);
+        EnsureContentEditable(current);
         var updated = new TodoItem(current.Id, title, description, current.Priority, current.DueAt,
-            current.CreatedAt, _time.GetUtcNow(), current.Status, current.CompletedAt);
+            current.CreatedAt, _time.GetUtcNow(), current.Status, current.CompletedAt, steps ?? current.Steps);
         ApplyLocal(current, updated);
         return updated;
     }
 
-    public TodoItem Complete(string id)
+    public TodoItem UpdateSteps(string id, IReadOnlyList<TodoStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+        var current = RequireEditable(id);
+        return UpdateSteps(current, steps);
+    }
+
+    public TodoItem UpdateSteps(TodoItem expected, IReadOnlyList<TodoStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(steps);
+        var current = RequireEditable(expected.Id);
+        EnsureContentEditable(current);
+        if (!TodoItemValueComparer.Equals(current, expected))
+            throw new InvalidOperationException("任务已变化，请刷新后核对；步骤草稿已保留。");
+
+        var updated = current.WithSteps(steps) with { UpdatedAt = _time.GetUtcNow() };
+        ApplyLocal(current, updated);
+        return updated;
+    }
+
+    public TodoItem Complete(string id, bool confirmIncompleteSteps = false)
     {
         var current = RequireEditable(id);
+        var remaining = current.Steps.Count(step => !step.IsCompleted);
+        if (remaining > 0 && !confirmIncompleteSteps)
+        {
+            throw new InvalidOperationException($"Completing this Todo requires confirmation with {remaining} incomplete steps.");
+        }
+
         var completed = current.Complete(_time.GetUtcNow());
         ApplyLocal(current, completed);
         return completed;
@@ -58,10 +89,26 @@ public sealed class TodoApplicationService
     public void UndoCompletion(TodoItem completed)
     {
         var current = RequireEditable(completed.Id);
-        if (current != completed || current.Status != TodoStatus.Completed)
+        if (!TodoItemValueComparer.Equals(current, completed) || current.Status != TodoStatus.Completed)
             throw new InvalidOperationException("任务已发生变化，不能撤销这次完成。");
         // Only the exact local completion snapshot can be undone.
         ApplyLocal(current, current with { Status = TodoStatus.Planned, CompletedAt = null, UpdatedAt = _time.GetUtcNow() });
+    }
+
+    public TodoItem Reopen(string id)
+    {
+        var current = RequireEditable(id);
+        if (current.Status != TodoStatus.Completed)
+            throw new InvalidOperationException("只有已完成的任务可以恢复。");
+
+        var reopened = current with
+        {
+            Status = TodoStatus.Planned,
+            CompletedAt = null,
+            UpdatedAt = _time.GetUtcNow(),
+        };
+        ApplyLocal(current, reopened);
+        return reopened;
     }
 
     public void Delete(string id)
@@ -73,10 +120,15 @@ public sealed class TodoApplicationService
     {
         var todo = _repository.Get(id) ?? throw new KeyNotFoundException("待办已不存在。");
         if (IsProtected(todo))
-            throw new InvalidOperationException("任务仍有关联的 Agent 执行，请先在兼容记录中核对结果。");
+            throw new InvalidOperationException("任务仍有关联的 Agent 执行，请先核对结果。");
         return todo;
     }
 
+    private static void EnsureContentEditable(TodoItem todo)
+    {
+        if (todo.Status == TodoStatus.Completed)
+            throw new InvalidOperationException("已完成任务需先恢复后编辑。");
+    }
     private void ApplyLocal(TodoItem expected, TodoItem? replacement)
     {
         if (!_repository.TryUpdateLocal(expected, replacement))

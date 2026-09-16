@@ -182,6 +182,76 @@ public sealed class DialogueWindowIntegrationTests
     }
 
     [Fact]
+    public void Confirmed_assistant_turn_exposes_only_a_small_view_todo_action()
+    {
+        StaRun(() =>
+        {
+            var viewModel = CreateViewModel();
+            var repository = new FeedbackTodoRepository();
+            var created = new FgoPet.Core.Todo.TodoItem(
+                "todo-confirmed", "确认后的待办", null,
+                FgoPet.Core.Todo.TodoPriority.Normal, null,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            repository.Save(created);
+            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
+            var turn = new ConversationTurnViewModel("assistant-confirmed", ChatMessageRole.Assistant, "已创建待办“确认后的待办”。");
+            turn.CreatedTodoId = created.Id;
+            viewModel.Conversation.Turns.Add(turn);
+            var window = new DialogueWindow(viewModel, todoService: service);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var viewButton = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
+                    button.Tag is ConversationTurnViewModel
+                    && System.Windows.Automation.AutomationProperties.GetName(button) == "查看待办"));
+                Assert.Equal(Visibility.Visible, viewButton.Visibility);
+                Assert.Equal("查看待办", viewButton.ToolTip);
+
+                viewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+                Assert.Equal(Visibility.Visible, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Copying_an_assistant_reply_keeps_the_chat_window_alive()
+    {
+        StaRun(() =>
+        {
+            var viewModel = CreateViewModel();
+            var turn = new ConversationTurnViewModel("assistant-copy", ChatMessageRole.Assistant, "可复制的回复");
+            viewModel.Conversation.Turns.Add(turn);
+            var window = new DialogueWindow(viewModel);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var copy = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
+                    button.Tag is ConversationTurnViewModel tagged
+                    && ReferenceEquals(tagged, turn)
+                    && System.Windows.Automation.AutomationProperties.GetName(button) == "复制"));
+
+                copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.True(window.IsVisible);
+                Assert.Equal("已复制", System.Windows.Automation.AutomationProperties.GetName(copy));
+                Assert.Equal("已复制", copy.ToolTip);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
     public void Empty_chat_keeps_character_art_in_the_header_and_exposes_only_focus_and_todo_shortcuts()
     {
         StaRun(() =>
@@ -428,6 +498,28 @@ public sealed class DialogueWindowIntegrationTests
     }
 
     [Fact]
+    public void Empty_assistant_turn_does_not_render_a_bubble_or_message_actions()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var window = new DialogueWindow(vm);
+            try
+            {
+                vm.Conversation.Turns.Add(new ConversationTurnViewModel("tool", ChatMessageRole.Assistant, string.Empty));
+                window.Show();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                var body = FindVisualChildren<Border>(window).Single(border => border.Name == "MessageBody");
+                var actions = FindVisualChildren<StackPanel>(window).Single(panel => panel.Name == "MessageActions");
+                Assert.False(body.IsVisible);
+                Assert.False(actions.IsVisible);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
     public void Settings_request_is_forwarded_without_replacing_chat_content()
     {
         StaRun(() =>
@@ -589,6 +681,90 @@ public sealed class DialogueWindowIntegrationTests
         });
     }
 
+    [Fact]
+    public void Todo_proposal_card_shows_summary_until_editor_is_expanded()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var repository = new FeedbackTodoRepository();
+            var todoService = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
+            var proposal = new FgoPet.App.ViewModels.TodoProposalViewModel(
+                new TodoProposal("整理学习计划", "先列出目标，再安排复习顺序。"),
+                new TodoProposalService(todoService));
+            vm.Conversation.TodoProposals.Add(proposal);
+            var window = new DialogueWindow(vm, todoService: todoService);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var card = Assert.Single(FindVisualChildren<FgoPet.App.Views.TodoProposalCard>(window));
+                var editor = Assert.Single(FindVisualChildren<Expander>(card));
+                Assert.False(editor.IsExpanded);
+                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "先列出目标，再安排复习顺序。");
+                Assert.All(FindVisualChildren<TextBox>(card), text => Assert.False(text.IsVisible));
+                Assert.Contains(FindVisualChildren<Button>(card), button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "加入待办");
+                Assert.Contains(FindVisualChildren<Button>(card), button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "忽略建议");
+
+                editor.IsExpanded = true;
+                window.UpdateLayout();
+                Assert.True(editor.IsExpanded);
+                Assert.Equal(2, FindVisualChildren<TextBox>(card).Count(text => text.IsVisible));
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void Confirmed_todo_proposal_shows_id_safe_success_and_view_entry()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var repository = new FeedbackTodoRepository();
+            var todoService = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
+            var proposal = new FgoPet.App.ViewModels.TodoProposalViewModel(
+                new TodoProposal("查看入口目标", "保留这条备注。"),
+                new TodoProposalService(todoService));
+            vm.Conversation.TodoProposals.Add(proposal);
+            var window = new DialogueWindow(vm, todoService: todoService);
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var card = Assert.Single(FindVisualChildren<FgoPet.App.Views.TodoProposalCard>(window));
+                var add = FindVisualChildren<Button>(card).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "加入待办");
+                add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+
+                var createdId = Assert.IsType<string>(proposal.CreatedTodoId);
+                Assert.True(proposal.IsAdded);
+                Assert.Single(repository.List());
+                Assert.Equal(createdId, repository.List().Single().Id);
+                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "已加入：");
+                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "查看入口目标");
+
+                var view = FindVisualChildren<Button>(card).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "查看待办");
+                view.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(Visibility.Visible, ((ContentControl)window.FindName("TasksPage")!).Visibility);
+                var workspace = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(((ContentControl)window.FindName("TasksPage")!).Content);
+                Assert.Single(((ItemsControl)workspace.FindName("ActiveItems")!).Items);
+            }
+            finally
+            {
+                window.Dispatcher.InvokeShutdown();
+            }
+        });
+    }
+
     [Theory]
     [InlineData("FgoLight.xaml")]
     [InlineData("ModernGray.xaml")]
@@ -633,6 +809,46 @@ public sealed class DialogueWindowIntegrationTests
                 ((Button)window.FindName("ChatTabButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal("保留我的聊天草稿", vm.Conversation.InputText);
                 Assert.Equal(Visibility.Visible, ((Grid)window.FindName("ChatBody")).Visibility);
+            }
+            finally { window.Hide(); }
+        });
+    }
+
+    [Fact]
+    public void Reentering_todo_tab_regroups_completed_rows_without_restarting_the_window()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            var repository = new FeedbackTodoRepository();
+            repository.Save(new FgoPet.Core.Todo.TodoItem(
+                "todo-reenter", "重新进入后应归档", null,
+                FgoPet.Core.Todo.TodoPriority.Normal, null,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
+            var window = new DialogueWindow(vm, todoService: service);
+            try
+            {
+                window.Show();
+                ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+                var view = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(
+                    ((ContentControl)window.FindName("TasksPage")!).Content);
+                var active = Assert.IsType<ItemsControl>(view.FindName("ActiveItems"));
+                Assert.Single(active.Items);
+
+                var checkbox = FindVisualChildren<CheckBox>(active).Single();
+                checkbox.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+                window.UpdateLayout();
+                Assert.Single(active.Items);
+                Assert.Empty(Assert.IsType<ItemsControl>(view.FindName("CompletedItems")).Items);
+
+                ((Button)window.FindName("ChatTabButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+
+                Assert.Empty(active.Items);
+                Assert.Single(Assert.IsType<ItemsControl>(view.FindName("CompletedItems")).Items);
             }
             finally { window.Hide(); }
         });

@@ -254,6 +254,70 @@ public sealed class ConversationOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Pending_draft_reply_lists_every_proposal_and_its_step_titles_without_internal_details()
+    {
+        var provider = new FakeProvider(
+        [
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, id: "call-1", name: "submit_todo_proposals")),
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, argumentsDelta: "{\"todos\":[{\"title\":\"准备发布\",\"steps\":[{\"title\":\"整理变更\"},{\"title\":\"运行检查\"}]},{\"title\":\"安排复盘\",\"steps\":[{\"title\":\"收集反馈\"}]}]}")),
+            new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "tool_calls"),
+        ]);
+        var repository = new RecordingTodoRepository();
+        var todoService = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+        var orchestrator = CreateOrchestrator(provider, todoService);
+        var updates = new List<ConversationUpdate>();
+        orchestrator.Updated += updates.Add;
+
+        var result = await orchestrator.SendAsync("800100", "请安排发布和复盘", CancellationToken.None);
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        var reply = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantDelta));
+        Assert.Contains("准备发布", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("整理变更", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("运行检查", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("安排复盘", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("收集反馈", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("尚未创建", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("修改", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Contains("确认", reply.TextDelta, StringComparison.Ordinal);
+        Assert.DoesNotContain("call-1", reply.TextDelta, StringComparison.Ordinal);
+        Assert.DoesNotContain("schema", reply.TextDelta, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("submit_todo_proposals", reply.TextDelta, StringComparison.Ordinal);
+        Assert.Empty(repository.Items);
+    }
+
+    [Fact]
+    public async Task Confirmed_todo_id_is_attached_to_the_corresponding_assistant_turn()
+    {
+        var provider = new FakeProvider(
+        [
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, id: "call-1", name: "submit_todo_proposals")),
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, argumentsDelta: "{\"todos\":[{\"title\":\"关联入口测试\"}]}")),
+            new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "tool_calls"),
+        ]);
+        var repository = new RecordingTodoRepository();
+        var todoService = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+        var viewModel = new ConversationViewModel(CreateOrchestrator(provider, todoService), new FakeSettings());
+        viewModel.SetActiveServant("800100");
+        viewModel.InputText = "请安排入口测试";
+
+        await viewModel.SendCommand.ExecuteAsync(null);
+
+        var draftReply = Assert.Single(viewModel.Turns.Where(turn => turn.IsAssistant));
+        Assert.False(draftReply.CanViewTodo);
+
+        viewModel.InputText = "确认";
+        await viewModel.SendCommand.ExecuteAsync(null);
+
+        var replies = viewModel.Turns.Where(turn => turn.IsAssistant).ToArray();
+        var confirmedReply = Assert.Single(replies, turn => turn.Text.Contains("已创建待办", StringComparison.Ordinal));
+        var created = Assert.Single(repository.Items);
+        Assert.True(confirmedReply.CanViewTodo);
+        Assert.Equal(created.Id, confirmedReply.CreatedTodoId);
+        Assert.DoesNotContain(replies, turn => !ReferenceEquals(turn, confirmedReply) && turn.CanViewTodo);
+    }
+
+    [Fact]
     public async Task Invalid_tool_arguments_surface_a_typed_error()
     {
         var provider = new FakeProvider(
@@ -440,9 +504,47 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
         var reasoningTurn = Assert.Single(viewModel.Turns, turn => turn.ReasoningText.Length > 0);
         Assert.Equal("工具调用前的思考", reasoningTurn.ReasoningText);
-        Assert.Equal(string.Empty, reasoningTurn.Text);
+        Assert.Contains("尚未创建", reasoningTurn.Text, StringComparison.Ordinal);
         Assert.False(viewModel.IsThinking);
         Assert.Equal(string.Empty, viewModel.ThinkingTimerText);
+    }
+
+    [Fact]
+    public void Empty_turns_have_no_visible_text_and_reasoning_is_collapsed_by_default()
+    {
+        var turn = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, string.Empty);
+
+        Assert.False(turn.HasVisibleText);
+        Assert.False(turn.IsReasoningExpanded);
+
+        turn.AppendReasoning("只含思考");
+        Assert.True(turn.HasVisibleReasoning);
+        turn.Append("正文");
+        Assert.True(turn.HasVisibleText);
+        Assert.False(turn.IsReasoningExpanded);
+    }
+
+    [Fact]
+    public void History_hides_only_the_known_assistant_tool_placeholder()
+    {
+        var repository = CreateConversationRepository();
+        var context = new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0");
+        var created = DateTimeOffset.UtcNow;
+        repository.CreateConversation("history-placeholder", "800100", context, created);
+        repository.Append(new ChatMessage(
+            "user-1", "history-placeholder", "800100", ChatMessageRole.User,
+            "[工具调用：待办提案] 请保留普通文本", ChatMessageStatus.Completed, created, context, 1));
+        repository.Append(new ChatMessage(
+            "assistant-1", "history-placeholder", "800100", ChatMessageRole.Assistant,
+            "[工具调用：待办提案]", ChatMessageStatus.Completed, created.AddSeconds(1), context, 2));
+
+        var viewModel = new ConversationViewModel(CreateOrchestrator(new FakeProvider([])), new FakeSettings());
+        viewModel.SetActiveServant("800100");
+        viewModel.SetActiveConversation("history-placeholder");
+
+        var turn = Assert.Single(viewModel.Turns);
+        Assert.Equal(ChatMessageRole.User, turn.Role);
+        Assert.Equal("[工具调用：待办提案] 请保留普通文本", turn.Text);
     }
 
     [Fact]
@@ -687,6 +789,19 @@ public sealed class ConversationOrchestratorTests : IDisposable
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
         public void Delete(string id) { }
         public void ClearAgentTodoData() { }
+    }
+
+    private sealed class RecordingTodoRepository : ITodoRepository
+    {
+        private readonly Dictionary<string, TodoItem> _items = new(StringComparer.Ordinal);
+        public IReadOnlyCollection<TodoItem> Items => _items.Values;
+        public void Save(TodoItem todo) => _items[todo.Id] = todo;
+        public TodoItem? Get(string id) => _items.GetValueOrDefault(id);
+        public IReadOnlyList<TodoItem> List(TodoStatus? status = null) =>
+            _items.Values.Where(item => status is null || item.Status == status).ToArray();
+        public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
+        public void Delete(string id) => _items.Remove(id);
+        public void ClearAgentTodoData() => _items.Clear();
     }
     private sealed class RecordingSpeechSynthesizer : ISpeechSynthesizer
     {

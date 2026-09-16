@@ -11,7 +11,8 @@ public sealed record TodoItem
         DateTimeOffset createdAt,
         DateTimeOffset updatedAt,
         TodoStatus status = TodoStatus.Planned,
-        DateTimeOffset? completedAt = null)
+        DateTimeOffset? completedAt = null,
+        IReadOnlyList<TodoStep>? steps = null)
     {
         Id = TodoValidation.Id(id, nameof(id));
         Title = TodoValidation.Text(title, nameof(title), 500);
@@ -22,6 +23,7 @@ public sealed record TodoItem
         UpdatedAt = updatedAt;
         Status = status;
         CompletedAt = completedAt;
+        Steps = TodoValidation.Steps(steps, nameof(steps));
 
         if (status == TodoStatus.Completed && completedAt is null)
         {
@@ -43,8 +45,9 @@ public sealed record TodoItem
         TodoStatus status,
         DateTimeOffset createdAt,
         DateTimeOffset updatedAt,
-        DateTimeOffset? completedAt = null)
-        : this(id, title, description, priority, dueAt, createdAt, updatedAt, status, completedAt)
+        DateTimeOffset? completedAt = null,
+        IReadOnlyList<TodoStep>? steps = null)
+        : this(id, title, description, priority, dueAt, createdAt, updatedAt, status, completedAt, steps)
     {
     }
 
@@ -57,7 +60,25 @@ public sealed record TodoItem
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
     public DateTimeOffset? CompletedAt { get; init; }
+    public IReadOnlyList<TodoStep> Steps { get; }
     public bool CanDispatch => Status == TodoStatus.Planned;
+
+    public TodoItem WithSteps(IReadOnlyList<TodoStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+
+        return new TodoItem(
+            Id,
+            Title,
+            Description,
+            Priority,
+            DueAt,
+            Status,
+            CreatedAt,
+            UpdatedAt,
+            CompletedAt,
+            steps);
+    }
 
     public TodoItem Activate(DateTimeOffset at)
     {
@@ -102,6 +123,9 @@ public sealed record TodoItem
 
 internal static class TodoValidation
 {
+    public const int MaxStepCount = 20;
+    public const int MaxStepTitleLength = 200;
+
     public static string Id(string value, string parameterName, int maxLength = 128)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
@@ -122,5 +146,86 @@ internal static class TodoValidation
     public static string? OptionalText(string? value, string parameterName, int maxLength)
     {
         return string.IsNullOrWhiteSpace(value) ? null : Text(value, parameterName, maxLength);
+    }
+
+    public static IReadOnlyList<TodoStep> Steps(IReadOnlyList<TodoStep>? values, string parameterName)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return Array.Empty<TodoStep>();
+        }
+
+        if (values.Count > MaxStepCount)
+        {
+            throw new ArgumentException($"{parameterName} must contain at most {MaxStepCount} steps.", parameterName);
+        }
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < values.Count; index++)
+        {
+            var step = values[index] ?? throw new ArgumentException(
+                $"{parameterName} cannot contain null steps.", parameterName);
+
+            if (!ids.Add(step.Id))
+            {
+                throw new ArgumentException($"{parameterName} cannot contain duplicate step IDs.", parameterName);
+            }
+
+            if (step.Order != index)
+            {
+                throw new ArgumentException(
+                    $"{parameterName} orders must be contiguous starting at 0.", parameterName);
+            }
+        }
+
+        return Array.AsReadOnly(values.ToArray());
+    }
+}
+
+/// <summary>
+/// Compares complete Todo snapshots, including ordered checklist values.
+/// </summary>
+public static class TodoItemValueComparer
+{
+    public static bool Equals(TodoItem? left, TodoItem? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        if (!string.Equals(left.Id, right.Id, StringComparison.Ordinal)
+            || !string.Equals(left.Title, right.Title, StringComparison.Ordinal)
+            || !string.Equals(left.Description, right.Description, StringComparison.Ordinal)
+            || left.Priority != right.Priority
+            || left.DueAt != right.DueAt
+            || left.CreatedAt != right.CreatedAt
+            || left.UpdatedAt != right.UpdatedAt
+            || left.Status != right.Status
+            || left.CompletedAt != right.CompletedAt
+            || left.Steps.Count != right.Steps.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < left.Steps.Count; index++)
+        {
+            var leftStep = left.Steps[index];
+            var rightStep = right.Steps[index];
+            if (!string.Equals(leftStep.Id, rightStep.Id, StringComparison.Ordinal)
+                || !string.Equals(leftStep.Title, rightStep.Title, StringComparison.Ordinal)
+                || leftStep.Order != rightStep.Order
+                || leftStep.IsCompleted != rightStep.IsCompleted)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

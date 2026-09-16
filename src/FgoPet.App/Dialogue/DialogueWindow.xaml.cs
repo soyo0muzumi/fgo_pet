@@ -40,7 +40,6 @@ public partial class DialogueWindow : Window
         if (todoService is not null)
         {
             _workspace = new FgoPet.App.Views.TodoWorkspaceView(todoService, agents, currentTask);
-            _workspace.LegacyRequested += () => _viewModel.NavigateToSettings(SettingsSection.AgentConnection);
             TasksPage.Content = _workspace;
         }
         viewModel.Conversation.ManualTodoRequested += () => { ShowTasks(true); _workspace?.BeginAdd(); };
@@ -79,7 +78,11 @@ public partial class DialogueWindow : Window
         };
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) viewModel.NotifyActivated();
+            if (IsVisible)
+            {
+                viewModel.NotifyActivated();
+                if (_showingTasks) _workspace?.EnterView();
+            }
             else { viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
         };
         Activated += (_, _) => viewModel.NotifyActivated();
@@ -124,6 +127,7 @@ public partial class DialogueWindow : Window
     }
     private void ShowTasks(bool tasks)
     {
+        var enteringTasks = tasks && !_showingTasks;
         CloseDrawers();
         _showingTasks = tasks;
         ChatBody.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
@@ -132,7 +136,11 @@ public partial class DialogueWindow : Window
         ChatTabButton.FontWeight = tasks ? FontWeights.Normal : FontWeights.Bold;
         TasksButton.FontWeight = tasks ? FontWeights.Bold : FontWeights.Normal;
         Title = tasks ? "FGO Pet · 待办" : "FGO Pet · 聊天";
-        if (tasks) _workspace?.Refresh();
+        if (tasks)
+        {
+            if (enteringTasks) _workspace?.EnterView();
+            else _workspace?.Refresh();
+        }
     }
     private void OpenDrawer(bool tasks)
     {
@@ -203,15 +211,15 @@ public partial class DialogueWindow : Window
                 feedbackIcon = FindResource("ChatCopyFailed");
                 feedbackText = "复制失败，请重试";
             }
-            var feedback = new ToolTip { Content = feedbackText, PlacementTarget = button };
             button.Content = feedbackIcon;
-            button.ToolTip = feedback;
+            // Keep ToolTip as plain content. Assigning a ToolTip instance to a
+            // Button that already has a XAML tooltip can make WPF attach the
+            // same logical ToolTip twice and terminate the dispatcher.
+            button.ToolTip = feedbackText;
             System.Windows.Automation.AutomationProperties.SetName(button, feedbackText);
-            feedback.IsOpen = true;
             await Task.Delay(1200);
-            feedback.IsOpen = false;
             // An older click must not reset newer feedback.
-            if (!ReferenceEquals(button.ToolTip, feedback)) return;
+            if (!Equals(button.ToolTip, feedbackText)) return;
             button.Content = FindResource("ChatCopy");
             button.ToolTip = "复制";
             System.Windows.Automation.AutomationProperties.SetName(button, "复制");
@@ -222,6 +230,15 @@ public partial class DialogueWindow : Window
         if (sender is not Button { Tag: ConversationTurnViewModel turn } || !turn.CanReadAloud) return;
         if (turn.SpeechNeedsConfiguration) _viewModel.NavigateToSettings(SettingsSection.Speech);
         else await _viewModel.ReadAloudAsync(turn);
+    }
+    private void OnViewTodoClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ConversationTurnViewModel turn }
+            || !turn.CanViewTodo
+            || string.IsNullOrWhiteSpace(turn.CreatedTodoId)) return;
+
+        ShowTasks(true);
+        _workspace?.FocusTodo(turn.CreatedTodoId);
     }
     private void OnKeyDown(object sender, KeyEventArgs e)
     {

@@ -62,7 +62,7 @@ public partial class TodoProposalService
         {
             return ToolCallProposalResult.Ok(items.Select(ParseOne).ToArray());
         }
-        catch (FormatException error)
+        catch (Exception error) when (error is FormatException or ArgumentException)
         {
             var field = error.Message.Contains('\'')
                 ? error.Message.Split('\'', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault()

@@ -5,7 +5,7 @@ public interface ITodoRepository
     void Save(TodoItem todo);
     bool TryUpdateLocal(TodoItem expected, TodoItem? replacement)
     {
-        if (Get(expected.Id) != expected || expected.Status == TodoStatus.Active) return false;
+        if (!TodoItemValueComparer.Equals(Get(expected.Id), expected) || expected.Status == TodoStatus.Active) return false;
         if (replacement is null) Delete(expected.Id); else Save(replacement);
         return true;
     }

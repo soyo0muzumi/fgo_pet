@@ -13,12 +13,24 @@
     </UserControl.Resources>
     <StackPanel Margin="0,0,0,6">
         <Button x:Name="BackToAppearanceButton"
+                Width="40"
+                Height="36"
                 Margin="0,0,0,12"
                 HorizontalAlignment="Left"
                 Style="{StaticResource SettingsSecondaryButtonStyle}"
-                Content="← 外观与角色"
                 Click="OnBackToAppearanceClick"
-                automation:AutomationProperties.Name="返回外观与角色" />
+                ToolTip="返回外观与角色"
+                automation:AutomationProperties.Name="返回外观与角色">
+            <Path Data="{StaticResource IconBackGeometry}"
+                  Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource Text.Primary}"
+                  StrokeThickness="1.8"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" />
+        </Button>
 
         <Border Background="{DynamicResource Surface.Content}" BorderBrush="{DynamicResource Border.Decorative}"
                 Style="{StaticResource SettingsCardStyle}">

@@ -55,7 +55,7 @@ public sealed class ToolCallAggregator
         }
 
         var only = builders[0];
-        return new AggregatedToolCall(only.Name ?? string.Empty, only.Arguments.ToString());
+        return new AggregatedToolCall(only.Name ?? string.Empty, only.Arguments.ToString(), CallId: only.Id);
     }
 
     private sealed class ToolCallBuilder
@@ -66,7 +66,7 @@ public sealed class ToolCallAggregator
     }
 }
 
-public sealed record AggregatedToolCall(string Name, string? Arguments, bool TooManyCalls = false)
+public sealed record AggregatedToolCall(string Name, string? Arguments, bool TooManyCalls = false, string? CallId = null)
 {
     public bool TryGetArguments(out JsonElement arguments)
     {

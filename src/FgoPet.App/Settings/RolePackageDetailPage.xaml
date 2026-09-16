@@ -115,8 +115,13 @@
                 <ComboBox x:Name="AppearanceSelector"
                           Style="{StaticResource SettingsComboBoxStyle}"
                           ItemsSource="{Binding Appearances}"
-                          SelectedItem="{Binding SelectedAppearance}"
-                          DisplayMemberPath="Display" />
+                          SelectedItem="{Binding SelectedAppearance}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Display}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <TextBlock Margin="0,5,0,0" Text="设为当前从者后生效；可从下拉列表选择其他外观。"
                            Style="{StaticResource SettingsStatusStyle}" />
                 <WrapPanel Margin="0,12,0,0">

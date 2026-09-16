@@ -65,6 +65,21 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     }
 
     [Fact]
+    public void Todo_view_entry_is_available_only_when_a_confirmed_id_is_attached_to_the_turn()
+    {
+        var assistant = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, "已创建待办");
+        var user = new ConversationTurnViewModel("user", ChatMessageRole.User, "请安排");
+
+        Assert.False(assistant.CanViewTodo);
+        Assert.False(user.CanViewTodo);
+
+        assistant.CreatedTodoId = "todo-1";
+
+        Assert.True(assistant.CanViewTodo);
+        Assert.Equal("todo-1", assistant.CreatedTodoId);
+    }
+
+    [Fact]
     public void Configuration_required_state_is_derived_from_missing_model_metadata()
     {
         var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });

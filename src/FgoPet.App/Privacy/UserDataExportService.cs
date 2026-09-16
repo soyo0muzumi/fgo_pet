@@ -45,7 +45,7 @@ public sealed class UserDataExportService
     {
         using var connection = _database.Open();
         return new ExportDocument(
-            1,
+            2,
             ReadRows(connection, """
                 SELECT conversation_id, servant_id, created_at_utc, updated_at_utc, status, current_binding_id
                 FROM conversations ORDER BY created_at_utc, conversation_id
@@ -79,6 +79,10 @@ public sealed class UserDataExportService
                 SELECT todo_id, title, description, priority, due_at_utc, status,
                        created_at_utc, updated_at_utc, completed_at_utc
                 FROM todo_items ORDER BY created_at_utc, todo_id
+                """, cancellationToken),
+            ReadRows(connection, """
+                SELECT step_id, todo_id, title, is_completed, sort_order
+                FROM todo_steps ORDER BY todo_id, sort_order, step_id
                 """, cancellationToken),
             ReadRows(connection, """
                 SELECT archive_id, archive_date, source_types, title, started_on, completed_on,
@@ -125,6 +129,7 @@ public sealed class UserDataExportService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Memories,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> ContentBindings,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> Todos,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> TodoSteps,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> WorkArchives,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> LongWorkArchives)
     {
@@ -138,6 +143,7 @@ public sealed class UserDataExportService
             ["memories"] = Memories,
             ["content_bindings"] = ContentBindings,
             ["todos"] = Todos,
+            ["todo_steps"] = TodoSteps,
             ["work_archives"] = WorkArchives,
             ["long_work_archives"] = LongWorkArchives,
         };

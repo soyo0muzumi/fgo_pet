@@ -19,7 +19,7 @@ public sealed partial class TodoProposalService
     };
     private static readonly HashSet<string> AllowedProposalFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        "title", "description", "priority", "due_at", "dueAt",
+        "title", "description", "priority", "due_at", "dueAt", "steps",
     };
 
     private readonly TodoApplicationService _todos;
@@ -98,8 +98,10 @@ public sealed partial class TodoProposalService
     public TodoItem Confirm(TodoProposal proposal)
     {
         ArgumentNullException.ThrowIfNull(proposal);
-        return _todos.Create(proposal.Title, proposal.Description, proposal.Priority, proposal.DueAt);
+        return _todos.Create(proposal.Title, proposal.Description, proposal.Priority, proposal.DueAt, proposal.StepTitles);
     }
+
+    internal TodoItem? GetCreated(string id) => _todos.Get(id);
 
     public IReadOnlyList<string> BuildModelContext(string userMessage)
     {
@@ -148,13 +150,13 @@ public sealed partial class TodoProposalService
         }
 
         var title = ReadString(value, "title");
-        if (string.IsNullOrWhiteSpace(title) || LooksUnsafe(title))
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 500 || LooksUnsafe(title))
         {
             throw new FormatException("Todo proposal title is missing or unsafe.");
         }
 
         var description = ReadString(value, "description");
-        if (description is not null && LooksUnsafe(description))
+        if (description is not null && (description.Length > 4_000 || LooksUnsafe(description)))
         {
             throw new FormatException("Todo proposal description is unsafe.");
         }
@@ -178,7 +180,59 @@ public sealed partial class TodoProposalService
             dueAt = parsed;
         }
 
-        return new TodoProposal(title, description, priority, dueAt);
+        var stepTitles = ParseSteps(value);
+        return new TodoProposal(title, description, priority, dueAt, stepTitles);
+    }
+
+    private static IReadOnlyList<string> ParseSteps(JsonElement value)
+    {
+        if (!value.TryGetProperty("steps", out var steps))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (steps.ValueKind != JsonValueKind.Array)
+        {
+            throw new FormatException("Todo proposal steps must be an array.");
+        }
+
+        var items = steps.EnumerateArray().ToArray();
+        if (items.Length > 20)
+        {
+            throw new FormatException("A Todo proposal may contain at most 20 steps.");
+        }
+
+        var result = new List<string>(items.Length);
+        foreach (var item in items)
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                throw new FormatException("Each Todo step must be an object.");
+            }
+
+            foreach (var property in item.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, "title", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new FormatException($"Todo steps contain unsupported field '{property.Name}'.");
+                }
+            }
+
+            if (!item.TryGetProperty("title", out var title) || title.ValueKind != JsonValueKind.String)
+            {
+                throw new FormatException("Todo step title is missing.");
+            }
+
+            var text = title.GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(text) || text.Length > 200 || LooksUnsafe(text))
+            {
+                throw new FormatException("Todo step title is missing, too long, or unsafe.");
+            }
+
+            result.Add(text);
+        }
+
+        return result;
     }
 
     private static bool TryGetArray(JsonElement value, string name, out JsonElement[] items)
@@ -193,10 +247,20 @@ public sealed partial class TodoProposalService
         return false;
     }
 
-    private static string? ReadString(JsonElement value, string name) =>
-        value.TryGetProperty(name, out var child) && child.ValueKind == JsonValueKind.String
-            ? child.GetString()?.Trim()
-            : null;
+    private static string? ReadString(JsonElement value, string name)
+    {
+        if (!value.TryGetProperty(name, out var child) || child.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (child.ValueKind != JsonValueKind.String)
+        {
+            throw new FormatException($"Todo proposal field '{name}' must be a string.");
+        }
+
+        return child.GetString()?.Trim();
+    }
 
     private static bool LooksUnsafe(string value) => AbsolutePath.IsMatch(value);
 

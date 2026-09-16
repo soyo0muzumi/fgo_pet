@@ -150,7 +150,8 @@ public sealed class SettingsWindowIntegrationTests
                 window.UpdateLayout();
 
                 var listBack = Descendants<Button>(packageList)
-                    .Single(button => Equals(button.Content, "← 外观与角色"));
+                    .Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "返回外观与角色");
+                Assert.IsType<System.Windows.Shapes.Path>(listBack.Content);
                 listBack.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(SettingsSection.Personalization, viewModel.SelectedSection);
@@ -755,16 +756,74 @@ public sealed class SettingsWindowIntegrationTests
                 page.Arrange(new Rect(0, 0, 640, 480));
                 page.UpdateLayout();
 
-                Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "外观与角色");
+                Assert.DoesNotContain(Descendants<TextBlock>(page), text => text.Text == "外观与角色");
                 Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "当前角色");
                 Assert.Contains(Descendants<TextBlock>(page), text => text.Text == "未提供预览");
 
                 var currentRole = Descendants<TextBlock>(page).Single(text => text.Text == "当前角色");
                 Assert.Equal(Color.FromRgb(0x25, 0x21, 0x37), Assert.IsType<SolidColorBrush>(currentRole.Foreground).Color);
+                var scaleCombo = Assert.Single(Descendants<ComboBox>(page));
+                Assert.Equal(0.5d, scaleCombo.SelectedItem);
+                Assert.Equal("50%", Assert.Single(Descendants<TextBlock>(scaleCombo)).Text);
+
+                var shellSettings = new SettingsViewModel(SettingsSection.Personalization);
+                var window = new SettingsWindow(shellSettings, (_, _) => page);
+                Assert.Equal("外观与角色", window.PageTitleText.Text);
+                window.Close();
             }
             finally
             {
                 page.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Role_package_appearance_selector_renders_display_for_selected_object()
+    {
+        await StaRun(async () =>
+        {
+            var library = CreateLibrary();
+            var settings = new SettingsViewModel(SettingsSection.RolePackages);
+            var detail = new RolePackageDetailPage(
+                new RolePackageDetailViewModel(
+                    new PackageDetailRoute("preview.mash", "玛修"),
+                    library,
+                    new FakeSettingsStore(AppSettings.Defaults),
+                    settings));
+            var window = new SettingsWindow(settings, (_, _) => detail);
+            try
+            {
+                await detail.RefreshAsync();
+                window.Show();
+                window.UpdateLayout();
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                var stopFrame = detail.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(() => frame.Continue = false));
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+                stopFrame.Wait();
+                detail.Measure(new Size(640, 640));
+                detail.Arrange(new Rect(0, 0, 640, 640));
+                detail.UpdateLayout();
+
+                var combo = Assert.Single(Descendants<ComboBox>(detail).Where(candidate =>
+                    candidate.ItemsSource is IReadOnlyList<ServantAppearanceItemViewModel>));
+                var selected = Assert.IsType<ServantAppearanceItemViewModel>(combo.SelectedItem);
+                Assert.Equal("casual (v1.0.0)", selected.Display);
+                Assert.Same(selected, ((RolePackageDetailViewModel)detail.DataContext).SelectedAppearance);
+                Assert.NotNull(combo.ItemTemplate);
+                Assert.Equal(selected.Display, Assert.Single(Descendants<TextBlock>(combo)).Text);
+                combo.IsDropDownOpen = true;
+                combo.UpdateLayout();
+                var firstItem = Assert.IsType<ComboBoxItem>(combo.ItemContainerGenerator.ContainerFromIndex(0));
+                Assert.Equal("casual (v1.0.0)", Assert.Single(Descendants<TextBlock>(firstItem)).Text);
+                combo.IsDropDownOpen = false;
+            }
+            finally
+            {
+                window.Close();
+                detail.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
             }
         });
     }

@@ -16,7 +16,8 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);
         var at = DateTimeOffset.Parse("2026-08-30T08:00:00Z");
-        var todo = new TodoItem("todo-1", "Agent task", null, TodoPriority.Normal, null, at, at);
+        var todo = new TodoItem("todo-1", "Agent task", null, TodoPriority.Normal, null, at, at,
+            steps: new[] { new TodoStep("step-1", "Prepare", 0) });
         todos.Save(todo);
         agents.SaveExecution(new AgentExecution("execution-1", "todo-1", "codex", "source-1", "task-1", "dispatch-1", at));
 
@@ -26,7 +27,10 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
         Assert.Equal(AgentEventApplyResult.Applied, agents.ApplyEvent(started));
         Assert.Equal(AgentEventApplyResult.Applied, agents.ApplyEvent(completed));
         Assert.Equal(AgentEventApplyResult.AlreadyApplied, agents.ApplyEvent(completed));
-        Assert.Equal(TodoStatus.Completed, Assert.IsType<TodoItem>(todos.Get("todo-1")).Status);
+        var completedTodo = Assert.IsType<TodoItem>(todos.Get("todo-1"));
+        Assert.Equal(TodoStatus.Completed, completedTodo.Status);
+        Assert.Single(completedTodo.Steps);
+        Assert.Equal("Prepare", completedTodo.Steps[0].Title);
         Assert.Equal(AgentExecutionStatus.Completed, Assert.IsType<AgentExecution>(agents.GetExecution("execution-1")).Status);
     }
 

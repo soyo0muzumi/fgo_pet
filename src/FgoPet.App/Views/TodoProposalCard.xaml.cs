@@ -22,9 +22,12 @@ public partial class TodoProposalCard : UserControl
         {
             proposal.Confirm();
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.IO.IOException or UnauthorizedAccessException or System.Data.Common.DbException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.IO.IOException or UnauthorizedAccessException or System.Data.Common.DbException or KeyNotFoundException)
         {
-            proposal.ErrorText = "添加失败，请检查标题和内容，或稍后重试；草稿已保留。";
+            if (string.IsNullOrWhiteSpace(proposal.ErrorText))
+            {
+                proposal.ErrorText = "添加失败，请检查标题和内容，或稍后重试；草稿已保留。";
+            }
         }
     }
 

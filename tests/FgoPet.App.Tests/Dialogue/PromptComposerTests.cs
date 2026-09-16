@@ -25,6 +25,8 @@ public sealed class PromptComposerTests
 
         Assert.Contains(texts, text => text.Contains("submit_todo_proposals", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("description 仅用于任务本身的说明", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("不要把确认流程话术写入 description", StringComparison.Ordinal));
         Assert.DoesNotContain(texts, text => text.Contains("todo_protocol", StringComparison.Ordinal));
         Assert.DoesNotContain(texts, text => text.Contains("JSON 信封", StringComparison.Ordinal));
     }
