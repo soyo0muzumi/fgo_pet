@@ -249,6 +249,11 @@ public sealed class DialogueWindowIntegrationTests
                 window.Dispatcher.InvokeShutdown();
             }
         });
+
+        // The copy handler restores its transient feedback after 1200 ms. Keep the
+        // test process alive past that boundary so a stale continuation touching a
+        // shut-down Dispatcher fails this regression deterministically.
+        Thread.Sleep(1400);
     }
 
     [Fact]
