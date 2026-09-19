@@ -1890,7 +1890,12 @@ public sealed class TodoWorkspaceViewIntegrationTests
         Assert.NotNull(more.ContextMenu);
         more.ContextMenu!.PlacementTarget = more;
         more.ContextMenu.IsOpen = true;
-        PumpDispatcher();
+        // A real ContextMenu opens through a Popup and may keep the dispatcher
+        // continuously busy while it is open. Waiting for ApplicationIdle here
+        // can therefore deadlock under parallel Windows test execution. Loaded
+        // priority is sufficient for the popup bindings/templates this helper
+        // needs before inspecting the menu item.
+        more.ContextMenu.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
         return Assert.IsType<MenuItem>(more.ContextMenu.Items.Cast<object>().Single(item =>
             item is MenuItem menu && Equals(menu.Header, header)));
     }
@@ -1986,19 +1991,45 @@ public sealed class TodoWorkspaceViewIntegrationTests
     private static void StaRun(Action action)
     {
         Exception? failure = null;
+        Dispatcher? dispatcher = null;
+        using var dispatcherReady = new ManualResetEventSlim();
+
         var thread = new Thread(() =>
         {
+            dispatcher = Dispatcher.CurrentDispatcher;
+            dispatcherReady.Set();
             try { action(); }
             catch (Exception error) { failure = error; }
             finally
             {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
+                if (!dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
             }
-        });
+        })
+        {
+            IsBackground = true,
+        };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join();
+
+        if (!dispatcherReady.Wait(TimeSpan.FromSeconds(5)))
+            throw new TimeoutException("STA test dispatcher did not initialize within 5 seconds.");
+
+        if (!thread.Join(TimeSpan.FromSeconds(15)))
+        {
+            try
+            {
+                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            }
+            catch (InvalidOperationException)
+            {
+                // The dispatcher may already be shutting down concurrently.
+            }
+
+            thread.Join(TimeSpan.FromSeconds(2));
+            throw new TimeoutException("STA test did not complete within 15 seconds.");
+        }
+
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
