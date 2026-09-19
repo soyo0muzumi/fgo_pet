@@ -18,6 +18,7 @@ public partial class DialogueWindow : Window
     private bool _composing;
     private bool _following = true;
     private Button? _drawerOrigin;
+    private readonly CancellationTokenSource _dispatcherLifetime = new();
     internal ContextMenu? LastMoreMenu { get; private set; }
     public event Action? Hidden;
 
@@ -32,6 +33,7 @@ public partial class DialogueWindow : Window
         _todos = todos;
         _panel = panel;
         InitializeComponent();
+        Dispatcher.ShutdownStarted += (_, _) => _dispatcherLifetime.Cancel();
         DataContext = viewModel;
         FocusShortcutButton.IsEnabled = panel is not null;
         FocusShortcutButton.ToolTip = panel is null ? "专注入口当前不可用" : "打开现有专注设置";
@@ -217,7 +219,14 @@ public partial class DialogueWindow : Window
             // same logical ToolTip twice and terminate the dispatcher.
             button.ToolTip = feedbackText;
             System.Windows.Automation.AutomationProperties.SetName(button, feedbackText);
-            await Task.Delay(1200);
+            try
+            {
+                await Task.Delay(1200, _dispatcherLifetime.Token);
+            }
+            catch (OperationCanceledException) when (_dispatcherLifetime.IsCancellationRequested)
+            {
+                return;
+            }
             // An older click must not reset newer feedback.
             if (!Equals(button.ToolTip, feedbackText)) return;
             button.Content = FindResource("ChatCopy");
