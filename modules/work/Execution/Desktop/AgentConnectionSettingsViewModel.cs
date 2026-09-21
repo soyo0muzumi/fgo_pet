@@ -1,9 +1,10 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Services;
+using FgoPet.App.Privacy;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Settings;
 
@@ -281,7 +282,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
 {
     private readonly IAppSettingsStore _settings;
     private readonly IAgentRepository _agents;
-    private readonly DataClearService? _clear;
+    private readonly IAgentTodoDataClearer? _clear;
     private readonly IAgentGateway? _gateway;
     private readonly IAgentRelayAdministration? _administration;
     private readonly IAgentRelayRuntime? _runtime;
@@ -303,7 +304,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
     public AgentConnectionSettingsViewModel(
         IAppSettingsStore settings,
         IAgentRepository agents,
-        DataClearService? clear = null,
+        IAgentTodoDataClearer? clear = null,
         IAgentGateway? gateway = null,
         IAgentRelayAdministration? administration = null,
         IAgentRelayRuntime? runtime = null,

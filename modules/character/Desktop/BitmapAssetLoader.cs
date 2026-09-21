@@ -55,8 +55,21 @@ public static class BitmapAssetLoader
             manifest.Composition.BodyId,
             manifest.Composition.DefaultExpressionId,
             masks,
-            PortraitSourceGeometry.FromManifest(manifest, bodyWidth, bodyHeight));
+            PortraitSourceGeometry.FromComposition(ToComposition(manifest.Composition), bodyWidth, bodyHeight));
     }
+
+    /// <summary>
+    /// Maps the pack schema (v3) composition onto the neutral geometry value object.
+    /// Keeping this adapter on the character side is what lets <c>FgoPet.Core.Geometry</c>
+    /// stay free of any pack-domain dependency.
+    /// </summary>
+    private static PortraitComposition ToComposition(CompositionV3 composition) => new(
+        composition.OverlayOffset.X,
+        composition.OverlayOffset.Y,
+        composition.OverlaySize.Width,
+        composition.OverlaySize.Height,
+        composition.PanelAnchor.X,
+        composition.PanelAnchor.Y);
 
     private static BitmapSource Decode(string path, string relativePath)
     {

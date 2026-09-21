@@ -16,12 +16,6 @@
     <Compile Include="..\..\host\DataManagement\Contracts\BackupContracts.cs">
       <Link>host\DataManagement\Contracts\BackupContracts.cs</Link>
     </Compile>
-    <Compile Include="..\..\host\DesktopShell\Domain\AttachedPanelState.cs">
-      <Link>host\DesktopShell\Domain\AttachedPanelState.cs</Link>
-    </Compile>
-    <Compile Include="..\..\host\DesktopShell\Domain\AttachedPanelStateMachine.cs">
-      <Link>host\DesktopShell\Domain\AttachedPanelStateMachine.cs</Link>
-    </Compile>
 
     <!-- modules -->
     <Compile Include="..\..\modules\character\Contracts\IArtPackageRepository.cs">
@@ -203,8 +197,17 @@
     <Compile Include="..\..\platform\Geometry\PortraitLayout.cs">
       <Link>platform\Geometry\PortraitLayout.cs</Link>
     </Compile>
+    <Compile Include="..\..\platform\Panels\AttachedPanelState.cs">
+      <Link>platform\Panels\AttachedPanelState.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Panels\AttachedPanelStateMachine.cs">
+      <Link>platform\Panels\AttachedPanelStateMachine.cs</Link>
+    </Compile>
     <Compile Include="..\..\platform\Packs\PackError.cs">
       <Link>platform\Packs\PackError.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Runtime\AppStateChangedEventArgs.cs">
+      <Link>platform\Runtime\AppStateChangedEventArgs.cs</Link>
     </Compile>
     <Compile Include="..\..\platform\Runtime\RuntimeEvent.cs">
       <Link>platform\Runtime\RuntimeEvent.cs</Link>
@@ -226,6 +229,9 @@
     </Compile>
     <Compile Include="..\..\platform\Validation\Phase3Validation.cs">
       <Link>platform\Validation\Phase3Validation.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\IAlphaMaskSource.cs">
+      <Link>platform\Windowing\IAlphaMaskSource.cs</Link>
     </Compile>
     <Compile Include="..\..\platform\Windowing\IScreenLayoutService.cs">
       <Link>platform\Windowing\IScreenLayoutService.cs</Link>

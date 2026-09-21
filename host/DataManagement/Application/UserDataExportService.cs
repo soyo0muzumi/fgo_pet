@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.IO;
 using System.Text.Json;
 using System.Text.Encodings.Web;
@@ -12,7 +12,7 @@ namespace FgoPet.App.Privacy;
 /// deliberate: credentials, prompt payloads, raw pack/story files, and local
 /// absolute paths are not export data.
 /// </summary>
-public sealed class UserDataExportService
+public sealed class UserDataExportService : IUserDataExporter
 {
     private readonly RuntimeDatabase _database;
 

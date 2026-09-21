@@ -1,4 +1,4 @@
-using FgoPet.Infrastructure.Dialogue;
+﻿using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Core.Settings;
@@ -8,7 +8,7 @@ using FgoPet.Infrastructure.Providers;
 namespace FgoPet.App.Privacy;
 
 /// <summary>Deletes user dialogue data while keeping explicit memory ownership clear.</summary>
-public sealed class UserDataDeletionService
+public sealed class UserDataDeletionService : IUserDataDeleter
 {
     private readonly RuntimeDatabase _database;
     private readonly SqliteConversationRepository _conversations;

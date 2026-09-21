@@ -1,5 +1,6 @@
 using System.Windows.Media.Imaging;
 using FgoPet.Core.Geometry;
+using FgoPet.Core.Windowing;
 
 namespace FgoPet.App.Portraits;
 
@@ -12,7 +13,7 @@ public sealed record PortraitSnapshot(
     string BodyId,
     string DefaultExpressionId,
     IReadOnlyDictionary<string, byte[]> AlphaMasks,
-    PortraitSourceGeometry SourceGeometry)
+    PortraitSourceGeometry SourceGeometry) : IAlphaMaskSource
 {
     public BitmapSource Body => Images[BodyId];
 }

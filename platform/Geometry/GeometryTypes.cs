@@ -1,5 +1,3 @@
-using FgoPet.Core.Packs;
-
 namespace FgoPet.Core.Geometry;
 
 /// <summary>Device pixels per DIP, potentially differing on the X and Y axes.</summary>
@@ -28,6 +26,19 @@ public readonly record struct LogicalRect(double X, double Y, double Width, doub
 }
 
 /// <summary>
+/// Neutral layered-portrait composition, in source pixels. Deliberately carries no
+/// pack-schema type: the geometry layer must not depend on the character/pack domain
+/// (R2 in findings/35-split-path-blockers.md). Callers map their own manifest shape onto it.
+/// </summary>
+public readonly record struct PortraitComposition(
+    int OverlayOffsetX,
+    int OverlayOffsetY,
+    int OverlayWidth,
+    int OverlayHeight,
+    int PanelAnchorX,
+    int PanelAnchorY);
+
+/// <summary>
 /// Pure pixel geometry of a layered portrait, independent of any rendering framework.
 /// Every source edge is rounded to integer device pixels exactly once.
 /// </summary>
@@ -41,19 +52,18 @@ public sealed record PortraitSourceGeometry(
     int PanelAnchorX,
     int PanelAnchorY)
 {
-    public static PortraitSourceGeometry FromManifest(AppearanceManifestV3 manifest, int bodyPixelWidth, int bodyPixelHeight)
-    {
-        var composition = manifest.Composition;
-        return new PortraitSourceGeometry(
+    public static PortraitSourceGeometry FromComposition(
+        PortraitComposition composition,
+        int bodyPixelWidth,
+        int bodyPixelHeight) => new(
             bodyPixelWidth,
             bodyPixelHeight,
-            composition.OverlayOffset.X,
-            composition.OverlayOffset.Y,
-            composition.OverlaySize.Width,
-            composition.OverlaySize.Height,
-            composition.PanelAnchor.X,
-            composition.PanelAnchor.Y);
-    }
+            composition.OverlayOffsetX,
+            composition.OverlayOffsetY,
+            composition.OverlayWidth,
+            composition.OverlayHeight,
+            composition.PanelAnchorX,
+            composition.PanelAnchorY);
 }
 
 public sealed record PortraitGeometry(

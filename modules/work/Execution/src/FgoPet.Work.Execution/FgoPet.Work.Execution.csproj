@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
   <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
-    <ProjectReference Include="../../../../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../../../../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
     <ProjectReference Include="../../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
     <ProjectReference Include="../../../Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
   </ItemGroup>

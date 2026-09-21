@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,15 +13,15 @@ namespace FgoPet.App.Memory;
 public sealed partial class MemoryViewModel : ObservableObject
 {
     private readonly MemoryCandidateService _memories;
-    private readonly UserDataExportService? _export;
-    private readonly UserDataDeletionService? _deletion;
+    private readonly IUserDataExporter? _export;
+    private readonly IUserDataDeleter? _deletion;
     private readonly IAppSettingsStore? _settings;
     private readonly SqliteConversationRepository? _conversations;
 
     public MemoryViewModel(
         MemoryCandidateService memories,
-        UserDataExportService? export = null,
-        UserDataDeletionService? deletion = null,
+        IUserDataExporter? export = null,
+        IUserDataDeleter? deletion = null,
         IAppSettingsStore? settings = null,
         SqliteConversationRepository? conversations = null)
     {

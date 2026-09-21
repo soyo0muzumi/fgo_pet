@@ -1,10 +1,10 @@
-using FgoPet.Core.Agents;
+﻿using FgoPet.Core.Agents;
 using FgoPet.Core.Todo;
 
 namespace FgoPet.App.Services;
 
 /// <summary>Clears only Agent-owned Todo data; connection pairing remains separate.</summary>
-public sealed class DataClearService
+public sealed class DataClearService : IAgentTodoDataClearer
 {
     private readonly ITodoRepository _todos;
     private readonly IAgentGateway? _gateway;

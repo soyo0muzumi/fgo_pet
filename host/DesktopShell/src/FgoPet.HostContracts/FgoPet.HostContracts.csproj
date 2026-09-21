@@ -22,6 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Contracts\AgentTodoDataClearContract.cs">
+      <Link>host\DesktopShell\Contracts\AgentTodoDataClearContract.cs</Link>
+    </Compile>
     <Compile Include="..\..\Contracts\ISettingsNavigator.cs">
       <Link>host\DesktopShell\Contracts\ISettingsNavigator.cs</Link>
     </Compile>
@@ -34,8 +37,8 @@
     <Compile Include="..\..\Contracts\SettingsSection.cs">
       <Link>host\DesktopShell\Contracts\SettingsSection.cs</Link>
     </Compile>
-    <Compile Include="..\..\Domain\AppStateChangedEventArgs.cs">
-      <Link>host\DesktopShell\Domain\AppStateChangedEventArgs.cs</Link>
+    <Compile Include="..\..\Contracts\UserDataPrivacyContracts.cs">
+      <Link>host\DesktopShell\Contracts\UserDataPrivacyContracts.cs</Link>
     </Compile>
   </ItemGroup>
 </Project>
