@@ -21,4 +21,17 @@
     <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
     <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Desktop\FgoPet.Speech.Desktop.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 阶段 1 拆分新增 -->
+    <ProjectReference Include="../../modules/character/src/FgoPet.Character/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj" />
+    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../../modules/work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
+    <ProjectReference Include="../../modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
+    <ProjectReference Include="../../modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
+  </ItemGroup>
 </Project>

@@ -2,22 +2,32 @@
 
 ## Scope
 
-This file applies to this module directory tree and inherits the repository root `AGENTS.md`.
+本文件适用于本目录树，并继承仓库根 `AGENTS.md`。
 
 ## Ownership
 
-Own focus sessions, state transitions, recovery, timeline entries, bond progression, focus persistence, and focus feedback.
+拥有计时状态机与完成账本。**显示快照 ≠ 业务事实**。
+
+本模块拥有：
+
+- 计时状态机、预设、阶段与状态转换
+- 完成账本（羁绊进度、时间线条目）
+- `RuntimeEventType` 常量集（Q9）
 
 ## Boundaries and dependencies
 
-- Allowed dependencies: `foundation`; `ui-foundation` for shared visual infrastructure.
-- Forbidden dependencies: `desktop-shell`, dialogue, memory, todo, servant-packs, and agent-integration implementations.
-- Cross-module calls must use published contracts.
+- **允许依赖**：`platform/*`、`ui-foundation/*`
+- **禁止依赖**：dialogue、`host`
+- 模块对外只暴露 `Contracts/`；其他模块只能经**明确允许**的契约边访问本模块（全量 8 条见 `modules/README.md`）。
 
 ## Safety invariants
 
-Persisted focus state must recover deterministically and reject invalid transitions. Focus must remain usable without Agent integration. Do not let role-pack data execute code.
+计时是**长运行状态**：崩溃/休眠恢复后不得丢账或重复记账。显示快照不得被当作权威事实回写。
 
 ## Minimum validation
 
-Run affected focus unit tests for domain, application, persistence, and UI changes. Run integration tests for cross-module behavior and the release build for boundary changes.
+Core / App / Infrastructure / Windows 的 focus / bond / timeline 测试；状态机转换与恢复需专项覆盖。
+
+## 决策出处
+
+Q1 Q2 **Q9** **Q10**（详见工作区 `modules-v2/focus.md`）

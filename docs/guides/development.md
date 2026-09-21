@@ -4,7 +4,7 @@
 
 - Windows 11；.NET SDK 8.0.x；PowerShell 7。
 - 解决方案入口：`FgoPet.sln`。
-- 应用入口：`src/FgoPet.App/`；共享领域与持久化分别位于 `src/FgoPet.Core/`、`src/FgoPet.Infrastructure/`。
+- 应用入口：`src/FgoPet.App/`（csproj 位于此，源码已按模块落位到 `modules/` 与 `host/`）；共享领域与持久化分别位于 `src/FgoPet.Core/`、`src/FgoPet.Infrastructure/`。
 - 功能模块及依赖方向从 `modules/README.md` 开始查阅；共享 WPF 资源位于 `ui-foundation/`。
 
 ## 构建与测试
@@ -24,7 +24,14 @@ pwsh -File scripts/test-phase4.ps1
 
 - `modules/agent-integration/`：Provider-neutral Relay/协议/运行时与 Codex 参考适配器。
 - `modules/speech/`：语音契约、合成适配、播放生命周期和设置界面；模型或设备不可用时不得影响离线桌宠功能。
-- `modules/dialogue/`、`modules/todo/`、`modules/focus/`、`modules/memory/`：功能归属与迁移状态索引。
+- `modules/dialogue/`：对话编排、提示词组装与对话界面。
+- `modules/memory/`：对话摘要与长期记忆候选。
+- `modules/work/`：待办、执行与归档（含 Agent 派发入口）。
+- `modules/focus/`：专注会话状态机、时间线与羁绊进度。
+- `modules/character/`：角色包、立绘与个性化偏好。
+- `host/`：桌面外壳（`DesktopShell`）与数据管理（`DataManagement`）。
+- `platform/`：横切机制——事件管理、LLM 管线、SQLite 数据层、诊断与脱敏。
+- 各模块职责、依赖方向与迁移状态见 `modules/README.md`；宿主与横切层见 `host/README.md`、`platform/README.md`。
 - API Key 使用 Windows Credential Manager；配对状态使用受保护本机存储。日志、协议和发布包不得包含凭据、完整 Prompt、对话、终端输出或敏感路径。
 - `.fgopetpack` 是独立纯数据交付物，不得嵌入应用 ZIP。
 

@@ -1,4 +1,4 @@
-using System.Runtime.ExceptionServices;
+﻿using System.Runtime.ExceptionServices;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -961,7 +961,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.True(save.IsEnabled);
 
                 save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                save.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(save.Dispatcher);
                 save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Single(repository.Items);
@@ -1948,8 +1948,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
     private static Expander GetRowExpander(ItemsControl rows, string id) =>
         FindVisualChildren<Expander>(rows).Single(expander => GetRowItem(expander.DataContext!).Id == id);
 
-    private static void PumpDispatcher() =>
-        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    // 原来是 Dispatcher.CurrentDispatcher.Invoke(..., ApplicationIdle)：打开 ContextMenu/Popup 后
+    // Dispatcher 永远到不了 ApplicationIdle，Invoke 永不返回 → 整个测试进程挂死。改用带超时的泵。
+    private static void PumpDispatcher() => StaRunner.Pump();
 
     private static object? GetFocusedRow(DependencyObject root) =>
         FindVisualChildren<ContentPresenter>(root)
@@ -1983,24 +1984,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
         }
     }
 
-    private static void StaRun(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception error) { failure = error; }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
+    private static void StaRun(Action action) => StaRunner.Run(action);
 
     private sealed class FakeTodoRepository : ITodoRepository
     {

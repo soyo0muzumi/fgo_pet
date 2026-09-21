@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" />
     <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 阶段 1 拆分新增 -->
+    <ProjectReference Include="../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
+  </ItemGroup>
 </Project>

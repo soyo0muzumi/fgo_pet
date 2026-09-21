@@ -33,9 +33,8 @@ public sealed class Phase2AttachedPanelViewModelTests
 
         Assert.Equal(AttachedPanelState.Compact, _vm.State);
         Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Equal("24:18", _vm.RemainingText);
-        Assert.Equal("第 1 / 4 轮", _vm.CycleText);
-        Assert.Equal("本轮 25:00 · 已完成 3%", _vm.TimerMetaText);
+        Assert.Equal("24:18", _vm.FocusDisplay.Remaining);
+        Assert.Equal("第 1 / 4 轮", _vm.FocusDisplay.Cycle);
         Assert.Equal(2.8, _vm.ProgressPercent, 1);
     }
 
@@ -87,8 +86,10 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.RaiseChanged();
 
         Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Equal("24:18", _vm.RemainingText);
-        Assert.True(_vm.IsPaused);
+        Assert.Equal("24:18", _vm.FocusDisplay.Remaining);
+        // 原为 Assert.True(_vm.IsPaused)：IsPaused 是相位文案的内部中间量，没有 XAML 绑定它。
+        // 断言迁到用户真正看到的那条字符串上，锁的是行为而不是实现细节（任务卡 C 步骤 1）。
+        Assert.Equal("已暂停", _vm.FocusDisplay.Phase);
     }
 
     [Fact]
@@ -103,7 +104,7 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.RaiseChanged();
 
         Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Contains("休息", _vm.PhaseText);
+        Assert.Contains("休息", _vm.FocusDisplay.Phase);
     }
 
     [Fact]

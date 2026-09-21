@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
+    <ProjectReference Include="../../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="../../../Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Application\TodoApplicationService.cs">
+      <Link>modules\work\Todo\Application\TodoApplicationService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\TodoContinuationState.cs">
+      <Link>modules\work\Todo\Application\TodoContinuationState.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\TodoProposalService.cs">
+      <Link>modules\work\Todo\Application\TodoProposalService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Contracts\TodoProposal.cs">
+      <Link>modules\work\Todo\Contracts\TodoProposal.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\ExpandedTodoView.xaml">
+      <Link>Views\ExpandedTodoView.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\ExpandedTodoView.xaml.cs">
+      <Link>modules\work\Todo\Desktop\ExpandedTodoView.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\Panels\TodoItemViewModel.cs">
+      <Link>modules\work\Todo\Desktop\Panels\TodoItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\TodoItemViewModel.cs">
+      <Link>modules\work\Todo\Desktop\TodoItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\TodoListViewModel.cs">
+      <Link>modules\work\Todo\Desktop\TodoListViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\TodoProposalCard.xaml">
+      <Link>Views\TodoProposalCard.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\TodoProposalCard.xaml.cs">
+      <Link>modules\work\Todo\Desktop\TodoProposalCard.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\TodoProposalViewModel.cs">
+      <Link>modules\work\Todo\Desktop\TodoProposalViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\TodoWorkspaceView.xaml">
+      <Link>Views\TodoWorkspaceView.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\TodoWorkspaceView.xaml.cs">
+      <Link>modules\work\Todo\Desktop\TodoWorkspaceView.xaml.cs</Link>
+    </Compile>
+  </ItemGroup>
+</Project>

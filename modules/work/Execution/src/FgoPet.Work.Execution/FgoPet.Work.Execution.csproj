@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
+    <ProjectReference Include="../../../../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="../../../Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Application\AgentDispatchService.cs">
+      <Link>modules\work\Execution\Application\AgentDispatchService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\AgentReconciliationService.cs">
+      <Link>modules\work\Execution\Application\AgentReconciliationService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\AgentTaskLauncher.cs">
+      <Link>modules\work\Execution\Application\AgentTaskLauncher.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\AgentTaskNavigationService.cs">
+      <Link>modules\work\Execution\Application\AgentTaskNavigationService.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\AgentConnectionSettingsView.xaml">
+      <Link>Views\Settings\AgentConnectionSettingsView.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\AgentConnectionSettingsView.xaml.cs">
+      <Link>modules\work\Execution\Desktop\AgentConnectionSettingsView.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentConnectionSettingsViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentConnectionSettingsViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\AgentCurrentTaskStrip.xaml">
+      <Link>Views\AgentCurrentTaskStrip.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\AgentCurrentTaskStrip.xaml.cs">
+      <Link>modules\work\Execution\Desktop\AgentCurrentTaskStrip.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentCurrentTaskViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentCurrentTaskViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\AgentDispatchDialog.xaml">
+      <Link>Views\AgentDispatchDialog.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\AgentDispatchDialog.xaml.cs">
+      <Link>modules\work\Execution\Desktop\AgentDispatchDialog.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentDispatchDialogViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentDispatchDialogViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentExecutionViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentExecutionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentTargetOptionViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentTargetOptionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\AgentTaskHistoryViewModel.cs">
+      <Link>modules\work\Execution\Desktop\AgentTaskHistoryViewModel.cs</Link>
+    </Compile>
+  </ItemGroup>
+</Project>

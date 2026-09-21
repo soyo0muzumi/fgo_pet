@@ -1,0 +1,58 @@
+<Project>
+
+  <!--
+    ﻿Ⅲ-5 全局编译基线（2026-09-21 建立）
+
+    背景：设计 §7 要求「Contracts 和实现必须有编译/可见性约束」，而这些约束要靠每个层各自
+    成为独立工程来表达（project-split-plan-v1.md 的约 33 个新工程）。此前全仓没有统一的属性
+    基线，每建一个新工程就要手抄一遍 TargetFramework/Nullable/ImplicitUsings，属性必然漂移。
+
+    本文件的职责边界：
+      · 统一「事实上已经全部一致」的属性 —— 设了等于没设，但以后不会再漂
+      · 提供构建期护栏，让错误配置在 CI 里报错，而不是等到运行时
+      · 不统一 TargetFramework —— 它是真实的逐工程差异，见下方「TargetFramework 取值约定」
+      · 不做 PackageReference 集中管理 —— 超出本项范围
+
+    只放有全量事实依据的属性。改动本文件等于改动全部工程。
+
+    排除实验工程的方式不做路径匹配，而是依赖 MSBuild 的就近优先语义：
+    Directory.Build.props 由每个工程向上查找，**命中第一个即停止**。因此
+    spikes/Directory.Build.props 的存在会让实验工程根本不导入本文件。
+  -->
+
+  <PropertyGroup Label="统一编译基线">
+    <!-- 现有 23 个工程全部已经这么写，只是每次重复一遍；集中后不会再漏 -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- net8.0 的 SDK 默认值就是 C# 12。显式钉住是为了防止将来 SDK 升级后
+         各工程因创建时间不同而拿到不同语言版本——那是最难查的一类漂移。 -->
+    <LangVersion>12.0</LangVersion>
+
+    <!-- 刻意【不】在这里加的三项（都试过，都会改变既有行为或毫无作用）：
+         · TreatWarningsAsErrors —— 标准门禁是靠命令行 -warnaserror 跑的；常开会让本地开发构建也失败
+         · AnalysisLevel=latest-recommended —— 会新开一批此前未运行的 CA 规则。
+           实测把 AnalysisLevel 提到该值会让 net8.0 解决方案新增 1400+ 条 CA1707/CA1861
+           诊断（测试方法名带下划线、数组实参），在 -warnaserror 下直接 1491 条错误。
+           这是本次改动踩到并回退的坑，不要再试。
+         · Deterministic / ProduceReferenceAssembly —— SDK 早已默认 true，写进来只是噪声 -->
+  </PropertyGroup>
+
+  <PropertyGroup Label="TargetFramework 取值约定">
+    <!--
+       TargetFramework 只有两个合法值，取决于工程是否触及 Windows API：
+
+         net8.0          纯契约 / 纯逻辑工程。典型：*.Contracts 层、FgoPet.Core。
+         net8.0-windows  触及 Win32/WinRT/WPF/WinForms 的工程。
+
+       注意：不要试图从 UseWPF 反推 TFM。现有反例是 src/FgoPet.Infrastructure 与
+       FgoPet.Speech.Infrastructure —— 它们是 net8.0-windows 但 UseWPF=false（用 Windows
+       API 但不吃 WPF）。
+
+       TFM 配错不需要自建护栏：反向自测确认过，当 UseWPF=true 而 TFM 缺 -windows 时，
+       .NET SDK 自己会在 DefaultItems.targets 报 NETSDK1136 并中止构建，且先于任何自定义
+       target。因此本文件不再重复实现该检查——重复实现只会多一处要维护、且永远轮不到它报错。
+    -->
+  </PropertyGroup>
+
+</Project>

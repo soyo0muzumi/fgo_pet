@@ -63,10 +63,51 @@ public sealed class ArchitectureTests
         Assert.Equal(
             new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core", "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
             infra.OrderBy(name => name, StringComparer.Ordinal));
+        // 阶段 1 项目拆分（2026-09-21）：FgoPet.App 不再是唯一的应用程序集，
+        // 各模块的 UI/应用层各自成工程（沿用 speech 的「独立程序集 + RootNamespace=FgoPet.App」范式），
+        // 组合根只负责把 HostContracts/DesktopShell 与各模块串起来。
+        // 因此这里的期望集从 3 个变为 14 个——方向不变（组合根 → 模块），只是模块不再是回链文件。
         Assert.Equal(
-            new[] { "FgoPet.Core", "FgoPet.Infrastructure", "FgoPet.Speech.Desktop" }.OrderBy(name => name, StringComparer.Ordinal),
+            new[]
+            {
+                "FgoPet.Character",
+                "FgoPet.Core",
+                "FgoPet.DataManagement",
+                "FgoPet.DesktopShell",
+                "FgoPet.Dialogue",
+                "FgoPet.Focus",
+                "FgoPet.HostContracts",
+                "FgoPet.Infrastructure",
+                "FgoPet.Memory",
+                "FgoPet.Speech.Desktop",
+                "FgoPet.UiFoundation",
+                "FgoPet.Work.Archives",
+                "FgoPet.Work.Execution",
+                "FgoPet.Work.Todo",
+            }.OrderBy(name => name, StringComparer.Ordinal),
             app.OrderBy(name => name, StringComparer.Ordinal));
     }
+
+    [Fact]
+    public void Only_tests_reference_the_composition_root()
+    {
+        // 拆分后 FgoPet.App 是唯一的组合根。任何库工程反向引用它都会把
+        // 「模块 → 组合根」变成编译期环，模块也就无法脱离应用单独编译。
+        var offenders = ProjectFiles()
+            .Where(IsOnThisCheckout)
+            .Where(path => !Path.GetFileName(path).EndsWith(".Tests.csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !Path.GetFileName(path).Equals("FgoPet.App.csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => XDocument.Parse(File.ReadAllText(path)).Descendants("ProjectReference")
+                .Any(reference => string.Equals(
+                    Path.GetFileNameWithoutExtension((string)reference.Attribute("Include")!),
+                    "FgoPet.App",
+                    StringComparison.OrdinalIgnoreCase)))
+            .Select(path => Path.GetFileName(path)!)
+            .ToArray();
+
+        Assert.Empty(offenders);
+    }
+
     [Fact]
     public void Production_container_resolves_the_application_shell()
     {
@@ -104,8 +145,9 @@ public sealed class ArchitectureTests
     public void Attached_panel_shell_brush_references_are_defined()
     {
         var root = RepoRoot();
-        var panel = File.ReadAllText(Path.Combine(root, "src", "FgoPet.App", "Panels", "AttachedPanelView.xaml"));
-        var tokens = XDocument.Load(Path.Combine(root, "src", "FgoPet.App", "Ui", "Shell", "ShellTokens.xaml"));
+        // ④ 迁移后这两个文件物理搬到了根级模块树，不再位于 src/FgoPet.App 下。
+        var panel = File.ReadAllText(Path.Combine(root, "host", "DesktopShell", "Desktop", "AttachedPanelView.xaml"));
+        var tokens = XDocument.Load(Path.Combine(root, "ui-foundation", "Shell", "ShellTokens.xaml"));
         var definedKeys = tokens.Descendants()
             .Select(element => element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value)
             .Where(key => key is not null)

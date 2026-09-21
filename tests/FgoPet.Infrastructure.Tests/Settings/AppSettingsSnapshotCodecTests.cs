@@ -68,4 +68,29 @@ public sealed class AppSettingsSnapshotCodecTests
 
         Assert.ThrowsAny<Exception>(() => codec.Deserialize("{\"schema_version\":99}"));
     }
+
+    // #27：备份/恢复曾经静默丢失 ShowReasoning（快照 DTO 缺该字段 → 恢复后回落到默认 true）。
+    // 反向自测要求：把 AppSettingsSnapshotCodec 的 ShowReasoning 接线回退掉，下面两条断言必须失败。
+    [Fact]
+    public void Show_reasoning_survives_the_backup_restore_roundtrip()
+    {
+        var source = AppSettings.Defaults with { ShowReasoning = false };
+        var codec = new AppSettingsSnapshotCodec();
+
+        var json = codec.Serialize(source);
+
+        Assert.Contains("\"show_reasoning\":false", json, StringComparison.Ordinal);
+        Assert.False(codec.Deserialize(json).ShowReasoning);
+    }
+
+    [Fact]
+    public void Restoring_a_legacy_snapshot_without_show_reasoning_keeps_it_enabled()
+    {
+        var codec = new AppSettingsSnapshotCodec();
+
+        // 修复前产生的备份没有 show_reasoning 字段；恢复时必须回落到既有默认值 true。
+        var restored = codec.Deserialize("{\"schema_version\":2,\"scale\":0.5}");
+
+        Assert.True(restored.ShowReasoning);
+    }
 }

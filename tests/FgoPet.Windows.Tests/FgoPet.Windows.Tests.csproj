@@ -23,4 +23,16 @@
   <ItemGroup>
     <None Include="..\fixtures\packs\**" Link="fixtures\packs\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 阶段 1 拆分新增 -->
+    <ProjectReference Include="../../modules/character/src/FgoPet.Character/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj" />
+    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../../ui-foundation/src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj" />
+    <ProjectReference Include="../../modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
+    <ProjectReference Include="../../modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
+  </ItemGroup>
 </Project>

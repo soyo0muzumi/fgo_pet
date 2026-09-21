@@ -1,4 +1,4 @@
-using System.Runtime.ExceptionServices;
+﻿using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
 using FgoPet.App.Dialogue;
@@ -128,7 +128,7 @@ public sealed class DialogueWindowIntegrationTests
                         $"m{index}", Core.Dialogue.ChatMessageRole.Assistant, $"消息 {index}"));
                 }
 
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
 
                 var scroller = FindField(window, "MessageScroller") as System.Windows.Controls.ScrollViewer;
                 Assert.NotNull(scroller);
@@ -156,7 +156,7 @@ public sealed class DialogueWindowIntegrationTests
                 viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
                     "user", ChatMessageRole.User, "用户消息"));
 
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
 
                 var scroller = Assert.IsType<ScrollViewer>(FindField(window, "MessageScroller"));
                 // Message text is rendered inside a read-only TextBox inside the bubble border.
@@ -363,7 +363,7 @@ public sealed class DialogueWindowIntegrationTests
 
                 input.Focus();
                 Keyboard.Focus(input);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
 
                 Assert.True(input.IsKeyboardFocusWithin);
                 Assert.Equal(focusRing.Color, Assert.IsType<SolidColorBrush>(composer.BorderBrush).Color);
@@ -437,7 +437,7 @@ public sealed class DialogueWindowIntegrationTests
 
                 input.Focus();
                 Keyboard.Focus(input);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
                 Assert.True(input.IsKeyboardFocusWithin, "the composer must hold keyboard focus");
 
                 var enter = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Enter)
@@ -471,7 +471,7 @@ public sealed class DialogueWindowIntegrationTests
                 turn.IsReasoningExpanded=false;
                 vm.Conversation.Turns.Add(turn);
                 window.Show();
-                window.Dispatcher.Invoke(() => {},System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
 
                 var well=FindVisualChildren<Border>(window).Single(border => border.Name=="ReasoningWell");
                 Assert.True(well.IsVisible);
@@ -508,7 +508,7 @@ public sealed class DialogueWindowIntegrationTests
             {
                 vm.Conversation.Turns.Add(new ConversationTurnViewModel("tool", ChatMessageRole.Assistant, string.Empty));
                 window.Show();
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
 
                 var body = FindVisualChildren<Border>(window).Single(border => border.Name == "MessageBody");
                 var actions = FindVisualChildren<StackPanel>(window).Single(panel => panel.Name == "MessageActions");
@@ -939,25 +939,5 @@ public sealed class DialogueWindowIntegrationTests
                 string.Empty));
     }
 
-    private static void StaRun(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception error) { failure = error; }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
+    private static void StaRun(Action action) => StaRunner.Run(action);
 }

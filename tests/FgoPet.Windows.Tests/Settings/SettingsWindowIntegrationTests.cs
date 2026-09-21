@@ -1,4 +1,4 @@
-using System.Runtime.ExceptionServices;
+﻿using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -379,7 +379,7 @@ public sealed class SettingsWindowIntegrationTests
                     .Single(item => item.Text == "显示/隐藏");
 
                 showHideItem.PerformClick();
-                portrait.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(portrait.Dispatcher);
 
                 Assert.True(portrait.IsVisible);
             }
@@ -483,7 +483,7 @@ public sealed class SettingsWindowIntegrationTests
                 tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
                     .Single(item => item.Text == "显示/隐藏")
                     .PerformClick();
-                portrait.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(portrait.Dispatcher);
 
                 Assert.Equal(selection, activated);
             }
@@ -680,9 +680,9 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
-    public void Embedded_role_package_list_loads_cards_and_open_button_routes_in_the_same_window()
+    public async Task Embedded_role_package_list_loads_cards_and_open_button_routes_in_the_same_window()
     {
-        StaRun(async () =>
+        await StaRun(async () =>
         {
             var settingsStore = new FakeSettingsStore(AppSettings.Defaults);
             var library = new ServantLibraryViewModel(
@@ -703,7 +703,7 @@ public sealed class SettingsWindowIntegrationTests
             {
                 await packageList.RefreshAsync();
                 window.Show();
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                StaRunner.Pump(window.Dispatcher);
                 window.UpdateLayout();
 
                 var card = Assert.Single(packageList.PackageList.Items.Cast<ServantCardViewModel>());
@@ -992,52 +992,9 @@ public sealed class SettingsWindowIntegrationTests
         new FakeSettingsStore(AppSettings.Defaults),
         _ => { });
 
-    private static void StaRun(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception error) { failure = error; }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
+    private static void StaRun(Action action) => StaRunner.Run(action);
 
-    private static Task StaRun(Func<Task> action)
-    {
-        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action().GetAwaiter().GetResult();
-                completion.SetResult(null);
-            }
-            catch (Exception error) { completion.SetException(error); }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return completion.Task;
-    }
+    private static Task StaRun(Func<Task> action) => StaRunner.RunAsync(action);
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
     {

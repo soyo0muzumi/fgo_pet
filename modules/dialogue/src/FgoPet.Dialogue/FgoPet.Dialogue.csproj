@@ -1,0 +1,99 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../character/src/FgoPet.Character/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
+    <ProjectReference Include="../../../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="../../../memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../../../speech/src/FgoPet.Speech.Core/FgoPet.Speech.Core.csproj" />
+    <ProjectReference Include="../../../speech/src/FgoPet.Speech.Desktop/FgoPet.Speech.Desktop.csproj" />
+    <ProjectReference Include="../../../work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
+    <ProjectReference Include="../../../work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
+    <ProjectReference Include="../../../work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Application\ConversationOrchestrator.cs">
+      <Link>modules\dialogue\Application\ConversationOrchestrator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\PromptBudget.cs">
+      <Link>modules\dialogue\Application\PromptBudget.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\PromptComposer.cs">
+      <Link>modules\dialogue\Application\PromptComposer.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\PromptInjectionGuard.cs">
+      <Link>modules\dialogue\Application\PromptInjectionGuard.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\StructuredOutputValidator.cs">
+      <Link>modules\dialogue\Application\StructuredOutputValidator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\ToolCallAggregator.cs">
+      <Link>modules\dialogue\Application\ToolCallAggregator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Contracts\DialogueProjectCatalog.cs">
+      <Link>modules\dialogue\Contracts\DialogueProjectCatalog.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ConversationTurnViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationTurnViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ConversationViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\DialogueItemViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\DialoguePresentationViewModels.cs">
+      <Link>modules\dialogue\Desktop\DialoguePresentationViewModels.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\DialogueProjectSelectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueProjectSelectionViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\DialogueWindow.xaml">
+      <Link>Dialogue\DialogueWindow.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\DialogueWindow.xaml.cs">
+      <Link>modules\dialogue\Desktop\DialogueWindow.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\DialogueWindowViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueWindowViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\ModelConnectionPage.xaml">
+      <Link>Settings\ModelConnectionPage.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\ModelConnectionPage.xaml.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ModelConnectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Infrastructure\ApprovedKnowledgeQuery.cs">
+      <Link>modules\dialogue\Infrastructure\ApprovedKnowledgeQuery.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Infrastructure\ChatProviderFactory.cs">
+      <Link>modules\dialogue\Infrastructure\ChatProviderFactory.cs</Link>
+    </Compile>
+  </ItemGroup>
+</Project>

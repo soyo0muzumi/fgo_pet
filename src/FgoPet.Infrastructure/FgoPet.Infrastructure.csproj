@@ -14,4 +14,176 @@
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
     <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
   </ItemGroup>
+  <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
+  <!-- 物理位置已按 11→6 目标架构就位；程序集拆分留待后续，故此处用 Compile Include 回链。 -->
+  <ItemGroup>
+    <!-- host/DataManagement -->
+    <Compile Include="..\..\host\DataManagement\Infrastructure\BackupArchivePolicy.cs">
+      <Link>host\DataManagement\Infrastructure\BackupArchivePolicy.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DataManagement\Infrastructure\BackupDatabaseNormalizer.cs">
+      <Link>host\DataManagement\Infrastructure\BackupDatabaseNormalizer.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DataManagement\Infrastructure\BackupPackageReferencesCodec.cs">
+      <Link>host\DataManagement\Infrastructure\BackupPackageReferencesCodec.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DataManagement\Infrastructure\PrivateBackupReader.cs">
+      <Link>host\DataManagement\Infrastructure\PrivateBackupReader.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DataManagement\Infrastructure\RuntimeDatabaseSnapshotService.cs">
+      <Link>host\DataManagement\Infrastructure\RuntimeDatabaseSnapshotService.cs</Link>
+    </Compile>
+
+    <!-- modules/character -->
+    <Compile Include="..\..\modules\character\Infrastructure\AppearanceManifestReader.cs">
+      <Link>modules\character\Infrastructure\AppearanceManifestReader.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\AppearanceValidator.cs">
+      <Link>modules\character\Infrastructure\AppearanceValidator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\ContentBindingResolver.cs">
+      <Link>modules\character\Infrastructure\ContentBindingResolver.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\DialogueManifestReader.cs">
+      <Link>modules\character\Infrastructure\DialogueManifestReader.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\FgoPetPackInstaller.cs">
+      <Link>modules\character\Infrastructure\FgoPetPackInstaller.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\FileArtPackageRepository.cs">
+      <Link>modules\character\Infrastructure\FileArtPackageRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\KnowledgeManifestReader.cs">
+      <Link>modules\character\Infrastructure\KnowledgeManifestReader.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\PackArchivePolicy.cs">
+      <Link>modules\character\Infrastructure\PackArchivePolicy.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\PackIndexStore.cs">
+      <Link>modules\character\Infrastructure\PackIndexStore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Infrastructure\PersonaManifestReader.cs">
+      <Link>modules\character\Infrastructure\PersonaManifestReader.cs</Link>
+    </Compile>
+
+    <!-- modules/dialogue -->
+    <Compile Include="..\..\modules\dialogue\Infrastructure\OpenAiCompatibleChatProvider.cs">
+      <Link>modules\dialogue\Infrastructure\OpenAiCompatibleChatProvider.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Infrastructure\ProviderCatalog.cs">
+      <Link>modules\dialogue\Infrastructure\ProviderCatalog.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Infrastructure\SqliteContentBindingRepository.cs">
+      <Link>modules\dialogue\Infrastructure\SqliteContentBindingRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Infrastructure\SqliteConversationRepository.cs">
+      <Link>modules\dialogue\Infrastructure\SqliteConversationRepository.cs</Link>
+    </Compile>
+
+    <!-- modules/focus -->
+    <Compile Include="..\..\modules\focus\Infrastructure\SqliteBondRepository.cs">
+      <Link>modules\focus\Infrastructure\SqliteBondRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Infrastructure\SqliteFocusCompletionUnit.cs">
+      <Link>modules\focus\Infrastructure\SqliteFocusCompletionUnit.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Infrastructure\SqliteFocusRepository.cs">
+      <Link>modules\focus\Infrastructure\SqliteFocusRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Infrastructure\SqliteTimelineRepository.cs">
+      <Link>modules\focus\Infrastructure\SqliteTimelineRepository.cs</Link>
+    </Compile>
+
+    <!-- modules/memory -->
+    <Compile Include="..\..\modules\memory\Infrastructure\SqliteMemoryRepository.cs">
+      <Link>modules\memory\Infrastructure\SqliteMemoryRepository.cs</Link>
+    </Compile>
+
+    <!-- modules/work -->
+    <Compile Include="..\..\modules\work\Archives\Infrastructure\SqliteWorkArchiveRepository.cs">
+      <Link>modules\work\Archives\Infrastructure\SqliteWorkArchiveRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentControlClient.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentControlClient.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentEventProjector.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentEventProjector.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentReconnectService.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentReconnectService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentRelayAdministration.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentRelayAdministration.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentRelayClient.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentRelayClient.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\AgentRelayRuntime.cs">
+      <Link>modules\work\Execution\Infrastructure\AgentRelayRuntime.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\CodexTargetCatalogClient.cs">
+      <Link>modules\work\Execution\Infrastructure\CodexTargetCatalogClient.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\CodexWorkerProcess.cs">
+      <Link>modules\work\Execution\Infrastructure\CodexWorkerProcess.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Infrastructure\SqliteAgentRepository.cs">
+      <Link>modules\work\Execution\Infrastructure\SqliteAgentRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Infrastructure\SqliteTodoRepository.cs">
+      <Link>modules\work\Todo\Infrastructure\SqliteTodoRepository.cs</Link>
+    </Compile>
+
+    <!-- platform/Diagnostics -->
+    <Compile Include="..\..\platform\Diagnostics\ResourceDiagnostics.cs">
+      <Link>platform\Diagnostics\ResourceDiagnostics.cs</Link>
+    </Compile>
+
+    <!-- platform/FileSystem -->
+    <Compile Include="..\..\platform\FileSystem\AtomicDirectoryMover.cs">
+      <Link>platform\FileSystem\AtomicDirectoryMover.cs</Link>
+    </Compile>
+
+    <!-- platform/Json -->
+    <Compile Include="..\..\platform\Json\AtomicJson.cs">
+      <Link>platform\Json\AtomicJson.cs</Link>
+    </Compile>
+
+    <!-- platform/Persistence -->
+    <Compile Include="..\..\platform\Persistence\RuntimeDatabase.cs">
+      <Link>platform\Persistence\RuntimeDatabase.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Persistence\RuntimeDatabaseMigrator.cs">
+      <Link>platform\Persistence\RuntimeDatabaseMigrator.cs</Link>
+    </Compile>
+
+    <!-- platform/Runtime -->
+    <Compile Include="..\..\platform\Runtime\SqliteEventStore.cs">
+      <Link>platform\Runtime\SqliteEventStore.cs</Link>
+    </Compile>
+
+    <!-- platform/Secrets -->
+    <Compile Include="..\..\platform\Secrets\ICredentialStore.cs">
+      <Link>platform\Secrets\ICredentialStore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Secrets\WindowsCredentialStore.cs">
+      <Link>platform\Secrets\WindowsCredentialStore.cs</Link>
+    </Compile>
+
+    <!-- platform/Settings.Foundation -->
+    <Compile Include="..\..\platform\Settings.Foundation\AppSettingsSnapshotCodec.cs">
+      <Link>platform\Settings.Foundation\AppSettingsSnapshotCodec.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\JsonAppSettingsStore.cs">
+      <Link>platform\Settings.Foundation\JsonAppSettingsStore.cs</Link>
+    </Compile>
+
+    <!-- platform/Windowing -->
+    <Compile Include="..\..\platform\Windowing\JsonWindowPlacementStore.cs">
+      <Link>platform\Windowing\JsonWindowPlacementStore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\WindowsScreenLayoutService.cs">
+      <Link>platform\Windowing\WindowsScreenLayoutService.cs</Link>
+    </Compile>
+  </ItemGroup>
 </Project>

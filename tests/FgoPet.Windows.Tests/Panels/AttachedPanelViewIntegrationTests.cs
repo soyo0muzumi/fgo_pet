@@ -271,36 +271,7 @@ public sealed class AttachedPanelViewIntegrationTests
         });
     }
 
-    private static void StaRun(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception error)
-            {
-                failure = error;
-            }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-    }
+    private static void StaRun(Action action) => StaRunner.Run(action);
 
     private sealed class FakeFocusService : IFocusSessionService
     {

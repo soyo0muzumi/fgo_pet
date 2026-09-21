@@ -1,0 +1,117 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
+    <ProjectReference Include="../../../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="../../../../ui-foundation/src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Application\RoleActivationService.cs">
+      <Link>modules\character\Application\RoleActivationService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Application\ServantPreferenceService.cs">
+      <Link>modules\character\Application\ServantPreferenceService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\BitmapAssetLoader.cs">
+      <Link>modules\character\Desktop\BitmapAssetLoader.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\PackageDiagnosticViewModel.cs">
+      <Link>modules\character\Desktop\PackageDiagnosticViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\PersonalizationPage.xaml">
+      <Link>Settings\PersonalizationPage.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\PersonalizationPage.xaml.cs">
+      <Link>modules\character\Desktop\PersonalizationPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\PersonalizationViewModel.cs">
+      <Link>modules\character\Desktop\PersonalizationViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\PortraitController.cs">
+      <Link>modules\character\Desktop\PortraitController.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\PortraitSnapshotCache.cs">
+      <Link>modules\character\Desktop\PortraitSnapshotCache.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\PortraitView.xaml">
+      <Link>Portraits\PortraitView.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\PortraitView.xaml.cs">
+      <Link>modules\character\Desktop\PortraitView.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\PortraitViewModel.cs">
+      <Link>modules\character\Desktop\PortraitViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\RecentServantSwitcherViewModel.cs">
+      <Link>modules\character\Desktop\RecentServantSwitcherViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\RolePackageDetailPage.xaml">
+      <Link>Settings\RolePackageDetailPage.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\RolePackageDetailPage.xaml.cs">
+      <Link>modules\character\Desktop\RolePackageDetailPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\RolePackageDetailViewModel.cs">
+      <Link>modules\character\Desktop\RolePackageDetailViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\RolePackagesPage.xaml">
+      <Link>Settings\RolePackagesPage.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\RolePackagesPage.xaml.cs">
+      <Link>modules\character\Desktop\RolePackagesPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ServantAppearanceItemViewModel.cs">
+      <Link>modules\character\Desktop\ServantAppearanceItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ServantCardViewModel.cs">
+      <Link>modules\character\Desktop\ServantCardViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\ServantLibraryViewModel.cs">
+      <Link>modules\character\Desktop\ServantLibraryViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\ThemePage.xaml">
+      <Link>Settings\ThemePage.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\ThemePage.xaml.cs">
+      <Link>modules\character\Desktop\ThemePage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Domain\AppRuntime.cs">
+      <Link>modules\character\Domain\AppRuntime.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Domain\RoleState.cs">
+      <Link>modules\character\Domain\RoleState.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Infrastructure\PortraitSnapshot.cs">
+      <Link>modules\character\Infrastructure\PortraitSnapshot.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Infrastructure\PortraitState.cs">
+      <Link>modules\character\Infrastructure\PortraitState.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Integrations\Focus\EventFeedbackSelector.cs">
+      <Link>modules\character\Integrations\Focus\EventFeedbackSelector.cs</Link>
+    </Compile>
+  </ItemGroup>
+</Project>

@@ -6,6 +6,7 @@
 
 - [使用与配置指南](guides/)
 - [开发者指南](guides/development.md)
+- [远程仓库管理规范](guides/repository-management.md)
 - [v0.1.2 外部测试说明](release/0.1.2-test-notes.md)
 - [Release candidate 流程](release/README.md)
 - [当前开发路线](roadmap.md)

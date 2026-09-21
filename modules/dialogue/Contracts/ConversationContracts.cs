@@ -1,0 +1,234 @@
+using FgoPet.Core.Memory;
+using FgoPet.Core.Validation;
+
+namespace FgoPet.Core.Dialogue;
+
+public enum ChatMessageRole
+{
+    System,
+    User,
+    Assistant,
+}
+
+public enum ChatMessageStatus
+{
+    Pending,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+public enum ConversationSendStatus
+{
+    Completed,
+    Cancelled,
+    Failed,
+    ConfigurationRequired,
+}
+
+public sealed record Conversation
+{
+    public Conversation(
+        string conversationId,
+        string servantId,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset updatedAtUtc,
+        ContentContextKey contentContext,
+        bool isArchived = false)
+    {
+        ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
+        ServantId = Phase3Validation.Id(servantId, nameof(servantId));
+        ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
+        CreatedAtUtc = createdAtUtc;
+        UpdatedAtUtc = updatedAtUtc;
+        IsArchived = isArchived;
+    }
+
+    public string ConversationId { get; }
+    public string ServantId { get; }
+    public DateTimeOffset CreatedAtUtc { get; }
+    public DateTimeOffset UpdatedAtUtc { get; }
+    public ContentContextKey ContentContext { get; }
+    public bool IsArchived { get; }
+}
+
+public sealed record ChatMessage
+{
+    public ChatMessage(
+        string messageId,
+        string conversationId,
+        string servantId,
+        ChatMessageRole role,
+        string text,
+        ChatMessageStatus status,
+        DateTimeOffset createdAtUtc,
+        ContentContextKey contentContext,
+        int sequence)
+    {
+        if (sequence < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sequence));
+        }
+
+        MessageId = Phase3Validation.Id(messageId, nameof(messageId));
+        ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
+        ServantId = Phase3Validation.Id(servantId, nameof(servantId));
+        Text = status is ChatMessageStatus.Cancelled or ChatMessageStatus.Failed
+            ? Phase3Validation.OptionalText(text, nameof(text), 12_000)
+            : Phase3Validation.Text(text, nameof(text), 12_000);
+        Role = role;
+        Status = status;
+        CreatedAtUtc = createdAtUtc;
+        ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
+        Sequence = sequence;
+    }
+
+    public string MessageId { get; }
+    public string ConversationId { get; }
+    public string ServantId { get; }
+    public ChatMessageRole Role { get; }
+    public string Text { get; }
+    public ChatMessageStatus Status { get; }
+    public DateTimeOffset CreatedAtUtc { get; }
+    public ContentContextKey ContentContext { get; }
+    public int Sequence { get; }
+}
+
+public sealed record ConversationSendResult(
+    ConversationSendStatus Status,
+    string ConversationId,
+    string? AssistantMessageId = null,
+    string? SafeError = null);
+
+public enum ConversationUpdateType
+{
+    UserMessagePersisted,
+    RequestStage,
+    AssistantDelta,
+    AssistantCompleted,
+    Cancelled,
+    Failed,
+}
+
+public enum ConversationRequestStage
+{
+    Preparing,
+    RequestStarted,
+    ResponseHeadersReceived,
+    StreamingReasoning,
+    StreamingTool,
+    StreamingAnswer,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// <summary>Outcome of the submit_todo_proposals tool-call channel for the UI.</summary>
+public enum TodoToolCallOutcome
+{
+    None,
+    ProposalsReady,
+    InvalidToolCall,
+    NoProposal,
+    TextFallback,
+    PendingDraftReplaced,
+    ConfirmationUnknown,
+    Cancelled,
+    Confirmed,
+    CommitUnknown,
+}
+
+public sealed record ConversationUpdate(
+    ConversationUpdateType Type,
+    string ConversationId,
+    string? MessageId = null,
+    string? TextDelta = null,
+    string? SafeError = null,
+    string? ServantId = null,
+    string? StructuredResponse = null,
+    TodoToolCallOutcome TodoOutcome = TodoToolCallOutcome.None,
+    string? TodoDetail = null,
+    string? ReasoningDelta = null,
+    ConversationRequestStage? RequestStage = null,
+    int? HttpStatusCode = null,
+    string? ProviderErrorCode = null,
+    FgoPet.Core.Portraits.ExpressionSemantic? Expression = null,
+    string? TodoDraftId = null,
+    int? TodoDraftVersion = null,
+    string? CreatedTodoId = null);
+
+public sealed record ChatRequest
+{
+    public ChatRequest(
+        string servantId,
+        string conversationId,
+        IReadOnlyList<PromptMessage> messages,
+        ContentContextKey? contentContext = null,
+        IReadOnlyDictionary<string, string>? metadata = null,
+        IReadOnlyList<ChatToolDefinition>? tools = null,
+        string? toolChoice = null)
+    {
+        ServantId = Phase3Validation.Id(servantId, nameof(servantId));
+        ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
+        Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
+        if (Messages.Count == 0)
+        {
+            throw new ArgumentException("At least one message is required.", nameof(messages));
+        }
+
+        ContentContext = contentContext;
+        Metadata = metadata is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+        Tools = tools is null ? null : tools.ToArray();
+        if (Tools is { Count: 0 })
+        {
+            throw new ArgumentException("Tools collection must be null or non-empty.", nameof(tools));
+        }
+
+        ToolChoice = string.IsNullOrWhiteSpace(toolChoice)
+            ? null
+            : Phase3Validation.Id(toolChoice, nameof(toolChoice), 64);
+        if (ToolChoice is not null && Tools is null)
+        {
+            throw new ArgumentException("ToolChoice requires Tools to be set.", nameof(toolChoice));
+        }
+    }
+
+    public string ServantId { get; }
+    public string ConversationId { get; }
+    public IReadOnlyList<PromptMessage> Messages { get; }
+    public ContentContextKey? ContentContext { get; }
+    public IReadOnlyDictionary<string, string> Metadata { get; }
+    public IReadOnlyList<ChatToolDefinition>? Tools { get; }
+    public string? ToolChoice { get; }
+}
+
+public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null, ChatToolCallDelta? ToolCallDelta = null, string? ReasoningDelta = null)
+{
+    // Streaming fragments are concatenated as-is: never trim them or a provider that
+    // splits on word boundaries loses every space between English words.
+    public string TextDelta { get; } = Phase3Validation.Fragment(TextDelta, nameof(TextDelta), 4_096);
+    public string? FinishReason { get; } = string.IsNullOrWhiteSpace(FinishReason)
+        ? null
+        : Phase3Validation.Id(FinishReason, nameof(FinishReason), 64);
+    public ChatToolCallDelta? ToolCallDelta { get; } = ToolCallDelta;
+    public string? ReasoningDelta { get; } = ReasoningDelta is null
+        ? null
+        : Phase3Validation.Fragment(ReasoningDelta, nameof(ReasoningDelta), 4_096);
+}
+
+public sealed record ChatCompletion(
+    string Text,
+    string? Emotion = null,
+    string? FeedbackType = null,
+    MemoryCandidate? MemoryCandidate = null)
+{
+    public string Text { get; } = Phase3Validation.Text(Text, nameof(Text), 12_000);
+    public string? Emotion { get; } = string.IsNullOrWhiteSpace(Emotion)
+        ? null
+        : Phase3Validation.Id(Emotion, nameof(Emotion), 64);
+    public string? FeedbackType { get; } = string.IsNullOrWhiteSpace(FeedbackType)
+        ? null
+        : Phase3Validation.Id(FeedbackType, nameof(FeedbackType), 64);
+}

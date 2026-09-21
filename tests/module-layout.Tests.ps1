@@ -17,14 +17,14 @@ $unitTestProjects = @(
 
 $approvedRoots = @(
     'modules\agent-integration'
-    'modules\desktop-shell'
+    'modules\character'
     'modules\dialogue'
     'modules\focus'
     'modules\memory'
-    'modules\servant-packs'
-    'modules\settings-privacy'
-    'modules\todo'
-    'foundation'
+    'modules\speech'
+    'modules\work'
+    'host'
+    'platform'
     'ui-foundation'
     'integration-tests'
 )

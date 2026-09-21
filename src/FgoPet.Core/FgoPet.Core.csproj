@@ -8,4 +8,241 @@
   <ItemGroup>
     <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
   </ItemGroup>
+
+  <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
+  <!-- 物理位置已按 11→6 目标架构就位；程序集拆分留待后续，故此处用 Compile Include 回链。 -->
+  <ItemGroup>
+    <!-- host -->
+    <Compile Include="..\..\host\DataManagement\Contracts\BackupContracts.cs">
+      <Link>host\DataManagement\Contracts\BackupContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DesktopShell\Domain\AttachedPanelState.cs">
+      <Link>host\DesktopShell\Domain\AttachedPanelState.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DesktopShell\Domain\AttachedPanelStateMachine.cs">
+      <Link>host\DesktopShell\Domain\AttachedPanelStateMachine.cs</Link>
+    </Compile>
+
+    <!-- modules -->
+    <Compile Include="..\..\modules\character\Contracts\IArtPackageRepository.cs">
+      <Link>modules\character\Contracts\IArtPackageRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Contracts\IPackInstaller.cs">
+      <Link>modules\character\Contracts\IPackInstaller.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Contracts\IPortraitController.cs">
+      <Link>modules\character\Contracts\IPortraitController.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Contracts\ServantPreference.cs">
+      <Link>modules\character\Contracts\ServantPreference.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\AppearanceLocation.cs">
+      <Link>modules\character\Domain\AppearanceLocation.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\DialogueContract.cs">
+      <Link>modules\character\Domain\DialogueContract.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\ExpressionResolver.cs">
+      <Link>modules\character\Domain\ExpressionResolver.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\ExpressionSemantic.cs">
+      <Link>modules\character\Domain\ExpressionSemantic.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\KnowledgeContract.cs">
+      <Link>modules\character\Domain\KnowledgeContract.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PackCatalog.cs">
+      <Link>modules\character\Domain\PackCatalog.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PackContracts.cs">
+      <Link>modules\character\Domain\PackContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PackFailureException.cs">
+      <Link>modules\character\Domain\PackFailureException.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PackJson.cs">
+      <Link>modules\character\Domain\PackJson.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PersonaContract.cs">
+      <Link>modules\character\Domain\PersonaContract.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\PortraitSelection.cs">
+      <Link>modules\character\Domain\PortraitSelection.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\character\Domain\SemVersion.cs">
+      <Link>modules\character\Domain\SemVersion.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Contracts\ChatProviderContracts.cs">
+      <Link>modules\dialogue\Contracts\ChatProviderContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Contracts\ChatToolContracts.cs">
+      <Link>modules\dialogue\Contracts\ChatToolContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Contracts\ConversationContracts.cs">
+      <Link>modules\dialogue\Contracts\ConversationContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Contracts\ModelConnectionSettings.cs">
+      <Link>modules\dialogue\Contracts\ModelConnectionSettings.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\dialogue\Contracts\PromptContracts.cs">
+      <Link>modules\dialogue\Contracts\PromptContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Contracts\IAttachedPanelLauncher.cs">
+      <Link>modules\focus\Contracts\IAttachedPanelLauncher.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Contracts\IBondProgressionPolicy.cs">
+      <Link>modules\focus\Contracts\IBondProgressionPolicy.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\BondProgress.cs">
+      <Link>modules\focus\Domain\BondProgress.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\DefaultBondProgressionPolicy.cs">
+      <Link>modules\focus\Domain\DefaultBondProgressionPolicy.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusCommand.cs">
+      <Link>modules\focus\Domain\FocusCommand.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusPreset.cs">
+      <Link>modules\focus\Domain\FocusPreset.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusSession.cs">
+      <Link>modules\focus\Domain\FocusSession.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusStateMachine.cs">
+      <Link>modules\focus\Domain\FocusStateMachine.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusStatus.cs">
+      <Link>modules\focus\Domain\FocusStatus.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\FocusTransition.cs">
+      <Link>modules\focus\Domain\FocusTransition.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\RuntimeEventType.cs">
+      <Link>modules\focus\Domain\RuntimeEventType.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\focus\Domain\TimelineEntry.cs">
+      <Link>modules\focus\Domain\TimelineEntry.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\memory\Contracts\MemoryContracts.cs">
+      <Link>modules\memory\Contracts\MemoryContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Archives\Contracts\IWorkArchiveRepository.cs">
+      <Link>modules\work\Archives\Contracts\IWorkArchiveRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Archives\Domain\WorkArchive.cs">
+      <Link>modules\work\Archives\Domain\WorkArchive.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Contracts\AgentArchiveContracts.cs">
+      <Link>modules\work\Execution\Contracts\AgentArchiveContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Contracts\AgentRelayAdministration.cs">
+      <Link>modules\work\Execution\Contracts\AgentRelayAdministration.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Contracts\IAgentGateway.cs">
+      <Link>modules\work\Execution\Contracts\IAgentGateway.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Contracts\IAgentRepository.cs">
+      <Link>modules\work\Execution\Contracts\IAgentRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentCapabilities.cs">
+      <Link>modules\work\Execution\Domain\AgentCapabilities.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentConnectionSettings.cs">
+      <Link>modules\work\Execution\Domain\AgentConnectionSettings.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentDiagnosticSummary.cs">
+      <Link>modules\work\Execution\Domain\AgentDiagnosticSummary.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentEvent.cs">
+      <Link>modules\work\Execution\Domain\AgentEvent.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentEventType.cs">
+      <Link>modules\work\Execution\Domain\AgentEventType.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentExecution.cs">
+      <Link>modules\work\Execution\Domain\AgentExecution.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentProjectSnapshot.cs">
+      <Link>modules\work\Execution\Domain\AgentProjectSnapshot.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Execution\Domain\AgentTargetCatalog.cs">
+      <Link>modules\work\Execution\Domain\AgentTargetCatalog.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Contracts\ITodoRepository.cs">
+      <Link>modules\work\Todo\Contracts\ITodoRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Domain\TodoItem.cs">
+      <Link>modules\work\Todo\Domain\TodoItem.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Domain\TodoPriority.cs">
+      <Link>modules\work\Todo\Domain\TodoPriority.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Domain\TodoStatus.cs">
+      <Link>modules\work\Todo\Domain\TodoStatus.cs</Link>
+    </Compile>
+    <Compile Include="..\..\modules\work\Todo\Domain\TodoStep.cs">
+      <Link>modules\work\Todo\Domain\TodoStep.cs</Link>
+    </Compile>
+
+    <!-- platform -->
+    <Compile Include="..\..\platform\Diagnostics\IResourceDiagnostics.cs">
+      <Link>platform\Diagnostics\IResourceDiagnostics.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Geometry\AttachedPanelLayout.cs">
+      <Link>platform\Geometry\AttachedPanelLayout.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Dialogue\ContentContextKey.cs">
+      <Link>platform\Dialogue\ContentContextKey.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Focus\FocusPhase.cs">
+      <Link>platform\Focus\FocusPhase.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Geometry\GeometryTypes.cs">
+      <Link>platform\Geometry\GeometryTypes.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Geometry\PortraitLayout.cs">
+      <Link>platform\Geometry\PortraitLayout.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Packs\PackError.cs">
+      <Link>platform\Packs\PackError.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Runtime\RuntimeEvent.cs">
+      <Link>platform\Runtime\RuntimeEvent.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Runtime\RuntimeEventSource.cs">
+      <Link>platform\Runtime\RuntimeEventSource.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Secrets\ICredentialContracts.cs">
+      <Link>platform\Secrets\ICredentialContracts.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\AppSettings.cs">
+      <Link>platform\Settings.Foundation\AppSettings.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\IAppSettingsStore.cs">
+      <Link>platform\Settings.Foundation\IAppSettingsStore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\UserProfile.cs">
+      <Link>platform\Settings.Foundation\UserProfile.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Validation\Phase3Validation.cs">
+      <Link>platform\Validation\Phase3Validation.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\IScreenLayoutService.cs">
+      <Link>platform\Windowing\IScreenLayoutService.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\IWindowPlacementStore.cs">
+      <Link>platform\Windowing\IWindowPlacementStore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\ScreenLayout.cs">
+      <Link>platform\Windowing\ScreenLayout.cs</Link>
+    </Compile>
+    <Compile Include="..\..\platform\Windowing\WindowPlacement.cs">
+      <Link>platform\Windowing\WindowPlacement.cs</Link>
+    </Compile>
+
+    <!-- ui-foundation -->
+    <Compile Include="..\..\ui-foundation\Theming\AppTheme.cs">
+      <Link>ui-foundation\Theming\AppTheme.cs</Link>
+    </Compile>
+  </ItemGroup>
 </Project>

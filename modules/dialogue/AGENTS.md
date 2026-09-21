@@ -2,22 +2,33 @@
 
 ## Scope
 
-This file applies to this module directory tree and inherits the repository root `AGENTS.md`.
+本文件适用于本目录树，并继承仓库根 `AGENTS.md`。
 
 ## Ownership
 
-Own sessions, providers, prompt composition, knowledge binding, structured output, dialogue tools, and dialogue presentation.
+产品主入口。拥有对话运行过程；其他模块拥有自己的业务事实。
+
+本模块拥有：
+
+- 会话与消息、流式过程
+- 提示词组装、预算、注入拦截
+- 结构化输出校验、工具调用聚合
+- 模型连接用例、会话摘要
 
 ## Boundaries and dependencies
 
-- Allowed dependencies: `memory` published read-only contracts, `servant-packs` contracts, `ui-foundation`, and `foundation`.
-- Forbidden dependencies: memory implementation, memory review/deletion controls, `desktop-shell`, Relay, Codex Adapter, and direct database tables.
-- Cross-module calls must use explicit published interfaces.
+- **允许依赖**：`platform/*`、`ui-foundation/*`，以及**明确允许**的 memory / character / speech / work 的 `Contracts`
+- **禁止依赖**：其他模块的 `Application` / `Infrastructure` / `Desktop`、`host`
+- 模块对外只暴露 `Contracts/`；其他模块只能经**明确允许**的契约边访问本模块（全量 8 条见 `modules/README.md`）。
 
 ## Safety invariants
 
-Never expose credentials, complete private prompts, tool arguments, terminal output, or unnecessary local paths in payloads or logs. Reject unsafe structured output and preserve approval boundaries.
+模型输出是**不可信输入**：入站必须过 `PromptInjectionGuard` 与 schema 校验。不得把凭据、原始异常全文或未脱敏的用户数据写入提示词或日志。
 
 ## Minimum validation
 
-Run affected dialogue unit tests, provider tests, and Windows presentation tests. Provider, persistence, or cross-module changes require the relevant integration/end-to-end checks and release build.
+Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memory / character / speech / work）的契约测试；改动提示词或预算常量需跑 EndToEnd。
+
+## 决策出处
+
+Q1 Q2 Q5 **Q7** **提案边界（机制侧）**（详见工作区 `modules-v2/dialogue.md`）
