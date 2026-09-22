@@ -9,6 +9,7 @@ using FgoPet.Core.Focus;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
@@ -16,6 +17,7 @@ using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Speech.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Panels;
@@ -124,14 +126,27 @@ public sealed class AttachedPanelViewModelTests
     [Fact]
     public void Desktop_pet_read_aloud_entry_toggles_the_existing_auto_read_setting()
     {
-        var settings = new MemorySettingsStore(AppSettings.Defaults);
+        var voice = new ReferenceVoice("voice-1", "玛修", "D:\\voices\\mash.wav");
+        var connection = SpeechConnectionSettings.Defaults with
+        {
+            Provider = SpeechProviderKind.IndexTts,
+            OpenAiModel = "preserved-model",
+            OpenAiVoice = "preserved-voice",
+            IndexTtsVoiceId = voice.Id,
+            IndexTtsVoices = new[] { voice },
+        };
+        var settings = new MemorySettingsStore(new SpeechSettings(connection));
         var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, settings: settings);
 
         Assert.False(vm.IsAutoReadEnabled);
         vm.ToggleAutoRead();
 
         Assert.True(vm.IsAutoReadEnabled);
-        Assert.True(settings.Current.SpeechConnection.AutoReadEnabled);
+        Assert.True(settings.Current.Connection.AutoReadEnabled);
+        Assert.Equal(SpeechProviderKind.IndexTts, settings.Current.Connection.Provider);
+        Assert.Equal("preserved-model", settings.Current.Connection.OpenAiModel);
+        Assert.Equal("preserved-voice", settings.Current.Connection.OpenAiVoice);
+        Assert.Equal(voice, Assert.Single(settings.Current.Connection.IndexTtsVoices));
     }
     [Fact]
     public void Unread_replies_surface_on_the_compact_panel_and_clear_when_activated()
@@ -397,12 +412,11 @@ public sealed class AttachedPanelViewModelTests
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
-    private sealed class MemorySettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class MemorySettingsStore(SpeechSettings initial) : ISpeechSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; private set; } = initial;
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public SpeechSettings Current { get; private set; } = initial;
+        public SpeechSettings Load() => Current;
+        public void Save(SpeechSettings settings) => Current = settings;
     }
 
     private sealed class DialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore

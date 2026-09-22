@@ -2,9 +2,9 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Speech;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Core.Secrets;
+using FgoPet.Speech.Settings;
 
 namespace FgoPet.App.Settings;
 
@@ -13,7 +13,7 @@ public sealed record SpeechProviderChoice(SpeechProviderKind Provider, string Di
 public sealed partial class SpeechConnectionViewModel : ObservableObject
 {
     private const string CredentialTarget = "fgo-pet/speech/openai";
-    private readonly IAppSettingsStore _settings;
+    private readonly ISpeechSettingsStore _settings;
     private readonly ICredentialStore _credentials;
     private readonly SpeechPlaybackCoordinator _playback;
     private string _pendingApiKey = string.Empty;
@@ -21,7 +21,7 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
     private bool _importing;
 
     public SpeechConnectionViewModel(
-        IAppSettingsStore settings,
+        ISpeechSettingsStore settings,
         ICredentialStore credentials,
         SpeechPlaybackCoordinator playback, string? voiceDirectory = null)
     {
@@ -36,7 +36,7 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
             new(SpeechProviderKind.GptSoVits, "GPT-SoVITS 本地服务"),
         ];
 
-        var saved = _settings.Load().SpeechConnection.Normalize();
+        var saved = _settings.Load().Connection.Normalize();
         Enabled = saved.Enabled;
         Provider = saved.Provider;
         OpenAiBaseUrl = saved.OpenAiBaseUrl;
@@ -164,7 +164,7 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
             try
             {
                 var current = _settings.Load();
-                _settings.Save(current with { SpeechConnection = current.SpeechConnection with
+                _settings.Save(current with { Connection = current.Connection with
                     { IndexTtsVoices = Voices.ToArray(), IndexTtsVoiceId = voice.Id } });
             }
             catch { Voices.Remove(voice); SelectedVoice = previous; throw; }
@@ -193,9 +193,9 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
             _playback.Stop();
             File.Delete(expected);
             var current = _settings.Load();
-            var remaining = current.SpeechConnection.IndexTtsVoices.Where(v => v.Id != voice.Id).ToArray();
-            _settings.Save(current with { SpeechConnection = current.SpeechConnection with
-                { IndexTtsVoices = remaining, IndexTtsVoiceId = current.SpeechConnection.IndexTtsVoiceId == voice.Id ? "" : current.SpeechConnection.IndexTtsVoiceId } });
+            var remaining = current.Connection.IndexTtsVoices.Where(v => v.Id != voice.Id).ToArray();
+            _settings.Save(current with { Connection = current.Connection with
+                { IndexTtsVoices = remaining, IndexTtsVoiceId = current.Connection.IndexTtsVoiceId == voice.Id ? "" : current.Connection.IndexTtsVoiceId } });
             Voices.Remove(voice);
             SelectedVoice = null;
             StatusText = "本机音色副本已删除。IndexTTS 服务自己的缓存需在该服务中管理。";
@@ -231,7 +231,7 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
         try
         {
             await SavePendingCredentialAsync().ConfigureAwait(true);
-            _settings.Save(_settings.Load() with { SpeechConnection = BuildSettings() });
+            _settings.Save(_settings.Load() with { Connection = BuildSettings() });
             StatusText = Enabled ? "朗读设置已保存。" : "朗读设置已保存；当前保持关闭。";
         }
         catch (ArgumentException)

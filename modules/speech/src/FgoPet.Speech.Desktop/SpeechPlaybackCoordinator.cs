@@ -1,5 +1,5 @@
-using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
+using FgoPet.Speech.Settings;
 
 namespace FgoPet.App.Speech;
 
@@ -13,7 +13,7 @@ public sealed class SpeechPlaybackCoordinator : IDisposable
 {
     private readonly SpeechSynthesisCoordinator _synthesis;
     private readonly ISpeechAudioPlayer _player;
-    private readonly IAppSettingsStore _settings;
+    private readonly ISpeechSettingsStore _settings;
     private readonly object _gate = new();
     private CancellationTokenSource? _active;
     private long _generation;
@@ -22,7 +22,7 @@ public sealed class SpeechPlaybackCoordinator : IDisposable
     public SpeechPlaybackCoordinator(
         SpeechSynthesisCoordinator synthesis,
         ISpeechAudioPlayer player,
-        IAppSettingsStore settings)
+        ISpeechSettingsStore settings)
     {
         _synthesis = synthesis ?? throw new ArgumentNullException(nameof(synthesis));
         _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -40,7 +40,7 @@ public sealed class SpeechPlaybackCoordinator : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         try
         {
-            var configuration = _settings.Load().SpeechConnection.Normalize();
+            var configuration = _settings.Load().Connection.Normalize();
             if (autoRead)
             {
                 if (!configuration.AutoReadEnabled)

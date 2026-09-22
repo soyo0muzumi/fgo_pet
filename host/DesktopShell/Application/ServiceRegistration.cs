@@ -276,7 +276,7 @@ public static class ServiceRegistration
         .AddSingleton<ModelConnectionViewModel>()
         .AddSingleton<ModelConnectionPage>()
          .AddSingleton<SpeechConnectionViewModel>(provider => new SpeechConnectionViewModel(
-             provider.GetRequiredService<IAppSettingsStore>(),
+             provider.GetRequiredService<ISpeechSettingsStore>(),
              provider.GetRequiredService<FgoPet.Core.Secrets.ICredentialStore>(),
              provider.GetRequiredService<SpeechPlaybackCoordinator>(),
              Path.Combine(paths.StorageRoot, "voices")))
@@ -407,7 +407,7 @@ public static class ServiceRegistration
                 currentAgentTask,
                 provider.GetRequiredService<AppRuntime>(),
                 provider.GetRequiredService<DialogueWindowViewModel>(),
-                provider.GetRequiredService<IAppSettingsStore>());
+                provider.GetRequiredService<ISpeechSettingsStore>());
         })
         .AddSingleton<IAttachedPanelLauncher>(provider => provider.GetRequiredService<AttachedPanelViewModel>())
         .AddSingleton(provider => new PortraitWindow(

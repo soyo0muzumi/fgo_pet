@@ -17,6 +17,7 @@ using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Memory.Settings;
+using FgoPet.Speech.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Dialogue;
@@ -139,10 +140,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
     public async Task Completed_new_reply_is_auto_read_when_enabled()
     {
         var settings = new RecordingSettings();
-        settings.Save(AppSettings.Defaults with
+        settings.Save(SpeechSettings.Defaults with
         {
-            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
-            SpeechConnection = new SpeechConnectionSettings
+            Connection = new SpeechConnectionSettings
             {
                 Enabled = true,
                 Provider = SpeechProviderKind.GptSoVits,
@@ -173,9 +173,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
     public async Task Auto_read_is_blocked_when_do_not_disturb_enabled()
     {
         var settings = new RecordingSettings();
-        settings.Save(AppSettings.Defaults with
+        settings.Save(SpeechSettings.Defaults with
         {
-            SpeechConnection = new SpeechConnectionSettings
+            Connection = new SpeechConnectionSettings
             {
                 Enabled = true,
                 Provider = SpeechProviderKind.GptSoVits,
@@ -769,15 +769,13 @@ public sealed class ConversationOrchestratorTests : IDisposable
         public void Save(MemorySettings settings) => Current = settings;
     }
 
-    private sealed class RecordingSettings : IAppSettingsStore
+    private sealed class RecordingSettings : ISpeechSettingsStore
     {
-        public AppSettings Current { get; private set; } = AppSettings.Defaults;
+        public SpeechSettings Current { get; private set; } = SpeechSettings.Defaults;
 
-        public string Location => "memory";
+        public SpeechSettings Load() => Current;
 
-        public AppSettings Load() => Current;
-
-        public void Save(AppSettings settings) => Current = settings;
+        public void Save(SpeechSettings settings) => Current = settings;
     }
 
     private sealed class DegradingProvider(IReadOnlyList<ChatStreamChunk> fallbackChunks) : IChatProvider

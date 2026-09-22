@@ -14,7 +14,7 @@ using FgoPet.Core.Timeline;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Runtime;
 using FgoPet.App.Settings;
-using FgoPet.Core.Settings;
+using FgoPet.Speech.Settings;
 
 namespace FgoPet.App.Panels;
 
@@ -36,7 +36,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
     private readonly IFocusSessionService? _focus;
     private readonly AppRuntime? _runtime;
     private readonly Dispatcher _dispatcher;
-    private readonly IAppSettingsStore? _settings;
+    private readonly ISpeechSettingsStore? _settings;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
     private TimeSpan _idleTimeout = TimeSpan.FromSeconds(30);
@@ -54,7 +54,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
         AgentCurrentTaskViewModel? currentAgentTask = null,
         AppRuntime? runtime = null,
         DialogueWindowViewModel? dialogueWindow = null,
-        IAppSettingsStore? settings = null)
+        ISpeechSettingsStore? settings = null)
     {
         _time = time;
         _focus = focus;
@@ -64,7 +64,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
         _runtime = runtime;
         DialogueWindow = dialogueWindow;
         _settings = settings;
-        _isAutoReadEnabled = settings?.Load().SpeechConnection.AutoReadEnabled ?? false;
+        _isAutoReadEnabled = settings?.Load().Connection.AutoReadEnabled ?? false;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _lastInteraction = time.GetUtcNow();
         if (dialogueWindow is not null)
@@ -339,10 +339,10 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
         }
 
         var current = _settings.Load();
-        _isAutoReadEnabled = !current.SpeechConnection.AutoReadEnabled;
+        _isAutoReadEnabled = !current.Connection.AutoReadEnabled;
         _settings.Save(current with
         {
-            SpeechConnection = current.SpeechConnection with { AutoReadEnabled = _isAutoReadEnabled },
+            Connection = current.Connection with { AutoReadEnabled = _isAutoReadEnabled },
         });
         OnPropertyChanged(nameof(IsAutoReadEnabled));
         OnPropertyChanged(nameof(SpeechActionAutomationName));

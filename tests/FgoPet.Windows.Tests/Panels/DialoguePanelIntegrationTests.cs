@@ -13,11 +13,13 @@ using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Speech.Settings;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Panels;
@@ -65,6 +67,31 @@ public sealed class DialoguePanelIntegrationTests
             Assert.NotNull(view.FindName("ChatEntryButton"));
             Assert.NotNull(view.FindName("SpeechEntryButton"));
             Assert.NotNull(view.FindName("MoreEntryButton"));
+        });
+    }
+
+    [Fact]
+    public void Speech_entry_toggles_the_owned_speech_setting()
+    {
+        StaRun(() =>
+        {
+            var settings = new SpeechSettingsStore(SpeechSettings.Defaults with
+            {
+                Connection = SpeechConnectionSettings.Defaults with
+                {
+                    Provider = SpeechProviderKind.GptSoVits,
+                    GptSoVitsReferenceAudioPath = "D:\\voices\\reference.wav",
+                },
+            });
+            var viewModel = new AttachedPanelViewModel(TimeProvider.System, focus: null, settings: settings);
+            var view = new AttachedPanelView { DataContext = viewModel };
+
+            Assert.IsType<Button>(view.FindName("SpeechEntryButton"))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.True(settings.Current.Connection.AutoReadEnabled);
+            Assert.Equal(SpeechProviderKind.GptSoVits, settings.Current.Connection.Provider);
+            Assert.Equal("D:\\voices\\reference.wav", settings.Current.Connection.GptSoVitsReferenceAudioPath);
         });
     }
     [Fact]
@@ -156,6 +183,13 @@ public sealed class DialoguePanelIntegrationTests
     {
         public DialogueSettings Load() => initial;
         public void Save(DialogueSettings settings) { }
+    }
+
+    private sealed class SpeechSettingsStore(SpeechSettings initial) : ISpeechSettingsStore
+    {
+        public SpeechSettings Current { get; private set; } = initial;
+        public SpeechSettings Load() => Current;
+        public void Save(SpeechSettings settings) => Current = settings;
     }
 
     private static void StaRun(Action action) => StaRunner.Run(action);

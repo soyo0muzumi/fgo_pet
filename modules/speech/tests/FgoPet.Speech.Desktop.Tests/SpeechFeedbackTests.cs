@@ -2,9 +2,9 @@ using System.IO;
 using System.Text;
 using FgoPet.App.Settings;
 using FgoPet.App.Speech;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Core.Secrets;
+using FgoPet.Speech.Settings;
 using Xunit;
 
 namespace FgoPet.Speech.Desktop.Tests;
@@ -17,7 +17,7 @@ public sealed class SpeechFeedbackTests
         var synth = new LateSynth();
         var player = new Player();
         using var synthesis = new SpeechSynthesisCoordinator(synth);
-        using var playback = new SpeechPlaybackCoordinator(synthesis, player, new Settings());
+        using var playback = new SpeechPlaybackCoordinator(synthesis, player, new Settings(SpeechSettings.Defaults));
         var task = playback.PlayAsync(new("test", SpeechProviderKind.IndexTts, new Uri("http://127.0.0.1:7860")), "test", new());
         await synth.Started.Task;
         playback.Stop();
@@ -37,20 +37,20 @@ public sealed class SpeechFeedbackTests
         await File.WriteAllBytesAsync(source, Wave);
         try
         {
-            var settings = new Settings();
+            var settings = new Settings(SpeechSettings.Defaults);
             using var synthesis = new SpeechSynthesisCoordinator(new LateSynth());
             using var playback = new SpeechPlaybackCoordinator(synthesis, new Player(), settings);
             var vm = new SpeechConnectionViewModel(settings, new Credentials(), playback, Path.Combine(root, "voices"))
                 { VoiceName = "Test voice", Enabled = true, Provider = SpeechProviderKind.IndexTts };
             await vm.ImportVoiceAsync(source);
-            var voice = Assert.Single(settings.Value.SpeechConnection.IndexTtsVoices);
-            Assert.False(settings.Value.SpeechConnection.Enabled);
+            var voice = Assert.Single(settings.Current.Connection.IndexTtsVoices);
+            Assert.False(settings.Current.Connection.Enabled);
             File.Delete(source);
             Assert.True(File.Exists(voice.AudioPath));
             Assert.Equal(Wave, await File.ReadAllBytesAsync(voice.AudioPath));
             vm.DeleteSelectedVoice();
             Assert.False(File.Exists(voice.AudioPath));
-            Assert.Empty(settings.Value.SpeechConnection.IndexTtsVoices);
+            Assert.Empty(settings.Current.Connection.IndexTtsVoices);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -65,13 +65,16 @@ public sealed class SpeechFeedbackTests
         try
         {
             var voice = new ReferenceVoice(Guid.NewGuid().ToString("N"), "outside", outside);
-            var settings = new Settings { Value = AppSettings.Defaults with { SpeechConnection = new() { IndexTtsVoiceId = voice.Id, IndexTtsVoices = new[] { voice } } } };
+            var settings = new Settings(SpeechSettings.Defaults with
+            {
+                Connection = new() { IndexTtsVoiceId = voice.Id, IndexTtsVoices = new[] { voice } },
+            });
             using var synthesis = new SpeechSynthesisCoordinator(new LateSynth());
             using var playback = new SpeechPlaybackCoordinator(synthesis, new Player(), settings);
             var vm = new SpeechConnectionViewModel(settings, new Credentials(), playback, Path.Combine(root, "voices"));
             vm.DeleteSelectedVoice();
             Assert.True(File.Exists(outside));
-            Assert.Single(settings.Value.SpeechConnection.IndexTtsVoices);
+            Assert.Single(settings.Current.Connection.IndexTtsVoices);
             Assert.NotEmpty(vm.ErrorText);
         }
         finally { Directory.Delete(root, true); }
@@ -79,12 +82,11 @@ public sealed class SpeechFeedbackTests
 
     private static byte[] Wave => Encoding.ASCII.GetBytes("RIFF0000WAVE");
 
-    private sealed class Settings : IAppSettingsStore
+    private sealed class Settings(SpeechSettings current) : ISpeechSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Value { get; set; } = AppSettings.Defaults;
-        public AppSettings Load() => Value;
-        public void Save(AppSettings settings) => Value = settings;
+        public SpeechSettings Current { get; private set; } = current;
+        public SpeechSettings Load() => Current;
+        public void Save(SpeechSettings settings) => Current = settings;
     }
 
     private sealed class Credentials : ICredentialStore
