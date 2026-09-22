@@ -118,15 +118,13 @@ public static class ServiceRegistration
             provider.GetRequiredService<RuntimeDatabase>(),
             eventName => provider.GetRequiredService<ILogger<RuntimeDatabaseSnapshotService>>()
                 .LogInformation("{BackupEvent}", eventName)))
-        .AddSingleton<AppSettingsSnapshotCodec>()
         .AddSingleton<BackupPackageReferencesCodec>()
         .AddSingleton<PrivateBackupReader>()
         .AddSingleton<PrivateBackupService>(provider => new PrivateBackupService(
             provider.GetRequiredService<RuntimeDatabase>(),
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IApplicationSettingsDocument>(),
             provider.GetRequiredService<IPackIndexStore>(),
             provider.GetRequiredService<RuntimeDatabaseSnapshotService>(),
-            provider.GetRequiredService<AppSettingsSnapshotCodec>(),
             provider.GetRequiredService<TimeProvider>(),
             FgoPetAppVersion.Current.ToString(),
             eventName => provider.GetRequiredService<ILogger<PrivateBackupService>>()
@@ -325,7 +323,7 @@ public static class ServiceRegistration
         .AddSingleton<UserDataDeletionService>()
         .AddSingleton<PrivateBackupRestoreService>(provider => new PrivateBackupRestoreService(
             provider.GetRequiredService<RuntimeDatabase>(),
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IApplicationSettingsDocument>(),
             provider.GetRequiredService<IPackIndexStore>(),
             provider.GetRequiredService<PrivateBackupService>(),
             provider.GetRequiredService<PrivateBackupReader>(),

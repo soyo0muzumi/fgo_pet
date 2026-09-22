@@ -9,10 +9,14 @@ using FgoPet.Core.Backup;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.App.Privacy;
+using FgoPet.Character.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -41,19 +45,7 @@ public sealed class PrivateBackupServiceTests : IDisposable
             Execute(connection, "INSERT INTO agent_executions(execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id, status, updated_at_utc, remote_task_id) VALUES('execution-1','todo-1','codex','instance-1','task-1','dispatch-1','active','2026-09-02T00:00:00Z','remote-1')");
         }
 
-        var settings = new FakeSettingsStore(AppSettings.Defaults with
-        {
-            Selection = new PortraitSelection("official.mash", "casual", "1.0.0"),
-            ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-            UserProfile = new UserProfile("xqj"),
-            AgentConnection = new AgentConnectionSettings(
-                Enabled: true,
-                SourceEnabled: new Dictionary<string, bool> { ["codex"] = true },
-                ProjectAllowlist: new Dictionary<string, IReadOnlyList<AgentProjectTarget>>
-                {
-                    ["codex"] = new[] { new AgentProjectTarget("project-1", "Project") },
-                }),
-        });
+        var settings = CreateSettingsDocument("source-settings", seeded: true);
         var packages = new FakePackIndexStore(new PackIndexV1(
             new PortraitSelection("official.mash", "casual", "1.0.0"),
             new PortraitSelection("official.mash", "default", "1.0.0")));
@@ -63,7 +55,6 @@ public sealed class PrivateBackupServiceTests : IDisposable
             settings,
             packages,
             new RuntimeDatabaseSnapshotService(database),
-            new AppSettingsSnapshotCodec(),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0");
 
@@ -86,9 +77,18 @@ public sealed class PrivateBackupServiceTests : IDisposable
         }
 
         var settingsJson = ReadEntry(archive, BackupFormat.SettingsMember);
+        Assert.Equal(settings.Export(), settingsJson);
+        using (var document = JsonDocument.Parse(settingsJson))
+        {
+            Assert.Equal(2, document.RootElement.GetProperty("schema_version").GetInt32());
+            Assert.Equal("official.mash", document.RootElement.GetProperty("selection").GetProperty("package_id").GetString());
+            Assert.Equal("openai", document.RootElement.GetProperty("model_connection").GetProperty("provider_id").GetString());
+            Assert.True(document.RootElement.GetProperty("agent_connection").GetProperty("enabled").GetBoolean());
+        }
         Assert.Contains("official.mash", settingsJson, StringComparison.Ordinal);
         Assert.Contains("gpt-4o-mini", settingsJson, StringComparison.Ordinal);
         Assert.Contains("project-1", settingsJson, StringComparison.Ordinal);
+        Assert.Contains("fgo-pet/speech/openai", settingsJson, StringComparison.Ordinal);
         Assert.DoesNotContain("api_key", settingsJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", settingsJson, StringComparison.OrdinalIgnoreCase);
 
@@ -110,10 +110,10 @@ public sealed class PrivateBackupServiceTests : IDisposable
     public async Task Repeated_creation_with_fixed_time_is_byte_stable_and_replaces_destination_atomically()
     {
         var database = CreateDatabase();
-        var settings = new FakeSettingsStore(AppSettings.Defaults);
+        var settings = CreateSettingsDocument("repeated-settings");
         var packages = new FakePackIndexStore(PackIndexV1.Empty);
         var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z"));
-        var service = new PrivateBackupService(database, settings, packages, new RuntimeDatabaseSnapshotService(database), new AppSettingsSnapshotCodec(), clock, "1.0.0");
+        var service = new PrivateBackupService(database, settings, packages, new RuntimeDatabaseSnapshotService(database), clock, "1.0.0");
         var firstPath = Path.Combine(_root, "first.fgopetbackup");
         await service.CreateAsync(firstPath, CancellationToken.None);
         var firstBytes = File.ReadAllBytes(firstPath);
@@ -136,7 +136,7 @@ public sealed class PrivateBackupServiceTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        var service = new PrivateBackupService(database, new FakeSettingsStore(AppSettings.Defaults), new FakePackIndexStore(PackIndexV1.Empty), new RuntimeDatabaseSnapshotService(database), new AppSettingsSnapshotCodec(), TimeProvider.System, "1.0.0");
+        var service = new PrivateBackupService(database, CreateSettingsDocument("cancel-settings"), new FakePackIndexStore(PackIndexV1.Empty), new RuntimeDatabaseSnapshotService(database), TimeProvider.System, "1.0.0");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CreateAsync(_backupPath, cancellation.Token));
 
         Assert.Equal("old destination", File.ReadAllText(_backupPath));
@@ -156,6 +156,37 @@ public sealed class PrivateBackupServiceTests : IDisposable
         var database = new RuntimeDatabase(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         return database;
+    }
+
+    private IApplicationSettingsDocument CreateSettingsDocument(string directoryName, bool seeded = false)
+    {
+        var root = Path.Combine(_root, directoryName);
+        Directory.CreateDirectory(root);
+        var coordinator = new ApplicationSettingsCoordinator(new JsonSettingsDocumentStore(root));
+        if (seeded)
+        {
+            ((ICharacterSettingsStore)coordinator).Save(CharacterSettings.Defaults with
+            {
+                Selection = new PortraitSelection("official.mash", "casual", "1.0.0"),
+                UserProfile = new UserProfile("xqj"),
+            });
+            ((IDialogueSettingsStore)coordinator).Save(DialogueSettings.Defaults with
+            {
+                ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+            });
+            ((IWorkExecutionSettingsStore)coordinator).Save(WorkExecutionSettings.Defaults with
+            {
+                AgentConnection = new AgentConnectionSettings(
+                    Enabled: true,
+                    SourceEnabled: new Dictionary<string, bool> { ["codex"] = true },
+                    ProjectAllowlist: new Dictionary<string, IReadOnlyList<AgentProjectTarget>>
+                    {
+                        ["codex"] = new[] { new AgentProjectTarget("project-1", "Project") },
+                    }),
+            });
+        }
+
+        return coordinator;
     }
 
     private static string ReadEntry(ZipArchive archive, string name) =>
@@ -188,13 +219,6 @@ public sealed class PrivateBackupServiceTests : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
-    }
-
-    private sealed class FakeSettingsStore(AppSettings current) : IAppSettingsStore
-    {
-        public string Location => "memory";
-        public AppSettings Load() => current;
-        public void Save(AppSettings settings) => current = settings;
     }
 
     private sealed class FakePackIndexStore(PackIndexV1 current) : IPackIndexStore

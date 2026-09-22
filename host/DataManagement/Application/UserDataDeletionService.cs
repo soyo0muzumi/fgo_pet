@@ -1,4 +1,6 @@
 ﻿using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Character.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Core.Settings;
@@ -14,7 +16,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
     private readonly SqliteConversationRepository _conversations;
     private readonly SqliteMemoryRepository _memories;
     private readonly ICredentialStore? _credentials;
-    private readonly IAppSettingsStore? _settings;
+    private readonly IDialogueSettingsStore? _dialogueSettings;
+    private readonly ICharacterSettingsStore? _characterSettings;
     private readonly ProviderCatalog? _catalog;
 
     public UserDataDeletionService(
@@ -22,14 +25,16 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         SqliteConversationRepository conversations,
         SqliteMemoryRepository memories,
         ICredentialStore? credentials = null,
-        IAppSettingsStore? settings = null,
+        IDialogueSettingsStore? dialogueSettings = null,
+        ICharacterSettingsStore? characterSettings = null,
         ProviderCatalog? catalog = null)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
         _conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
         _memories = memories ?? throw new ArgumentNullException(nameof(memories));
         _credentials = credentials;
-        _settings = settings;
+        _dialogueSettings = dialogueSettings;
+        _characterSettings = characterSettings;
         _catalog = catalog;
     }
 
@@ -50,17 +55,17 @@ public sealed class UserDataDeletionService : IUserDataDeleter
     /// <summary>
     /// Deletes all Phase 3 conversation, summary, candidate, approved-memory,
     /// and content-binding records. It also clears the current model credential,
-    /// model metadata, and servant address preferences. Phase 2 focus/bond history
-    /// remains outside this control.
+    /// model metadata, user profile, package preferences, and servant address
+    /// preferences. Phase 2 focus/bond history remains outside this control.
     /// </summary>
     public async Task DeleteAllAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var settings = _settings?.Load();
+        var dialogue = _dialogueSettings?.Load();
         if (_credentials is not null)
         {
             var providerIds = _catalog?.Providers.Select(provider => provider.ProviderId)
-                ?? (settings?.ModelConnection is { } model
+                ?? (dialogue?.ModelConnection is { } model
                     ? [model.ProviderId]
                     : Array.Empty<string>());
             foreach (var providerId in providerIds.Distinct(StringComparer.Ordinal))
@@ -81,11 +86,15 @@ public sealed class UserDataDeletionService : IUserDataDeleter
             """;
         command.ExecuteNonQuery();
         transaction.Commit();
-        if (settings is not null && _settings is not null)
+        if (_dialogueSettings is not null)
         {
-            _settings.Save(settings with
+            _dialogueSettings.Save(_dialogueSettings.Load() with { ModelConnection = null });
+        }
+
+        if (_characterSettings is not null)
+        {
+            _characterSettings.Save(_characterSettings.Load() with
             {
-                ModelConnection = null,
                 ServantPreferences = new Dictionary<string, ServantPreference>(StringComparer.Ordinal),
                 UserProfile = null,
                 PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal),

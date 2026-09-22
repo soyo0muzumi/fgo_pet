@@ -22,8 +22,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../../../modules/character/src/FgoPet.Character/FgoPet.Character.csproj" />
     <ProjectReference Include="../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
     <ProjectReference Include="../../../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../../Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../../../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
     <ProjectReference Include="../../../../modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
     <ProjectReference Include="../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
   </ItemGroup>

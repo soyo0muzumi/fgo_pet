@@ -1,15 +1,19 @@
 using System;
 using System.IO;
 using FgoPet.App.Privacy;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Backup;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -64,7 +68,11 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
         var execution = new SqliteAgentRepository(current.Database).GetExecution("execution-1")!;
         Assert.Equal(AgentExecutionStatus.DispatchOutcomeUnknown, execution.Status);
         Assert.Equal("remote-task-1", execution.RemoteTaskId);
-        Assert.Equal("xqj", new JsonAppSettingsStore(_currentRoot).Load().UserProfile!.DisplayName);
+        var restoredCharacter = ((ICharacterSettingsStore)current.Settings).Load();
+        Assert.Equal("xqj", restoredCharacter.UserProfile!.DisplayName);
+        Assert.Equal(new PortraitSelection("official.mash", "casual", "1.0.0"), restoredCharacter.Selection);
+        Assert.Equal("openai", ((IDialogueSettingsStore)current.Settings).Load().ModelConnection!.ProviderId);
+        Assert.True(((IWorkExecutionSettingsStore)current.Settings).Load().AgentConnection.Enabled);
         var packageIndex = new JsonPackIndexStore(_currentRoot).Load();
         Assert.Equal(new PortraitSelection("official.mash", "casual", "1.0.0"), packageIndex.Selected);
         Assert.Equal(new PortraitSelection("official.mash", "default", "1.0.0"), packageIndex.LastKnownGood);
@@ -138,33 +146,29 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
 
     private async Task CreateBackupAsync(State source, string backupPath)
     {
-        var settings = new JsonAppSettingsStore(source.Root);
         var packages = new JsonPackIndexStore(source.Root);
         await new PrivateBackupService(
             source.Database,
-            settings,
+            source.Settings,
             packages,
             new RuntimeDatabaseSnapshotService(source.Database),
-            new AppSettingsSnapshotCodec(),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0").CreateAsync(backupPath, CancellationToken.None);
     }
 
     private PrivateBackupRestoreService CreateRestoreService(State current, FakeAgentRuntime runtime)
     {
-        var settings = new JsonAppSettingsStore(current.Root);
         var packages = new JsonPackIndexStore(current.Root);
         var rollbackBackup = new PrivateBackupService(
             current.Database,
-            settings,
+            current.Settings,
             packages,
             new RuntimeDatabaseSnapshotService(current.Database),
-            new AppSettingsSnapshotCodec(),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0");
         return new PrivateBackupRestoreService(
             current.Database,
-            settings,
+            current.Settings,
             packages,
             rollbackBackup,
             new PrivateBackupReader(),
@@ -177,13 +181,23 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
     {
         var database = new RuntimeDatabase(Path.Combine(root, "runtime.db"));
         new RuntimeDatabaseMigrator(database).Migrate();
-        var settings = new JsonAppSettingsStore(root);
-        settings.Save(seedBusinessData
-            ? AppSettings.Defaults with
+        var settings = new ApplicationSettingsCoordinator(new JsonSettingsDocumentStore(root));
+        ((ICharacterSettingsStore)settings).Save(seedBusinessData
+            ? CharacterSettings.Defaults with
             {
                 Selection = new PortraitSelection("official.mash", "casual", "1.0.0"),
-                ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
                 UserProfile = new UserProfile("xqj"),
+            }
+            : CharacterSettings.Defaults with { UserProfile = new UserProfile("old") });
+        ((IDialogueSettingsStore)settings).Save(seedBusinessData
+            ? DialogueSettings.Defaults with
+            {
+                ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+            }
+            : DialogueSettings.Defaults);
+        ((IWorkExecutionSettingsStore)settings).Save(seedBusinessData
+            ? WorkExecutionSettings.Defaults with
+            {
                 AgentConnection = new AgentConnectionSettings(
                     Enabled: true,
                     SourceEnabled: new Dictionary<string, bool> { ["codex"] = true },
@@ -192,7 +206,7 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
                         ["codex"] = new[] { new AgentProjectTarget("project-1", "Project") },
                     }),
             }
-            : AppSettings.Defaults with { UserProfile = new UserProfile("old") });
+            : WorkExecutionSettings.Defaults);
         new JsonPackIndexStore(root).Save(seedBusinessData
             ? new PackIndexV1(
                 new PortraitSelection("official.mash", "casual", "1.0.0"),
@@ -205,7 +219,7 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
         }
 
         SqliteConnection.ClearAllPools();
-        return new State(root, database);
+        return new State(root, database, settings);
     }
 
     private static void SeedBusinessData(RuntimeDatabase database)
@@ -251,7 +265,7 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
         return (long)command.ExecuteScalar()!;
     }
 
-    private sealed record State(string Root, RuntimeDatabase Database);
+    private sealed record State(string Root, RuntimeDatabase Database, ApplicationSettingsCoordinator Settings);
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

@@ -2,13 +2,24 @@ using System.IO.Compression;
 using System.IO;
 using System.Text;
 using FgoPet.App.Privacy;
+using FgoPet.Character.Settings;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
+using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Secrets;
+using FgoPet.Memory.Settings;
+using FgoPet.Platform.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Speech.Settings;
+using FgoPet.UiFoundation.Theming;
+using FgoPet.Work.Execution.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Privacy;
@@ -64,37 +75,82 @@ public sealed class UserDataControlTests : IDisposable
     }
 
     [Fact]
-    public async Task All_data_deletion_clears_profile_packages_and_model_metadata_but_preserves_phase2_history()
+    public async Task All_data_deletion_clears_only_dialogue_and_character_user_data()
     {
         var database = CreateDatabase();
         var conversations = new SqliteConversationRepository(database);
         var memories = new SqliteMemoryRepository(database);
-        var settings = new FakeSettingsStore
+        var settings = new ApplicationSettingsCoordinator(new MemoryDocumentStore());
+        var character = (ICharacterSettingsStore)settings;
+        var dialogue = (IDialogueSettingsStore)settings;
+        var memory = (IMemorySettingsStore)settings;
+        var speech = (ISpeechSettingsStore)settings;
+        var theme = (IThemeSettingsStore)settings;
+        var work = (IWorkExecutionSettingsStore)settings;
+        character.Save(CharacterSettings.Defaults with
         {
-            Current = AppSettings.Defaults with
+            Selection = new PortraitSelection("official.mash", "casual", "1.0.0"),
+            Scale = 0.75,
+            Topmost = false,
+            AutoCollapseExpandedPanel = false,
+            UserProfile = new UserProfile("xqj"),
+            PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
             {
-                UserProfile = new UserProfile("xqj"),
-                PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
-                {
-                    ["mash_kyrielight"] = new Dictionary<string, string> { ["show_status"] = "true" },
-                },
-                ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-                ServantPreferences = new Dictionary<string, ServantPreference>
-                {
-                    ["mash_kyrielight"] = new ServantPreference(AddressMode.UserDefined, "御主"),
-                },
+                ["mash_kyrielight"] = new Dictionary<string, string> { ["show_status"] = "true" },
             },
-        };
+            ServantPreferences = new Dictionary<string, ServantPreference>
+            {
+                ["mash_kyrielight"] = new ServantPreference(AddressMode.UserDefined, "御主"),
+            },
+        });
+        dialogue.Save(new DialogueSettings(
+            new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
+            ShowReasoning: false));
+        memory.Save(new MemorySettings(false));
+        speech.Save(new SpeechSettings(SpeechConnectionSettings.Defaults with
+        {
+            Enabled = true,
+            AutoReadEnabled = true,
+            DoNotDisturb = true,
+            Rate = 1.25,
+        }));
+        theme.Save(new ThemeSettings(AppTheme.ModernGray));
+        work.Save(new WorkExecutionSettings(new AgentConnectionSettings(
+            Enabled: true,
+            SourceEnabled: new Dictionary<string, bool> { ["codex"] = true },
+            ProjectAllowlist: new Dictionary<string, IReadOnlyList<AgentProjectTarget>>
+            {
+                ["codex"] = new[] { new AgentProjectTarget("project-1", "Project") },
+            })));
         var credentials = new FakeCredentialStore();
         InsertPhase2Bond(database);
-        var deletion = new UserDataDeletionService(database, conversations, memories, credentials, settings);
+        var deletion = new UserDataDeletionService(database, conversations, memories, credentials, dialogue, character);
 
         await deletion.DeleteAllAsync(CancellationToken.None);
 
-        Assert.Null(settings.Current.UserProfile);
-        Assert.Empty(settings.Current.PackageSettings);
-        Assert.Null(settings.Current.ModelConnection);
-        Assert.Empty(settings.Current.ServantPreferences);
+        var characterAfter = character.Load();
+        Assert.Null(characterAfter.UserProfile);
+        Assert.Empty(characterAfter.PackageSettings);
+        Assert.Empty(characterAfter.ServantPreferences);
+        Assert.Equal(new PortraitSelection("official.mash", "casual", "1.0.0"), characterAfter.Selection);
+        Assert.Equal(0.75, characterAfter.Scale);
+        Assert.False(characterAfter.Topmost);
+        Assert.False(characterAfter.AutoCollapseExpandedPanel);
+
+        var dialogueAfter = dialogue.Load();
+        Assert.Null(dialogueAfter.ModelConnection);
+        Assert.False(dialogueAfter.ShowReasoning);
+        Assert.False(memory.Load().Enabled);
+        Assert.Equal(AppTheme.ModernGray, theme.Load().Theme);
+        var speechAfter = speech.Load().Connection;
+        Assert.True(speechAfter.Enabled);
+        Assert.True(speechAfter.AutoReadEnabled);
+        Assert.True(speechAfter.DoNotDisturb);
+        Assert.Equal(1.25, speechAfter.Rate);
+        var workAfter = work.Load().AgentConnection;
+        Assert.True(workAfter.Enabled);
+        Assert.True(workAfter.SourceEnabled["codex"]);
+        Assert.Equal("project-1", Assert.Single(workAfter.ProjectAllowlist["codex"]).TargetId);
         Assert.Equal(["fgo-pet/provider/openai"], credentials.DeletedTargets);
         Assert.Equal(1L, CountPhase2Bonds(database));
     }
@@ -134,15 +190,13 @@ public sealed class UserDataControlTests : IDisposable
         return (long)command.ExecuteScalar()!;
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class MemoryDocumentStore : ISettingsDocumentStore
     {
-        public string Location => "memory";
-
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
-
-        public AppSettings Load() => Current;
-
-        public void Save(AppSettings settings) => Current = settings;
+        private string? _document;
+        public string Location => "memory://settings.json";
+        public string? Read() => _document;
+        public void Write(string document) => _document = document;
+        public void Quarantine() => _document = null;
     }
 
     private sealed class FakeCredentialStore : ICredentialStore

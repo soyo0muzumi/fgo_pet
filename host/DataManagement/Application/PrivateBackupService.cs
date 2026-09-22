@@ -6,11 +6,10 @@ using System.Text;
 using System.Text.Json;
 using FgoPet.Core.Backup;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
-using FgoPet.Infrastructure.Settings;
+using FgoPet.SettingsHost;
 
 namespace FgoPet.App.Privacy;
 
@@ -21,10 +20,9 @@ namespace FgoPet.App.Privacy;
 public sealed class PrivateBackupService
 {
     private static readonly UTF8Encoding Utf8 = new(false);
-    private readonly IAppSettingsStore _settings;
+    private readonly IApplicationSettingsDocument _settingsDocument;
     private readonly IPackIndexStore _packages;
     private readonly RuntimeDatabaseSnapshotService _snapshotService;
-    private readonly AppSettingsSnapshotCodec _settingsCodec;
     private readonly BackupPackageReferencesCodec _packageCodec;
     private readonly TimeProvider _clock;
     private readonly string _applicationVersion;
@@ -32,20 +30,18 @@ public sealed class PrivateBackupService
 
     public PrivateBackupService(
         RuntimeDatabase database,
-        IAppSettingsStore settings,
+        IApplicationSettingsDocument settingsDocument,
         IPackIndexStore packages,
         RuntimeDatabaseSnapshotService snapshotService,
-        AppSettingsSnapshotCodec settingsCodec,
         TimeProvider clock,
         string applicationVersion,
         Action<string>? safeLog = null,
         BackupPackageReferencesCodec? packageCodec = null)
     {
         ArgumentNullException.ThrowIfNull(database);
-        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _settingsDocument = settingsDocument ?? throw new ArgumentNullException(nameof(settingsDocument));
         _packages = packages ?? throw new ArgumentNullException(nameof(packages));
         _snapshotService = snapshotService ?? throw new ArgumentNullException(nameof(snapshotService));
-        _settingsCodec = settingsCodec ?? throw new ArgumentNullException(nameof(settingsCodec));
         _packageCodec = packageCodec ?? new BackupPackageReferencesCodec();
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _applicationVersion = string.IsNullOrWhiteSpace(applicationVersion)
@@ -84,7 +80,7 @@ public sealed class PrivateBackupService
             await _snapshotService.CreateAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            var settingsJson = _settingsCodec.Serialize(_settings.Load());
+            var settingsJson = _settingsDocument.Export();
             var packageIndex = _packages.Load();
             var packagesJson = _packageCodec.Serialize(new BackupPackageReferences(
                 packageIndex.Selected,

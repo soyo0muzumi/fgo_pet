@@ -1,15 +1,18 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using FgoPet.App.Privacy;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Backup;
 using FgoPet.Core.Packs;
-using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -43,6 +46,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         var result = await restore.RestoreAsync(backupPath, CancellationToken.None);
 
         Assert.Equal(BackupRestoreStatus.Restored, result.Status);
+        Assert.True(result.AgentPairingRequired);
         Assert.True(runtime.StopCalled);
         Assert.Equal(0, runtime.DispatchCount);
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM focus_presets WHERE preset_id='source-row'"));
@@ -50,7 +54,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         var execution = new SqliteAgentRepository(current.Database).GetExecution("source-execution")!;
         Assert.Equal(AgentExecutionStatus.DispatchOutcomeUnknown, execution.Status);
         Assert.Equal("remote-source", execution.RemoteTaskId);
-        Assert.Equal("source-user", new JsonAppSettingsStore(_currentRoot).Load().UserProfile!.DisplayName);
+        Assert.Equal("source-user", ((ICharacterSettingsStore)current.Settings).Load().UserProfile!.DisplayName);
     }
 
     [Fact]
@@ -58,7 +62,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
     {
         var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
         var databaseBefore = File.ReadAllBytes(current.Database.DatabasePath);
-        var settingsBefore = File.ReadAllBytes(new JsonAppSettingsStore(_currentRoot).Location);
+        var settingsBefore = File.ReadAllBytes(current.Settings.Location);
         var corruptPath = Path.Combine(_root, "corrupt.fgopetbackup");
         File.WriteAllText(corruptPath, "not a backup");
 
@@ -67,8 +71,32 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         Assert.Equal(BackupRestoreStatus.Rejected, result.Status);
         Assert.Equal(BackupFailureCode.InvalidManifest, result.FailureCode);
         Assert.Equal(databaseBefore, File.ReadAllBytes(current.Database.DatabasePath));
-        Assert.Equal(settingsBefore, File.ReadAllBytes(new JsonAppSettingsStore(_currentRoot).Location));
+        Assert.Equal(settingsBefore, File.ReadAllBytes(current.Settings.Location));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM focus_presets WHERE preset_id='old-row'"));
+    }
+
+    [Fact]
+    public async Task Rejects_settings_rejected_by_document_without_quarantining_or_mutating_live_settings()
+    {
+        var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
+        var source = CreateState(_sourceRoot, "source-row", "source-user", AgentExecutionStatus.Completed);
+        var backupPath = Path.Combine(_root, "input.fgopetbackup");
+        await CreateBackupAsync(source, backupPath);
+        var databaseBefore = File.ReadAllBytes(current.Database.DatabasePath);
+        var settingsBefore = File.ReadAllBytes(current.Settings.Location);
+        var rejectingDocument = new RejectingApplicationSettingsDocument(current.Settings);
+
+        var result = await CreateRestoreService(
+            current,
+            new FakeAgentRuntime(),
+            settingsDocument: rejectingDocument).RestoreAsync(backupPath, CancellationToken.None);
+
+        Assert.Equal(BackupRestoreStatus.Rejected, result.Status);
+        Assert.Equal(BackupFailureCode.SettingsInvalid, result.FailureCode);
+        Assert.Equal(1, rejectingDocument.ValidateCount);
+        Assert.Equal(databaseBefore, File.ReadAllBytes(current.Database.DatabasePath));
+        Assert.Equal(settingsBefore, File.ReadAllBytes(current.Settings.Location));
+        Assert.Empty(Directory.EnumerateFiles(_currentRoot, "settings.json.corrupt.*"));
     }
 
     [Fact]
@@ -85,7 +113,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         Assert.Equal(BackupRestoreStatus.RolledBack, result.Status);
         Assert.Equal(BackupFailureCode.SwapFailed, result.FailureCode);
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM focus_presets WHERE preset_id='old-row'"));
-        Assert.Equal("old-user", new JsonAppSettingsStore(_currentRoot).Load().UserProfile!.DisplayName);
+        Assert.Equal("old-user", ((ICharacterSettingsStore)current.Settings).Load().UserProfile!.DisplayName);
     }
 
     [Fact]
@@ -113,14 +141,12 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
 
     private async Task CreateBackupAsync(State source, string backupPath)
     {
-        var settings = new JsonAppSettingsStore(source.Root);
         var packages = new JsonPackIndexStore(source.Root);
         await new PrivateBackupService(
             source.Database,
-            settings,
+            source.Settings,
             packages,
             new RuntimeDatabaseSnapshotService(source.Database),
-            new AppSettingsSnapshotCodec(),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0").CreateAsync(backupPath, CancellationToken.None);
     }
@@ -128,21 +154,21 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
     private PrivateBackupRestoreService CreateRestoreService(
         State current,
         FakeAgentRuntime runtime,
-        IBackupStateSwapper? swapper = null)
+        IBackupStateSwapper? swapper = null,
+        IApplicationSettingsDocument? settingsDocument = null)
     {
-        var settings = new JsonAppSettingsStore(current.Root);
+        settingsDocument ??= current.Settings;
         var packages = new JsonPackIndexStore(current.Root);
         var rollbackBackup = new PrivateBackupService(
             current.Database,
-            settings,
+            settingsDocument,
             packages,
             new RuntimeDatabaseSnapshotService(current.Database),
-            new AppSettingsSnapshotCodec(),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0");
         return new PrivateBackupRestoreService(
             current.Database,
-            settings,
+            settingsDocument,
             packages,
             rollbackBackup,
             new PrivateBackupReader(),
@@ -184,11 +210,18 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
             endedAt: endedAt,
             remoteTaskId: remoteTaskId));
 
-        var settings = new JsonAppSettingsStore(root);
-        settings.Save(AppSettings.Defaults with { UserProfile = new UserProfile(userName) });
+        var settings = new ApplicationSettingsCoordinator(new JsonSettingsDocumentStore(root));
+        ((ICharacterSettingsStore)settings).Save(CharacterSettings.Defaults with
+        {
+            UserProfile = new UserProfile(userName),
+        });
+        ((IWorkExecutionSettingsStore)settings).Save(WorkExecutionSettings.Defaults with
+        {
+            AgentConnection = new AgentConnectionSettings(Enabled: status == AgentExecutionStatus.Active),
+        });
         new JsonPackIndexStore(root).Save(PackIndexV1.Empty);
         SqliteConnection.ClearAllPools();
-        return new State(root, database);
+        return new State(root, database, settings);
     }
 
     private static long Scalar(string path, string sql)
@@ -204,7 +237,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         return (long)command.ExecuteScalar()!;
     }
 
-    private sealed record State(string Root, RuntimeDatabase Database);
+    private sealed record State(string Root, RuntimeDatabase Database, ApplicationSettingsCoordinator Settings);
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
@@ -237,6 +270,20 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         {
             File.Copy(context.StagedDatabasePath, context.CurrentDatabasePath, overwrite: true);
             throw new IOException("simulated swap failure");
+        }
+    }
+
+    private sealed class RejectingApplicationSettingsDocument(IApplicationSettingsDocument inner)
+        : IApplicationSettingsDocument
+    {
+        public string Location => inner.Location;
+        public int ValidateCount { get; private set; }
+        public string Export() => inner.Export();
+
+        public SettingsRestoreMetadata ValidateForRestore(string document)
+        {
+            ValidateCount++;
+            throw new JsonException("fixture");
         }
     }
 }

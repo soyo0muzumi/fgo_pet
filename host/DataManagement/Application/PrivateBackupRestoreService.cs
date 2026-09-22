@@ -4,11 +4,10 @@ using System.Text.Json;
 using FgoPet.Core.Backup;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
-using FgoPet.Infrastructure.Settings;
+using FgoPet.SettingsHost;
 using Microsoft.Data.Sqlite;
 
 namespace FgoPet.App.Privacy;
@@ -80,7 +79,7 @@ public sealed class PrivateBackupRestoreService
 {
     private static readonly UTF8Encoding Utf8 = new(false);
     private readonly RuntimeDatabase _currentDatabase;
-    private readonly IAppSettingsStore _currentSettings;
+    private readonly IApplicationSettingsDocument _settingsDocument;
     private readonly IPackIndexStore _currentPackages;
     private readonly PrivateBackupService _rollbackBackup;
     private readonly PrivateBackupReader _reader;
@@ -90,13 +89,12 @@ public sealed class PrivateBackupRestoreService
     private readonly IBackupStateSwapper _swapper;
     private readonly Func<CancellationToken, Task>? _startupSelfCheck;
     private readonly IArtPackageRepository? _packageRepository;
-    private readonly AppSettingsSnapshotCodec _settingsCodec = new();
     private readonly BackupPackageReferencesCodec _packageCodec = new();
     private readonly Action<string>? _safeLog;
 
     public PrivateBackupRestoreService(
         RuntimeDatabase currentDatabase,
-        IAppSettingsStore currentSettings,
+        IApplicationSettingsDocument settingsDocument,
         IPackIndexStore currentPackages,
         PrivateBackupService rollbackBackup,
         PrivateBackupReader reader,
@@ -109,7 +107,7 @@ public sealed class PrivateBackupRestoreService
         Action<string>? safeLog = null)
     {
         _currentDatabase = currentDatabase ?? throw new ArgumentNullException(nameof(currentDatabase));
-        _currentSettings = currentSettings ?? throw new ArgumentNullException(nameof(currentSettings));
+        _settingsDocument = settingsDocument ?? throw new ArgumentNullException(nameof(settingsDocument));
         _currentPackages = currentPackages ?? throw new ArgumentNullException(nameof(currentPackages));
         _rollbackBackup = rollbackBackup ?? throw new ArgumentNullException(nameof(rollbackBackup));
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
@@ -147,7 +145,8 @@ public sealed class PrivateBackupRestoreService
         var swapStarted = false;
         try
         {
-            var restoredSettings = _settingsCodec.Deserialize(File.ReadAllText(validated.SettingsPath, Utf8));
+            var restoreMetadata = _settingsDocument.ValidateForRestore(
+                File.ReadAllText(validated.SettingsPath, Utf8));
             await using var lease = await _maintenance.EnterAsync(cancellationToken).ConfigureAwait(false);
             _safeLog?.Invoke("restore.maintenance.entered");
 
@@ -165,7 +164,7 @@ public sealed class PrivateBackupRestoreService
                 validated.RuntimeDatabasePath,
                 validated.SettingsPath,
                 _currentDatabase.DatabasePath,
-                _currentSettings.Location), cancellationToken).ConfigureAwait(false);
+                _settingsDocument.Location), cancellationToken).ConfigureAwait(false);
             _currentPackages.Save(new PackIndexV1(
                 validated.PackageReferences.Selected,
                 validated.PackageReferences.LastKnownGood));
@@ -177,7 +176,7 @@ public sealed class PrivateBackupRestoreService
                 BackupRestoreStatus.Restored,
                 FailureCode: null,
                 PackageReinstallRequired: missingPackage,
-                AgentPairingRequired: restoredSettings.AgentConnection.Enabled);
+                AgentPairingRequired: restoreMetadata.AgentPairingRequired);
         }
         catch (OperationCanceledException)
         {
@@ -263,7 +262,7 @@ public sealed class PrivateBackupRestoreService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        _ = _settingsCodec.Deserialize(File.ReadAllText(_currentSettings.Location, Utf8));
+        _ = _settingsDocument.ValidateForRestore(File.ReadAllText(_settingsDocument.Location, Utf8));
         _ = _packageCodec.Deserialize(File.ReadAllText(_currentPackages.Location, Utf8));
     }
 
@@ -290,7 +289,7 @@ public sealed class PrivateBackupRestoreService
             _currentDatabase.DatabasePath,
             _currentDatabase.DatabasePath + "-wal",
             _currentDatabase.DatabasePath + "-shm",
-            _currentSettings.Location,
+            _settingsDocument.Location,
             _currentPackages.Location,
         }.Select(path => new RollbackFile(path, Path.Combine(rollbackDirectory, $"{Guid.NewGuid():N}.state"))).ToArray();
 
