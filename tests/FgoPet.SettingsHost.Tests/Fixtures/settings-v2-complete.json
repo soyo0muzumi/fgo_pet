@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "selection": { "package_id": "fixture.package", "appearance_id": "default", "package_version": "1.0.0" },
+  "scale": 0.75,
+  "topmost": false,
+  "auto_collapse": false,
+  "model_connection": { "provider_id": "fixture", "base_url": "http://127.0.0.1:12345", "model_id": "fixture-model" },
+  "speech_connection": {
+    "enabled": true,
+    "provider": "IndexTts",
+    "openai_base_url": "",
+    "openai_model": "",
+    "openai_voice": "",
+    "openai_credential_target": "",
+    "gpt_sovits_base_url": "",
+    "gpt_sovits_reference_audio_path": "",
+    "gpt_sovits_prompt_text": "",
+    "gpt_sovits_language": "zh",
+    "gpt_sovits_prompt_language": "zh",
+    "auto_read_enabled": true,
+    "auto_read_limit": 240,
+    "rate": 1.1,
+    "volume": 0.8,
+    "index_tts_base_url": "http://127.0.0.1:7860",
+    "index_tts_voice_id": "voice-1",
+    "index_tts_voices": [],
+    "do_not_disturb": true
+  },
+  "agent_connection": {
+    "enabled": true,
+    "source_enabled": { "codex": true },
+    "project_allowlist": { "codex": [{ "target_id": "fixture-target", "display_name": "Fixture" }] }
+  },
+  "memory_enabled": false,
+  "show_reasoning": false,
+  "servant_preferences": { "mash": { "address_mode": "user_defined", "address_text": "Master" } },
+  "theme": "modern_gray",
+  "user_profile": { "display_name": "Fixture User" },
+  "package_settings": { "mash": { "costume": "casual" } }
+}
