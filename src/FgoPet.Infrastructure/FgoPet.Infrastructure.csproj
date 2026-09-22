@@ -177,6 +177,9 @@
     <Compile Include="..\..\platform\Settings.Foundation\JsonAppSettingsStore.cs">
       <Link>platform\Settings.Foundation\JsonAppSettingsStore.cs</Link>
     </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\JsonSettingsDocumentStore.cs">
+      <Link>platform\Settings.Foundation\JsonSettingsDocumentStore.cs</Link>
+    </Compile>
 
     <!-- platform/Windowing -->
     <Compile Include="..\..\platform\Windowing\JsonWindowPlacementStore.cs">

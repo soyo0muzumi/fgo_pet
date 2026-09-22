@@ -224,6 +224,9 @@
     <Compile Include="..\..\platform\Settings.Foundation\IAppSettingsStore.cs">
       <Link>platform\Settings.Foundation\IAppSettingsStore.cs</Link>
     </Compile>
+    <Compile Include="..\..\platform\Settings.Foundation\ISettingsDocumentStore.cs">
+      <Link>platform\Settings.Foundation\ISettingsDocumentStore.cs</Link>
+    </Compile>
     <Compile Include="..\..\platform\Settings.Foundation\UserProfile.cs">
       <Link>platform\Settings.Foundation\UserProfile.cs</Link>
     </Compile>
