@@ -1,4 +1,5 @@
 using FgoPet.App.Settings;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -60,7 +61,7 @@ public sealed class PersonalizationViewModelTests
     {
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
                 Scale = 0.75,
                 Topmost = false,
@@ -82,9 +83,8 @@ public sealed class PersonalizationViewModelTests
         var preference = new ServantPreference(AddressMode.UserDefined, "御主");
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
-                Theme = AppTheme.FgoLight,
                 UserProfile = new UserProfile("xqj"),
                 ServantPreferences = new Dictionary<string, ServantPreference>
                 {
@@ -101,7 +101,6 @@ public sealed class PersonalizationViewModelTests
         Assert.Equal(0.60, store.Current.Scale);
         Assert.False(store.Current.Topmost);
         Assert.False(store.Current.AutoCollapseExpandedPanel);
-        Assert.Equal(AppTheme.FgoLight, store.Current.Theme);
         Assert.Equal("xqj", store.Current.UserProfile!.DisplayName);
         Assert.Same(preference, store.Current.ServantPreferences["mash_kyrielight"]);
     }
@@ -120,13 +119,12 @@ public sealed class PersonalizationViewModelTests
     }
 
     [Fact]
-    public void Reset_restores_defaults_but_does_not_own_or_change_theme()
+    public void Reset_restores_character_personalization_defaults()
     {
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
-                Theme = AppTheme.FgoLight,
                 Scale = 0.75,
                 Topmost = false,
                 AutoCollapseExpandedPanel = false,
@@ -139,19 +137,16 @@ public sealed class PersonalizationViewModelTests
         Assert.Equal(0.50, store.Current.Scale);
         Assert.True(store.Current.Topmost);
         Assert.True(store.Current.AutoCollapseExpandedPanel);
-        Assert.Equal(AppTheme.FgoLight, store.Current.Theme);
         Assert.Null(typeof(PersonalizationViewModel).GetProperty("Theme"));
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class FakeSettingsStore : ICharacterSettingsStore
     {
-        public string Location => "memory";
+        public CharacterSettings Current { get; set; } = CharacterSettings.Defaults;
 
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
+        public CharacterSettings Load() => Current;
 
-        public AppSettings Load() => Current;
-
-        public void Save(AppSettings settings) => Current = settings;
+        public void Save(CharacterSettings settings) => Current = settings;
     }
 
     private sealed class FakePortraitController : IPortraitController

@@ -1,5 +1,6 @@
 using FgoPet.App.Runtime;
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -56,7 +57,7 @@ public sealed class RoleActivationServiceTests
     [Fact]
     public async Task RestoreAsync_returns_missing_package_when_saved_selection_cannot_be_resolved()
     {
-        var settings = new FakeSettingsStore { Current = AppSettings.Defaults with { Selection = Selection } };
+        var settings = new FakeSettingsStore { Current = CharacterSettings.Defaults with { Selection = Selection } };
         var service = new RoleActivationService(
             new FakeRepository(null),
             new FakePortraitController(),
@@ -82,12 +83,11 @@ public sealed class RoleActivationServiceTests
             runtime);
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class FakeSettingsStore : ICharacterSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public CharacterSettings Current { get; set; } = CharacterSettings.Defaults;
+        public CharacterSettings Load() => Current;
+        public void Save(CharacterSettings settings) => Current = settings;
     }
 
     private sealed class FakeRepository(AppearanceLocation? resolved) : IArtPackageRepository

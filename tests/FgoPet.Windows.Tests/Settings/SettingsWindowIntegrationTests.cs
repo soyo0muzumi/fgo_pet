@@ -11,6 +11,7 @@ using FgoPet.App.Settings;
 using FgoPet.App.Settings.Views;
 using FgoPet.App.Theming;
 using FgoPet.App.Tray;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
@@ -127,7 +128,7 @@ public sealed class SettingsWindowIntegrationTests
                     new PackageRepository(),
                     new PackageInstaller(),
                     new PortraitController(),
-                    new FakeSettingsStore(AppSettings.Defaults),
+                    new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                     _ => { }),
                 viewModel);
             var personalization = new Border { Name = "Personalization" };
@@ -139,7 +140,7 @@ public sealed class SettingsWindowIntegrationTests
                     new RolePackageDetailViewModel(
                         route!,
                         (ServantLibraryViewModel)packageList.DataContext,
-                        new FakeSettingsStore(AppSettings.Defaults),
+                        new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                         viewModel)),
                 _ => personalization,
             };
@@ -279,7 +280,7 @@ public sealed class SettingsWindowIntegrationTests
                 new PackageRepository(),
                 new PackageInstaller(),
                 new PortraitController(),
-                new FakeSettingsStore(AppSettings.Defaults),
+                new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                 _ => { });
             var dialogueViewModel = new DialogueWindowViewModel(CreateConversationViewModel());
             var dialogueWindow = new DialogueWindow(dialogueViewModel);
@@ -325,7 +326,7 @@ public sealed class SettingsWindowIntegrationTests
                 new PackageRepository(),
                 new PackageInstaller(),
                 new PortraitController(),
-                new FakeSettingsStore(AppSettings.Defaults),
+                new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                 _ => { });
             var dialogueViewModel = new DialogueWindowViewModel(CreateConversationViewModel());
             var dialogueWindow = new DialogueWindow(dialogueViewModel);
@@ -367,6 +368,7 @@ public sealed class SettingsWindowIntegrationTests
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -398,6 +400,7 @@ public sealed class SettingsWindowIntegrationTests
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -435,6 +438,7 @@ public sealed class SettingsWindowIntegrationTests
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<FgoPet.App.Lifetime.IAppLifetime, NonDisplayingLifetime>();
             services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -467,6 +471,7 @@ public sealed class SettingsWindowIntegrationTests
             PortraitSelection? activated = null;
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
             services.AddSingleton<PortraitActivation>((requested, _) =>
             {
                 activated = requested;
@@ -505,7 +510,7 @@ public sealed class SettingsWindowIntegrationTests
                 new PackageRepository(),
                 new PackageInstaller(),
                 new PortraitController(),
-                new FakeSettingsStore(AppSettings.Defaults),
+                new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                 _ => { });
             var conversation = CreateConversationViewModel();
             var dialogueViewModel = new DialogueWindowViewModel(conversation);
@@ -684,7 +689,7 @@ public sealed class SettingsWindowIntegrationTests
     {
         await StaRun(async () =>
         {
-            var settingsStore = new FakeSettingsStore(AppSettings.Defaults);
+            var settingsStore = new FakeCharacterSettingsStore(CharacterSettings.Defaults);
             var library = new ServantLibraryViewModel(
                 new PackageRepository(),
                 new PackageInstaller(),
@@ -741,7 +746,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var page = new PersonalizationPage(
-                new PersonalizationViewModel(new FakeSettingsStore(AppSettings.Defaults)),
+                new PersonalizationViewModel(new FakeCharacterSettingsStore(CharacterSettings.Defaults)),
                 CreateLibrary(),
                 new SettingsViewModel());
             try
@@ -789,7 +794,7 @@ public sealed class SettingsWindowIntegrationTests
                 new RolePackageDetailViewModel(
                     new PackageDetailRoute("preview.mash", "玛修"),
                     library,
-                    new FakeSettingsStore(AppSettings.Defaults),
+                    new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                     settings));
             var window = new SettingsWindow(settings, (_, _) => detail);
             try
@@ -840,7 +845,7 @@ public sealed class SettingsWindowIntegrationTests
                 new RolePackageDetailViewModel(
                     new PackageDetailRoute("preview.mash", "玛修"),
                     library,
-                    new FakeSettingsStore(AppSettings.Defaults),
+                    new FakeCharacterSettingsStore(CharacterSettings.Defaults),
                     settings));
             try
             {
@@ -989,7 +994,7 @@ public sealed class SettingsWindowIntegrationTests
         new PackageRepository(),
         new PackageInstaller(),
         new PortraitController(),
-        new FakeSettingsStore(AppSettings.Defaults),
+        new FakeCharacterSettingsStore(CharacterSettings.Defaults),
         _ => { });
 
     private static void StaRun(Action action) => StaRunner.Run(action);
@@ -1062,6 +1067,15 @@ public sealed class SettingsWindowIntegrationTests
         public AppSettings Load() => _settings;
 
         public void Save(AppSettings settings) => _settings = settings;
+    }
+
+    private sealed class FakeCharacterSettingsStore(CharacterSettings initial) : ICharacterSettingsStore
+    {
+        private CharacterSettings _settings = initial;
+
+        public CharacterSettings Load() => _settings;
+
+        public void Save(CharacterSettings settings) => _settings = settings;
     }
 
     private sealed class NonDisplayingLifetime : FgoPet.App.Lifetime.IAppLifetime

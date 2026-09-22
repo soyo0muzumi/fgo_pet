@@ -1,7 +1,7 @@
 using FgoPet.App.Runtime;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Servants;
 
@@ -37,13 +37,13 @@ public sealed class RoleActivationService : IRoleActivationService
 {
     private readonly IArtPackageRepository _repository;
     private readonly IPortraitController _portrait;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
     private readonly AppRuntime _runtime;
 
     public RoleActivationService(
         IArtPackageRepository repository,
         IPortraitController portrait,
-        IAppSettingsStore settings,
+        ICharacterSettingsStore settings,
         AppRuntime runtime)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));

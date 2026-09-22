@@ -302,7 +302,7 @@ public static class ServiceRegistration
             SettingsSection.RolePackages => new RolePackageDetailPage(new RolePackageDetailViewModel(
                 route!,
                 provider.GetRequiredService<ServantLibraryViewModel>(),
-                provider.GetRequiredService<IAppSettingsStore>(),
+                provider.GetRequiredService<ICharacterSettingsStore>(),
                 provider.GetRequiredService<SettingsViewModel>())),
             SettingsSection.ModelConnection => provider.GetRequiredService<ModelConnectionPage>(),
             SettingsSection.Speech => provider.GetRequiredService<SpeechConnectionPage>(),
@@ -426,7 +426,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<PortraitController>(),
             provider.GetRequiredService<ConversationViewModel>(),
             provider.GetRequiredService<PortraitActivation>(),
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<ICharacterSettingsStore>(),
             provider.GetRequiredService<DialogueWindow>(),
             provider.GetRequiredService<DialogueWindowViewModel>(),
             provider.GetRequiredService<AttachedPanelViewModel>(),

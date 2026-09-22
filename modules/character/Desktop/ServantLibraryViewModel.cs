@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -16,7 +17,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
     private readonly IArtPackageRepository _repository;
     private readonly IPackInstaller _installer;
     private readonly IPortraitController _controller;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
     private readonly ServantPreferenceService _preferences;
     private readonly Action<string> _openFolder;
     private readonly IRoleActivationService? _activation;
@@ -67,7 +68,7 @@ public sealed partial class ServantLibraryViewModel : ObservableObject
         IArtPackageRepository repository,
         IPackInstaller installer,
         IPortraitController controller,
-        IAppSettingsStore settings,
+        ICharacterSettingsStore settings,
         Action<string>? openFolder = null,
         IRoleActivationService? activation = null)
     {

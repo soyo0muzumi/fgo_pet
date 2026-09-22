@@ -12,8 +12,8 @@ using FgoPet.App.Servants;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
 using FgoPet.App.Windowing;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Bootstrap;
 
@@ -37,7 +37,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly AttachedPanelViewModel? _attachedPanel;
     private readonly DialogueWindowPlacementCoordinator? _dialoguePlacement;
     private readonly PortraitActivation _activatePortrait;
-    private readonly IAppSettingsStore? _appSettings;
+    private readonly ICharacterSettingsStore? _characterSettings;
     private readonly ContextMenu _portraitMenu;
     private bool _initialized;
     private Task? _portraitRecovery;
@@ -55,7 +55,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         PortraitController controller,
         ConversationViewModel? conversation = null,
         PortraitActivation? portraitActivation = null,
-        IAppSettingsStore? appSettings = null,
+        ICharacterSettingsStore? characterSettings = null,
         DialogueWindow? dialogueWindow = null,
         DialogueWindowViewModel? dialogue = null,
         AttachedPanelViewModel? attachedPanel = null,
@@ -71,7 +71,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             controller,
             conversation,
             portraitActivation,
-            appSettings,
+            characterSettings,
             dialogueWindow,
             dialogue,
             attachedPanel,
@@ -90,7 +90,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         PortraitController controller,
         ConversationViewModel? conversation = null,
         PortraitActivation? portraitActivation = null,
-        IAppSettingsStore? appSettings = null,
+        ICharacterSettingsStore? characterSettings = null,
         DialogueWindow? dialogueWindow = null,
         DialogueWindowViewModel? dialogue = null,
         AttachedPanelViewModel? attachedPanel = null,
@@ -116,7 +116,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         }
         _activatePortrait = portraitActivation
             ?? (controller is null ? ((_, _) => Task.CompletedTask) : controller.ActivateAsync);
-        _appSettings = appSettings;
+        _characterSettings = characterSettings;
         _portraitMenu = CreatePortraitMenu();
         _tray.ShowHideRequested += OnTrayShowHideRequested;
         _tray.RestoreRequested += OnTrayRestoreRequested;
@@ -316,7 +316,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             return;
         }
 
-        if (_controller is null || _controller.CurrentState is not null || _appSettings is null)
+        if (_controller is null || _controller.CurrentState is not null || _characterSettings is null)
         {
             ShowPortrait();
             _portrait.Activate();
@@ -331,7 +331,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     private async Task RecoverAndShowPortraitAsync()
     {
-        var selection = _appSettings?.Load().Selection;
+        var selection = _characterSettings?.Load().Selection;
         if (selection is null)
         {
             ShowSettings(SettingsSection.RolePackages);

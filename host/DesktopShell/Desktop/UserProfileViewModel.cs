@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Settings;
@@ -11,12 +12,12 @@ namespace FgoPet.App.Settings;
 public sealed class UserProfileViewModel : ObservableObject
 {
     private const int MaximumDisplayNameLength = 80;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
     private string _displayName;
     private string _statusText = string.Empty;
     private string _errorText = string.Empty;
 
-    public UserProfileViewModel(IAppSettingsStore settings)
+    public UserProfileViewModel(ICharacterSettingsStore settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _displayName = settings.Load().UserProfile?.DisplayName?.Trim() ?? string.Empty;

@@ -1,3 +1,4 @@
+using FgoPet.Character.Settings;
 using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Servants;
@@ -5,9 +6,9 @@ namespace FgoPet.App.Servants;
 /// <summary>Reads and writes servant address preferences without coupling them to login.</summary>
 public sealed class ServantPreferenceService
 {
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
 
-    public ServantPreferenceService(IAppSettingsStore settings) =>
+    public ServantPreferenceService(ICharacterSettingsStore settings) =>
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
     public Task<ServantPreference> LoadAsync(string servantId)

@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 
 namespace FgoPet.App.Settings;
 
@@ -13,7 +13,7 @@ public sealed class PersonalizationViewModel : ObservableObject
 {
     private static readonly IReadOnlyList<double> SupportedScaleValues = [0.50, 0.60, 0.75];
 
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
     private readonly IPortraitController? _portrait;
     private double _scale;
     private bool _topmost;
@@ -22,12 +22,12 @@ public sealed class PersonalizationViewModel : ObservableObject
     private string _statusText = string.Empty;
     private string _errorText = string.Empty;
 
-    public PersonalizationViewModel(IAppSettingsStore settings, IPortraitController? portrait = null)
+    public PersonalizationViewModel(ICharacterSettingsStore settings, IPortraitController? portrait = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _portrait = portrait;
         var saved = settings.Load();
-        _scale = IsSupportedScale(saved.Scale) ? saved.Scale : AppSettings.Defaults.Scale;
+        _scale = IsSupportedScale(saved.Scale) ? saved.Scale : CharacterSettings.Defaults.Scale;
         _topmost = saved.Topmost;
         _autoCollapseExpandedPanel = saved.AutoCollapseExpandedPanel;
         SaveCommand = new RelayCommand(Save);
@@ -112,9 +112,9 @@ public sealed class PersonalizationViewModel : ObservableObject
         _suppressPersistence = true;
         try
         {
-            Scale = AppSettings.Defaults.Scale;
-            Topmost = AppSettings.Defaults.Topmost;
-            AutoCollapseExpandedPanel = AppSettings.Defaults.AutoCollapseExpandedPanel;
+            Scale = CharacterSettings.Defaults.Scale;
+            Topmost = CharacterSettings.Defaults.Topmost;
+            AutoCollapseExpandedPanel = CharacterSettings.Defaults.AutoCollapseExpandedPanel;
         }
         finally
         {

@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
 
@@ -62,7 +63,7 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
 
     private readonly PackageDetailRoute _route;
     private readonly ServantLibraryViewModel _library;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
     private readonly ServantPreferenceService _preferences;
     private readonly ISettingsNavigator _settingsShell;
     private ServantCardViewModel? _card;
@@ -72,7 +73,7 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
     public RolePackageDetailViewModel(
         PackageDetailRoute route,
         ServantLibraryViewModel library,
-        IAppSettingsStore settings,
+        ICharacterSettingsStore settings,
         ISettingsNavigator settingsShell)
     {
         _route = route ?? throw new ArgumentNullException(nameof(route));

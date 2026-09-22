@@ -1,4 +1,5 @@
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Settings;
 using Xunit;
 
@@ -9,7 +10,7 @@ public sealed class ServantPreferenceTests
     [Fact]
     public async Task Address_preference_is_saved_by_servant_id()
     {
-        var settings = new FakeSettings();
+        var settings = new FakeSettings(CharacterSettings.Defaults);
         var preferences = new ServantPreferenceService(settings);
 
         await preferences.SaveAsync("800100", new ServantPreference(AddressMode.UserDefined, "御主"));
@@ -21,18 +22,17 @@ public sealed class ServantPreferenceTests
     [Fact]
     public async Task Package_default_resolution_prefers_appearance_then_persona_then_neutral()
     {
-        var preferences = new ServantPreferenceService(new FakeSettings());
+        var preferences = new ServantPreferenceService(new FakeSettings(CharacterSettings.Defaults));
 
         Assert.Equal("外观称呼", await preferences.ResolveAddressAsync("800100", "外观称呼", "Persona称呼"));
         Assert.Equal("Persona称呼", await preferences.ResolveAddressAsync("800100", null, "Persona称呼"));
         Assert.Equal("御主", await preferences.ResolveAddressAsync("800100", null, null));
     }
 
-    private sealed class FakeSettings : IAppSettingsStore
+    private sealed class FakeSettings(CharacterSettings current) : ICharacterSettingsStore
     {
-        private AppSettings _current = AppSettings.Defaults;
-        public string Location => "memory";
-        public AppSettings Load() => _current;
-        public void Save(AppSettings settings) => _current = settings;
+        public CharacterSettings Current { get; private set; } = current;
+        public CharacterSettings Load() => Current;
+        public void Save(CharacterSettings settings) => Current = settings;
     }
 }

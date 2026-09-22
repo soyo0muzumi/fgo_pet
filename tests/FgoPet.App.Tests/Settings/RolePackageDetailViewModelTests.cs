@@ -1,5 +1,6 @@
 using FgoPet.App.Servants;
 using FgoPet.App.Settings;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -13,7 +14,7 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Load_exposes_latest_preview_metadata_active_state_and_validated_settings()
     {
-        var fixture = CreateFixture(AppSettings.Defaults with
+        var fixture = CreateFixture(CharacterSettings.Defaults with
         {
             Selection = new PortraitSelection("official.mash", "combat", "1.1.0"),
         });
@@ -55,9 +56,8 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Appearance_activation_reuses_library_behavior_and_preserves_other_settings()
     {
-        var fixture = CreateFixture(AppSettings.Defaults with
+        var fixture = CreateFixture(CharacterSettings.Defaults with
         {
-            Theme = AppTheme.FgoLight,
             UserProfile = new UserProfile("global profile"),
         });
         await fixture.Detail.LoadAsync();
@@ -68,7 +68,6 @@ public sealed class RolePackageDetailViewModelTests
         var activation = Assert.Single(fixture.Controller.Activations);
         Assert.Equal(new PortraitSelection("official.mash", "combat", "1.1.0"), activation);
         Assert.Equal(activation, fixture.Settings.Current.Selection);
-        Assert.Equal(AppTheme.FgoLight, fixture.Settings.Current.Theme);
         Assert.Equal("global profile", fixture.Settings.Current.UserProfile!.DisplayName);
         Assert.True(fixture.Detail.IsActive);
     }
@@ -76,7 +75,7 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Appearance_options_expose_id_and_version_without_replacing_selection_objects()
     {
-        var fixture = CreateFixture(AppSettings.Defaults);
+        var fixture = CreateFixture(CharacterSettings.Defaults);
 
         await fixture.Detail.LoadAsync();
 
@@ -96,7 +95,7 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Address_is_saved_only_under_the_stable_servant_id()
     {
-        var fixture = CreateFixture(AppSettings.Defaults with
+        var fixture = CreateFixture(CharacterSettings.Defaults with
         {
             UserProfile = new UserProfile("全局名字"),
             ServantPreferences = new Dictionary<string, ServantPreference>
@@ -119,7 +118,7 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Upgrade_revalidation_preserves_valid_values_falls_back_and_shows_notice()
     {
-        var fixture = CreateFixture(AppSettings.Defaults with
+        var fixture = CreateFixture(CharacterSettings.Defaults with
         {
             PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
             {
@@ -155,7 +154,7 @@ public sealed class RolePackageDetailViewModelTests
     [Fact]
     public async Task Saving_package_settings_updates_only_the_current_servant()
     {
-        var fixture = CreateFixture(AppSettings.Defaults with
+        var fixture = CreateFixture(CharacterSettings.Defaults with
         {
             PackageSettings = new Dictionary<string, IReadOnlyDictionary<string, string>>
             {
@@ -176,7 +175,7 @@ public sealed class RolePackageDetailViewModelTests
         Assert.Equal("角色包设置已保存。", fixture.Detail.PackageSettingsStatus);
     }
 
-    private static Fixture CreateFixture(AppSettings initial)
+    private static Fixture CreateFixture(CharacterSettings initial)
     {
         var repository = new FakeRepository();
         var installer = new FakeInstaller();
@@ -273,11 +272,10 @@ public sealed class RolePackageDetailViewModelTests
         public void ApplyDpi(Dpi2 dpi) { }
     }
 
-    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class FakeSettingsStore(CharacterSettings initial) : ICharacterSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; private set; } = initial;
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public CharacterSettings Current { get; private set; } = initial;
+        public CharacterSettings Load() => Current;
+        public void Save(CharacterSettings settings) => Current = settings;
     }
 }
