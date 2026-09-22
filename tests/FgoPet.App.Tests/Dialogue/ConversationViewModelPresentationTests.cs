@@ -6,6 +6,7 @@ using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -82,7 +83,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     [Fact]
     public void Configuration_required_state_is_derived_from_missing_model_metadata()
     {
-        var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });
+        var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
         var viewModel = CreateViewModel(settings);
 
         Assert.True(viewModel.IsConfigurationRequired);
@@ -121,7 +122,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     [Fact]
     public void Open_settings_command_requests_the_model_connection_route_without_owning_a_window()
     {
-        var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });
+        var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
         var viewModel = CreateViewModel(settings);
         SettingsSection? requested = null;
         viewModel.SettingsRequested += section => requested = section;
@@ -134,11 +135,11 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     [Fact]
     public void Provider_and_model_badges_refresh_from_settings_on_servant_activation()
     {
-        var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });
+        var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
         var viewModel = CreateViewModel(settings);
         Assert.Equal("未配置供应商", viewModel.ProviderStatusText);
 
-        settings.Current = AppSettings.Defaults with
+        settings.Current = DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("deepseek", "https://api.deepseek.test/v1", "deepseek-chat"),
         };
@@ -151,7 +152,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     [Fact]
     public async Task Provider_and_model_badges_refresh_when_connection_is_saved()
     {
-        var settings = new SequenceSettingsStore(AppSettings.Defaults with { ModelConnection = null });
+        var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
         var credentials = new TestCredentials();
         var catalog = new ProviderCatalog();
         var connection = new ModelConnectionViewModel(
@@ -178,7 +179,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         SequenceSettingsStore? settings = null,
         ModelConnectionViewModel? modelConnection = null)
     {
-        settings ??= new SequenceSettingsStore(AppSettings.Defaults with
+        settings ??= new SequenceSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
@@ -205,12 +206,11 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         }
     }
 
-    private sealed class SequenceSettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class SequenceSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
     {
-        public AppSettings Current { get; set; } = initial;
-        public string Location => "memory";
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public DialogueSettings Current { get; set; } = initial;
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) => Current = settings;
     }
 
     private sealed class DelegatingProviderResolver : IChatProviderResolver

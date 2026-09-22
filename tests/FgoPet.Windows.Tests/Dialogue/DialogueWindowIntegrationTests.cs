@@ -4,6 +4,7 @@ using System.Windows;
 using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Packs;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -869,7 +870,7 @@ public sealed class DialogueWindowIntegrationTests
     private static DialogueWindowViewModel CreateViewModel()
     {
         var settingsStore = new FakeSettingsStore(
-            FgoPet.Core.Settings.AppSettings.Defaults with
+            DialogueSettings.Defaults with
             {
                 ModelConnection = new FgoPet.Core.Settings.ModelConnectionSettings(
                     "test", "https://example.test/v1", "test-model"),
@@ -906,11 +907,10 @@ public sealed class DialogueWindowIntegrationTests
         }
     }
 
-    private sealed class FakeSettingsStore(FgoPet.Core.Settings.AppSettings initial) : FgoPet.Core.Settings.IAppSettingsStore
+    private sealed class FakeSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public FgoPet.Core.Settings.AppSettings Load() => initial;
-        public void Save(FgoPet.Core.Settings.AppSettings settings) { }
+        public DialogueSettings Load() => initial;
+        public void Save(DialogueSettings settings) { }
     }
 
     private sealed class TestCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader

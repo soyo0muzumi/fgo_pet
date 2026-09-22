@@ -9,6 +9,7 @@ using FgoPet.App.Privacy;
 using FgoPet.App.Settings;
 using FgoPet.App.Theming;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +27,7 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
         {
             var catalog = new FgoPet.Infrastructure.Providers.ProviderCatalog();
             var viewModel = new ModelConnectionViewModel(
-                new FakeSettingsStore(AppSettings.Defaults),
+                new FakeSettingsStore(DialogueSettings.Defaults),
                 new FakeCredentials(),
                 catalog,
                 new FgoPet.App.Providers.ChatProviderFactory(catalog, new FakeCredentials(), new HttpClient()));
@@ -57,7 +58,7 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             var catalog = new FgoPet.Infrastructure.Providers.ProviderCatalog();
             var credentials = new FakeCredentials();
             var viewModel = new ModelConnectionViewModel(
-                new FakeSettingsStore(AppSettings.Defaults),
+                new FakeSettingsStore(DialogueSettings.Defaults),
                 credentials,
                 catalog,
                 new FgoPet.App.Providers.ChatProviderFactory(catalog, credentials, new HttpClient()));
@@ -190,11 +191,10 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
 
     private static void StaRun(Action action) => StaRunner.Run(action);
 
-    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class FakeSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => initial;
-        public void Save(AppSettings settings) { }
+        public DialogueSettings Load() => initial;
+        public void Save(DialogueSettings settings) { }
     }
 
     private sealed class FakeCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader

@@ -350,13 +350,14 @@ public static class ServiceRegistration
             provider.GetRequiredService<SqliteMemoryRepository>(),
             provider.GetRequiredService<PromptComposer>(),
             provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<IAppSettingsStore>(),
             provider.GetRequiredService<ConversationSummaryService>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ILogger<ConversationOrchestrator>>()))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ArchiveDraftService>()))

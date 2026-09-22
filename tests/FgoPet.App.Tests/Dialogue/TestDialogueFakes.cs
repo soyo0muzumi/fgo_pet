@@ -3,23 +3,22 @@ using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Packs;
 
 namespace FgoPet.App.Tests.Dialogue;
 
 /// <summary>In-memory settings store for dialogue presentation tests.</summary>
-public sealed class TestSettingsStore(AppSettings initial) : IAppSettingsStore
+public sealed class TestDialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
 {
-    public AppSettings Current { get; set; } = initial;
+    public DialogueSettings Current { get; private set; } = initial;
 
-    public string Location => "memory";
+    public DialogueSettings Load() => Current;
 
-    public AppSettings Load() => Current;
+    public void Save(DialogueSettings settings) => Current = settings;
 
-    public void Save(AppSettings settings) => Current = settings;
-
-    public static TestSettingsStore WithModelConnection() => new(AppSettings.Defaults with
+    public static TestDialogueSettingsStore WithModelConnection() => new(DialogueSettings.Defaults with
     {
         ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
     });
@@ -27,9 +26,9 @@ public sealed class TestSettingsStore(AppSettings initial) : IAppSettingsStore
 
 internal static class TestDialogueFakes
 {
-    public static ConversationViewModel CreateConversation(TestSettingsStore? suppliedSettings = null)
+    public static ConversationViewModel CreateConversation(TestDialogueSettingsStore? suppliedSettings = null)
     {
-        var settings = suppliedSettings ?? TestSettingsStore.WithModelConnection();
+        var settings = suppliedSettings ?? TestDialogueSettingsStore.WithModelConnection();
         var database = new FgoPet.Infrastructure.Persistence.RuntimeDatabase(
             Path.Combine(Path.GetTempPath(), $"fgo-p1b-{Guid.NewGuid():N}.db"));
         new FgoPet.Infrastructure.Persistence.RuntimeDatabaseMigrator(database).Migrate();

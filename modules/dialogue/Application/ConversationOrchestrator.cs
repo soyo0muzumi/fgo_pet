@@ -8,6 +8,7 @@ using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Todo;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -29,10 +30,10 @@ public interface IConversationContentResolver
 
 public sealed class ConfiguredChatProviderResolver : IChatProviderResolver
 {
-    private readonly IAppSettingsStore _settings;
+    private readonly IDialogueSettingsStore _settings;
     private readonly ChatProviderFactory _factory;
 
-    public ConfiguredChatProviderResolver(IAppSettingsStore settings, ChatProviderFactory factory)
+    public ConfiguredChatProviderResolver(IDialogueSettingsStore settings, ChatProviderFactory factory)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -91,7 +92,8 @@ public sealed class ConversationOrchestrator
     private readonly SqliteMemoryRepository _memories;
     private readonly PromptComposer _composer;
     private readonly TimeProvider _time;
-    private readonly IAppSettingsStore? _settings;
+    private readonly IDialogueSettingsStore? _settings;
+    private readonly IAppSettingsStore? _memorySettings;
     private readonly ConversationSummaryService? _summaries;
     private readonly TodoProposalService? _todoProposals;
     private readonly ILogger<ConversationOrchestrator>? _logger;
@@ -107,7 +109,8 @@ public sealed class ConversationOrchestrator
         SqliteMemoryRepository memories,
         PromptComposer composer,
         TimeProvider time,
-        IAppSettingsStore? settings = null,
+        IDialogueSettingsStore? settings = null,
+        IAppSettingsStore? memorySettings = null,
         ConversationSummaryService? summaries = null,
         TodoProposalService? todoProposals = null,
         ILogger<ConversationOrchestrator>? logger = null)
@@ -119,6 +122,7 @@ public sealed class ConversationOrchestrator
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _settings = settings;
+        _memorySettings = memorySettings;
         _summaries = summaries;
         _todoProposals = todoProposals;
         _todoDrafts = todoProposals is null ? null : new TodoContinuationState(todoProposals);
@@ -853,7 +857,7 @@ public sealed class ConversationOrchestrator
         }
     }
 
-    private bool IsMemoryEnabled() => _settings?.Load().MemoryEnabled ?? true;
+    private bool IsMemoryEnabled() => _memorySettings?.Load().MemoryEnabled ?? true;
 
     private static PersonaBundle FallbackPersona(ContentContextKey context) =>
         new(context.ServantId, context.PackageId, context.PackageVersion, context.PersonaVersion, "保持自然、简洁地回应用户。", []);

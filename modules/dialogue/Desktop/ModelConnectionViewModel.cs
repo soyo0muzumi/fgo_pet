@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Providers;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Secrets;
 
@@ -10,7 +11,7 @@ namespace FgoPet.App.Settings;
 
 public sealed partial class ModelConnectionViewModel : ObservableObject
 {
-    private readonly IAppSettingsStore _settings;
+    private readonly IDialogueSettingsStore _settings;
     private readonly ICredentialStore _credentials;
     private readonly ProviderCatalog _catalog;
     private readonly ChatProviderFactory _providerFactory;
@@ -18,7 +19,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     private long _draftVersion;
 
     public ModelConnectionViewModel(
-        IAppSettingsStore settings,
+        IDialogueSettingsStore settings,
         ICredentialStore credentials,
         ProviderCatalog catalog,
         ChatProviderFactory providerFactory)

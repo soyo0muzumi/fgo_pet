@@ -17,6 +17,7 @@ using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -539,7 +540,7 @@ public sealed class SettingsWindowIntegrationTests
 
     private static ConversationViewModel CreateConversationViewModel()
     {
-        var settingsStore = new FakeSettingsStore(AppSettings.Defaults with
+        var settingsStore = new DialogueSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
@@ -1067,6 +1068,13 @@ public sealed class SettingsWindowIntegrationTests
         public AppSettings Load() => _settings;
 
         public void Save(AppSettings settings) => _settings = settings;
+    }
+
+    private sealed class DialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
+    {
+        public DialogueSettings Current { get; private set; } = initial;
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) => Current = settings;
     }
 
     private sealed class FakeCharacterSettingsStore(CharacterSettings initial) : ICharacterSettingsStore

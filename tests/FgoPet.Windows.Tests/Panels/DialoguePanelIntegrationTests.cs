@@ -13,6 +13,7 @@ using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -108,7 +109,7 @@ public sealed class DialoguePanelIntegrationTests
 
     private static ConversationViewModel CreateConversationViewModel()
     {
-        var settingsStore = new FakeSettingsStore(AppSettings.Defaults with
+        var settingsStore = new FakeSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
@@ -151,11 +152,10 @@ public sealed class DialoguePanelIntegrationTests
             new(new RuntimeDatabase(":memory:"));
     }
 
-    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class FakeSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => initial;
-        public void Save(AppSettings settings) { }
+        public DialogueSettings Load() => initial;
+        public void Save(DialogueSettings settings) { }
     }
 
     private static void StaRun(Action action) => StaRunner.Run(action);

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Settings;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Archives;
 using FgoPet.Core.Dialogue;
@@ -34,7 +35,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     // sentinel is the only history entry hidden here; ordinary user text is untouched.
     private const string ToolProposalHistoryPlaceholder = "[工具调用：待办提案]";
     private readonly ConversationOrchestrator _orchestrator;
-    private readonly IAppSettingsStore _settings;
+    private readonly IDialogueSettingsStore _settings;
     private readonly ModelConnectionViewModel? _modelConnection;
     private readonly TodoProposalService? _todoProposals;
     private readonly ArchiveDraftService? _archiveDrafts;
@@ -50,7 +51,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public ConversationViewModel(
         ConversationOrchestrator orchestrator,
-        IAppSettingsStore settings,
+        IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
         TodoProposalService? todoProposals = null,
         ArchiveDraftService? archiveDrafts = null)

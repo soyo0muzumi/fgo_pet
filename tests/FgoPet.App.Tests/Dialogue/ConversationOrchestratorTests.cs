@@ -10,6 +10,7 @@ using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Core.Todo;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
@@ -139,11 +140,12 @@ public sealed class ConversationOrchestratorTests : IDisposable
         var player = new RecordingSpeechPlayer();
         using var synthesis = new SpeechSynthesisCoordinator(synthesizer);
         using var playback = new SpeechPlaybackCoordinator(synthesis, player, settings);
+        var dialogueSettings = new RecordingDialogueSettings();
         var conversation = new ConversationViewModel(
             CreateOrchestrator(
                 new FakeProvider([new ChatStreamChunk("朗读这句", IsComplete: true)]),
-                settings: settings),
-            settings);
+                settings: dialogueSettings),
+            dialogueSettings);
         var dialogue = new DialogueWindowViewModel(conversation, speech: playback);
         dialogue.NotifyActivated();
         conversation.SetActiveServant("800100");
@@ -185,7 +187,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         using var synthesis = new SpeechSynthesisCoordinator(new RecordingSpeechSynthesizer());
         using var playback = new SpeechPlaybackCoordinator(synthesis, new RecordingSpeechPlayer(), settings);
         var viewModel = new DialogueWindowViewModel(
-            new ConversationViewModel(CreateOrchestrator(new FakeProvider([]), settings: settings), settings),
+            new ConversationViewModel(CreateOrchestrator(new FakeProvider([]), settings: new FakeSettings()), new FakeSettings()),
             speech: playback);
         var turn = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, "请先配置朗读。");
 
@@ -385,7 +387,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
                 "{\"text\":\"安排好了。\",\"todos\":[{\"title\":\"写回归测试\"}]}",
                 IsComplete: true),
         ]);
-        var settings = new RecordingSettings();
+        var settings = new RecordingDialogueSettings();
         var todoService = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
         var orchestrator = CreateOrchestrator(provider, todoService, settings: settings);
         var updates = new List<ConversationUpdate>();
@@ -409,7 +411,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
     public async Task Connection_marked_unsupported_skips_tools_entirely()
     {
         var provider = new FakeProvider([new ChatStreamChunk("收到。", IsComplete: true)]);
-        var settings = new RecordingSettings(supportsTools: false);
+        var settings = new RecordingDialogueSettings(supportsTools: false);
         var orchestrator = CreateOrchestrator(provider, todoProposals: null, settings: settings);
 
         await orchestrator.SendAsync("800100", "你好", CancellationToken.None);
@@ -589,7 +591,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
     private ConversationOrchestrator CreateOrchestrator(
         IChatProvider provider,
         TodoProposalService? todoProposals = null,
-        IAppSettingsStore? settings = null,
+        IDialogueSettingsStore? settings = null,
         IConversationContentResolver? contentResolver = null)
     {
         var binding = new ContentBinding(
@@ -719,32 +721,39 @@ public sealed class ConversationOrchestratorTests : IDisposable
         }
     }
 
-    private sealed class FakeSettings : IAppSettingsStore
+    private sealed class FakeSettings : IDialogueSettingsStore
     {
-        public string Location => "memory";
-
-        public AppSettings Load() => AppSettings.Defaults with
+        public DialogueSettings Load() => DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         };
 
-        public void Save(AppSettings settings)
+        public void Save(DialogueSettings settings)
         {
         }
     }
 
-    private sealed class RecordingSettings(bool supportsTools = true) : IAppSettingsStore
+    private sealed class RecordingDialogueSettings(bool supportsTools = true) : IDialogueSettingsStore
     {
-        public AppSettings? Saved { get; private set; }
+        public DialogueSettings? Saved { get; private set; }
 
-        public string Location => "memory";
-
-        public AppSettings Load() => Saved ?? AppSettings.Defaults with
+        public DialogueSettings Load() => Saved ?? DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model", toolsSupported: supportsTools),
         };
 
-        public void Save(AppSettings settings) => Saved = settings;
+        public void Save(DialogueSettings settings) => Saved = settings;
+    }
+
+    private sealed class RecordingSettings : IAppSettingsStore
+    {
+        public AppSettings Current { get; private set; } = AppSettings.Defaults;
+
+        public string Location => "memory";
+
+        public AppSettings Load() => Current;
+
+        public void Save(AppSettings settings) => Current = settings;
     }
 
     private sealed class DegradingProvider(IReadOnlyList<ChatStreamChunk> fallbackChunks) : IChatProvider

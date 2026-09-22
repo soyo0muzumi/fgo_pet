@@ -9,6 +9,7 @@ using FgoPet.Core.Focus;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
@@ -153,7 +154,7 @@ public sealed class AttachedPanelViewModelTests
 
     private static DialogueWindowViewModel CreateDialogueViewModel()
     {
-        var settingsStore = new MemorySettingsStore(AppSettings.Defaults with
+        var settingsStore = new DialogueSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
@@ -402,6 +403,13 @@ public sealed class AttachedPanelViewModelTests
         public AppSettings Current { get; private set; } = initial;
         public AppSettings Load() => Current;
         public void Save(AppSettings settings) => Current = settings;
+    }
+
+    private sealed class DialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
+    {
+        public DialogueSettings Current { get; private set; } = initial;
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) => Current = settings;
     }
 
     private sealed class ThrowingProviderResolver : IChatProviderResolver

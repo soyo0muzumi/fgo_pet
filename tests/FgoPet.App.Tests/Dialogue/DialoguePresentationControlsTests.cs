@@ -42,7 +42,7 @@ public sealed class DialoguePresentationControlsTests
     [Fact]
     public void Model_switch_updates_the_configured_snapshot_for_future_requests_only()
     {
-        var settings = TestSettingsStore.WithModelConnection();
+        var settings = TestDialogueSettingsStore.WithModelConnection();
         var conversation = TestDialogueFakes.CreateConversation(settings);
 
         Assert.False(conversation.SelectModelForFutureRequests("next-model"));
@@ -52,7 +52,7 @@ public sealed class DialoguePresentationControlsTests
     [Fact]
     public void Conversation_rejects_a_model_id_outside_the_authoritative_available_set()
     {
-        var settings = TestSettingsStore.WithModelConnection();
+        var settings = TestDialogueSettingsStore.WithModelConnection();
         var conversation = TestDialogueFakes.CreateConversation(settings);
         Assert.False(conversation.SelectModelForFutureRequests("invented-model"));
         Assert.Equal("test-model", settings.Current.ModelConnection!.ModelId);

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Secrets;
 using Xunit;
@@ -99,7 +100,7 @@ public sealed class ModelConnectionViewModelTests
     [Fact]
     public async Task Successful_test_does_not_persist_or_activate_until_explicit_save()
     {
-        var settings = new FakeSettings { Current = AppSettings.Defaults with { ModelConnection = null } };
+        var settings = new FakeSettings { Current = DialogueSettings.Defaults with { ModelConnection = null } };
         var credentials = new FakeCredentials();
         var handler = new RespondingHandler();
         var catalog = new ProviderCatalog();
@@ -176,16 +177,15 @@ public sealed class ModelConnectionViewModelTests
         return new ModelConnectionViewModel(settings, credentials, catalog, factory);
     }
 
-    private sealed class FakeSettings : IAppSettingsStore
+    private sealed class FakeSettings : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; set; } = AppSettings.Defaults with
+        public DialogueSettings Current { get; set; } = DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
         };
-        public AppSettings? Saved { get; private set; }
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) { Current = settings; Saved = settings; }
+        public DialogueSettings? Saved { get; private set; }
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) { Current = settings; Saved = settings; }
     }
 
     private sealed class FakeCredentials : ICredentialStore, ICredentialReader
