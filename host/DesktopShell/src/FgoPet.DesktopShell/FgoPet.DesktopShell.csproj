@@ -36,6 +36,7 @@
     <ProjectReference Include="../../../../src/FgoPet.Core/FgoPet.Core.csproj" />
     <ProjectReference Include="../../../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
     <ProjectReference Include="../../../../modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj" />
+    <ProjectReference Include="../../../Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj" />
     <ProjectReference Include="../FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
     <ProjectReference Include="../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
     <ProjectReference Include="../../../../modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />

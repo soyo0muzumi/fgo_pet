@@ -36,6 +36,8 @@ using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Core.Windowing;
+using FgoPet.Character.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Bond;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Agents;
@@ -52,6 +54,12 @@ using FgoPet.Infrastructure.Secrets;
 using FgoPet.Infrastructure.Settings;
 using FgoPet.Infrastructure.Timeline;
 using FgoPet.Infrastructure.Windowing;
+using FgoPet.Memory.Settings;
+using FgoPet.Platform.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Speech.Settings;
+using FgoPet.UiFoundation.Theming;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -69,6 +77,15 @@ public static class ServiceRegistration
         .AddSingleton(paths)
         .AddSingleton<IAppLifetime>(_ => new AppLifetimeService(Application.Current!))
         .AddSingleton<IAppSettingsStore>(_ => new JsonAppSettingsStore(paths.StorageRoot))
+        .AddSingleton<ISettingsDocumentStore>(_ => new JsonSettingsDocumentStore(paths.StorageRoot))
+        .AddSingleton<ApplicationSettingsCoordinator>()
+        .AddSingleton<IApplicationSettingsDocument>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<ICharacterSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<IDialogueSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<IMemorySettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<IWorkExecutionSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<ISpeechSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
+        .AddSingleton<IThemeSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
         .AddSingleton<ThemeService>(provider => new ThemeService(
             provider.GetRequiredService<IAppSettingsStore>(),
             Application.Current?.Resources ?? new ResourceDictionary()))
