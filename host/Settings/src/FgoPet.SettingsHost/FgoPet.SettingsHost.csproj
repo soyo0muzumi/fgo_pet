@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\modules\character\src\FgoPet.Character\FgoPet.Character.csproj" />
+    <ProjectReference Include="..\..\..\..\modules\dialogue\src\FgoPet.Dialogue\FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="..\..\..\..\modules\memory\src\FgoPet.Memory\FgoPet.Memory.csproj" />
+    <ProjectReference Include="..\..\..\..\modules\work\Execution\src\FgoPet.Work.Execution\FgoPet.Work.Execution.csproj" />
+    <ProjectReference Include="..\..\..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\ui-foundation\src\FgoPet.UiFoundation\FgoPet.UiFoundation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.SettingsHost.Tests" />
+  </ItemGroup>
+</Project>
