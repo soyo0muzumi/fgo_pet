@@ -22,6 +22,7 @@ using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -368,8 +369,8 @@ public sealed class SettingsWindowIntegrationTests
         {
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
-            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
             services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore(WorkExecutionSettings.Defaults));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -400,8 +401,8 @@ public sealed class SettingsWindowIntegrationTests
         {
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
-            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
             services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore(WorkExecutionSettings.Defaults));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -438,8 +439,8 @@ public sealed class SettingsWindowIntegrationTests
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
             services.AddSingleton<FgoPet.App.Lifetime.IAppLifetime, NonDisplayingLifetime>();
-            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
             services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore(WorkExecutionSettings.Defaults));
             services.AddSingleton<PortraitActivation>((_, _) => Task.CompletedTask);
             using var provider = services.BuildServiceProvider();
             var ui = provider.GetRequiredService<DesktopAppUi>();
@@ -471,8 +472,8 @@ public sealed class SettingsWindowIntegrationTests
             var selection = new PortraitSelection("preview.mash", "casual", "1.0.0");
             PortraitSelection? activated = null;
             var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
-            services.AddSingleton<IAppSettingsStore>(new FakeSettingsStore(AppSettings.Defaults with { Selection = selection }));
             services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore(CharacterSettings.Defaults with { Selection = selection }));
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore(WorkExecutionSettings.Defaults));
             services.AddSingleton<PortraitActivation>((requested, _) =>
             {
                 activated = requested;
@@ -1084,6 +1085,15 @@ public sealed class SettingsWindowIntegrationTests
         public CharacterSettings Load() => _settings;
 
         public void Save(CharacterSettings settings) => _settings = settings;
+    }
+
+    private sealed class FakeWorkSettingsStore(WorkExecutionSettings initial) : IWorkExecutionSettingsStore
+    {
+        private WorkExecutionSettings _settings = initial;
+
+        public WorkExecutionSettings Load() => _settings;
+
+        public void Save(WorkExecutionSettings settings) => _settings = settings;
     }
 
     private sealed class NonDisplayingLifetime : FgoPet.App.Lifetime.IAppLifetime

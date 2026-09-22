@@ -1,9 +1,10 @@
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Bootstrap;
@@ -26,7 +27,8 @@ public sealed class DesktopAppShell : IAppShell
 {
     private readonly IArtPackageRepository _repository;
     private readonly IPortraitController _controller;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _characterSettings;
+    private readonly IWorkExecutionSettingsStore _workSettings;
     private readonly IDesktopAppUi _ui;
     private readonly IRuntimeDatabaseMigrator? _migrator;
     private readonly IFocusRestorer? _restorer;
@@ -37,7 +39,8 @@ public sealed class DesktopAppShell : IAppShell
     public DesktopAppShell(
         IArtPackageRepository repository,
         IPortraitController controller,
-        IAppSettingsStore settings,
+        ICharacterSettingsStore characterSettings,
+        IWorkExecutionSettingsStore workSettings,
         IDesktopAppUi ui,
         IRuntimeDatabaseMigrator? migrator = null,
         IFocusRestorer? restorer = null,
@@ -50,7 +53,8 @@ public sealed class DesktopAppShell : IAppShell
     {
         _repository = repository;
         _controller = controller;
-        _settings = settings;
+        _characterSettings = characterSettings;
+        _workSettings = workSettings;
         _ui = ui;
         _migrator = migrator;
         _restorer = restorer;
@@ -87,7 +91,7 @@ public sealed class DesktopAppShell : IAppShell
             {
                 _agentStarted = true;
                 startedAgentRuntime = true;
-                _agentRuntimeEnabled = _settings.Load().AgentConnection.Enabled && _phase2?.IsAvailable != false;
+                _agentRuntimeEnabled = _workSettings.Load().AgentConnection.Enabled && _phase2?.IsAvailable != false;
                 // Disabled startup may notify an existing Relay, but never launches it.
                 // Neither that bounded probe nor enabled bootstrap blocks the desktop.
                 _ = StartAgentRuntimeAsync(_agentRuntimeEnabled);
@@ -113,7 +117,7 @@ public sealed class DesktopAppShell : IAppShell
 
         if (_activation is not null)
         {
-            var firstStartForActivation = _settings.Load().Selection is null;
+            var firstStartForActivation = _characterSettings.Load().Selection is null;
             var restored = await _activation.RestoreAsync(cancellationToken).ConfigureAwait(true);
             if (restored.Succeeded)
             {
@@ -131,7 +135,7 @@ public sealed class DesktopAppShell : IAppShell
             return;
         }
 
-        var requested = _settings.Load().Selection;
+        var requested = _characterSettings.Load().Selection;
         var firstStart = requested is null;
         var location = await _repository.ResolveStartupSelectionAsync(requested, cancellationToken);
         if (location is null)
@@ -175,7 +179,7 @@ public sealed class DesktopAppShell : IAppShell
 
     private void OnAgentRuntimeSnapshotChanged(AgentRelaySnapshot snapshot)
     {
-        var enabled = _phase2?.IsAvailable != false && _settings.Load().AgentConnection.Enabled;
+        var enabled = _phase2?.IsAvailable != false && _workSettings.Load().AgentConnection.Enabled;
         _agentRuntimeEnabled = enabled;
         if (!enabled || _agentReconnect is null)
         {

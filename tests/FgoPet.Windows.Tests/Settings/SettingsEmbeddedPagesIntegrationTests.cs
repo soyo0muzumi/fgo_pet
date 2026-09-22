@@ -8,10 +8,12 @@ using FgoPet.App.Memory;
 using FgoPet.App.Privacy;
 using FgoPet.App.Settings;
 using FgoPet.App.Theming;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Settings;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -137,7 +139,10 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
     {
         StaRun(() =>
         {
-            using var provider = FgoPet.App.Bootstrap.ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var services = FgoPet.App.Bootstrap.ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore());
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore());
+            using var provider = services.BuildServiceProvider();
             var window = provider.GetRequiredService<SettingsWindow>();
             var shell = provider.GetRequiredService<SettingsViewModel>();
             try
@@ -167,7 +172,10 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
         // One shell survives model → memory → privacy navigation without resetting package selection.
         => StaRun(() =>
         {
-            using var provider = FgoPet.App.Bootstrap.ServiceRegistration.AddFgoPet(new ServiceCollection(), []).BuildServiceProvider();
+            var services = FgoPet.App.Bootstrap.ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
+            services.AddSingleton<ICharacterSettingsStore>(new FakeCharacterSettingsStore());
+            services.AddSingleton<IWorkExecutionSettingsStore>(new FakeWorkSettingsStore());
+            using var provider = services.BuildServiceProvider();
             var window = provider.GetRequiredService<SettingsWindow>();
             var shell = provider.GetRequiredService<SettingsViewModel>();
             try
@@ -195,6 +203,18 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
     {
         public DialogueSettings Load() => initial;
         public void Save(DialogueSettings settings) { }
+    }
+
+    private sealed class FakeCharacterSettingsStore : ICharacterSettingsStore
+    {
+        public CharacterSettings Load() => CharacterSettings.Defaults;
+        public void Save(CharacterSettings settings) { }
+    }
+
+    private sealed class FakeWorkSettingsStore : IWorkExecutionSettingsStore
+    {
+        public WorkExecutionSettings Load() => WorkExecutionSettings.Defaults;
+        public void Save(WorkExecutionSettings settings) { }
     }
 
     private sealed class FakeCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader

@@ -241,7 +241,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<IAgentGateway>()))
         .AddSingleton<AgentTaskHistoryViewModel>()
         .AddSingleton<AgentConnectionSettingsViewModel>(provider => new AgentConnectionSettingsViewModel(
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IWorkExecutionSettingsStore>(),
             provider.GetRequiredService<IAgentRepository>(),
             provider.GetRequiredService<DataClearService>(),
             provider.GetRequiredService<IAgentGateway>(),

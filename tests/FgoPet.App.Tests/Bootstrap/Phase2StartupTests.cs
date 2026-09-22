@@ -1,8 +1,10 @@
 using FgoPet.App.Bootstrap;
+using FgoPet.Character.Settings;
+using FgoPet.Core.Agents;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Work.Execution.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Bootstrap;
@@ -19,7 +21,7 @@ public sealed class Phase2StartupTests
         ui.OnPortrait = () => calls.Add("portrait");
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeSettings(),
+            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(),
             ui, migrator, restorer, new FakePhase2Availability());
 
         await shell.StartAsync([], CancellationToken.None);
@@ -35,7 +37,7 @@ public sealed class Phase2StartupTests
         var ui = new RecordingUi();
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeSettings(), ui, migrator, new FakeFocusRestorer(), availability);
+            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui, migrator, new FakeFocusRestorer(), availability);
 
         await shell.StartAsync([], CancellationToken.None);
 
@@ -50,7 +52,7 @@ public sealed class Phase2StartupTests
         var availability = new FakePhase2Availability();
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeSettings(), ui,
+            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui,
             new FakeMigrator(), new FakeFocusRestorer { Exception = new InvalidOperationException("corrupt row") },
             availability);
 
@@ -109,11 +111,16 @@ public sealed class Phase2StartupTests
         public void MarkUnavailable() => IsAvailable = false;
     }
 
-    private sealed class FakeSettings(PortraitSelection? selection = null) : IAppSettingsStore
+    private sealed class FakeCharacterSettings(PortraitSelection? selection = null) : ICharacterSettingsStore
     {
-        public string Location => "settings.json";
-        public AppSettings Load() => AppSettings.Defaults with { Selection = selection };
-        public void Save(AppSettings settings) { }
+        public CharacterSettings Load() => CharacterSettings.Defaults with { Selection = selection };
+        public void Save(CharacterSettings settings) { }
+    }
+
+    private sealed class FakeWorkSettings : IWorkExecutionSettingsStore
+    {
+        public WorkExecutionSettings Load() => WorkExecutionSettings.Defaults;
+        public void Save(WorkExecutionSettings settings) { }
     }
 
     private sealed class FakeController : IPortraitController

@@ -8,8 +8,8 @@ using FgoPet.App.ViewModels;
 using FgoPet.App.Views;
 using FgoPet.App.Views.Settings;
 using FgoPet.Core.Agents;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -27,7 +27,7 @@ public sealed class AgentConnectionPageTests
             try
             {
                 var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
-                services.AddSingleton<IAppSettingsStore>(new MemorySettings());
+                services.AddSingleton<IWorkExecutionSettingsStore>(new MemorySettings());
                 services.AddSingleton<IAgentRepository>(new EmptyAgents());
                 services.AddSingleton<IAgentTargetCatalog>(new FakeTargetCatalog(new AgentTargetCatalogResult(
                     AgentTargetCatalogStatus.Available,
@@ -144,11 +144,10 @@ public sealed class AgentConnectionPageTests
 
     private static void WaitForCompletion(Task operation) => operation.GetAwaiter().GetResult();
 
-    private sealed class MemorySettings : IAppSettingsStore
+    private sealed class MemorySettings : IWorkExecutionSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => AppSettings.Defaults;
-        public void Save(AppSettings settings) { }
+        public WorkExecutionSettings Load() => WorkExecutionSettings.Defaults;
+        public void Save(WorkExecutionSettings settings) { }
     }
 
     private sealed class EmptyAgents : IAgentRepository

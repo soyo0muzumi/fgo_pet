@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using FgoPet.App.Services;
 using FgoPet.App.Privacy;
 using FgoPet.Core.Agents;
-using FgoPet.Core.Settings;
+using FgoPet.Work.Execution.Settings;
 
 namespace FgoPet.App.ViewModels;
 
@@ -280,7 +280,7 @@ public sealed partial class AgentApprovedSourceViewModel : ObservableObject
 
 public sealed partial class AgentConnectionSettingsViewModel : ObservableObject, IDisposable
 {
-    private readonly IAppSettingsStore _settings;
+    private readonly IWorkExecutionSettingsStore _settings;
     private readonly IAgentRepository _agents;
     private readonly IAgentTodoDataClearer? _clear;
     private readonly IAgentGateway? _gateway;
@@ -302,7 +302,7 @@ public sealed partial class AgentConnectionSettingsViewModel : ObservableObject,
         "adapter_not_installed");
 
     public AgentConnectionSettingsViewModel(
-        IAppSettingsStore settings,
+        IWorkExecutionSettingsStore settings,
         IAgentRepository agents,
         IAgentTodoDataClearer? clear = null,
         IAgentGateway? gateway = null,

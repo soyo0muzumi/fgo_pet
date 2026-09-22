@@ -1,10 +1,11 @@
 using FgoPet.App.Bootstrap;
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Work.Execution.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Bootstrap;
@@ -16,7 +17,7 @@ public sealed class DesktopAppShellTests
     {
         var runtime = new PendingRuntime();
         var ui = new FakeUi();
-        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeSettings(), ui, agentRuntime: runtime);
+        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui, agentRuntime: runtime);
         await shell.StartAsync([], CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
         await shell.StartAsync([], CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(ui.LibraryShown);
@@ -37,7 +38,8 @@ public sealed class DesktopAppShellTests
         var shell = new DesktopAppShell(
             new FakeRepository(null),
             new FakeController(),
-            new FakeSettings(agentEnabled: true),
+            new FakeCharacterSettings(),
+            new FakeWorkSettings(agentEnabled: true),
             new FakeUi(),
             agentReconnect: reconnect,
             agentRuntime: runtime);
@@ -60,10 +62,11 @@ public sealed class DesktopAppShellTests
         var gateway = new ReconnectGateway(connected: false);
         var agents = new ReconnectAgents(execution);
         var reconnect = new AgentReconnectService(gateway, agents, new AgentEventProjector());
-        var settings = new FakeSettings(agentEnabled: false);
+        var settings = new FakeWorkSettings(agentEnabled: false);
         var shell = new DesktopAppShell(
             new FakeRepository(null),
             new FakeController(),
+            new FakeCharacterSettings(),
             settings,
             new FakeUi(),
             agentReconnect: reconnect,
@@ -180,7 +183,8 @@ public sealed class DesktopAppShellTests
         var shell = new DesktopAppShell(
             new FakeRepository(null),
             new FakeController(),
-            new FakeSettings(),
+            new FakeCharacterSettings(),
+            new FakeWorkSettings(),
             ui,
             activation: new FakeActivationService());
 
@@ -193,7 +197,7 @@ public sealed class DesktopAppShellTests
     public async Task Start_without_installed_pack_keeps_tray_and_shows_library()
     {
         var ui = new FakeUi();
-        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeSettings(), ui);
+        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui);
 
         await shell.StartAsync([], CancellationToken.None);
 
@@ -207,7 +211,7 @@ public sealed class DesktopAppShellTests
     {
         var selection = new PortraitSelection("official.mash", "casual", "1.0.0");
         var controller = new FakeController();
-        var shell = new DesktopAppShell(new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")), controller, new FakeSettings(selection), new FakeUi());
+        var shell = new DesktopAppShell(new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")), controller, new FakeCharacterSettings(selection), new FakeWorkSettings(), new FakeUi());
 
         await shell.StartAsync([], CancellationToken.None);
 
@@ -218,7 +222,7 @@ public sealed class DesktopAppShellTests
     public async Task Start_with_pack_argument_opens_it_in_library_without_auto_activation()
     {
         var ui = new FakeUi();
-        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeSettings(), ui);
+        var shell = new DesktopAppShell(new FakeRepository(null), new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui);
 
         await shell.StartAsync(["C:\\Downloads\\mash.fgopetpack"], CancellationToken.None);
 
@@ -248,16 +252,17 @@ public sealed class DesktopAppShellTests
         public void ShowFirstStartChat() => FirstStartChatRequested = true;
     }
 
-    private sealed class FakeSettings(PortraitSelection? selection = null, bool agentEnabled = false) : IAppSettingsStore
+    private sealed class FakeCharacterSettings(PortraitSelection? selection = null) : ICharacterSettingsStore
+    {
+        public CharacterSettings Load() => CharacterSettings.Defaults with { Selection = selection };
+        public void Save(CharacterSettings settings) { }
+    }
+
+    private sealed class FakeWorkSettings(bool agentEnabled = false) : IWorkExecutionSettingsStore
     {
         public bool AgentEnabled { get; set; } = agentEnabled;
-        public string Location => "settings.json";
-        public AppSettings Load() => AppSettings.Defaults with
-        {
-            Selection = selection,
-            AgentConnection = new AgentConnectionSettings(AgentEnabled),
-        };
-        public void Save(AppSettings settings) { }
+        public WorkExecutionSettings Load() => new(new AgentConnectionSettings(AgentEnabled));
+        public void Save(WorkExecutionSettings settings) { }
     }
 
     private sealed class FakeController : IPortraitController
