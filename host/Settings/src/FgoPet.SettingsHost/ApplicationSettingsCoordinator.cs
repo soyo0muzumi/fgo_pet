@@ -29,51 +29,69 @@ public sealed class ApplicationSettingsCoordinator :
 
     CharacterSettings ICharacterSettingsStore.Load() => ReadLive().Character;
 
-    void ICharacterSettingsStore.Save(CharacterSettings settings) =>
+    void ICharacterSettingsStore.Save(CharacterSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            Character = settings ?? throw new ArgumentNullException(nameof(settings)),
+            Character = settings,
         });
+    }
 
     DialogueSettings IDialogueSettingsStore.Load() => ReadLive().Dialogue;
 
-    void IDialogueSettingsStore.Save(DialogueSettings settings) =>
+    void IDialogueSettingsStore.Save(DialogueSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            Dialogue = settings ?? throw new ArgumentNullException(nameof(settings)),
+            Dialogue = settings,
         });
+    }
 
     MemorySettings IMemorySettingsStore.Load() => ReadLive().Memory;
 
-    void IMemorySettingsStore.Save(MemorySettings settings) =>
+    void IMemorySettingsStore.Save(MemorySettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            Memory = settings ?? throw new ArgumentNullException(nameof(settings)),
+            Memory = settings,
         });
+    }
 
     WorkExecutionSettings IWorkExecutionSettingsStore.Load() => ReadLive().WorkExecution;
 
-    void IWorkExecutionSettingsStore.Save(WorkExecutionSettings settings) =>
+    void IWorkExecutionSettingsStore.Save(WorkExecutionSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            WorkExecution = settings ?? throw new ArgumentNullException(nameof(settings)),
+            WorkExecution = settings,
         });
+    }
 
     SpeechSettings ISpeechSettingsStore.Load() => ReadLive().Speech;
 
-    void ISpeechSettingsStore.Save(SpeechSettings settings) =>
+    void ISpeechSettingsStore.Save(SpeechSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            Speech = settings ?? throw new ArgumentNullException(nameof(settings)),
+            Speech = settings,
         });
+    }
 
     ThemeSettings IThemeSettingsStore.Load() => ReadLive().Theme;
 
-    void IThemeSettingsStore.Save(ThemeSettings settings) =>
+    void IThemeSettingsStore.Save(ThemeSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
         Update(snapshot => snapshot with
         {
-            Theme = settings ?? throw new ArgumentNullException(nameof(settings)),
+            Theme = settings,
         });
+    }
 
     public string Export()
     {

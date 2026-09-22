@@ -3,6 +3,8 @@ using FgoPet.Character.Settings;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Memory.Settings;
 using FgoPet.Platform.Settings;
+using FgoPet.Speech.Settings;
+using FgoPet.UiFoundation.Theming;
 using FgoPet.Work.Execution.Settings;
 using Xunit;
 
@@ -51,24 +53,93 @@ public sealed class ApplicationSettingsCoordinatorTests
     }
 
     [Fact]
-    public async Task Concurrent_section_writes_read_the_latest_document_without_lost_updates()
+    public void Saving_null_rejects_before_touching_the_live_document()
     {
-        var document = new CoordinatedDocumentStore(ReadFixture("settings-v2-complete.json"));
-        var coordinator = new ApplicationSettingsCoordinator(document);
-        var memory = (IMemorySettingsStore)coordinator;
-        var dialogue = (IDialogueSettingsStore)coordinator;
+        Action<ApplicationSettingsCoordinator>[] saveNull =
+        [
+            coordinator => ((ICharacterSettingsStore)coordinator).Save(null!),
+            coordinator => ((IDialogueSettingsStore)coordinator).Save(null!),
+            coordinator => ((IMemorySettingsStore)coordinator).Save(null!),
+            coordinator => ((IWorkExecutionSettingsStore)coordinator).Save(null!),
+            coordinator => ((ISpeechSettingsStore)coordinator).Save(null!),
+            coordinator => ((IThemeSettingsStore)coordinator).Save(null!),
+        ];
 
-        var first = Task.Run(() => memory.Save(new MemorySettings(false)));
-        Assert.True(document.FirstReadEntered.Wait(TimeSpan.FromSeconds(5)));
-        var second = Task.Run(() => dialogue.Save(new DialogueSettings(null, true)));
-
-        if (document.SecondReadEntered.Wait(TimeSpan.FromMilliseconds(500)))
+        foreach (var save in saveNull)
         {
-            Assert.True(document.WriteCompleted.Wait(TimeSpan.FromSeconds(5)));
+            var document = new ObservingDocumentStore("{");
+            var coordinator = new ApplicationSettingsCoordinator(document);
+
+            Assert.Throws<ArgumentNullException>(() => save(coordinator));
+            Assert.Equal(0, document.ReadCount);
+            Assert.Equal(0, document.WriteCount);
+            Assert.Equal(0, document.QuarantineCount);
+        }
+    }
+
+    [Fact]
+    public void Concurrent_section_writes_block_before_the_store_and_preserve_both_updates()
+    {
+        var document = new BlockingFirstReadDocumentStore(ReadFixture("settings-v2-complete.json"));
+        var coordinator = new ApplicationSettingsCoordinator(document);
+        Exception? firstFailure = null;
+        Exception? secondFailure = null;
+        using var secondOperationAttempting = new ManualResetEventSlim(false);
+        var first = new Thread(() =>
+        {
+            try
+            {
+                ((IMemorySettingsStore)coordinator).Save(new MemorySettings(false));
+            }
+            catch (Exception error)
+            {
+                firstFailure = error;
+            }
+        }) { IsBackground = true };
+        var second = new Thread(() =>
+        {
+            secondOperationAttempting.Set();
+            try
+            {
+                ((IDialogueSettingsStore)coordinator).Save(new DialogueSettings(null, true));
+            }
+            catch (Exception error)
+            {
+                secondFailure = error;
+            }
+        }) { IsBackground = true };
+
+        first.Start();
+        var firstEntered = document.FirstReadEntered.Wait(TimeSpan.FromSeconds(5));
+        var secondStarted = false;
+        if (firstEntered)
+        {
+            second.Start();
+            secondStarted = true;
         }
 
+        var secondAttempting = secondStarted
+            && secondOperationAttempting.Wait(TimeSpan.FromSeconds(5));
+        var contentionObserved = secondAttempting
+            && SpinWait.SpinUntil(
+                () => IsWaiting(second) || document.ReadCount > 1 || !second.IsAlive,
+                TimeSpan.FromSeconds(5));
+        var secondBlocked = secondStarted && IsWaiting(second);
+        var readsWhileFirstBlocked = document.ReadCount;
+
         document.ReleaseFirstRead.Set();
-        await Task.WhenAll(first, second);
+        var firstCompleted = first.Join(TimeSpan.FromSeconds(5));
+        var secondCompleted = !secondStarted || second.Join(TimeSpan.FromSeconds(5));
+
+        Assert.True(firstEntered, "First write did not enter the document read.");
+        Assert.True(secondAttempting, "Second write did not start attempting the coordinator.");
+        Assert.True(contentionObserved, "Second write neither blocked nor reached the document store.");
+        Assert.True(secondBlocked, "Second write was not blocked by the coordinator lock.");
+        Assert.Equal(1, readsWhileFirstBlocked);
+        Assert.True(firstCompleted, "First write did not complete after release.");
+        Assert.True(secondCompleted, "Second write did not complete after the first write.");
+        Assert.Null(firstFailure);
+        Assert.Null(secondFailure);
 
         var decoded = new SettingsDocumentV2Codec().Deserialize(document.Read()!);
         Assert.False(decoded.Memory.Enabled);
@@ -91,6 +162,9 @@ public sealed class ApplicationSettingsCoordinatorTests
 
     private static string ReadFixture(string name) =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
+
+    private static bool IsWaiting(Thread thread) =>
+        (thread.ThreadState & ThreadState.WaitSleepJoin) != 0;
 
     private class MemoryDocumentStore(string? document) : ISettingsDocumentStore
     {
@@ -118,36 +192,53 @@ public sealed class ApplicationSettingsCoordinatorTests
         }
     }
 
-    private sealed class CoordinatedDocumentStore(string document) : MemoryDocumentStore(document)
+    private sealed class ObservingDocumentStore(string? document) : ISettingsDocumentStore
+    {
+        public string Location => "memory://settings.json";
+        public int ReadCount { get; private set; }
+        public int WriteCount { get; private set; }
+        public int QuarantineCount { get; private set; }
+
+        public string? Read()
+        {
+            ReadCount++;
+            return document;
+        }
+
+        public void Write(string value)
+        {
+            WriteCount++;
+            document = value;
+        }
+
+        public void Quarantine()
+        {
+            QuarantineCount++;
+            document = null;
+        }
+    }
+
+    private sealed class BlockingFirstReadDocumentStore(string document) : MemoryDocumentStore(document)
     {
         private int _readCount;
 
         public ManualResetEventSlim FirstReadEntered { get; } = new(false);
-        public ManualResetEventSlim SecondReadEntered { get; } = new(false);
         public ManualResetEventSlim ReleaseFirstRead { get; } = new(false);
-        public ManualResetEventSlim WriteCompleted { get; } = new(false);
+        public int ReadCount => Volatile.Read(ref _readCount);
 
         public override string? Read()
         {
             var snapshot = base.Read();
-            var readCount = Interlocked.Increment(ref _readCount);
-            if (readCount == 1)
+            if (Interlocked.Increment(ref _readCount) == 1)
             {
                 FirstReadEntered.Set();
-                Assert.True(ReleaseFirstRead.Wait(TimeSpan.FromSeconds(5)));
-            }
-            else if (readCount == 2)
-            {
-                SecondReadEntered.Set();
+                if (!ReleaseFirstRead.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException("First document read was not released by the test.");
+                }
             }
 
             return snapshot;
-        }
-
-        public override void Write(string value)
-        {
-            base.Write(value);
-            WriteCompleted.Set();
         }
     }
 }
