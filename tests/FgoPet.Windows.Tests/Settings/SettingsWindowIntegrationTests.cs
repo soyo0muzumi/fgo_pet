@@ -22,6 +22,7 @@ using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.UiFoundation.Theming;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -610,7 +611,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
+            var store = new FakeThemeSettingsStore(new ThemeSettings(AppTheme.ModernGray));
             var themeService = new ThemeService(store, resources, ThemeService.CreateTestDictionary);
             themeService.Initialize();
             var page = new ThemePage(themeService);
@@ -635,7 +636,7 @@ public sealed class SettingsWindowIntegrationTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new FakeSettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
+            var store = new FakeThemeSettingsStore(new ThemeSettings(AppTheme.ModernGray));
             var themeService = new ThemeService(
                 store,
                 resources,
@@ -1069,6 +1070,15 @@ public sealed class SettingsWindowIntegrationTests
         public AppSettings Load() => _settings;
 
         public void Save(AppSettings settings) => _settings = settings;
+    }
+
+    private sealed class FakeThemeSettingsStore(ThemeSettings initial) : IThemeSettingsStore
+    {
+        private ThemeSettings _settings = initial;
+
+        public ThemeSettings Load() => _settings;
+
+        public void Save(ThemeSettings settings) => _settings = settings;
     }
 
     private sealed class DialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore

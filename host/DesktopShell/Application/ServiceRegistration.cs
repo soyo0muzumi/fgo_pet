@@ -87,7 +87,7 @@ public static class ServiceRegistration
         .AddSingleton<ISpeechSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
         .AddSingleton<IThemeSettingsStore>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())
         .AddSingleton<ThemeService>(provider => new ThemeService(
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IThemeSettingsStore>(),
             Application.Current?.Resources ?? new ResourceDictionary()))
         .AddSingleton<IWindowPlacementStore>(_ => new JsonWindowPlacementStore(paths.StorageRoot))
         .AddSingleton<IScreenLayoutService, WindowsScreenLayoutService>()

@@ -9,6 +9,7 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using FgoPet.App.Theming;
 using FgoPet.Core.Settings;
+using FgoPet.UiFoundation.Theming;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Theming;
@@ -24,7 +25,7 @@ public sealed class ThemeServiceTests
             var resources = new ResourceDictionary();
             var unrelated = new ResourceDictionary { ["UnrelatedResource"] = "keep" };
             resources.MergedDictionaries.Add(unrelated);
-            var store = new MemorySettingsStore(AppSettings.Defaults with { Theme = AppTheme.FgoLight });
+            var store = new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.FgoLight));
             var service = new ThemeService(store, resources);
 
             service.Initialize();
@@ -42,7 +43,7 @@ public sealed class ThemeServiceTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new MemorySettingsStore(AppSettings.Defaults);
+            var store = new MemoryThemeSettingsStore(ThemeSettings.Defaults);
             var service = new ThemeService(store, resources);
             service.Initialize();
             var notifications = 0;
@@ -63,7 +64,7 @@ public sealed class ThemeServiceTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new MemorySettingsStore(AppSettings.Defaults with { Theme = AppTheme.ModernGray });
+            var store = new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.ModernGray));
             var service = new ThemeService(
                 store,
                 resources,
@@ -90,7 +91,7 @@ public sealed class ThemeServiceTests
         StaRun(() =>
         {
             var resources = new ResourceDictionary();
-            var store = new ThrowingSaveSettingsStore(AppSettings.Defaults);
+            var store = new ThrowingThemeSettingsStore(ThemeSettings.Defaults);
             var service = new ThemeService(store, resources);
             service.Initialize();
             var notifications = 0;
@@ -112,7 +113,7 @@ public sealed class ThemeServiceTests
         {
             var resources = new ResourceDictionary();
             var service = new ThemeService(
-                new MemorySettingsStore(AppSettings.Defaults with { Theme = AppTheme.FgoLight }),
+                new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.FgoLight)),
                 resources,
                 _ => throw new IOException("test resource failure"));
 
@@ -477,23 +478,19 @@ public sealed class ThemeServiceTests
 
     private static void StaRun(Action action) => StaRunner.Run(action);
 
-    private sealed class MemorySettingsStore(AppSettings settings) : IAppSettingsStore
+    private sealed class MemoryThemeSettingsStore(ThemeSettings settings) : IThemeSettingsStore
     {
-        private AppSettings _settings = settings;
+        public ThemeSettings Current { get; private set; } = settings;
 
-        public string Location => "memory";
+        public ThemeSettings Load() => Current;
 
-        public AppSettings Load() => _settings;
-
-        public void Save(AppSettings settings) => _settings = settings;
+        public void Save(ThemeSettings value) => Current = value;
     }
 
-    private sealed class ThrowingSaveSettingsStore(AppSettings settings) : IAppSettingsStore
+    private sealed class ThrowingThemeSettingsStore(ThemeSettings settings) : IThemeSettingsStore
     {
-        public string Location => "memory";
+        public ThemeSettings Load() => settings;
 
-        public AppSettings Load() => settings;
-
-        public void Save(AppSettings settings) => throw new IOException("test save failure");
+        public void Save(ThemeSettings value) => throw new IOException("test save failure");
     }
 }

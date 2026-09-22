@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FgoPet.Core.Settings;
+using FgoPet.UiFoundation.Theming;
 
 namespace FgoPet.App.Theming;
 
@@ -10,23 +11,23 @@ public sealed class ThemeService
 {
     public const string ThemeDictionaryMarker = "FgoPet.ThemeDictionary";
 
-    private readonly IAppSettingsStore _settings;
+    private readonly IThemeSettingsStore _settings;
     private readonly ResourceDictionary _resources;
     private readonly Func<AppTheme, ResourceDictionary> _resourceLoader;
     private readonly Dispatcher? _dispatcher;
 
-    public ThemeService(IAppSettingsStore settings)
+    public ThemeService(IThemeSettingsStore settings)
         : this(settings, ResolveApplicationResources(), null)
     {
     }
 
-    public ThemeService(IAppSettingsStore settings, ResourceDictionary resources)
+    public ThemeService(IThemeSettingsStore settings, ResourceDictionary resources)
         : this(settings, resources, null)
     {
     }
 
     public ThemeService(
-        IAppSettingsStore settings,
+        IThemeSettingsStore settings,
         ResourceDictionary resources,
         Func<AppTheme, ResourceDictionary>? resourceLoader)
     {
