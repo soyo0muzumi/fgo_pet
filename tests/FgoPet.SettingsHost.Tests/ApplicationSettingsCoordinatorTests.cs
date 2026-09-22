@@ -214,6 +214,48 @@ public sealed class ApplicationSettingsCoordinatorTests
         Assert.Equal(0.75, speech.GetProperty("volume").GetDouble());
     }
 
+    [Fact]
+    public void Backup_export_restore_and_unrelated_save_preserve_metadata_only_IndexTts_voices()
+    {
+        const string firstPath = "C:/Users/Task12/Private/restored-index-one.wav";
+        const string secondPath = "D:/Task12/Private/restored-index-two.wav";
+        var source = new ApplicationSettingsCoordinator(new MemoryDocumentStore(null));
+        ((ISpeechSettingsStore)source).Save(new SpeechSettings(SpeechConnectionSettings.Defaults with
+        {
+            Enabled = true,
+            Provider = SpeechProviderKind.IndexTts,
+            IndexTtsVoiceId = "voice-two",
+            IndexTtsVoices =
+            [
+                new ReferenceVoice("voice-one", "Voice One", firstPath),
+                new ReferenceVoice("voice-two", "Voice Two", secondPath),
+            ],
+        }));
+
+        var backupDocument = ((IApplicationSettingsDocument)source).Export();
+        Assert.DoesNotContain(firstPath, backupDocument, StringComparison.Ordinal);
+        Assert.DoesNotContain(secondPath, backupDocument, StringComparison.Ordinal);
+        ((IApplicationSettingsDocument)source).ValidateForRestore(backupDocument);
+
+        var restoredStore = new MemoryDocumentStore(backupDocument);
+        var restored = new ApplicationSettingsCoordinator(restoredStore);
+        AssertMetadataOnlyVoices(((ISpeechSettingsStore)restored).Load().Connection);
+
+        ((IMemorySettingsStore)restored).Save(new MemorySettings(false));
+
+        AssertMetadataOnlyVoices(((ISpeechSettingsStore)restored).Load().Connection);
+        Assert.DoesNotContain(firstPath, restoredStore.Read(), StringComparison.Ordinal);
+        Assert.DoesNotContain(secondPath, restoredStore.Read(), StringComparison.Ordinal);
+    }
+
+    private static void AssertMetadataOnlyVoices(SpeechConnectionSettings connection)
+    {
+        Assert.Equal("voice-two", connection.IndexTtsVoiceId);
+        Assert.Equal(["voice-one", "voice-two"], connection.IndexTtsVoices.Select(voice => voice.Id));
+        Assert.Equal(["Voice One", "Voice Two"], connection.IndexTtsVoices.Select(voice => voice.Name));
+        Assert.All(connection.IndexTtsVoices, voice => Assert.Equal(string.Empty, voice.AudioPath));
+    }
+
     private static string ReadFixture(string name) =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
 

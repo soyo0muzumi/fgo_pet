@@ -80,6 +80,31 @@ public sealed class SpeechFeedbackTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task Metadata_only_restored_voice_is_shown_but_preview_never_invokes_synthesizer()
+    {
+        var voice = new ReferenceVoice("restored-voice", "Restored Voice", string.Empty);
+        var settings = new Settings(new SpeechSettings(new SpeechConnectionSettings
+        {
+            Enabled = true,
+            Provider = SpeechProviderKind.IndexTts,
+            IndexTtsVoiceId = voice.Id,
+            IndexTtsVoices = [voice],
+        }));
+        var synth = new RejectIfCalledSynth();
+        using var synthesis = new SpeechSynthesisCoordinator(synth);
+        using var playback = new SpeechPlaybackCoordinator(synthesis, new Player(), settings);
+        var vm = new SpeechConnectionViewModel(settings, new Credentials(), playback);
+
+        Assert.Equal(voice, Assert.Single(vm.Voices));
+        Assert.Equal(voice, vm.SelectedVoice);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, synth.Calls);
+        Assert.Equal("请先导入并选择参考音色。", vm.ErrorText);
+    }
+
     private static byte[] Wave => Encoding.ASCII.GetBytes("RIFF0000WAVE");
 
     private sealed class Settings(SpeechSettings current) : ISpeechSettingsStore
@@ -105,6 +130,20 @@ public sealed class SpeechFeedbackTests
         {
             Started.TrySetResult();
             return Result.Task;
+        }
+    }
+
+    private sealed class RejectIfCalledSynth : ISpeechSynthesizer
+    {
+        public SpeechProviderKind Provider => SpeechProviderKind.IndexTts;
+        public int Calls { get; private set; }
+
+        public Task<SpeechSynthesisResult> SynthesizeAsync(
+            SpeechSynthesisRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new InvalidOperationException("Metadata-only voice must not reach synthesis.");
         }
     }
 

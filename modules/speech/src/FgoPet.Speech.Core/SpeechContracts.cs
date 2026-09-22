@@ -89,7 +89,8 @@ public sealed record SpeechConnectionSettings
         IndexTtsBaseUrl = Bounded(IndexTtsBaseUrl, Defaults.IndexTtsBaseUrl, 512),
         IndexTtsVoiceId = Bounded(IndexTtsVoiceId, string.Empty, 64),
         IndexTtsVoices = (IndexTtsVoices ?? Array.Empty<ReferenceVoice>()).Where(v => v is not null && !string.IsNullOrWhiteSpace(v.Id)
-            && !string.IsNullOrWhiteSpace(v.Name) && !string.IsNullOrWhiteSpace(v.AudioPath)).Take(32).ToArray(),
+            && !string.IsNullOrWhiteSpace(v.Name) && v.AudioPath is not null
+            && (v.AudioPath.Length == 0 || !string.IsNullOrWhiteSpace(v.AudioPath))).Take(32).ToArray(),
         OpenAiBaseUrl = Bounded(OpenAiBaseUrl, Defaults.OpenAiBaseUrl, 512),
         OpenAiModel = Bounded(OpenAiModel, Defaults.OpenAiModel, 128),
         OpenAiVoice = Bounded(OpenAiVoice, Defaults.OpenAiVoice, 128),
@@ -125,7 +126,7 @@ public sealed record SpeechConnectionSettings
                     credentialTarget: settings.OpenAiCredentialTarget),
                 SpeechProviderKind.IndexTts => new SpeechSynthesisRequest(
                     "试听", settings.Provider, new Uri(settings.IndexTtsBaseUrl, UriKind.Absolute),
-                    referenceAudioPath: settings.IndexTtsVoices.FirstOrDefault(v => v.Id == settings.IndexTtsVoiceId)?.AudioPath),
+                    referenceAudioPath: GetIndexTtsReferenceAudioPath(settings)),
                 SpeechProviderKind.GptSoVits => new SpeechSynthesisRequest(
                     "试听",
                     settings.Provider,
@@ -148,6 +149,20 @@ public sealed record SpeechConnectionSettings
         var normalized = value?.Trim();
         if (string.IsNullOrWhiteSpace(normalized)) return fallback;
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
+    }
+
+    private static string GetIndexTtsReferenceAudioPath(SpeechConnectionSettings settings)
+    {
+        var path = settings.IndexTtsVoices
+            .FirstOrDefault(voice => voice.Id == settings.IndexTtsVoiceId)?.AudioPath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new SpeechSynthesisException(
+                SpeechFailureCategory.Configuration,
+                "请先导入并选择参考音色。");
+        }
+
+        return path;
     }
 }
 
