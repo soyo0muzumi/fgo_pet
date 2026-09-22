@@ -29,6 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Contracts\CharacterSettings.cs">
+      <Link>modules\character\Contracts\CharacterSettings.cs</Link>
+    </Compile>
     <Compile Include="..\..\Application\RoleActivationService.cs">
       <Link>modules\character\Application\RoleActivationService.cs</Link>
     </Compile>

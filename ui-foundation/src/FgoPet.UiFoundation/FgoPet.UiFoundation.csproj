@@ -26,6 +26,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Theming\ThemeSettings.cs">
+      <Link>ui-foundation\Theming\ThemeSettings.cs</Link>
+    </Compile>
     <Compile Include="..\..\Theming\ThemeService.cs">
       <Link>ui-foundation\Theming\ThemeService.cs</Link>
     </Compile>

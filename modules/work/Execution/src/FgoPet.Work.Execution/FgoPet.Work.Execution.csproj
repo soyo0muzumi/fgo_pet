@@ -29,6 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Contracts\WorkExecutionSettings.cs">
+      <Link>modules\work\Execution\Contracts\WorkExecutionSettings.cs</Link>
+    </Compile>
     <Compile Include="..\..\Application\AgentDispatchService.cs">
       <Link>modules\work\Execution\Application\AgentDispatchService.cs</Link>
     </Compile>

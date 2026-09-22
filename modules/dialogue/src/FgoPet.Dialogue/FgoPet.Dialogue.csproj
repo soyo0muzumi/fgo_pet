@@ -35,6 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Contracts\DialogueSettings.cs">
+      <Link>modules\dialogue\Contracts\DialogueSettings.cs</Link>
+    </Compile>
     <Compile Include="..\..\Application\ConversationOrchestrator.cs">
       <Link>modules\dialogue\Application\ConversationOrchestrator.cs</Link>
     </Compile>

@@ -28,6 +28,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Contracts\MemorySettings.cs">
+      <Link>modules\memory\Contracts\MemorySettings.cs</Link>
+    </Compile>
     <Compile Include="..\..\Application\ConversationSummaryService.cs">
       <Link>modules\memory\Application\ConversationSummaryService.cs</Link>
     </Compile>
