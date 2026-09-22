@@ -7,6 +7,7 @@ using FgoPet.Memory.Settings;
 using FgoPet.Speech.Settings;
 using FgoPet.UiFoundation.Theming;
 using FgoPet.Work.Execution.Settings;
+using System.Collections.Immutable;
 using Xunit;
 
 namespace FgoPet.App.Tests.Settings;
@@ -23,8 +24,8 @@ public sealed class ModuleSettingsDefaultsTests
         Assert.True(settings.Topmost);
         Assert.True(settings.AutoCollapseExpandedPanel);
         Assert.Null(settings.UserProfile);
-        AssertOrdinalEmptyDictionary(settings.ServantPreferences);
-        AssertOrdinalEmptyDictionary(settings.PackageSettings);
+        AssertImmutableOrdinalEmptyDictionary(settings.ServantPreferences);
+        AssertImmutableOrdinalEmptyDictionary(settings.PackageSettings);
     }
 
     [Fact]
@@ -41,8 +42,8 @@ public sealed class ModuleSettingsDefaultsTests
         var connection = WorkExecutionSettings.Defaults.AgentConnection;
 
         Assert.False(connection.Enabled);
-        AssertOrdinalEmptyDictionary(connection.SourceEnabled);
-        AssertOrdinalEmptyDictionary(connection.ProjectAllowlist);
+        Assert.Empty(connection.SourceEnabled);
+        Assert.Empty(connection.ProjectAllowlist);
     }
 
     [Fact]
@@ -88,11 +89,13 @@ public sealed class ModuleSettingsDefaultsTests
         AssertStorePort<IThemeSettingsStore, ThemeSettings>();
     }
 
-    private static void AssertOrdinalEmptyDictionary<TValue>(IReadOnlyDictionary<string, TValue> dictionary)
+    private static void AssertImmutableOrdinalEmptyDictionary<TValue>(IReadOnlyDictionary<string, TValue> dictionary)
     {
-        var concrete = Assert.IsType<Dictionary<string, TValue>>(dictionary);
-        Assert.Empty(concrete);
-        Assert.Same(StringComparer.Ordinal, concrete.Comparer);
+        var mutationView = Assert.IsAssignableFrom<IDictionary<string, TValue>>(dictionary);
+        Assert.True(mutationView.IsReadOnly);
+        var immutable = Assert.IsType<ImmutableDictionary<string, TValue>>(dictionary);
+        Assert.Empty(immutable);
+        Assert.Same(StringComparer.Ordinal, immutable.KeyComparer);
     }
 
     private static void AssertStorePort<TStore, TSettings>()
