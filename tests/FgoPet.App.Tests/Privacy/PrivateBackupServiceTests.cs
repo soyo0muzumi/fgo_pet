@@ -26,7 +26,9 @@ namespace FgoPet.App.Tests.Privacy;
 
 public sealed class PrivateBackupServiceTests : IDisposable
 {
-    private const string UnsafeReferenceAudioPath = "C:/Users/Task12/Private/reference-audio.wav";
+    private const string UnsafeReferenceAudioPath = "C:/Users/Task12/Private/gpt-sovits-reference-audio.wav";
+    private const string UnsafeIndexVoicePathOne = "C:/Users/Task12/Private/index-tts-reference-one.wav";
+    private const string UnsafeIndexVoicePathTwo = "D:/Task12/Private/index-tts-reference-two.wav";
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"fgo-private-backup-{Guid.NewGuid():N}");
     private readonly string _databasePath;
     private readonly string _backupPath;
@@ -88,8 +90,14 @@ public sealed class PrivateBackupServiceTests : IDisposable
             Assert.Equal("openai", document.RootElement.GetProperty("model_connection").GetProperty("provider_id").GetString());
             Assert.True(document.RootElement.GetProperty("agent_connection").GetProperty("enabled").GetBoolean());
             var speech = document.RootElement.GetProperty("speech_connection");
+            var voices = speech.GetProperty("index_tts_voices").EnumerateArray().ToArray();
             Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
+            Assert.Equal(2, voices.Length);
+            Assert.Equal(["voice-one", "voice-two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Id)).GetString()));
+            Assert.Equal(["Voice One", "Voice Two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Name)).GetString()));
+            Assert.All(voices, voice => Assert.Equal(string.Empty, voice.GetProperty(nameof(ReferenceVoice.AudioPath)).GetString()));
             Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());
+            Assert.Equal("voice-two", speech.GetProperty("index_tts_voice_id").GetString());
             Assert.True(speech.GetProperty("enabled").GetBoolean());
             Assert.Equal("GptSoVits", speech.GetProperty("provider").GetString());
             Assert.True(speech.GetProperty("auto_read_enabled").GetBoolean());
@@ -102,11 +110,16 @@ public sealed class PrivateBackupServiceTests : IDisposable
         Assert.Contains("project-1", settingsJson, StringComparison.Ordinal);
         Assert.Contains("fgo-pet/speech/openai", settingsJson, StringComparison.Ordinal);
         Assert.DoesNotContain(UnsafeReferenceAudioPath, settingsJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(UnsafeIndexVoicePathOne, settingsJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(UnsafeIndexVoicePathTwo, settingsJson, StringComparison.Ordinal);
         Assert.DoesNotContain("api_key", settingsJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", settingsJson, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(
             UnsafeReferenceAudioPath,
             ((ISpeechSettingsStore)settings).Load().Connection.GptSoVitsReferenceAudioPath);
+        Assert.Equal(
+            [UnsafeIndexVoicePathOne, UnsafeIndexVoicePathTwo],
+            ((ISpeechSettingsStore)settings).Load().Connection.IndexTtsVoices.Select(voice => voice.AudioPath));
 
         var packagesJson = ReadEntry(archive, BackupFormat.PackagesMember);
         Assert.Contains("official.mash", packagesJson, StringComparison.Ordinal);
@@ -205,6 +218,12 @@ public sealed class PrivateBackupServiceTests : IDisposable
                 Enabled = true,
                 Provider = SpeechProviderKind.GptSoVits,
                 GptSoVitsReferenceAudioPath = UnsafeReferenceAudioPath,
+                IndexTtsVoiceId = "voice-two",
+                IndexTtsVoices =
+                [
+                    new ReferenceVoice("voice-one", "Voice One", UnsafeIndexVoicePathOne),
+                    new ReferenceVoice("voice-two", "Voice Two", UnsafeIndexVoicePathTwo),
+                ],
                 AutoReadEnabled = true,
                 AutoReadLimit = 240,
                 Rate = 1.25,

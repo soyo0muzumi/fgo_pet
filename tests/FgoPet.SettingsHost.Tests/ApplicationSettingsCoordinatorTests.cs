@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FgoPet.Character.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Memory.Settings;
 using FgoPet.Platform.Settings;
@@ -161,9 +162,11 @@ public sealed class ApplicationSettingsCoordinatorTests
     }
 
     [Fact]
-    public void Document_facade_export_sanitizes_local_speech_path_without_mutating_live_settings()
+    public void Document_facade_export_sanitizes_all_local_speech_paths_without_mutating_live_settings()
     {
-        const string localPath = "C:/Users/Task12/Private/reference-audio.wav";
+        const string gptSoVitsPath = "C:/Users/Task12/Private/gpt-sovits-reference-audio.wav";
+        const string indexTtsPathOne = "C:/Users/Task12/Private/index-tts-reference-one.wav";
+        const string indexTtsPathTwo = "D:/Task12/Private/index-tts-reference-two.wav";
         var document = new MemoryDocumentStore($$"""
             {
               "schema_version": 2,
@@ -171,7 +174,12 @@ public sealed class ApplicationSettingsCoordinatorTests
                 "enabled": true,
                 "provider": "GptSoVits",
                 "openai_credential_target": "fgo-pet/speech/openai",
-                "gpt_sovits_reference_audio_path": "{{localPath}}",
+                "gpt_sovits_reference_audio_path": "{{gptSoVitsPath}}",
+                "index_tts_voice_id": "voice-two",
+                "index_tts_voices": [
+                  { "Id": "voice-one", "Name": "Voice One", "AudioPath": "{{indexTtsPathOne}}" },
+                  { "Id": "voice-two", "Name": "Voice Two", "AudioPath": "{{indexTtsPathTwo}}" }
+                ],
                 "auto_read_enabled": true,
                 "auto_read_limit": 240,
                 "rate": 1.25,
@@ -184,10 +192,21 @@ public sealed class ApplicationSettingsCoordinatorTests
         var live = ((ISpeechSettingsStore)coordinator).Load().Connection;
         using var exported = JsonDocument.Parse(((IApplicationSettingsDocument)coordinator).Export());
         var speech = exported.RootElement.GetProperty("speech_connection");
+        var voices = speech.GetProperty("index_tts_voices").EnumerateArray().ToArray();
+        var exportedJson = exported.RootElement.GetRawText();
 
-        Assert.Equal(localPath, live.GptSoVitsReferenceAudioPath);
+        Assert.Equal(gptSoVitsPath, live.GptSoVitsReferenceAudioPath);
+        Assert.Equal([indexTtsPathOne, indexTtsPathTwo], live.IndexTtsVoices.Select(voice => voice.AudioPath));
         Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
+        Assert.Equal(2, voices.Length);
+        Assert.Equal(["voice-one", "voice-two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Id)).GetString()));
+        Assert.Equal(["Voice One", "Voice Two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Name)).GetString()));
+        Assert.All(voices, voice => Assert.Equal(string.Empty, voice.GetProperty(nameof(ReferenceVoice.AudioPath)).GetString()));
+        Assert.DoesNotContain(gptSoVitsPath, exportedJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(indexTtsPathOne, exportedJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(indexTtsPathTwo, exportedJson, StringComparison.Ordinal);
         Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());
+        Assert.Equal("voice-two", speech.GetProperty("index_tts_voice_id").GetString());
         Assert.True(speech.GetProperty("enabled").GetBoolean());
         Assert.True(speech.GetProperty("auto_read_enabled").GetBoolean());
         Assert.Equal(240, speech.GetProperty("auto_read_limit").GetInt32());

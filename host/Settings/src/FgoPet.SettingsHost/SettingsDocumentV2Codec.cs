@@ -23,6 +23,12 @@ internal sealed class SettingsDocumentV2Codec
         return JsonSerializer.Serialize(SettingsDto.FromModel(settings));
     }
 
+    public string SerializeForBackup(SettingsDocumentSnapshot settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return JsonSerializer.Serialize(SettingsDto.FromModel(settings, sanitizeLocalPaths: true));
+    }
+
     public SettingsDocumentSnapshot Deserialize(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -110,7 +116,9 @@ internal sealed class SettingsDocumentV2Codec
         [JsonPropertyName("package_settings")]
         public Dictionary<string, Dictionary<string, string?>?>? PackageSettings { get; init; }
 
-        public static SettingsDto FromModel(SettingsDocumentSnapshot settings) => new()
+        public static SettingsDto FromModel(
+            SettingsDocumentSnapshot settings,
+            bool sanitizeLocalPaths = false) => new()
         {
             SchemaVersion = SettingsDocumentV2Codec.SchemaVersion,
             Selection = SelectionDto.FromModel(settings.Character.Selection),
@@ -118,7 +126,7 @@ internal sealed class SettingsDocumentV2Codec
             Topmost = settings.Character.Topmost,
             AutoCollapseExpandedPanel = settings.Character.AutoCollapseExpandedPanel,
             ModelConnection = ModelConnectionDto.FromModel(settings.Dialogue.ModelConnection),
-            SpeechConnection = SpeechConnectionDto.FromModel(settings.Speech.Connection),
+            SpeechConnection = SpeechConnectionDto.FromModel(settings.Speech.Connection, sanitizeLocalPaths),
             MemoryEnabled = settings.Memory.Enabled,
             ShowReasoning = settings.Dialogue.ShowReasoning,
             ServantPreferences = settings.Character.ServantPreferences.ToDictionary(
@@ -214,7 +222,9 @@ internal sealed class SettingsDocumentV2Codec
             }.Normalize();
         }
 
-        public static SpeechConnectionDto FromModel(SpeechConnectionSettings settings)
+        public static SpeechConnectionDto FromModel(
+            SpeechConnectionSettings settings,
+            bool sanitizeLocalPaths = false)
         {
             var normalized = (settings ?? SpeechConnectionSettings.Defaults).Normalize();
             return new(
@@ -225,7 +235,7 @@ internal sealed class SettingsDocumentV2Codec
                 normalized.OpenAiVoice,
                 normalized.OpenAiCredentialTarget,
                 normalized.GptSoVitsBaseUrl,
-                normalized.GptSoVitsReferenceAudioPath,
+                sanitizeLocalPaths ? string.Empty : normalized.GptSoVitsReferenceAudioPath,
                 normalized.GptSoVitsPromptText,
                 normalized.GptSoVitsLanguage,
                 normalized.GptSoVitsPromptLanguage,
@@ -236,7 +246,11 @@ internal sealed class SettingsDocumentV2Codec
             {
                 IndexTtsBaseUrl = normalized.IndexTtsBaseUrl,
                 IndexTtsVoiceId = normalized.IndexTtsVoiceId,
-                IndexTtsVoices = normalized.IndexTtsVoices.ToArray(),
+                IndexTtsVoices = normalized.IndexTtsVoices
+                    .Select(voice => sanitizeLocalPaths
+                        ? voice with { AudioPath = string.Empty }
+                        : voice)
+                    .ToArray(),
                 DoNotDisturb = normalized.DoNotDisturb,
             };
         }

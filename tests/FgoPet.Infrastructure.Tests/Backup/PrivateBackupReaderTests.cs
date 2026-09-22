@@ -68,7 +68,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task Rejects_duplicate_members_and_hash_or_length_mismatch()
+    public async Task Rejects_duplicate_members_before_extracting()
     {
         var sourceDatabasePath = Path.Combine(_root, "source.db");
         var sourceDatabase = new RuntimeDatabase(sourceDatabasePath);
@@ -84,6 +84,52 @@ public sealed class PrivateBackupReaderTests : IDisposable
             new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath, CancellationToken.None));
 
         Assert.Equal(BackupFailureCode.DuplicateMember, error.Code);
+        Assert.False(Directory.Exists(_stagingPath));
+    }
+
+    [Fact]
+    public async Task Rejects_manifest_member_length_mismatch_before_extracting()
+    {
+        var snapshotPath = await CreateDatabaseSnapshotAsync();
+        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
+
+        WriteArchive(
+            _archivePath,
+            snapshotPath,
+            settingsJson,
+            packagesJson,
+            databaseSchemaVersion: RuntimeDatabaseMigrator.CurrentSchemaVersion,
+            settingsLengthOverride: Encoding.UTF8.GetByteCount(settingsJson) + 1L);
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath, CancellationToken.None));
+
+        Assert.Equal(BackupFailureCode.InvalidManifest, error.Code);
+        Assert.Equal("Backup member length does not match its manifest.", error.Message);
+        Assert.False(Directory.Exists(_stagingPath));
+    }
+
+    [Fact]
+    public async Task Rejects_member_sha256_mismatch_after_extracting()
+    {
+        var snapshotPath = await CreateDatabaseSnapshotAsync();
+        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
+
+        WriteArchive(
+            _archivePath,
+            snapshotPath,
+            settingsJson,
+            packagesJson,
+            databaseSchemaVersion: RuntimeDatabaseMigrator.CurrentSchemaVersion,
+            settingsSha256Override: new string('0', 64));
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath, CancellationToken.None));
+
+        Assert.Equal(BackupFailureCode.InvalidManifest, error.Code);
+        Assert.Equal("Backup member integrity does not match its manifest.", error.Message);
         Assert.False(Directory.Exists(_stagingPath));
     }
 
@@ -148,7 +194,9 @@ public sealed class PrivateBackupReaderTests : IDisposable
         string settingsJson,
         string packagesJson,
         long databaseSchemaVersion,
-        bool duplicateSettings = false)
+        bool duplicateSettings = false,
+        long? settingsLengthOverride = null,
+        string? settingsSha256Override = null)
     {
         if (File.Exists(archivePath))
         {
@@ -168,8 +216,12 @@ public sealed class PrivateBackupReaderTests : IDisposable
             DateTimeOffset.Parse("2026-09-02T00:00:00Z"),
             BackupFormat.PayloadMembers.Select(name => new BackupMember(
                 name,
-                payload[name].LongLength,
-                Convert.ToHexString(SHA256.HashData(payload[name])).ToLowerInvariant())).ToArray());
+                name == BackupFormat.SettingsMember && settingsLengthOverride.HasValue
+                    ? settingsLengthOverride.Value
+                    : payload[name].LongLength,
+                name == BackupFormat.SettingsMember && settingsSha256Override is not null
+                    ? settingsSha256Override
+                    : Convert.ToHexString(SHA256.HashData(payload[name])).ToLowerInvariant())).ToArray());
         using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
         WriteEntry(archive, BackupFormat.ManifestMember, JsonSerializer.Serialize(manifest));
         foreach (var member in BackupFormat.PayloadMembers)
@@ -191,6 +243,16 @@ public sealed class PrivateBackupReaderTests : IDisposable
         var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
         using var stream = entry.Open();
         stream.Write(content, 0, content.Length);
+    }
+
+    private async Task<string> CreateDatabaseSnapshotAsync()
+    {
+        var sourceDatabasePath = Path.Combine(_root, $"source-{Guid.NewGuid():N}.db");
+        var sourceDatabase = new RuntimeDatabase(sourceDatabasePath);
+        new RuntimeDatabaseMigrator(sourceDatabase).Migrate();
+        var snapshotPath = Path.Combine(_root, $"runtime-{Guid.NewGuid():N}.sqlite");
+        await new RuntimeDatabaseSnapshotService(sourceDatabase).CreateAsync(snapshotPath, CancellationToken.None);
+        return snapshotPath;
     }
 
     private static T ReadScalar<T>(string databasePath, string sql)
