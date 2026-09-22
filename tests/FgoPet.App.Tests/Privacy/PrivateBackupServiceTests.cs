@@ -8,6 +8,7 @@ using FgoPet.Core.Agents;
 using FgoPet.Core.Backup;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
 using FgoPet.App.Privacy;
 using FgoPet.Character.Settings;
 using FgoPet.Dialogue.Settings;
@@ -16,6 +17,7 @@ using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
 using FgoPet.SettingsHost;
+using FgoPet.Speech.Settings;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -24,6 +26,7 @@ namespace FgoPet.App.Tests.Privacy;
 
 public sealed class PrivateBackupServiceTests : IDisposable
 {
+    private const string UnsafeReferenceAudioPath = "C:/Users/Task12/Private/reference-audio.wav";
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"fgo-private-backup-{Guid.NewGuid():N}");
     private readonly string _databasePath;
     private readonly string _backupPath;
@@ -84,13 +87,26 @@ public sealed class PrivateBackupServiceTests : IDisposable
             Assert.Equal("official.mash", document.RootElement.GetProperty("selection").GetProperty("package_id").GetString());
             Assert.Equal("openai", document.RootElement.GetProperty("model_connection").GetProperty("provider_id").GetString());
             Assert.True(document.RootElement.GetProperty("agent_connection").GetProperty("enabled").GetBoolean());
+            var speech = document.RootElement.GetProperty("speech_connection");
+            Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
+            Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());
+            Assert.True(speech.GetProperty("enabled").GetBoolean());
+            Assert.Equal("GptSoVits", speech.GetProperty("provider").GetString());
+            Assert.True(speech.GetProperty("auto_read_enabled").GetBoolean());
+            Assert.Equal(240, speech.GetProperty("auto_read_limit").GetInt32());
+            Assert.Equal(1.25, speech.GetProperty("rate").GetDouble());
+            Assert.Equal(0.75, speech.GetProperty("volume").GetDouble());
         }
         Assert.Contains("official.mash", settingsJson, StringComparison.Ordinal);
         Assert.Contains("gpt-4o-mini", settingsJson, StringComparison.Ordinal);
         Assert.Contains("project-1", settingsJson, StringComparison.Ordinal);
         Assert.Contains("fgo-pet/speech/openai", settingsJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(UnsafeReferenceAudioPath, settingsJson, StringComparison.Ordinal);
         Assert.DoesNotContain("api_key", settingsJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", settingsJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            UnsafeReferenceAudioPath,
+            ((ISpeechSettingsStore)settings).Load().Connection.GptSoVitsReferenceAudioPath);
 
         var packagesJson = ReadEntry(archive, BackupFormat.PackagesMember);
         Assert.Contains("official.mash", packagesJson, StringComparison.Ordinal);
@@ -184,6 +200,16 @@ public sealed class PrivateBackupServiceTests : IDisposable
                         ["codex"] = new[] { new AgentProjectTarget("project-1", "Project") },
                     }),
             });
+            ((ISpeechSettingsStore)coordinator).Save(new SpeechSettings(SpeechConnectionSettings.Defaults with
+            {
+                Enabled = true,
+                Provider = SpeechProviderKind.GptSoVits,
+                GptSoVitsReferenceAudioPath = UnsafeReferenceAudioPath,
+                AutoReadEnabled = true,
+                AutoReadLimit = 240,
+                Rate = 1.25,
+                Volume = 0.75,
+            }));
         }
 
         return coordinator;

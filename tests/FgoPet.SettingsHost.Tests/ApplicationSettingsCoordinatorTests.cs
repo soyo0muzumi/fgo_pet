@@ -160,6 +160,41 @@ public sealed class ApplicationSettingsCoordinatorTests
         Assert.True(metadata.AgentPairingRequired);
     }
 
+    [Fact]
+    public void Document_facade_export_sanitizes_local_speech_path_without_mutating_live_settings()
+    {
+        const string localPath = "C:/Users/Task12/Private/reference-audio.wav";
+        var document = new MemoryDocumentStore($$"""
+            {
+              "schema_version": 2,
+              "speech_connection": {
+                "enabled": true,
+                "provider": "GptSoVits",
+                "openai_credential_target": "fgo-pet/speech/openai",
+                "gpt_sovits_reference_audio_path": "{{localPath}}",
+                "auto_read_enabled": true,
+                "auto_read_limit": 240,
+                "rate": 1.25,
+                "volume": 0.75
+              }
+            }
+            """);
+        var coordinator = new ApplicationSettingsCoordinator(document);
+
+        var live = ((ISpeechSettingsStore)coordinator).Load().Connection;
+        using var exported = JsonDocument.Parse(((IApplicationSettingsDocument)coordinator).Export());
+        var speech = exported.RootElement.GetProperty("speech_connection");
+
+        Assert.Equal(localPath, live.GptSoVitsReferenceAudioPath);
+        Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
+        Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());
+        Assert.True(speech.GetProperty("enabled").GetBoolean());
+        Assert.True(speech.GetProperty("auto_read_enabled").GetBoolean());
+        Assert.Equal(240, speech.GetProperty("auto_read_limit").GetInt32());
+        Assert.Equal(1.25, speech.GetProperty("rate").GetDouble());
+        Assert.Equal(0.75, speech.GetProperty("volume").GetDouble());
+    }
+
     private static string ReadFixture(string name) =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
 

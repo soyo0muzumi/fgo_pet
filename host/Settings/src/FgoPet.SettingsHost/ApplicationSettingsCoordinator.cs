@@ -97,7 +97,19 @@ public sealed class ApplicationSettingsCoordinator :
     {
         lock (_gate)
         {
-            return _codec.Serialize(ReadLiveUnsafe());
+            var snapshot = ReadLiveUnsafe();
+            // Local reference audio is machine-specific private data. Keep the
+            // schema-v2 field, but export a portable safe value for private backup.
+            return _codec.Serialize(snapshot with
+            {
+                Speech = snapshot.Speech with
+                {
+                    Connection = snapshot.Speech.Connection with
+                    {
+                        GptSoVitsReferenceAudioPath = string.Empty,
+                    },
+                },
+            });
         }
     }
 

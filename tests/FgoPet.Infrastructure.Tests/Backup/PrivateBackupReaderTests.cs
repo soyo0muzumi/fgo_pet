@@ -88,7 +88,31 @@ public sealed class PrivateBackupReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task Rejects_future_database_schema_and_invalid_settings_or_package_references()
+    public async Task Stages_malformed_settings_for_host_document_validation()
+    {
+        var sourceDatabasePath = Path.Combine(_root, "source.db");
+        var sourceDatabase = new RuntimeDatabase(sourceDatabasePath);
+        new RuntimeDatabaseMigrator(sourceDatabase).Migrate();
+        var snapshotPath = Path.Combine(_root, "runtime.sqlite");
+        await new RuntimeDatabaseSnapshotService(sourceDatabase).CreateAsync(snapshotPath, CancellationToken.None);
+        var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
+        WriteArchive(
+            _archivePath,
+            snapshotPath,
+            "{bad",
+            packagesJson,
+            databaseSchemaVersion: RuntimeDatabaseMigrator.CurrentSchemaVersion);
+
+        var result = await new PrivateBackupReader().ReadAndValidateAsync(
+            _archivePath,
+            _stagingPath,
+            CancellationToken.None);
+
+        Assert.Equal("{bad", File.ReadAllText(result.SettingsPath));
+    }
+
+    [Fact]
+    public async Task Rejects_future_database_schema_and_invalid_package_references()
     {
         var sourceDatabasePath = Path.Combine(_root, "source.db");
         var sourceDatabase = new RuntimeDatabase(sourceDatabasePath);
@@ -102,11 +126,6 @@ public sealed class PrivateBackupReaderTests : IDisposable
         var futureError = await Assert.ThrowsAsync<BackupException>(() =>
             new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath, CancellationToken.None));
         Assert.Equal(BackupFailureCode.DatabaseVersionUnsupported, futureError.Code);
-
-        WriteArchive(_archivePath, snapshotPath, "{bad", validPackages, databaseSchemaVersion: 8);
-        var settingsError = await Assert.ThrowsAsync<BackupException>(() =>
-            new PrivateBackupReader().ReadAndValidateAsync(_archivePath, _stagingPath + "-settings", CancellationToken.None));
-        Assert.Equal(BackupFailureCode.SettingsInvalid, settingsError.Code);
 
         WriteArchive(_archivePath, snapshotPath, validSettings, "{\"schema_version\":99}", databaseSchemaVersion: 8);
         var packageError = await Assert.ThrowsAsync<BackupException>(() =>

@@ -77,7 +77,8 @@ public sealed class PrivateBackupReader
                 await ExtractAndVerifyAsync(entry, manifestMember, destination, cancellationToken).ConfigureAwait(false);
             }
 
-            ValidateSettings(settingsPath);
+            // Settings semantics belong to the host document boundary. The restore
+            // service validates this staged file before maintenance or state swap.
             var packageReferences = ValidatePackageReferences(packagesPath);
             ValidateAndMigrateDatabase(runtimePath, manifest.DatabaseSchemaVersion);
 
@@ -264,18 +265,6 @@ public sealed class PrivateBackupReader
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new BackupException(BackupFailureCode.InvalidManifest, "Backup member integrity does not match its manifest.");
-        }
-    }
-
-    private static void ValidateSettings(string path)
-    {
-        try
-        {
-            _ = new AppSettingsSnapshotCodec().Deserialize(File.ReadAllText(path, Utf8));
-        }
-        catch (Exception exception) when (exception is JsonException or IOException or ArgumentException)
-        {
-            throw new BackupException(BackupFailureCode.SettingsInvalid, "Backup settings are invalid.", exception);
         }
     }
 

@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FgoPet.App.Privacy;
 using FgoPet.Character.Settings;
@@ -76,24 +79,25 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Rejects_settings_rejected_by_document_without_quarantining_or_mutating_live_settings()
+    public async Task Rejects_malformed_settings_through_document_without_quarantining_or_mutating_live_settings()
     {
         var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
         var source = CreateState(_sourceRoot, "source-row", "source-user", AgentExecutionStatus.Completed);
         var backupPath = Path.Combine(_root, "input.fgopetbackup");
         await CreateBackupAsync(source, backupPath);
+        ReplaceSettingsMember(backupPath, "{bad");
         var databaseBefore = File.ReadAllBytes(current.Database.DatabasePath);
         var settingsBefore = File.ReadAllBytes(current.Settings.Location);
-        var rejectingDocument = new RejectingApplicationSettingsDocument(current.Settings);
+        var observingDocument = new ObservingApplicationSettingsDocument(current.Settings);
 
         var result = await CreateRestoreService(
             current,
             new FakeAgentRuntime(),
-            settingsDocument: rejectingDocument).RestoreAsync(backupPath, CancellationToken.None);
+            settingsDocument: observingDocument).RestoreAsync(backupPath, CancellationToken.None);
 
         Assert.Equal(BackupRestoreStatus.Rejected, result.Status);
         Assert.Equal(BackupFailureCode.SettingsInvalid, result.FailureCode);
-        Assert.Equal(1, rejectingDocument.ValidateCount);
+        Assert.Equal(1, observingDocument.ValidateCount);
         Assert.Equal(databaseBefore, File.ReadAllBytes(current.Database.DatabasePath));
         Assert.Equal(settingsBefore, File.ReadAllBytes(current.Settings.Location));
         Assert.Empty(Directory.EnumerateFiles(_currentRoot, "settings.json.corrupt.*"));
@@ -149,6 +153,41 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
             new RuntimeDatabaseSnapshotService(source.Database),
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             "1.0.0").CreateAsync(backupPath, CancellationToken.None);
+    }
+
+    private static void ReplaceSettingsMember(string backupPath, string settingsJson)
+    {
+        using var archive = ZipFile.Open(backupPath, ZipArchiveMode.Update);
+        var manifestEntry = archive.GetEntry(BackupFormat.ManifestMember)!;
+        PrivateBackupManifest manifest;
+        using (var reader = new StreamReader(manifestEntry.Open(), Encoding.UTF8))
+        {
+            manifest = JsonSerializer.Deserialize<PrivateBackupManifest>(reader.ReadToEnd())!;
+        }
+
+        manifestEntry.Delete();
+        archive.GetEntry(BackupFormat.SettingsMember)!.Delete();
+        var settingsBytes = Encoding.UTF8.GetBytes(settingsJson);
+        var settingsEntry = archive.CreateEntry(BackupFormat.SettingsMember, CompressionLevel.NoCompression);
+        using (var stream = settingsEntry.Open())
+        {
+            stream.Write(settingsBytes);
+        }
+
+        var updatedManifest = new PrivateBackupManifest(
+            manifest.FormatVersion,
+            manifest.ApplicationVersion,
+            manifest.DatabaseSchemaVersion,
+            manifest.CreatedAtUtc,
+            manifest.Files.Select(member => member.Path == BackupFormat.SettingsMember
+                ? new BackupMember(
+                    member.Path,
+                    settingsBytes.LongLength,
+                    Convert.ToHexString(SHA256.HashData(settingsBytes)).ToLowerInvariant())
+                : member).ToArray());
+        var updatedManifestEntry = archive.CreateEntry(BackupFormat.ManifestMember, CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(updatedManifestEntry.Open(), new UTF8Encoding(false));
+        writer.Write(JsonSerializer.Serialize(updatedManifest));
     }
 
     private PrivateBackupRestoreService CreateRestoreService(
@@ -273,7 +312,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         }
     }
 
-    private sealed class RejectingApplicationSettingsDocument(IApplicationSettingsDocument inner)
+    private sealed class ObservingApplicationSettingsDocument(IApplicationSettingsDocument inner)
         : IApplicationSettingsDocument
     {
         public string Location => inner.Location;
@@ -283,7 +322,7 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         public SettingsRestoreMetadata ValidateForRestore(string document)
         {
             ValidateCount++;
-            throw new JsonException("fixture");
+            return inner.ValidateForRestore(document);
         }
     }
 }
