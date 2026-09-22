@@ -14,6 +14,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Memory.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Dialogue;
@@ -93,7 +94,7 @@ public sealed class ConversationOrchestrator
     private readonly PromptComposer _composer;
     private readonly TimeProvider _time;
     private readonly IDialogueSettingsStore? _settings;
-    private readonly IAppSettingsStore? _memorySettings;
+    private readonly IMemorySettingsStore? _memorySettings;
     private readonly ConversationSummaryService? _summaries;
     private readonly TodoProposalService? _todoProposals;
     private readonly ILogger<ConversationOrchestrator>? _logger;
@@ -110,7 +111,7 @@ public sealed class ConversationOrchestrator
         PromptComposer composer,
         TimeProvider time,
         IDialogueSettingsStore? settings = null,
-        IAppSettingsStore? memorySettings = null,
+        IMemorySettingsStore? memorySettings = null,
         ConversationSummaryService? summaries = null,
         TodoProposalService? todoProposals = null,
         ILogger<ConversationOrchestrator>? logger = null)
@@ -857,7 +858,7 @@ public sealed class ConversationOrchestrator
         }
     }
 
-    private bool IsMemoryEnabled() => _memorySettings?.Load().MemoryEnabled ?? true;
+    private bool IsMemoryEnabled() => _memorySettings?.Load().Enabled ?? true;
 
     private static PersonaBundle FallbackPersona(ContentContextKey context) =>
         new(context.ServantId, context.PackageId, context.PackageVersion, context.PersonaVersion, "保持自然、简洁地回应用户。", []);

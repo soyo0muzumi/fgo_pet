@@ -16,6 +16,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Memory.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Dialogue;
@@ -97,6 +98,18 @@ public sealed class ConversationOrchestratorTests : IDisposable
         var candidate = Assert.Single(candidates);
         Assert.Equal(MemoryCandidateStatus.Pending, candidate.Status);
         Assert.Equal("用户喜欢安静工作。", candidate.Text);
+    }
+
+    [Fact]
+    public async Task Disabled_memory_does_not_write_structured_candidates()
+    {
+        var provider = new FakeProvider([new ChatStreamChunk("{\"text\":\"记住这件事。\",\"memory_candidate\":\"用户喜欢安静工作。\"}", IsComplete: true)]);
+        var orchestrator = CreateOrchestrator(provider, memorySettings: new MemorySettingsStore(enabled: false));
+
+        var result = await orchestrator.SendAsync("800100", "请记住", CancellationToken.None);
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.Empty(CreateMemoryRepository().ListCandidates("800100"));
     }
 
     [Fact]
@@ -592,7 +605,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
         IChatProvider provider,
         TodoProposalService? todoProposals = null,
         IDialogueSettingsStore? settings = null,
-        IConversationContentResolver? contentResolver = null)
+        IConversationContentResolver? contentResolver = null,
+        IMemorySettingsStore? memorySettings = null)
     {
         var binding = new ContentBinding(
             new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0"),
@@ -609,6 +623,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
             new PromptComposer(),
             TimeProvider.System,
             settings: settings,
+            memorySettings: memorySettings,
             todoProposals: todoProposals);
     }
 
@@ -743,6 +758,15 @@ public sealed class ConversationOrchestratorTests : IDisposable
         };
 
         public void Save(DialogueSettings settings) => Saved = settings;
+    }
+
+    private sealed class MemorySettingsStore(bool enabled) : IMemorySettingsStore
+    {
+        public MemorySettings Current { get; private set; } = new(enabled);
+
+        public MemorySettings Load() => Current;
+
+        public void Save(MemorySettings settings) => Current = settings;
     }
 
     private sealed class RecordingSettings : IAppSettingsStore

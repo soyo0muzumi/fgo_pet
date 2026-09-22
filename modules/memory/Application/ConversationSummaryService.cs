@@ -1,6 +1,6 @@
 using FgoPet.Core.Memory;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Memory.Settings;
 
 namespace FgoPet.App.Memory;
 
@@ -14,13 +14,13 @@ public sealed class ConversationSummaryService
 {
     private const int RecentMessageWindow = 6;
     private readonly SqliteConversationRepository _conversations;
-    private readonly IAppSettingsStore _settings;
+    private readonly IMemorySettingsStore _settings;
     private readonly TimeProvider _clock;
     private readonly int _threshold;
 
     public ConversationSummaryService(
         SqliteConversationRepository conversations,
-        IAppSettingsStore settings,
+        IMemorySettingsStore settings,
         TimeProvider clock,
         int threshold = 12)
     {
@@ -41,7 +41,7 @@ public sealed class ConversationSummaryService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!_settings.Load().MemoryEnabled)
+        if (!_settings.Load().Enabled)
         {
             return Task.FromResult<ConversationSummary?>(null);
         }

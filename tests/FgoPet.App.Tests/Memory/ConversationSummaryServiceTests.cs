@@ -1,9 +1,9 @@
 using FgoPet.App.Memory;
 using System.IO;
 using FgoPet.Core.Dialogue;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Memory.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Memory;
@@ -24,7 +24,7 @@ public sealed class ConversationSummaryServiceTests : IDisposable
             repository.Append(Message($"assistant-{index}", ChatMessageRole.Assistant, $"从者回复 {index}", index * 2, context));
         }
 
-        var service = new ConversationSummaryService(repository, new Settings(memoryEnabled: true), TimeProvider.System, threshold: 4);
+        var service = new ConversationSummaryService(repository, new Settings(enabled: true), TimeProvider.System, threshold: 4);
         var summary = await service.MaybeSummarizeAsync("conversation-1", "800100", CancellationToken.None);
 
         Assert.NotNull(summary);
@@ -43,7 +43,7 @@ public sealed class ConversationSummaryServiceTests : IDisposable
         repository.CreateConversation("conversation-1", "800100", context, Now());
         repository.Append(Message("user-1", ChatMessageRole.User, "消息", 1, context));
 
-        var service = new ConversationSummaryService(repository, new Settings(memoryEnabled: false), TimeProvider.System, threshold: 1);
+        var service = new ConversationSummaryService(repository, new Settings(enabled: false), TimeProvider.System, threshold: 1);
 
         Assert.Null(await service.MaybeSummarizeAsync("conversation-1", "800100", CancellationToken.None));
     }
@@ -73,10 +73,10 @@ public sealed class ConversationSummaryServiceTests : IDisposable
 
     private static DateTimeOffset Now() => new(2026, 8, 29, 0, 0, 0, TimeSpan.Zero);
 
-    private sealed class Settings(bool memoryEnabled) : IAppSettingsStore
+    private sealed class Settings(bool enabled) : IMemorySettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => AppSettings.Defaults with { MemoryEnabled = memoryEnabled };
-        public void Save(AppSettings settings) { }
+        public MemorySettings Current { get; private set; } = new(enabled);
+        public MemorySettings Load() => Current;
+        public void Save(MemorySettings settings) => Current = settings;
     }
 }

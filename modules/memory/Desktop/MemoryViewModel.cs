@@ -5,8 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Privacy;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Memory.Settings;
 
 namespace FgoPet.App.Memory;
 
@@ -15,14 +15,14 @@ public sealed partial class MemoryViewModel : ObservableObject
     private readonly MemoryCandidateService _memories;
     private readonly IUserDataExporter? _export;
     private readonly IUserDataDeleter? _deletion;
-    private readonly IAppSettingsStore? _settings;
+    private readonly IMemorySettingsStore? _settings;
     private readonly SqliteConversationRepository? _conversations;
 
     public MemoryViewModel(
         MemoryCandidateService memories,
         IUserDataExporter? export = null,
         IUserDataDeleter? deletion = null,
-        IAppSettingsStore? settings = null,
+        IMemorySettingsStore? settings = null,
         SqliteConversationRepository? conversations = null)
     {
         _memories = memories ?? throw new ArgumentNullException(nameof(memories));
@@ -30,7 +30,7 @@ public sealed partial class MemoryViewModel : ObservableObject
         _deletion = deletion;
         _settings = settings;
         _conversations = conversations;
-        _memoryEnabled = settings?.Load().MemoryEnabled ?? true;
+        _memoryEnabled = settings?.Load().Enabled ?? true;
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         ApproveCandidateCommand = new AsyncRelayCommand(() => ReviewCandidateAsync(MemoryReviewAction.Approve));
         RejectCandidateCommand = new AsyncRelayCommand(() => ReviewCandidateAsync(MemoryReviewAction.Reject));
@@ -89,7 +89,7 @@ public sealed partial class MemoryViewModel : ObservableObject
     {
         if (_settings is not null)
         {
-            _settings.Save(_settings.Load() with { MemoryEnabled = value });
+            _settings.Save(_settings.Load() with { Enabled = value });
         }
     }
 

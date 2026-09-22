@@ -351,7 +351,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<PromptComposer>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),
-            provider.GetRequiredService<IAppSettingsStore>(),
+            provider.GetRequiredService<IMemorySettingsStore>(),
             provider.GetRequiredService<ConversationSummaryService>(),
             provider.GetRequiredService<TodoProposalService>(),
             provider.GetRequiredService<ILogger<ConversationOrchestrator>>()))
