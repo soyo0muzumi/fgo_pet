@@ -6,6 +6,7 @@
 
 - Todo：条目/步骤/优先级、日期规则、编辑规则、待确认提案、**幂等创建**
 - Execution：派发、执行记录、授权检查、回执归一、停止/未知结果/重连、项目快照
+- Execution：`WorkExecutionSettings` / `IWorkExecutionSettingsStore` 拥有 Agent 连接设置分区
 - Archives：工作归档草稿、确认、长期归档
 
 ## Non-responsibilities

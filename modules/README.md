@@ -30,6 +30,12 @@ host           →  模块注册入口（不授权使用模块仓储、状态实
 platform / ui-foundation  →  不依赖任何业务模块或 host
 ```
 
+## Settings ownership
+
+- character、dialogue、memory、speech、work/Execution 和 ui-foundation 各自发布本分区的设置值与存储端口。
+- `host/Settings` 组合这些契约，实现唯一 schema-v2 codec，并串行化整文档的读-改-写。
+- `platform/Settings.Foundation` 只持久化不透明文档，不依赖业务或表现类型。
+
 ### 跨模块契约边（8 条，全量）
 
 | 发布方 | 消费方 | 契约内容 |

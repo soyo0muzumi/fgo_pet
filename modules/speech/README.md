@@ -24,11 +24,11 @@ The public namespaces remain `FgoPet.Core.Speech`, `FgoPet.Infrastructure.Speech
 
 ## Dependencies and security
 
-The module may consume shared settings and credential contracts and the existing protected credential implementation. It must not depend on Dialogue, Todo, Focus, Agent transport, or desktop-shell implementation. OpenAI-compatible keys remain in Windows Credential Manager; GPT-SoVITS accepts only loopback HTTP. Speech text, credentials, raw audio, reference-audio paths, and local paths are not sent through Agent or written to diagnostics.
+The module owns `SpeechSettings` and `ISpeechSettingsStore`, and consumes the protected credential contract and implementation. It must not depend on Dialogue, Todo, Focus, Agent transport, or desktop-shell implementation. OpenAI-compatible keys remain in Windows Credential Manager; GPT-SoVITS accepts only loopback HTTP. Speech text, credentials, raw audio, reference-audio paths, and local paths are not sent through Agent or written to diagnostics.
 
 ## Composition
 
-`FgoPet.App` references `FgoPet.Speech.Desktop` and remains the only composition root. Speech settings are hosted by the existing singleton settings resolver and DialogueWindow; no second settings or dialogue shell is introduced.
+`FgoPet.App` references `FgoPet.Speech.Desktop` and remains the composition root. `host/Settings` implements the speech-owned settings port as one section of the schema-v2 document; no second settings or dialogue shell is introduced.
 
 ## Validation
 
@@ -36,4 +36,4 @@ Run all three speech test projects plus the affected solution tests and Release 
 
 ## Migration status
 
-The v0.3 speech contracts, adapters, playback lifecycle, settings integration, and speech tests now live under this module. Shared AppSettings persistence codecs remain in the shared Core/Infrastructure projects by design; they carry only non-secret settings and do not own speech behavior.
+The v0.3 speech contracts, adapters, playback lifecycle, settings integration, and speech tests live under this module. Schema-v2 composition lives only in `host/Settings`; platform persistence remains unaware of speech types.

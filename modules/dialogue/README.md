@@ -8,6 +8,7 @@
 - 提示词组装、预算、注入拦截
 - 结构化输出校验、工具调用聚合
 - 模型连接用例、会话摘要
+- `DialogueSettings` / `IDialogueSettingsStore`：模型连接元数据与推理展示偏好
 
 ## Non-responsibilities
 

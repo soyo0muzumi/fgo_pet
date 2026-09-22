@@ -33,7 +33,6 @@ using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Core.Windowing;
 using FgoPet.Character.Settings;
@@ -76,7 +75,6 @@ public static class ServiceRegistration
         .AddSingleton<TextWriter>(Console.Out)
         .AddSingleton(paths)
         .AddSingleton<IAppLifetime>(_ => new AppLifetimeService(Application.Current!))
-        .AddSingleton<IAppSettingsStore>(_ => new JsonAppSettingsStore(paths.StorageRoot))
         .AddSingleton<ISettingsDocumentStore>(_ => new JsonSettingsDocumentStore(paths.StorageRoot))
         .AddSingleton<ApplicationSettingsCoordinator>()
         .AddSingleton<IApplicationSettingsDocument>(provider => provider.GetRequiredService<ApplicationSettingsCoordinator>())

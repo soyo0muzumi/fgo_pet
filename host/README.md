@@ -7,11 +7,13 @@
 - DesktopShell：应用启动与生命周期、服务装配、托盘、窗口与几何、设置外壳、附加面板与立绘窗的呈现编排
 - DesktopShell：`AttachedPanelState` / `AttachedPanelStateMachine`（纯 UI 容器状态机，Q10）
 - DataManagement：私有备份/恢复、导出、清理的**具名应用流程**
+- Settings：拥有唯一 schema-v2 codec 与进程内读-改-写协调器，实现各所有者发布的设置端口
 
 ## Non-responsibilities
 
 - 任何业务状态（Todo/记忆/专注/角色/对话）——**一行都不许有**
 - 模块内部的业务规则与事务
+- 各设置分区的业务语义或权威缓存
 
 ## Public interfaces
 
@@ -21,6 +23,8 @@
 
 - **允许**：模块的**注册入口**；`platform/*`、`ui-foundation/*`；`adapters/agent-integration`（运行时伴生）；speech 的表现层
 - **禁止**：模块的仓储、状态实现或私有事件；业务 Lambda 不得写在 `ModuleRegistration` 里
+
+Settings 组合模块契约，通过 platform 的不透明文档端口持久化；它不把业务设置状态重新定义在 host。
 
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 

@@ -7,6 +7,7 @@
 - 记忆候选、复核、确认
 - 启用/禁用、删除
 - 已确认记忆的查询与持久化
+- `MemorySettings` / `IMemorySettingsStore`：记忆启用状态
 
 ## Non-responsibilities
 

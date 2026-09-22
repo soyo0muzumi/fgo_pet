@@ -3,9 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FgoPet.Core.Backup;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Backup;
-using FgoPet.Infrastructure.Settings;
 using FgoPet.Infrastructure.Persistence;
 using Xunit;
 
@@ -13,6 +11,8 @@ namespace FgoPet.Infrastructure.Tests.Backup;
 
 public sealed class PrivateBackupReaderTests : IDisposable
 {
+    private const string ValidSettingsJson = """{"schema_version":2}""";
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"fgo-backup-reader-{Guid.NewGuid():N}");
     private readonly string _archivePath;
     private readonly string _stagingPath;
@@ -33,7 +33,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
         var snapshotPath = Path.Combine(_root, "runtime.sqlite");
         await new RuntimeDatabaseSnapshotService(sourceDatabase).CreateAsync(snapshotPath, CancellationToken.None);
 
-        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var settingsJson = ValidSettingsJson;
         var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
         WriteArchive(_archivePath, snapshotPath, settingsJson, packagesJson, databaseSchemaVersion: RuntimeDatabaseMigrator.CurrentSchemaVersion);
 
@@ -43,7 +43,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
         Assert.True(File.Exists(result.RuntimeDatabasePath));
         Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, ReadScalar<long>(result.RuntimeDatabasePath, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal("ok", ReadScalar<string>(result.RuntimeDatabasePath, "PRAGMA integrity_check"));
-        Assert.Equal(AppSettings.Defaults, new AppSettingsSnapshotCodec().Deserialize(File.ReadAllText(result.SettingsPath)));
+        Assert.Equal(ValidSettingsJson, File.ReadAllText(result.SettingsPath));
         Assert.Contains("schema_version", File.ReadAllText(result.PackagesPath), StringComparison.Ordinal);
     }
 
@@ -75,7 +75,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
         new RuntimeDatabaseMigrator(sourceDatabase).Migrate();
         var snapshotPath = Path.Combine(_root, "runtime.sqlite");
         await new RuntimeDatabaseSnapshotService(sourceDatabase).CreateAsync(snapshotPath, CancellationToken.None);
-        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var settingsJson = ValidSettingsJson;
         var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
 
         WriteArchive(_archivePath, snapshotPath, settingsJson, packagesJson, databaseSchemaVersion: 8, duplicateSettings: true);
@@ -91,7 +91,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
     public async Task Rejects_manifest_member_length_mismatch_before_extracting()
     {
         var snapshotPath = await CreateDatabaseSnapshotAsync();
-        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var settingsJson = ValidSettingsJson;
         var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
 
         WriteArchive(
@@ -114,7 +114,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
     public async Task Rejects_member_sha256_mismatch_after_extracting()
     {
         var snapshotPath = await CreateDatabaseSnapshotAsync();
-        var settingsJson = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var settingsJson = ValidSettingsJson;
         var packagesJson = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
 
         WriteArchive(
@@ -165,7 +165,7 @@ public sealed class PrivateBackupReaderTests : IDisposable
         new RuntimeDatabaseMigrator(sourceDatabase).Migrate();
         var snapshotPath = Path.Combine(_root, "runtime.sqlite");
         await new RuntimeDatabaseSnapshotService(sourceDatabase).CreateAsync(snapshotPath, CancellationToken.None);
-        var validSettings = new AppSettingsSnapshotCodec().Serialize(AppSettings.Defaults);
+        var validSettings = ValidSettingsJson;
         var validPackages = "{\"schema_version\":1,\"selected\":null,\"last_known_good\":null}";
 
         WriteArchive(_archivePath, snapshotPath, validSettings, validPackages, databaseSchemaVersion: 99);

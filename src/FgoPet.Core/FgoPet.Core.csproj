@@ -5,10 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>FgoPet.Core</RootNamespace>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
-  </ItemGroup>
-
   <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
   <!-- 物理位置已按 11→6 目标架构就位；程序集拆分留待后续，故此处用 Compile Include 回链。 -->
   <ItemGroup>
@@ -218,17 +214,11 @@
     <Compile Include="..\..\platform\Secrets\ICredentialContracts.cs">
       <Link>platform\Secrets\ICredentialContracts.cs</Link>
     </Compile>
-    <Compile Include="..\..\platform\Settings.Foundation\AppSettings.cs">
-      <Link>platform\Settings.Foundation\AppSettings.cs</Link>
-    </Compile>
-    <Compile Include="..\..\platform\Settings.Foundation\IAppSettingsStore.cs">
-      <Link>platform\Settings.Foundation\IAppSettingsStore.cs</Link>
-    </Compile>
     <Compile Include="..\..\platform\Settings.Foundation\ISettingsDocumentStore.cs">
       <Link>platform\Settings.Foundation\ISettingsDocumentStore.cs</Link>
     </Compile>
-    <Compile Include="..\..\platform\Settings.Foundation\UserProfile.cs">
-      <Link>platform\Settings.Foundation\UserProfile.cs</Link>
+    <Compile Include="..\..\modules\character\Contracts\UserProfile.cs">
+      <Link>modules\character\Contracts\UserProfile.cs</Link>
     </Compile>
     <Compile Include="..\..\platform\Validation\Phase3Validation.cs">
       <Link>platform\Validation\Phase3Validation.cs</Link>

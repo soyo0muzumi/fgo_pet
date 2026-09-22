@@ -54,19 +54,16 @@ public sealed class ArchitectureTests
         var infra = ReferencedProjects("FgoPet.Infrastructure");
         var app = ReferencedProjects("FgoPet.App");
 
-        // Speech.Core is a dependency-free contract leaf. Core may use it for
-        // the shared AppSettings speech value without depending on a feature
-        // implementation; the rest of the application direction is unchanged.
+        // Retiring the cross-module settings aggregate leaves Core with no
+        // project references; speech settings stay owned by Speech.Core.
+        Assert.Empty(core);
         Assert.Equal(
-            new[] { "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
-            core.OrderBy(name => name, StringComparer.Ordinal));
-        Assert.Equal(
-            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core", "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
+            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
             infra.OrderBy(name => name, StringComparer.Ordinal));
         // 阶段 1 项目拆分（2026-09-21）：FgoPet.App 不再是唯一的应用程序集，
         // 各模块的 UI/应用层各自成工程（沿用 speech 的「独立程序集 + RootNamespace=FgoPet.App」范式），
         // 组合根只负责把 HostContracts/DesktopShell 与各模块串起来。
-        // 因此这里的期望集从 3 个变为 14 个——方向不变（组合根 → 模块），只是模块不再是回链文件。
+        // 因此这里的期望集从 3 个变为 15 个——方向不变（组合根 → 模块），只是模块不再是回链文件。
         Assert.Equal(
             new[]
             {
@@ -79,6 +76,7 @@ public sealed class ArchitectureTests
                 "FgoPet.HostContracts",
                 "FgoPet.Infrastructure",
                 "FgoPet.Memory",
+                "FgoPet.SettingsHost",
                 "FgoPet.Speech.Desktop",
                 "FgoPet.UiFoundation",
                 "FgoPet.Work.Archives",

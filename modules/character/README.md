@@ -8,6 +8,7 @@
 - 当前角色/外观的唯一状态
 - 人格、知识、外观内容的读取契约
 - 内容绑定（`content_bindings` 表）
+- `CharacterSettings` / `ICharacterSettingsStore`：当前角色、外观、缩放、偏好、用户资料与角色包设置
 
 ## Non-responsibilities
 

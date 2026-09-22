@@ -12,7 +12,6 @@
     <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentProtocol\FgoPet.AgentProtocol.csproj" />
     <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRuntime\FgoPet.AgentRuntime.csproj" />
-    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Core\FgoPet.Speech.Core.csproj" />
   </ItemGroup>
   <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
   <!-- 物理位置已按 11→6 目标架构就位；程序集拆分留待后续，故此处用 Compile Include 回链。 -->
@@ -171,12 +170,6 @@
     </Compile>
 
     <!-- platform/Settings.Foundation -->
-    <Compile Include="..\..\platform\Settings.Foundation\AppSettingsSnapshotCodec.cs">
-      <Link>platform\Settings.Foundation\AppSettingsSnapshotCodec.cs</Link>
-    </Compile>
-    <Compile Include="..\..\platform\Settings.Foundation\JsonAppSettingsStore.cs">
-      <Link>platform\Settings.Foundation\JsonAppSettingsStore.cs</Link>
-    </Compile>
     <Compile Include="..\..\platform\Settings.Foundation\JsonSettingsDocumentStore.cs">
       <Link>platform\Settings.Foundation\JsonSettingsDocumentStore.cs</Link>
     </Compile>

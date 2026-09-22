@@ -23,11 +23,6 @@ public sealed class TodoApplicationServiceTests
     }
 
     [Fact]
-    public void Fresh_settings_default_to_light()
-    {
-        Assert.Equal(FgoPet.Core.Settings.AppTheme.FgoLight, FgoPet.Core.Settings.AppSettings.Defaults.Theme);
-    }
-    [Fact]
     public void Creating_a_todo_persists_it_without_selecting_or_dispatching_an_agent()
     {
         var repository = new FakeTodoRepository();

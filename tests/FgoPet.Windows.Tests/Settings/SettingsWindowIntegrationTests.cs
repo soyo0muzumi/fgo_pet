@@ -1061,17 +1061,6 @@ public sealed class SettingsWindowIntegrationTests
         public void ApplyDpi(Dpi2 dpi) { }
     }
 
-    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
-    {
-        private AppSettings _settings = initial;
-
-        public string Location => "memory";
-
-        public AppSettings Load() => _settings;
-
-        public void Save(AppSettings settings) => _settings = settings;
-    }
-
     private sealed class FakeThemeSettingsStore(ThemeSettings initial) : IThemeSettingsStore
     {
         private ThemeSettings _settings = initial;

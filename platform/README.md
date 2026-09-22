@@ -6,17 +6,21 @@
 
 - 数据库连接、事务、迁移（`RuntimeDatabase` / `RuntimeDatabaseMigrator`）与 `schema_migrations` 表
 - `RuntimeEvent` / `RuntimeEventSource` 记录类型
-- 诊断接口、凭据端口与 Windows 实现、几何与窗口放置、设置基础类型
+- 诊断接口、凭据端口与 Windows 实现、几何与窗口放置
+- `ISettingsDocumentStore` / `JsonSettingsDocumentStore`：持久化不透明设置文档，不解释任何业务字段
 
 ## Non-responsibilities
 
 - **任何业务规则或业务事件全集**（§4.3 / V3）
 - **面向用户的文案**（Q1/Q8）
 - 各模块的仓储（住在 `modules/*/Infrastructure/`）
+- 设置 schema、默认值或业务分区组合（分别归 host/Settings 与各所有者模块）
 
 ## Public interfaces
 
 仅 `Contracts/` 下的类型可被其他模块引用。跨模块调用必须走 `modules/README.md` 登记的契约边，**除登记的 8 条外任何跨模块引用都是违规**。
+
+`Settings.Foundation` 仅公开不透明文档存储契约；它不引用 character、dialogue、memory、speech、work 或 ui-foundation 类型。
 
 ## Dependencies
 

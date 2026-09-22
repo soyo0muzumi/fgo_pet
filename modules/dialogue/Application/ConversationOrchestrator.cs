@@ -1,12 +1,12 @@
 using System.IO;
 using System.Text;
+using FgoPet.Character.Settings;
 using FgoPet.App.Memory;
 using FgoPet.App.Providers;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
-using FgoPet.Core.Settings;
 using FgoPet.Core.Todo;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
@@ -52,9 +52,9 @@ public sealed class ConfiguredChatProviderResolver : IChatProviderResolver
 public sealed class InstalledContentBindingResolver : IConversationContentResolver
 {
     private readonly IArtPackageRepository _repository;
-    private readonly IAppSettingsStore _settings;
+    private readonly ICharacterSettingsStore _settings;
 
-    public InstalledContentBindingResolver(IArtPackageRepository repository, IAppSettingsStore settings)
+    public InstalledContentBindingResolver(IArtPackageRepository repository, ICharacterSettingsStore settings)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));

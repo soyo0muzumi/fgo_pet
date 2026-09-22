@@ -7,6 +7,7 @@
 - 设计令牌与主题（`ThemeTokens` / `AppTheme` / `Themes/*`）
 - 通用控件与图标（`Controls` / `SettingsControls` / `SettingsIcons` / `Shell*`）
 - `ThemeService`（§6.8）
+- `ThemeSettings` / `IThemeSettingsStore`：主题设置分区的公开契约
 
 ## Non-responsibilities
 
