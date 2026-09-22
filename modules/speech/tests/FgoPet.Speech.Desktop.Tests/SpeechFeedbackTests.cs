@@ -105,6 +105,90 @@ public sealed class SpeechFeedbackTests
         Assert.Equal("请先导入并选择参考音色。", vm.ErrorText);
     }
 
+    [Fact]
+    public void Deleting_metadata_only_voice_removes_record_without_touching_files()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fgo-voice-test-" + Guid.NewGuid().ToString("N"));
+        var voiceDirectory = Path.Combine(root, "voices");
+        Directory.CreateDirectory(voiceDirectory);
+        var selected = new ReferenceVoice(Guid.NewGuid().ToString("N"), "Restored Two", string.Empty);
+        var first = new ReferenceVoice("restored-one", "Restored One", string.Empty);
+        var last = new ReferenceVoice("restored-three", "Restored Three", string.Empty);
+        var unrelatedManagedFile = Path.Combine(voiceDirectory, selected.Id + ".wav");
+        File.WriteAllBytes(unrelatedManagedFile, Wave);
+        try
+        {
+            var settings = new Settings(new SpeechSettings(new SpeechConnectionSettings
+            {
+                Provider = SpeechProviderKind.IndexTts,
+                IndexTtsVoiceId = selected.Id,
+                IndexTtsVoices = [first, selected, last],
+            }));
+            using var synthesis = new SpeechSynthesisCoordinator(new LateSynth());
+            using var playback = new SpeechPlaybackCoordinator(synthesis, new Player(), settings);
+            var vm = new SpeechConnectionViewModel(settings, new Credentials(), playback, voiceDirectory);
+
+            vm.DeleteSelectedVoice();
+
+            Assert.Empty(vm.ErrorText);
+            Assert.Null(vm.SelectedVoice);
+            Assert.Equal([first, last], vm.Voices);
+            Assert.Equal(string.Empty, settings.Current.Connection.IndexTtsVoiceId);
+            Assert.Equal([first, last], settings.Current.Connection.IndexTtsVoices);
+            Assert.True(File.Exists(unrelatedManagedFile));
+            Assert.Equal(Wave, File.ReadAllBytes(unrelatedManagedFile));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Deleting_one_of_32_metadata_only_voices_enables_managed_import()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fgo-voice-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var source = Path.Combine(root, "source.wav");
+        await File.WriteAllBytesAsync(source, Wave);
+        var restored = Enumerable.Range(0, 32)
+            .Select(index => new ReferenceVoice($"restored-{index:D2}", $"Restored {index:D2}", string.Empty))
+            .ToArray();
+        try
+        {
+            var settings = new Settings(new SpeechSettings(new SpeechConnectionSettings
+            {
+                Provider = SpeechProviderKind.IndexTts,
+                IndexTtsVoiceId = restored[0].Id,
+                IndexTtsVoices = restored,
+            }));
+            using var synthesis = new SpeechSynthesisCoordinator(new LateSynth());
+            using var playback = new SpeechPlaybackCoordinator(synthesis, new Player(), settings);
+            var vm = new SpeechConnectionViewModel(settings, new Credentials(), playback, Path.Combine(root, "voices"))
+            {
+                VoiceName = "Replacement Voice",
+            };
+
+            vm.DeleteSelectedVoice();
+            await vm.ImportVoiceAsync(source);
+
+            Assert.Empty(vm.ErrorText);
+            Assert.Equal(32, vm.Voices.Count);
+            Assert.Equal(restored.Skip(1), vm.Voices.Take(31));
+            var replacement = vm.Voices[^1];
+            Assert.Equal("Replacement Voice", replacement.Name);
+            Assert.False(string.IsNullOrWhiteSpace(replacement.AudioPath));
+            Assert.True(File.Exists(replacement.AudioPath));
+            Assert.Equal(replacement, vm.SelectedVoice);
+            Assert.Equal(replacement.Id, settings.Current.Connection.IndexTtsVoiceId);
+            Assert.Equal(vm.Voices, settings.Current.Connection.IndexTtsVoices);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static byte[] Wave => Encoding.ASCII.GetBytes("RIFF0000WAVE");
 
     private sealed class Settings(SpeechSettings current) : ISpeechSettingsStore

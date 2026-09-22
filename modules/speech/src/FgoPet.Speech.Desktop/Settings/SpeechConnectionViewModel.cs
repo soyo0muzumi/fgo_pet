@@ -186,19 +186,27 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
         ErrorText = string.Empty;
         try
         {
-            var expected = Path.Combine(_voiceDirectory, voice.Id + ".wav");
-            if (!Guid.TryParseExact(voice.Id, "N", out _) ||
-                !string.Equals(Path.GetFullPath(voice.AudioPath), expected, StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException();
+            var metadataOnly = voice.AudioPath.Length == 0;
+            string? expected = null;
+            if (!metadataOnly)
+            {
+                expected = Path.Combine(_voiceDirectory, voice.Id + ".wav");
+                if (!Guid.TryParseExact(voice.Id, "N", out _) ||
+                    !string.Equals(Path.GetFullPath(voice.AudioPath), expected, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException();
+            }
+
             _playback.Stop();
-            File.Delete(expected);
+            if (expected is not null) File.Delete(expected);
             var current = _settings.Load();
             var remaining = current.Connection.IndexTtsVoices.Where(v => v.Id != voice.Id).ToArray();
             _settings.Save(current with { Connection = current.Connection with
                 { IndexTtsVoices = remaining, IndexTtsVoiceId = current.Connection.IndexTtsVoiceId == voice.Id ? "" : current.Connection.IndexTtsVoiceId } });
             Voices.Remove(voice);
             SelectedVoice = null;
-            StatusText = "本机音色副本已删除。IndexTTS 服务自己的缓存需在该服务中管理。";
+            StatusText = metadataOnly
+                ? "音色记录已删除；恢复备份不包含本机参考音频。"
+                : "本机音色副本已删除。IndexTTS 服务自己的缓存需在该服务中管理。";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
         { ErrorText = "删除未完成。若文件已删除但设置未保存，可再次删除此记录；不会删除音色目录外的文件。"; }
