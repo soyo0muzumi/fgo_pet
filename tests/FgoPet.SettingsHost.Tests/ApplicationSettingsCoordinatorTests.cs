@@ -154,7 +154,9 @@ public sealed class ApplicationSettingsCoordinatorTests
     [Fact]
     public void Concurrent_section_writes_block_before_the_store_and_preserve_both_updates()
     {
-        var document = new BlockingFirstReadDocumentStore(ReadFixture("settings-v2-complete.json"));
+        var initialDocument = ReadFixture("settings-v2-complete.json");
+        Assert.False(new SettingsDocumentV2Codec().Deserialize(initialDocument).Memory.Enabled);
+        var document = new BlockingFirstReadDocumentStore(initialDocument);
         var coordinator = new ApplicationSettingsCoordinator(document);
         Exception? firstFailure = null;
         Exception? secondFailure = null;
@@ -163,7 +165,7 @@ public sealed class ApplicationSettingsCoordinatorTests
         {
             try
             {
-                ((IMemorySettingsStore)coordinator).Save(new MemorySettings(false));
+                ((IMemorySettingsStore)coordinator).Save(new MemorySettings(true));
             }
             catch (Exception error)
             {
@@ -216,7 +218,7 @@ public sealed class ApplicationSettingsCoordinatorTests
         Assert.Null(secondFailure);
 
         var decoded = new SettingsDocumentV2Codec().Deserialize(document.Read()!);
-        Assert.False(decoded.Memory.Enabled);
+        Assert.True(decoded.Memory.Enabled);
         Assert.True(decoded.Dialogue.ShowReasoning);
     }
 
