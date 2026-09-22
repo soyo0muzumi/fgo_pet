@@ -90,6 +90,52 @@ public sealed class SettingsDocumentV2CodecTests
     }
 
     [Fact]
+    public void Deserialize_minimal_v1_fixture_applies_literal_compatibility_defaults()
+    {
+        var snapshot = new SettingsDocumentV2Codec().Deserialize(
+            File.ReadAllText(Fixture("settings-v1-minimal.json")));
+
+        Assert.Null(snapshot.Character.Selection);
+        Assert.Equal(0.5, snapshot.Character.Scale);
+        Assert.True(snapshot.Character.Topmost);
+        Assert.True(snapshot.Character.AutoCollapseExpandedPanel);
+        Assert.Empty(snapshot.Character.ServantPreferences);
+        Assert.Null(snapshot.Character.UserProfile);
+        Assert.Empty(snapshot.Character.PackageSettings);
+
+        Assert.Null(snapshot.Dialogue.ModelConnection);
+        Assert.True(snapshot.Dialogue.ShowReasoning);
+        Assert.True(snapshot.Memory.Enabled);
+
+        Assert.False(snapshot.WorkExecution.AgentConnection.Enabled);
+        Assert.Empty(snapshot.WorkExecution.AgentConnection.SourceEnabled);
+        Assert.Empty(snapshot.WorkExecution.AgentConnection.ProjectAllowlist);
+
+        var speech = snapshot.Speech.Connection;
+        Assert.False(speech.Enabled);
+        Assert.Equal(SpeechProviderKind.OpenAiCompatible, speech.Provider);
+        Assert.Equal("https://api.openai.com/v1", speech.OpenAiBaseUrl);
+        Assert.Equal("gpt-4o-mini-tts", speech.OpenAiModel);
+        Assert.Equal("alloy", speech.OpenAiVoice);
+        Assert.Equal("fgo-pet/speech/openai", speech.OpenAiCredentialTarget);
+        Assert.Equal("http://127.0.0.1:9880", speech.GptSoVitsBaseUrl);
+        Assert.Equal(string.Empty, speech.GptSoVitsReferenceAudioPath);
+        Assert.Equal(string.Empty, speech.GptSoVitsPromptText);
+        Assert.Equal("zh", speech.GptSoVitsLanguage);
+        Assert.Equal("zh", speech.GptSoVitsPromptLanguage);
+        Assert.Equal("http://127.0.0.1:7860", speech.IndexTtsBaseUrl);
+        Assert.Equal(string.Empty, speech.IndexTtsVoiceId);
+        Assert.Empty(speech.IndexTtsVoices);
+        Assert.False(speech.AutoReadEnabled);
+        Assert.False(speech.DoNotDisturb);
+        Assert.Equal(300, speech.AutoReadLimit);
+        Assert.Equal(1.0, speech.Rate);
+        Assert.Equal(1.0, speech.Volume);
+
+        Assert.Equal(AppTheme.FgoLight, snapshot.Theme.Theme);
+    }
+
+    [Fact]
     public void Serialize_v1_document_writes_schema_v2()
     {
         var codec = new SettingsDocumentV2Codec();

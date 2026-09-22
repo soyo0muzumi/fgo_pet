@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FgoPet.Character.Settings;
+using FgoPet.Core.Settings;
 using FgoPet.Core.Speech;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Memory.Settings;
@@ -13,6 +14,19 @@ namespace FgoPet.SettingsHost.Tests;
 
 public sealed class ApplicationSettingsCoordinatorTests
 {
+    public static TheoryData<string> MalformedPackageSettings => new()
+    {
+        { "{\"mash_kyrielight\":null}" },
+        { "{\"\":{\"show_status\":\"true\"}}" },
+        { "{\"invalid servant\":{\"show_status\":\"true\"}}" },
+        { $"{{\"{new string('s', 129)}\":{{\"show_status\":\"true\"}}}}" },
+        { "{\"mash_kyrielight\":{\"\":\"true\"}}" },
+        { "{\"mash_kyrielight\":{\"Invalid key\":\"true\"}}" },
+        { $"{{\"mash_kyrielight\":{{\"{new string('s', 65)}\":\"true\"}}}}" },
+        { "{\"mash_kyrielight\":{\"show_status\":null}}" },
+        { $"{{\"mash_kyrielight\":{{\"greeting\":\"{new string('x', 257)}\"}}}}" },
+    };
+
     [Fact]
     public void Saving_dialogue_preserves_every_other_section()
     {
@@ -39,6 +53,65 @@ public sealed class ApplicationSettingsCoordinatorTests
         Assert.Equal(1, live.QuarantineCount);
         Assert.Throws<JsonException>(() => ((IApplicationSettingsDocument)coordinator).ValidateForRestore("{"));
         Assert.Equal(1, live.QuarantineCount);
+    }
+
+    [Theory]
+    [MemberData(nameof(MalformedPackageSettings))]
+    public void Malformed_package_settings_are_quarantined_and_live_reads_return_literal_defaults(
+        string packageSettings)
+    {
+        var live = new MemoryDocumentStore($$"""
+            {
+              "schema_version": 2,
+              "scale": 0.75,
+              "topmost": false,
+              "auto_collapse": false,
+              "memory_enabled": false,
+              "show_reasoning": false,
+              "theme": "modern_gray",
+              "package_settings": {{packageSettings}}
+            }
+            """);
+        var coordinator = new ApplicationSettingsCoordinator(live);
+
+        var character = ((ICharacterSettingsStore)coordinator).Load();
+
+        Assert.Null(character.Selection);
+        Assert.Equal(0.5, character.Scale);
+        Assert.True(character.Topmost);
+        Assert.True(character.AutoCollapseExpandedPanel);
+        Assert.Empty(character.ServantPreferences);
+        Assert.Null(character.UserProfile);
+        Assert.Empty(character.PackageSettings);
+        Assert.Equal(1, live.QuarantineCount);
+        Assert.Null(live.Read());
+
+        Assert.True(((IDialogueSettingsStore)coordinator).Load().ShowReasoning);
+        Assert.True(((IMemorySettingsStore)coordinator).Load().Enabled);
+        Assert.Equal(AppTheme.FgoLight, ((IThemeSettingsStore)coordinator).Load().Theme);
+        Assert.Equal(1, live.QuarantineCount);
+    }
+
+    [Fact]
+    public void Unknown_theme_falls_back_to_light_without_quarantining_the_live_document()
+    {
+        const string json = """
+            {
+              "schema_version": 2,
+              "scale": 0.5,
+              "topmost": true,
+              "auto_collapse": true,
+              "theme": "unknown_theme"
+            }
+            """;
+        var live = new MemoryDocumentStore(json);
+        var coordinator = new ApplicationSettingsCoordinator(live);
+
+        var theme = ((IThemeSettingsStore)coordinator).Load();
+
+        Assert.Equal(AppTheme.FgoLight, theme.Theme);
+        Assert.Equal(0, live.QuarantineCount);
+        Assert.Equal(json, live.Read());
     }
 
     [Fact]
