@@ -125,9 +125,9 @@ public sealed class ThemeServiceTests
             {
                 Assert.IsAssignableFrom<Brush>(fallback[key]);
             }
-            AssertColor(fallback, "Semantic.AppColor", "#FFF7F6FB");
+            AssertColor(fallback, "Semantic.AppColor", "#FFF1F0F3");
             AssertColor(fallback, "Semantic.ContentColor", "#FFFFFFFF");
-            AssertColor(fallback, "Semantic.SubtleColor", "#FFEEE8FA");
+            AssertColor(fallback, "Semantic.SubtleColor", "#FFF6F5F8");
             AssertColor(fallback, "Semantic.PrimaryTextColor", "#FF252137");
             AssertColor(fallback, "Semantic.SecondaryTextColor", "#FF6D687B");
             AssertColor(fallback, "Semantic.PrimaryActionColor", "#FF7050B8");
@@ -166,8 +166,8 @@ public sealed class ThemeServiceTests
     }
 
     [Theory]
-    [InlineData("FgoLight.xaml", "#FFF7F6FB", "#FFFFFFFF", "#FFEEE8FA", "#FF252137", "#FF6D687B", "#FF827A70", "#FF7050B8", "#FFFFFFFF")]
-    [InlineData("ModernGray.xaml", "#FF16131D", "#FF282332", "#FF3B3150", "#FFFAF8FF", "#FFCBC5D7", "#FF5A5069", "#FFC3A8FF", "#FF1A1324")]
+    [InlineData("FgoLight.xaml", "#FFF1F0F3", "#FFFFFFFF", "#FFF6F5F8", "#FF252137", "#FF6D687B", "#FF827A70", "#FF7050B8", "#FFFFFFFF")]
+    [InlineData("ModernGray.xaml", "#FF18191F", "#FF23242B", "#FF1C1D24", "#FFFAF8FF", "#FFCBC5D7", "#FF5A5069", "#FFC3A8FF", "#FF1A1324")]
     public void Theme_palettes_resolve_approved_semantics_compatibility_mappings_and_contrast(
         string fileName,
         string app,
@@ -210,8 +210,8 @@ public sealed class ThemeServiceTests
     }
 
     [Theory]
-    [InlineData("FgoLight.xaml", "#FFF7F6FB", "#FFFFFFFF", "#FF252137", "#FF6D687B", "#FF7050B8")]
-    [InlineData("ModernGray.xaml", "#FF16131D", "#FF282332", "#FFFAF8FF", "#FFCBC5D7", "#FFC3A8FF")]
+    [InlineData("FgoLight.xaml", "#FFF1F0F3", "#FFFFFFFF", "#FF252137", "#FF6D687B", "#FF7050B8")]
+    [InlineData("ModernGray.xaml", "#FF18191F", "#FF23242B", "#FFFAF8FF", "#FFCBC5D7", "#FFC3A8FF")]
     public void Ui_foundation_and_shell_brushes_follow_the_loaded_theme_dictionary(
         string fileName,
         string app,

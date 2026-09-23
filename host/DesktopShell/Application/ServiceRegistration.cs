@@ -309,7 +309,17 @@ public static class ServiceRegistration
             // Later page migrations keep using the same in-shell resolver contract.
             _ => new Border(),
         })
-        .AddSingleton<SettingsWindow>()
+        .AddSingleton<MemoryContextConnector>(provider => new MemoryContextConnector(
+            provider.GetRequiredService<AppRuntime>(),
+            provider.GetRequiredService<MemoryViewModel>(),
+            Dispatcher.CurrentDispatcher))
+        .AddSingleton<SettingsWindow>(provider =>
+        {
+            provider.GetRequiredService<MemoryContextConnector>();
+            return new SettingsWindow(
+                provider.GetRequiredService<SettingsViewModel>(),
+                provider.GetRequiredService<SettingsPageContentResolver>());
+        })
         // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
         .AddSingleton<ApprovedKnowledgeQuery>()
         .AddSingleton<PromptComposer>()

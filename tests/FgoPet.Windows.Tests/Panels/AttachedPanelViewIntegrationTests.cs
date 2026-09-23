@@ -189,7 +189,7 @@ public sealed class AttachedPanelViewIntegrationTests
 
     [Theory]
     [InlineData("FgoLight", "#FFFFFFFF", "#FF7050B8")]
-    [InlineData("ModernGray", "#FF282332", "#FFC3A8FF")]
+    [InlineData("ModernGray", "#FF23242B", "#FFC3A8FF")]
     public void Focus_cards_consume_the_theme_surface_and_action_resources(string theme, string content, string action)
     {
         StaRun(() =>

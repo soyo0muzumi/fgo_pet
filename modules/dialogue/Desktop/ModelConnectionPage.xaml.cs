@@ -17,6 +17,17 @@ public partial class ModelConnectionPage : UserControl
         _viewModel.ConnectionSaved += OnConnectionSaved;
         ApiKeyBox.PasswordChanged += (_, _) => _viewModel.SetApiKey(ApiKeyBox.Password);
         Loaded += OnLoaded;
+        SizeChanged += (_, _) => UpdateFieldLayout();
+    }
+
+    private void UpdateFieldLayout()
+    {
+        var compact = ActualWidth < 500;
+        Grid.SetRow(ModelField, compact ? 1 : 0);
+        Grid.SetColumn(ModelField, compact ? 0 : 1);
+        Grid.SetColumnSpan(ProviderField, compact ? 2 : 1);
+        Grid.SetColumnSpan(ModelField, compact ? 2 : 1);
+        ProviderField.Margin = new Thickness(0, 0, compact ? 0 : 16, 0);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await _viewModel.InitializeAsync();

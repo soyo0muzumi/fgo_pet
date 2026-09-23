@@ -15,7 +15,12 @@ public partial class SettingsWindow : Window
     private readonly SettingsViewModel _viewModel;
     private readonly SettingsPageContentResolver _resolvePageContent;
     private bool _refreshing;
-
+    private SettingsSection _lastCapability = SettingsSection.ModelConnection;
+    private readonly Dictionary<(SettingsSection Section, string? Package), double> _scrollOffsets = [];
+    private (SettingsSection Section, string? Package)? _currentPage;
+    internal event Action? ChatRequested;
+    internal event Action? TodoRequested;
+    internal event Action? FocusRequested;
 
     public SettingsWindow(
         SettingsViewModel viewModel,
@@ -32,10 +37,26 @@ public partial class SettingsWindow : Window
             new MouseButtonEventHandler(SettingsNavigation_PreviewMouseLeftButtonUp),
             true);
         SettingsNavigation.PreviewKeyDown += SettingsNavigation_PreviewKeyDown;
+        SettingsShell.CapabilityTabs.ItemsSource = Capabilities;
+        System.Windows.Automation.AutomationProperties.SetName(SettingsShell.CapabilityTabs, "能力页面");
+        SettingsShell.CapabilityTabs.SelectionChanged += (_, _) =>
+        {
+            if (!_refreshing && SettingsShell.CapabilityTabs.SelectedValue is SettingsSection section)
+                _viewModel.Select(section);
+        };
+        SettingsShell.ChatButton.Click += (_, _) => ChatRequested?.Invoke();
+        SettingsShell.TodoButton.Click += (_, _) => TodoRequested?.Invoke();
+        SettingsShell.FocusButton.Click += (_, _) => FocusRequested?.Invoke();
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         RefreshRoute();
         Closing += OnClosing;
         PreviewMouseWheel += OnSettingsMouseWheel;
+    }
+
+    internal void SetNavigationAvailability(bool dialogueAvailable, bool focusAvailable)
+    {
+        SettingsShell.ChatButton.IsEnabled = SettingsShell.TodoButton.IsEnabled = dialogueAvailable;
+        SettingsShell.FocusButton.IsEnabled = focusAvailable;
     }
 
     private void OnSettingsMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
@@ -66,8 +87,7 @@ public partial class SettingsWindow : Window
     internal TextBlock PageDescriptionText => SettingsShell.PageDescription;
     private void SettingsNavigation_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_refreshing && SettingsNavigation.SelectedValue is SettingsSection section &&
-            section != _viewModel.SelectedSection)
+        if (!_refreshing && SettingsNavigation.SelectedValue is SettingsSection section)
         {
             ActivateCategory(section);
         }
@@ -103,7 +123,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        _viewModel.Select(section);
+        _viewModel.Select(section == SettingsSection.ModelConnection ? _lastCapability : section);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -117,10 +137,15 @@ public partial class SettingsWindow : Window
     private static readonly SettingsNavigationItem[] Categories =
     [
         new(SettingsSection.Personalization, "外观与角色", "选择陪伴你的角色，调整桌宠的显示方式。", "Appearance"),
+        new(SettingsSection.ModelConnection, "能力", "连接聊天、语音和 Agent 服务。", "Model"),
+        new(SettingsSection.Privacy, "通用与数据", "管理个人偏好、记忆与本地数据。", "Data"),
+    ];
+
+    private static readonly SettingsNavigationItem[] Capabilities =
+    [
         new(SettingsSection.ModelConnection, "模型服务", "连接聊天服务，选择默认使用的模型。", "Model"),
         new(SettingsSection.Speech, "语音朗读", "选择角色的声音，调整朗读与播放偏好。", "Speech"),
         new(SettingsSection.AgentConnection, "Agent 连接", "连接你的 Agent，管理可访问的项目。", "Agent"),
-        new(SettingsSection.Privacy, "通用与数据", "管理个人偏好、记忆与本地数据。", "Data"),
     ];
 
     private void RefreshRoute()
@@ -129,12 +154,20 @@ public partial class SettingsWindow : Window
         {
             SettingsSection.RolePackages or SettingsSection.Theme => SettingsSection.Personalization,
             SettingsSection.UserProfile or SettingsSection.ConversationMemory => SettingsSection.Privacy,
+            SettingsSection.Speech or SettingsSection.AgentConnection => SettingsSection.ModelConnection,
             var section => section,
         };
-        var item = Categories.First(x => x.Section == category);
+        var isCapability = category == SettingsSection.ModelConnection;
+        if (isCapability) _lastCapability = _viewModel.SelectedSection;
+        var item = (isCapability ? Capabilities : Categories).First(x => x.Section == (isCapability ? _lastCapability : category));
         _refreshing = true;
-        try { SettingsNavigation.SelectedValue = category; }
+        try
+        {
+            SettingsNavigation.SelectedValue = category;
+            SettingsShell.CapabilityTabs.SelectedValue = _lastCapability;
+        }
         finally { _refreshing = false; }
+        SettingsShell.CapabilityBar.Visibility = isCapability ? Visibility.Visible : Visibility.Collapsed;
         PackageBreadcrumb.Visibility = Visibility.Collapsed;
         var route = category == SettingsSection.Personalization && _viewModel.PackageDetail is not null
             ? _viewModel.PackageDetail
@@ -144,8 +177,26 @@ public partial class SettingsWindow : Window
         PageDescriptionText.Text = isRolePackages ? "浏览、安装并切换已安装的角色包。" : item.Description;
         var contentSection = _viewModel.SelectedSection == SettingsSection.RolePackages || route is not null
             ? SettingsSection.RolePackages
-            : category;
-        SettingsContent.Content = _resolvePageContent(contentSection, route);
+            : isCapability ? _viewModel.SelectedSection : category;
+        var pageKey = (contentSection, route?.PackageId);
+        if (_currentPage != pageKey)
+        {
+            // Apply queued scrolling before recording the outgoing page. This also
+            // handles consecutive route changes within the same dispatcher turn.
+            SettingsShell.Scroller.UpdateLayout();
+            if (_currentPage is { } previous)
+                _scrollOffsets[previous] = SettingsShell.Scroller.VerticalOffset;
+            _currentPage = pageKey;
+            SettingsContent.Content = _resolvePageContent(contentSection, route);
+            var ownsScroll = SettingsContent.Content is ModelConnectionPage;
+            SettingsShell.Scroller.VerticalScrollBarVisibility = ownsScroll ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+            SettingsContent.VerticalContentAlignment = ownsScroll ? VerticalAlignment.Stretch : VerticalAlignment.Top;
+            SettingsShell.PageHeadingPanel.Visibility = ownsScroll ? Visibility.Collapsed : Visibility.Visible;
+            var offset = _scrollOffsets.GetValueOrDefault(pageKey);
+            SettingsShell.UpdateLayout();
+            SettingsShell.Scroller.ScrollToVerticalOffset(offset);
+            SettingsShell.Scroller.UpdateLayout();
+        }
         PackageBreadcrumb.Visibility = route is null ? Visibility.Collapsed : Visibility.Visible;
         PackageBreadcrumbText.Text = route is null ? string.Empty : $"角色包 / {route.DisplayName}";
     }

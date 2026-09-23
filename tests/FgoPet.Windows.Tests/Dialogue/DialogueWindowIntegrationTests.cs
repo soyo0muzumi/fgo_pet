@@ -1,4 +1,4 @@
-﻿using System.Runtime.ExceptionServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
 using FgoPet.App.Dialogue;
@@ -18,6 +18,96 @@ namespace FgoPet.Windows.Tests.Dialogue;
 [Trait("Category", "WindowsIntegration")]
 public sealed class DialogueWindowIntegrationTests
 {
+    [Theory]
+    [InlineData("FgoLight", 500, 540)]
+    [InlineData("ModernGray", 720, 640)]
+    public void History_delete_opens_a_readable_confirmation_without_switching_conversations(string theme, double width, double height)
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            vm.Conversation.ActiveServantId = "test";
+            vm.Conversation.InputText = "未发送的草稿";
+            vm.Conversation.Turns.Add(new ConversationTurnViewModel("visible", ChatMessageRole.User, "当前对话"));
+            var window = new DialogueWindow(vm) { Width = width, Height = height };
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
+            try
+            {
+                window.Show();
+                Assert.IsType<Button>(FindField(window, "HistoryButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                vm.Conversation.History.Add(new ConversationHistoryItem("internal-id", "周末出行安排", DateTimeOffset.UtcNow, "正常"));
+                window.UpdateLayout();
+                var history = Assert.IsType<ListBox>(FindField(window, "HistoryList"));
+                var delete = Assert.Single(FindVisualChildren<Button>(history).Where(button => button.Name == "HistoryDeleteButton"));
+                delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+
+                var confirmation = Assert.IsType<Border>(FindField(window, "HistoryDeleteConfirmation"));
+                Assert.True(confirmation.IsVisible);
+                Assert.Contains(FindVisualChildren<TextBlock>(confirmation), text => text.Text.Contains("周末出行安排", StringComparison.Ordinal));
+                Assert.Contains(FindVisualChildren<TextBlock>(confirmation), text => text.Text.Contains("已确认记忆会保留", StringComparison.Ordinal));
+                Assert.Equal("当前对话", Assert.Single(vm.Conversation.Turns).Text);
+                Assert.Equal("未发送的草稿", vm.Conversation.InputText);
+                Assert.Single(vm.Conversation.History);
+                foreach (var name in new[] { "CancelHistoryDeleteButton", "ConfirmHistoryDeleteButton" })
+                {
+                    var button = Assert.IsType<Button>(FindField(window, name));
+                    var bounds = button.TransformToAncestor(window).TransformBounds(new Rect(button.RenderSize));
+                    Assert.True(button.IsVisible && bounds.Height > 20 && bounds.Right <= window.ActualWidth && bounds.Bottom <= window.ActualHeight);
+                }
+                CaptureVisual(Assert.IsType<Grid>(window.Content), $"{theme}-{width}-history-confirmation");
+                Assert.IsType<Button>(FindField(window, "ConfirmHistoryDeleteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains("删除失败", vm.Conversation.HistoryStatus);
+                Assert.True(confirmation.IsVisible);
+                Assert.IsType<Button>(FindField(window, "CancelHistoryDeleteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.False(confirmation.IsVisible);
+                Assert.Single(vm.Conversation.History);
+                vm.Conversation.IsStreaming = true;
+                window.UpdateLayout();
+                Assert.False(delete.IsEnabled);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Persistent_navigation_keeps_focus_and_settings_available_with_messages_and_tasks()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            vm.Conversation.Turns.Add(new ConversationTurnViewModel("reply", ChatMessageRole.Assistant, "已有对话"));
+            vm.Conversation.InputText = "尚未发送";
+            var panel = new FgoPet.App.Panels.AttachedPanelViewModel(TimeProvider.System);
+            var window = new DialogueWindow(vm, panel: panel) { Width = 500, Height = 540 };
+            FgoPet.App.Settings.SettingsSection? requested = null;
+            vm.SettingsRequested += section => requested = section;
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var focus = Assert.IsType<Button>(FindField(window, "FocusNavigationButton"));
+                var settings = Assert.IsType<Button>(FindField(window, "SettingsButton"));
+                Assert.True(focus.IsVisible && focus.IsEnabled);
+                Assert.True(settings.IsVisible && settings.IsEnabled);
+                settings.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(FgoPet.App.Settings.SettingsSection.Personalization, requested);
+                Assert.Equal("尚未发送", vm.Conversation.InputText);
+
+                Assert.IsType<Button>(FindField(window, "TasksButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.True(focus.IsVisible);
+                var origin = focus.TransformToAncestor(window).Transform(new Point());
+                Assert.True(origin.X >= 0 && origin.Y >= 0 && origin.Y + focus.ActualHeight < window.ActualHeight);
+                focus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus, panel.State);
+                Assert.Equal("尚未发送", vm.Conversation.InputText);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
     [Fact]
     public void Chat_header_names_the_two_content_views_instead_of_a_more_menu()
     {
@@ -28,7 +118,7 @@ public sealed class DialogueWindowIntegrationTests
             {
                 // The grouped "more" menu was replaced by an explicit chat/todo switch.
                 Assert.Null(FindField(window, "MoreButton"));
-                Assert.Equal("新对话", Assert.IsType<Button>(FindField(window, "NewConversationButton")).Content);
+                Assert.Equal("新对话", System.Windows.Automation.AutomationProperties.GetName(Assert.IsType<Button>(FindField(window, "NewConversationButton"))));
                 Assert.Equal("聊天", Assert.IsType<Button>(FindField(window, "ChatTabButton")).Content);
                 Assert.Equal("待办", Assert.IsType<Button>(FindField(window, "TasksButton")).Content);
             }
@@ -458,6 +548,80 @@ public sealed class DialogueWindowIntegrationTests
 
     private static DialogueWindow CreateWindow() => new(CreateViewModel());
 
+    [Theory]
+    [InlineData("FgoLight", 720, 640)]
+    [InlineData("FgoLight", 500, 540)]
+    [InlineData("ModernGray", 720, 640)]
+    [InlineData("ModernGray", 500, 540)]
+    public void Chat_and_expanded_todo_keep_primary_actions_inside_the_window(string theme, double width, double height)
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel();
+            vm.Conversation.Turns.Add(new ConversationTurnViewModel("user", ChatMessageRole.User, "帮我把今天的制作任务拆成三步。"));
+            vm.Conversation.Turns.Add(new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant,
+                "可以，我们把「完成角色制作」拆成三步：\n\n1. 整理需要用到的素材\n2. 检查表情与动作\n3. 录制一段预览并复核\n\n按这个安排加入待办，可以吗？"));
+            var repository = new FeedbackTodoRepository();
+            repository.Save(new FgoPet.Core.Todo.TodoItem("visual-task", "完成角色制作", null,
+                FgoPet.Core.Todo.TodoPriority.Normal, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                steps: [new("step-1", "整理需要用到的素材", 0, true), new("step-2", "检查表情与动作", 1), new("step-3", "录制一段预览并复核", 2)]));
+            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
+            var window = new DialogueWindow(vm, todoService: service) { Width = width, Height = height };
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative) });
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
+            try
+            {
+                window.Show();
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                var surface = Assert.IsType<Grid>(window.Content);
+                foreach (var name in new[] { "HistoryButton", "NewConversationButton", "SettingsButton", "SendButton", "InputBox" })
+                    AssertInside(surface, Assert.IsAssignableFrom<FrameworkElement>(window.FindName(name)));
+                CaptureVisual(surface, $"{theme}-{width}-chat");
+
+                ((Button)window.FindName("TasksButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.UpdateLayout();
+                var workspace = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(((ContentControl)window.FindName("TasksPage")).Content);
+                var row = FindVisualChildren<Expander>((ItemsControl)workspace.FindName("ActiveItems")).Single();
+                row.IsExpanded = true;
+                window.UpdateLayout();
+                AssertInside(surface, (Button)workspace.FindName("AddTaskButton"));
+                foreach (var action in FindVisualChildren<Button>(row).Where(button => button.IsVisible))
+                {
+                    AssertInside(surface, action);
+                    var icon = FindVisualChildren<ContentPresenter>(action).First();
+                    var iconBounds = icon.TransformToAncestor(action).TransformBounds(new Rect(icon.RenderSize));
+                    var clip = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutClip(action);
+                    Assert.True(clip is null || clip.Bounds.Contains(iconBounds), $"Action icon was clipped: {action.Name}, icon={iconBounds}, clip={clip?.Bounds}");
+                }
+                Assert.Equal(3, FindVisualChildren<CheckBox>(row).Count());
+                CaptureVisual(surface, $"{theme}-{width}-todo");
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    private static void AssertInside(FrameworkElement root, FrameworkElement control)
+    {
+        var bounds = control.TransformToAncestor(root).TransformBounds(new Rect(control.RenderSize));
+        Assert.True(control.IsVisible && bounds.Width > 0 && bounds.Height > 0);
+        Assert.True(bounds.Left >= -1 && bounds.Top >= -1 && bounds.Right <= root.ActualWidth + 1 && bounds.Bottom <= root.ActualHeight + 1,
+            $"{control.Name}: {bounds} outside {root.RenderSize}");
+    }
+
+    private static void CaptureVisual(FrameworkElement surface, string name)
+    {
+        var directory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        System.IO.Directory.CreateDirectory(directory);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth), (int)Math.Ceiling(surface.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(surface);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = System.IO.File.Create(System.IO.Path.Combine(directory, name + ".png"));
+        encoder.Save(file);
+    }
+
     [Fact]
     public void Reasoning_toggle_keeps_a_caption_and_reveals_the_reasoning_text()
     {
@@ -627,7 +791,7 @@ public sealed class DialogueWindowIntegrationTests
     }
 
     [Fact]
-    public void The_header_keeps_one_fixed_role_chip_at_narrow_and_regular_widths()
+    public void The_header_keeps_the_full_role_preview_readable_at_narrow_and_regular_widths()
     {
         StaRun(() =>
         {
@@ -635,16 +799,18 @@ public sealed class DialogueWindowIntegrationTests
             try
             {
                 window.Show();
-                // The header no longer scales a large portrait; it shows a single 30 DIP chip.
                 Assert.Equal(500, window.MinWidth);
 
                 window.Width = 800;
                 window.UpdateLayout();
-                Assert.Equal(30, FindVisualChildren<Border>(window).First(border => border.Width == 30 && border.Height == 30).Width);
+                var avatar = Assert.IsType<Border>(window.FindName("RoleAvatar"));
+                Assert.InRange(avatar.ActualWidth, 48, 56);
+                Assert.Equal(Stretch.Uniform, Assert.IsType<Image>(window.FindName("RoleImage")).Stretch);
 
                 window.Width = 640;
                 window.UpdateLayout();
-                Assert.Equal(30, FindVisualChildren<Border>(window).First(border => border.Width == 30 && border.Height == 30).Width);
+                Assert.InRange(avatar.ActualWidth, 40, 48);
+                Assert.True(avatar.TransformToAncestor(window).Transform(new Point()).X > 0);
             }
             finally { window.Dispatcher.InvokeShutdown(); }
         });

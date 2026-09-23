@@ -98,8 +98,16 @@ public sealed partial class ConversationViewModel : ObservableObject
     private bool _isHistoryLoading;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPendingHistoryDeletion))]
+    private ConversationHistoryItem? _pendingHistoryDeletion;
+    private string? _historyDeletionServantId;
+    public bool HasPendingHistoryDeletion => PendingHistoryDeletion is not null;
+    public bool CanDeleteHistory => !IsStreaming && !string.IsNullOrWhiteSpace(ActiveServantId);
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSend))]
     [NotifyPropertyChangedFor(nameof(CanSendOrStop))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteHistory))]
     private string _activeServantId = string.Empty;
 
     [ObservableProperty]
@@ -112,6 +120,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanStop))]
     [NotifyPropertyChangedFor(nameof(CanSendOrStop))]
     [NotifyPropertyChangedFor(nameof(ActionLabel))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteHistory))]
     private bool _isStreaming;
 
     [ObservableProperty]
@@ -301,6 +310,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     public void SetActiveConversation(string conversationId)
     {
         if (string.IsNullOrWhiteSpace(ActiveServantId)) return;
+        CancelHistoryDeletion();
         try
         {
             SessionChanged?.Invoke();
@@ -470,6 +480,44 @@ public sealed partial class ConversationViewModel : ObservableObject
         await SendAsync();
     }
 
+    public void RequestHistoryDeletion(ConversationHistoryItem item)
+    {
+        if (!CanDeleteHistory || !History.Contains(item)) return;
+        _historyDeletionServantId = ActiveServantId;
+        PendingHistoryDeletion = item;
+        HistoryStatus = string.Empty;
+    }
+
+    public void CancelHistoryDeletion()
+    {
+        PendingHistoryDeletion = null;
+        _historyDeletionServantId = null;
+    }
+
+    public bool ConfirmHistoryDeletion()
+    {
+        if (PendingHistoryDeletion is not { } item || !CanDeleteHistory
+            || !string.Equals(_historyDeletionServantId, ActiveServantId, StringComparison.Ordinal)) return false;
+        try
+        {
+            if (!_orchestrator.TryDeleteConversation(item.ConversationId, ActiveServantId))
+            {
+                HistoryStatus = "暂时无法删除，请等待回复结束后刷新重试。";
+                return false;
+            }
+        }
+        catch (Exception)
+        {
+            HistoryStatus = "对话删除失败，请重试。";
+            return false;
+        }
+        CancelHistoryDeletion();
+        if (_activeConversationId == item.ConversationId) ResetConversationView();
+        LoadHistory();
+        HistoryStatus = "对话已删除。" + HistoryStatus;
+        return true;
+    }
+
     private void NewConversation()
     {
         if (string.IsNullOrWhiteSpace(ActiveServantId))
@@ -477,8 +525,14 @@ public sealed partial class ConversationViewModel : ObservableObject
             return;
         }
 
-        SessionChanged?.Invoke();
         _orchestrator.StartNewConversation(ActiveServantId);
+        ResetConversationView();
+    }
+
+    private void ResetConversationView()
+    {
+        CancelHistoryDeletion();
+        SessionChanged?.Invoke();
         Turns.Clear();
         StopThinkingTimer();
         _pendingReasoning.Clear();
@@ -486,6 +540,13 @@ public sealed partial class ConversationViewModel : ObservableObject
         ArchiveDrafts.Clear();
         SessionContext.Clear();
         _activeConversationId = string.Empty;
+        _lastUserMessage = null;
+        PendingTodoDraftId = null;
+        PendingTodoDraftVersion = null;
+        RequestStatusText = string.Empty;
+        LastHttpStatusCode = null;
+        SetTodoNotice(string.Empty, TodoNoticeKind.None);
+        RetryTodoCommand.NotifyCanExecuteChanged();
         ErrorText = string.Empty;
         _configurationRequired = false;
         OnPropertyChanged(nameof(IsConversationEmpty));
@@ -784,6 +845,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     partial void OnActiveServantIdChanged(string value)
     {
+        CancelHistoryDeletion();
         SendCommand.NotifyCanExecuteChanged();
         SendOrStopCommand.NotifyCanExecuteChanged();
         RetryTodoCommand.NotifyCanExecuteChanged();

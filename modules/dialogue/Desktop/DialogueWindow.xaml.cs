@@ -19,6 +19,7 @@ public partial class DialogueWindow : Window
     private bool _composing;
     private bool _following = true;
     private Button? _drawerOrigin;
+    private Button? _historyDeleteOrigin;
     internal ContextMenu? LastMoreMenu { get; private set; }
     public event Action? Hidden;
 
@@ -36,6 +37,8 @@ public partial class DialogueWindow : Window
         DataContext = viewModel;
         FocusShortcutButton.IsEnabled = panel is not null;
         FocusShortcutButton.ToolTip = panel is null ? "专注入口当前不可用" : "打开现有专注设置";
+        FocusNavigationButton.IsEnabled = panel is not null;
+        FocusNavigationButton.ToolTip = FocusShortcutButton.ToolTip;
         SizeChanged += (_, _) => UpdateResponsiveLayout();
         Loaded += async (_, _) => await viewModel.EnsureRoleInfoAsync();
         if (todoService is not null)
@@ -84,7 +87,7 @@ public partial class DialogueWindow : Window
                 viewModel.NotifyActivated();
                 if (_showingTasks) _workspace?.EnterView();
             }
-            else { viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
+            else { CloseDrawers(); viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
         };
         Activated += (_, _) => viewModel.NotifyActivated();
         Deactivated += (_, _) => viewModel.NotifyDeactivated();
@@ -124,7 +127,11 @@ public partial class DialogueWindow : Window
         WelcomeSecondaryCopy.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
         WelcomeShortcuts.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
         HeaderSubtitle.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
-        ChatBody.Margin = constrained ? new Thickness(14, 12, 14, 12) : new Thickness(22, 16, 22, 14);
+        NavigationColumn.Width = new GridLength(constrained ? 56 : 64);
+        HeaderRow.Height = new GridLength(constrained ? 76 : 90);
+        RoleAvatar.Width = RoleAvatar.Height = constrained ? 44 : 54;
+        IdentityHeader.Margin = constrained ? new Thickness(16, 10, 12, 10) : new Thickness(24, 12, 24, 12);
+        ChatBody.Margin = constrained ? new Thickness(16, 12, 16, 14) : new Thickness(24, 16, 24, 18);
     }
     private void ShowTasks(bool tasks)
     {
@@ -134,8 +141,8 @@ public partial class DialogueWindow : Window
         ChatBody.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
         TasksPage.Visibility = tasks ? Visibility.Visible : Visibility.Collapsed;
         NewConversationButton.Visibility = HistoryButton.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
-        ChatTabButton.FontWeight = tasks ? FontWeights.Normal : FontWeights.Bold;
-        TasksButton.FontWeight = tasks ? FontWeights.Bold : FontWeights.Normal;
+        ChatTabButton.SetResourceReference(StyleProperty, tasks ? "ShellRailButton" : "ShellRailSelectedButton");
+        TasksButton.SetResourceReference(StyleProperty, tasks ? "ShellRailSelectedButton" : "ShellRailButton");
         Title = tasks ? "FGO Pet · 待办" : "FGO Pet · 聊天";
         if (tasks)
         {
@@ -147,6 +154,7 @@ public partial class DialogueWindow : Window
     {
         if (tasks) { ShowTasks(true); return; }
         ShowTasks(false);
+        _viewModel.Conversation.LoadHistory();
         _drawerOrigin = HistoryButton;
         HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Visible;
         ChatBody.IsHitTestVisible = false;
@@ -155,6 +163,8 @@ public partial class DialogueWindow : Window
     }
     private void CloseDrawers()
     {
+        _viewModel.Conversation.CancelHistoryDeletion();
+        _historyDeleteOrigin = null;
         HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Collapsed;
         ChatBody.IsHitTestVisible = true;
         KeyboardNavigation.SetTabNavigation(ChatBody, KeyboardNavigationMode.Continue);
@@ -171,6 +181,8 @@ public partial class DialogueWindow : Window
         Hide();
     }
     private void OnChatClick(object sender, RoutedEventArgs e) => ShowTasks(false);
+    private void OnSettingsClick(object sender, RoutedEventArgs e) => _viewModel.NavigateToSettings(SettingsSection.Personalization);
+    private void OnAvatarFailed(object sender, ExceptionRoutedEventArgs e) => RoleImage.SetCurrentValue(Image.SourceProperty, null);
     private void OnCloseClick(object sender, RoutedEventArgs e) { CloseDrawers(); _drawerOrigin?.Focus(); }
     private void OnHideClick(object sender, RoutedEventArgs e) => Hide();
     private void OnNewClick(object sender, RoutedEventArgs e)
@@ -183,14 +195,49 @@ public partial class DialogueWindow : Window
         MessageScroller.ScrollToEnd();
         InputBox.Focus();
     }
-    private void OnHistorySelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnHistoryOpenClick(object sender, RoutedEventArgs e)
     {
-        if (HistoryList.SelectedItem is not ConversationHistoryItem item) return;
+        if (sender is Button { Tag: ConversationHistoryItem item }) OpenHistoryConversation(item);
+    }
+    private void OnHistoryKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && e.OriginalSource is ListBoxItem && HistoryList.SelectedItem is ConversationHistoryItem item)
+        { OpenHistoryConversation(item); e.Handled = true; }
+    }
+    private void OpenHistoryConversation(ConversationHistoryItem item)
+    {
         _viewModel.StopSpeech();
         _following = true;
         _viewModel.Conversation.SetActiveConversation(item.ConversationId);
         Dispatcher.BeginInvoke(new Action(() => MessageScroller.ScrollToEnd()));
         CloseDrawers();
+    }
+    private void OnHistoryDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ConversationHistoryItem item } button) return;
+        _viewModel.Conversation.RequestHistoryDeletion(item);
+        if (!_viewModel.Conversation.HasPendingHistoryDeletion) return;
+        _historyDeleteOrigin = button;
+        UpdateLayout();
+        CancelHistoryDeleteButton.Focus();
+    }
+    private void OnCancelHistoryDeleteClick(object sender, RoutedEventArgs e) => CancelHistoryDeletion();
+    private void CancelHistoryDeletion()
+    {
+        _viewModel.Conversation.CancelHistoryDeletion();
+        _historyDeleteOrigin?.Focus();
+        _historyDeleteOrigin = null;
+    }
+    private void OnConfirmHistoryDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.Conversation.ConfirmHistoryDeletion()) return;
+        _historyDeleteOrigin = null;
+        HistoryList.Focus();
+    }
+    private void OnHistoryRefreshClick(object sender, RoutedEventArgs e)
+    {
+        CancelHistoryDeletion();
+        _viewModel.Conversation.LoadHistory();
     }
     private void OnJumpClick(object sender, RoutedEventArgs e)
     {
@@ -244,7 +291,11 @@ public partial class DialogueWindow : Window
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && Backdrop.Visibility == Visibility.Visible)
-        { CloseDrawers(); e.Handled = true; return; }
+        {
+            if (_viewModel.Conversation.HasPendingHistoryDeletion) CancelHistoryDeletion();
+            else CloseDrawers();
+            e.Handled = true; return;
+        }
         if (e.Key != Key.Enter || !InputBox.IsKeyboardFocusWithin || _composing || e.IsRepeat ||
             Keyboard.Modifiers != ModifierKeys.None) return;
         var command = _viewModel.Composer.SendOrStopCommand;

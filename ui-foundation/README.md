@@ -41,19 +41,20 @@
 
 1. `AppTheme` 与 `ThemeService` 的**双向耦合**已按 §6.8 收口：两者同住本层，不再跨层互指。
 2. `Ui/Shell/*` 三个文件从 `src/FgoPet.App` 迁入本层。其 `pack://` URI 由 csproj 的 `Link` 固定为原 App 相对路径（`Ui/Shell/...`），故消费方 XAML 无需改动。
+3. `ChatButton` 模板使用消费方的 `BorderThickness`，键盘焦点由独立轮廓显示；无边框按钮仍有焦点提示。`ChatButtonTemplateTests` 验证实际浅/深主题资源、边框更新和键盘焦点。
 
 ## Migration status
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-⚠️ **但程序集尚未拆分**：这些文件目前仍由 `src/FgoPet.{Core,Infrastructure,App}` 三个旧 csproj 通过 `<Compile Include>` / `<Page Include>` + `<Link>` 跨目录回链编译。**物理位置已是目标架构，程序集边界仍是 v1。**
+`src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj` 已编译 ThemeSettings 与 ThemeService。共享主题及 Shell XAML 仍由 App 链接编译，AppTheme 保留 Core 兼容落点；物理目录不直接决定资源程序集。
 
 - 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
-- 收口动作：按模块拆分 csproj（**需单独授权**）
+- 后续收口应保留既有资源 URI 兼容，不能重复创建已有工程。
 
 ## Migration debt
 
-- csproj 拆分未做（见上）
+- 主题资源及兼容类型尚未全部迁出 legacy 工程。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

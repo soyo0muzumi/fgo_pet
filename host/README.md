@@ -8,6 +8,7 @@
 - DesktopShell：`AttachedPanelState` / `AttachedPanelStateMachine`（纯 UI 容器状态机，Q10）
 - DataManagement：私有备份/恢复、导出、清理的**具名应用流程**
 - Settings：拥有唯一 schema-v2 codec 与进程内读-改-写协调器，实现各所有者发布的设置端口
+- 设置外壳只保存导航分组、最近的能力子页和各页面的滚动位置；页面草稿仍由原有模块 ViewModel 持有。侧栏通过 DesktopAppUi 返回现有聊天、待办或专注界面。
 
 ## Non-responsibilities
 
@@ -40,6 +41,8 @@ DataManagement 是**最高危路径**：备份/恢复/清理必须过维护门�
 
 Windows / EndToEnd 的 shell 与生命周期测试；备份/恢复/导出/清理各需独立的往返验证；装配变更需 release 构建。
 
+`MemoryContextIntegrationTests` 验证数据管理页随活动角色更新，以及后台通知经 UI Dispatcher 投影、宿主释放后不再更新。当前 `MemoryContextConnector` 与 ServiceRegistration 一起由 App 组合入口编译；它不保存另一份活动角色，也不增加模块工程之间的引用。
+
 ## 要点 / 易错处
 
 1. **Host 也适用模块的 8 目录骨架**（`Domain/` 承载 UI 容器状态机）。设计 §7 只说「每个模块内部采用相同的职责布局」，没有禁止 Host 有 `Domain/`。
@@ -49,14 +52,14 @@ Windows / EndToEnd 的 shell 与生命周期测试；备份/恢复/导出/清理
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-⚠️ **但程序集尚未拆分**：这些文件目前仍由 `src/FgoPet.{Core,Infrastructure,App}` 三个旧 csproj 通过 `<Compile Include>` / `<Page Include>` + `<Link>` 跨目录回链编译。**物理位置已是目标架构，程序集边界仍是 v1。**
+DesktopShell、HostContracts、DataManagement、SettingsHost 已有独立工程。App 的启动与服务组合仍由 `FgoPet.App` 编译；部分兼容契约和基础设施仍来自 legacy 工程。不得据此宣称所有目标架构约束已经完成。
 
 - 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
-- 收口动作：按模块拆分 csproj（**需单独授权**）
+- 后续收口以实际契约和依赖方向为准，不重复创建已有工程。
 
 ## Migration debt
 
-- csproj 拆分未做（见上）
+- legacy 引用和组合入口仍需逐项按目标边界收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

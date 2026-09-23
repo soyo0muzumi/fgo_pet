@@ -4,11 +4,11 @@
     <sys:String x:Key="FgoPet.ThemeDictionary">FgoLight</sys:String>
 
     <!-- Theme facts: compatibility resources below resolve from this semantic palette. -->
-    <Color x:Key="Semantic.AppColor">#FFF7F6FB</Color>
+    <Color x:Key="Semantic.AppColor">#FFF1F0F3</Color>
     <Color x:Key="Semantic.ContentColor">#FFFFFFFF</Color>
-    <Color x:Key="Semantic.SubtleColor">#FFEEE8FA</Color>
-    <Color x:Key="Semantic.HoverColor">#FFE5DCF4</Color>
-    <Color x:Key="Semantic.PressedColor">#FFD9CCEE</Color>
+    <Color x:Key="Semantic.SubtleColor">#FFF6F5F8</Color>
+    <Color x:Key="Semantic.HoverColor">#FFEDE9F2</Color>
+    <Color x:Key="Semantic.PressedColor">#FFE3DDEB</Color>
     <Color x:Key="Semantic.PrimaryTextColor">#FF252137</Color>
     <Color x:Key="Semantic.SecondaryTextColor">#FF6D687B</Color>
     <Color x:Key="Semantic.TertiaryTextColor">#FF817A8F</Color>
@@ -17,22 +17,22 @@
     <Color x:Key="Semantic.ActionHoverColor">#FF8062C3</Color>
     <Color x:Key="Semantic.ActionPressedColor">#FF60429F</Color>
     <Color x:Key="Semantic.ActionSoftColor">#337050B8</Color>
-    <Color x:Key="Semantic.BorderDecorativeColor">#FFD8D1E2</Color>
+    <Color x:Key="Semantic.BorderDecorativeColor">#FFDCD9E2</Color>
     <Color x:Key="Semantic.BorderControlColor">#FF827A70</Color>
     <Color x:Key="Semantic.FocusColor">#FF5B3F9A</Color>
     <Color x:Key="Semantic.RelationColor">#FFA58B57</Color>
     <Color x:Key="Semantic.OverlayColor">#660D0A14</Color>
 
-    <Color x:Key="WindowBackgroundColor">#FFF7F6FB</Color>
+    <Color x:Key="WindowBackgroundColor">#FFF1F0F3</Color>
     <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
-    <Color x:Key="SurfaceRaisedColor">#FFEEE8FA</Color>
-    <Color x:Key="SurfaceHoverColor">#FFE5DCF4</Color>
-    <Color x:Key="SurfacePressedColor">#FFD9CCEE</Color>
+    <Color x:Key="SurfaceRaisedColor">#FFF6F5F8</Color>
+    <Color x:Key="SurfaceHoverColor">#FFEDE9F2</Color>
+    <Color x:Key="SurfacePressedColor">#FFE3DDEB</Color>
     <Color x:Key="SidebarColor">#FFFFFFFF</Color>
     <Color x:Key="SidebarForegroundColor">#FF6D687B</Color>
-    <Color x:Key="SidebarSelectedColor">#FFEEE8FA</Color>
+    <Color x:Key="SidebarSelectedColor">#FFF6F5F8</Color>
     <Color x:Key="SidebarSelectedTextColor">#FF252137</Color>
-    <Color x:Key="SidebarHoverColor">#FFE5DCF4</Color>
+    <Color x:Key="SidebarHoverColor">#FFEDE9F2</Color>
     <Color x:Key="TextColor">#FF252137</Color>
     <Color x:Key="MutedTextColor">#FF6D687B</Color>
     <Color x:Key="SubtleTextColor">#FF817A8F</Color>
@@ -41,7 +41,7 @@
     <Color x:Key="AccentHoverColor">#FF8062C3</Color>
     <Color x:Key="AccentPressedColor">#FF60429F</Color>
     <Color x:Key="AccentSoftColor">#337050B8</Color>
-    <Color x:Key="BorderColor">#FFD8D1E2</Color>
+    <Color x:Key="BorderColor">#FFDCD9E2</Color>
     <Color x:Key="BorderStrongColor">#FF827A70</Color>
     <Color x:Key="DividerColor">#33D8D1E2</Color>
     <Color x:Key="FocusColor">#FF5B3F9A</Color>
@@ -58,8 +58,8 @@
     <Color x:Key="DisabledTextColor">#FF9AA7B4</Color>
     <Color x:Key="DisabledBorderColor">#FFD6DEE7</Color>
     <Color x:Key="OverlayColor">#660D0A14</Color>
-    <Color x:Key="ShellWindowColor">#FFF7F6FB</Color>
-    <Color x:Key="ShellPanelColor">#FFEEE8FA</Color>
+    <Color x:Key="ShellWindowColor">#FFF1F0F3</Color>
+    <Color x:Key="ShellPanelColor">#FFF6F5F8</Color>
     <Color x:Key="ShellRaisedColor">#FFFFFFFF</Color>
     <Color x:Key="ShellTextColor">#FF252137</Color>
     <Color x:Key="ShellMutedColor">#FF6D687B</Color>

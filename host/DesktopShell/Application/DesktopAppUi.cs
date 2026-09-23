@@ -78,6 +78,10 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             dialoguePlacement)
     {
         _settingsWindow = settingsWindow;
+        _settingsWindow.SetNavigationAvailability(_dialogue is not null && _dialogueWindow is not null, _attachedPanel is not null);
+        _settingsWindow.ChatRequested += OnSettingsChatRequested;
+        _settingsWindow.TodoRequested += OnSettingsTodoRequested;
+        _settingsWindow.FocusRequested += OnSettingsFocusRequested;
     }
     public DesktopAppUi(
         TrayService tray,
@@ -237,6 +241,12 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void Dispose()
     {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.ChatRequested -= OnSettingsChatRequested;
+            _settingsWindow.TodoRequested -= OnSettingsTodoRequested;
+            _settingsWindow.FocusRequested -= OnSettingsFocusRequested;
+        }
         _tray.ShowHideRequested -= OnTrayShowHideRequested;
         _tray.RestoreRequested -= OnTrayRestoreRequested;
         _controller.StateChanged -= OnPortraitStateChanged;
@@ -252,6 +262,26 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     }
 
     private void OnDialogueSettingsRequested(SettingsSection section) => ShowSettings(section);
+
+    private void OnSettingsChatRequested() => ReturnFromSettings(MainNavigationTarget.Companion);
+
+    private void OnSettingsTodoRequested() => ReturnFromSettings(MainNavigationTarget.Schedule);
+
+    private void ReturnFromSettings(MainNavigationTarget target)
+    {
+        if (_dialogue is null || _dialogueWindow is null) return;
+        _dialogue.NavigateTo(target);
+        _settingsWindow?.Hide();
+        ShowDialogueWindow();
+    }
+
+    private void OnSettingsFocusRequested()
+    {
+        if (_attachedPanel is null) return;
+        if (_attachedPanel.State == FgoPet.Core.Panels.AttachedPanelState.Collapsed) _attachedPanel.PortraitClick();
+        if (_attachedPanel.State != FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus) _attachedPanel.FocusClick();
+        _settingsWindow?.Hide();
+    }
 
     private void OnAttachedPanelSettingsRequested(SettingsSection section) => ShowSettings(section);
 

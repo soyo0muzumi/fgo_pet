@@ -1,4 +1,4 @@
-﻿using System.Runtime.ExceptionServices;
+using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -33,6 +33,72 @@ namespace FgoPet.Windows.Tests.Settings;
 public sealed class SettingsWindowIntegrationTests
 {
     [Fact]
+    public void Settings_pages_restore_their_own_scroll_offset_without_leaking_it_to_new_pages()
+    {
+        StaRun(() =>
+        {
+            var vm = new SettingsViewModel(SettingsSection.Privacy);
+            var pages = new Dictionary<SettingsSection, Border>();
+            var window = new SettingsWindow(vm, (section, _) =>
+            {
+                if (!pages.TryGetValue(section, out var page)) pages[section] = page = new Border { Height = 1600 };
+                return page;
+            });
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var scroll = Descendants<ScrollViewer>(window).Single(item => ReferenceEquals(item.Content, window.SettingsContent));
+                scroll.ScrollToVerticalOffset(160);
+                window.UpdateLayout();
+                Assert.Equal(160, scroll.VerticalOffset);
+                vm.Select(SettingsSection.ModelConnection);
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                Assert.Equal(0, scroll.VerticalOffset);
+                scroll.ScrollToVerticalOffset(270);
+                window.UpdateLayout();
+                vm.Select(SettingsSection.Privacy);
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                Assert.Equal(160, scroll.VerticalOffset);
+                vm.Select(SettingsSection.ModelConnection);
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                Assert.Equal(270, scroll.VerticalOffset);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Capability_group_preserves_the_last_subpage_and_legacy_speech_routes()
+    {
+        StaRun(() =>
+        {
+            var vm = new SettingsViewModel(SettingsSection.Speech);
+            var window = new SettingsWindow(vm, (section, _) => new TextBox { Text = section.ToString() });
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                Assert.Equal(SettingsSection.ModelConnection, window.SettingsNavigation.SelectedValue);
+                var tabs = Descendants<ListBox>(window).Single(item =>
+                    System.Windows.Automation.AutomationProperties.GetName(item) == "能力页面");
+                Assert.Equal(SettingsSection.Speech, tabs.SelectedValue);
+                Assert.Equal("Speech", Assert.IsType<TextBox>(window.SettingsContent.Content).Text);
+                tabs.SelectedValue = SettingsSection.AgentConnection;
+                Assert.Equal(SettingsSection.AgentConnection, vm.SelectedSection);
+                window.SettingsNavigation.SelectedValue = SettingsSection.Privacy;
+                window.SettingsNavigation.SelectedValue = SettingsSection.ModelConnection;
+                Assert.Equal(SettingsSection.AgentConnection, vm.SelectedSection);
+                Assert.Equal("AgentConnection", Assert.IsType<TextBox>(window.SettingsContent.Content).Text);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
     public void Window_hosts_navigation_and_cached_page_content_in_one_shell()
     {
         StaRun(() =>
@@ -56,8 +122,8 @@ public sealed class SettingsWindowIntegrationTests
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 Assert.NotNull(window.SettingsNavigation);
                 Assert.NotNull(window.SettingsContent);
-                // Five user-goal categories; Theme and UserProfile resolve into them.
-                Assert.Equal(5, window.SettingsNavigation.Items.Count);
+                // Three groups keep the original module routes, including the capability subpages.
+                Assert.Equal(3, window.SettingsNavigation.Items.Count);
 
                 var privacyContent = Assert.IsType<TextBox>(window.SettingsContent.Content);
                 Assert.Equal(SettingsSection.Privacy.ToString(), privacyContent.Text);
@@ -76,6 +142,73 @@ public sealed class SettingsWindowIntegrationTests
                 window.Close();
             }
         });
+    }
+
+    [Theory]
+    [InlineData("FgoLight", 820, 640)]
+    [InlineData("FgoLight", 680, 520)]
+    [InlineData("ModernGray", 820, 640)]
+    [InlineData("ModernGray", 680, 520)]
+    public void Model_form_keeps_test_and_save_visible_while_fields_scroll(string theme, double width, double height)
+    {
+        StaRun(() =>
+        {
+            var catalog = new FgoPet.Infrastructure.Providers.ProviderCatalog();
+            var credentials = new LayoutCredentials();
+            using var client = new System.Net.Http.HttpClient();
+            var connection = new ModelConnectionViewModel(new DialogueSettingsStore(DialogueSettings.Defaults), credentials,
+                catalog, new FgoPet.App.Providers.ChatProviderFactory(catalog, credentials, client));
+            var page = new ModelConnectionPage(connection);
+            var navigation = new SettingsViewModel(SettingsSection.ModelConnection);
+            var window = new SettingsWindow(navigation, (_, _) => page) { Width = width, Height = height };
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative) });
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
+            try
+            {
+                window.Show();
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                var surface = Assert.IsType<SettingsShellView>(window.Content);
+                var scroller = Assert.IsType<ScrollViewer>(page.FindName("ConnectionScroller"));
+                Assert.True(scroller.ViewportHeight > 100 && scroller.ViewportHeight < surface.ActualHeight);
+                foreach (var name in new[] { "TestConnectionButton", "SaveButton", "OfflineButton" })
+                {
+                    var action = Assert.IsType<Button>(page.FindName(name));
+                    var bounds = action.TransformToAncestor(surface).TransformBounds(new Rect(action.RenderSize));
+                    Assert.True(action.IsVisible && bounds.Height > 20);
+                    Assert.True(bounds.Left >= 0 && bounds.Right <= surface.ActualWidth && bounds.Bottom <= surface.ActualHeight);
+                    Assert.Same(action.Command, name switch { "TestConnectionButton" => connection.TestCommand, "SaveButton" => connection.SaveCommand, _ => null });
+                }
+                var input = Assert.IsType<TextBox>(page.FindName("BaseUrlBox"));
+                input.Text = "https://example.invalid/v1";
+                Assert.Equal("https://example.invalid/v1", connection.BaseUrl);
+                scroller.ScrollToEnd();
+                window.UpdateLayout();
+                Assert.True(scroller.VerticalOffset > 0);
+                scroller.ScrollToHome();
+                window.UpdateLayout();
+                var output = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
+                if (!string.IsNullOrWhiteSpace(output))
+                {
+                    System.IO.Directory.CreateDirectory(output);
+                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth), (int)Math.Ceiling(surface.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(surface);
+                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using var file = System.IO.File.Create(System.IO.Path.Combine(output, $"{theme}-{width}-model.png"));
+                    encoder.Save(file);
+                }
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    private sealed class LayoutCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader
+    {
+        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task DeleteAsync(string target, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     }
 
     [Fact]
@@ -97,6 +230,17 @@ public sealed class SettingsWindowIntegrationTests
                 var contentScroll = Descendants<ScrollViewer>(window)
                     .Single(scroller => ReferenceEquals(scroller.Content, window.SettingsContent));
                 contentScroll.ScrollToVerticalOffset(180);
+                window.UpdateLayout();
+                Assert.Equal(180, contentScroll.VerticalOffset);
+
+                // BackToAppearance emits two route changes in one dispatcher turn.
+                // Its intermediate package-list route must not overwrite that list's saved offset.
+                viewModel.OpenPackageCommand.Execute(new PackageDetailRoute("official.mash", "Mash Kyrielight"));
+                StaRunner.Pump(window.Dispatcher);
+                window.UpdateLayout();
+                viewModel.BackToAppearanceCommand.Execute(null);
+                viewModel.Select(SettingsSection.RolePackages);
+                StaRunner.Pump(window.Dispatcher);
                 window.UpdateLayout();
                 Assert.Equal(180, contentScroll.VerticalOffset);
 
@@ -913,7 +1057,7 @@ public sealed class SettingsWindowIntegrationTests
     }
 
     [Fact]
-    public void Settings_shell_matches_the_html_first_geometry()
+    public void Settings_shell_keeps_navigation_and_content_within_the_minimum_window()
     {
         StaRun(() =>
         {
@@ -923,14 +1067,15 @@ public sealed class SettingsWindowIntegrationTests
             {
                 Assert.Equal("FGO Pet · 设置", window.Title);
                 var shell = Assert.IsType<SettingsShellView>(window.FindName("SettingsShell"));
-                // The header height lives on the shell's fixed 86 DIP row, not on the border.
-                shell.Measure(new Size(960, 720));
-                shell.Arrange(new Rect(0, 0, 960, 720));
+                shell.Measure(new Size(680, 480));
+                shell.Arrange(new Rect(0, 0, 680, 480));
                 shell.UpdateLayout();
-                Assert.Equal(86d, shell.Header.ActualHeight);
+                Assert.InRange(shell.Header.ActualHeight, 80, 140);
                 Assert.Equal("设置", shell.HeaderText.Text);
-                Assert.Equal(new GridLength(184), shell.NavigationColumn.Width);
-                Assert.Equal(new Thickness(28, 28, 28, 20), shell.Body.Margin);
+                Assert.InRange(shell.NavigationColumn.ActualWidth, 48, 64);
+                Assert.True(shell.Body.ActualWidth > 400);
+                var bodyCorner = shell.Body.TranslatePoint(new Point(shell.Body.ActualWidth, shell.Body.ActualHeight), shell);
+                Assert.True(bodyCorner.X <= 680 && bodyCorner.Y <= 480);
                 // The window is built without the application resource dictionaries, so the
                 // shell controls are supplied here before asserting on their styles.
                 shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
@@ -967,8 +1112,8 @@ public sealed class SettingsWindowIntegrationTests
         });
     }
     [Theory]
-    [InlineData("ModernGray", "#FF16131D")]
-    [InlineData("FgoLight", "#FFF7F6FB")]
+    [InlineData("ModernGray", "#FF23242B")]
+    [InlineData("FgoLight", "#FFFFFFFF")]
     public void Settings_shell_uses_the_approved_html_palette(string theme, string expectedBackground)
     {
         StaRun(() =>

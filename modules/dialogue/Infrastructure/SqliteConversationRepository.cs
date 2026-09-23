@@ -300,14 +300,23 @@ public sealed class SqliteConversationRepository
         return conversations;
     }
 
-    public void DeleteConversation(string conversationId, string servantId)
+    public void DeleteConversation(string conversationId, string servantId, string? activeStateKey = null)
     {
         using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "DELETE FROM conversations WHERE conversation_id=$id AND servant_id=$servant";
         command.Parameters.AddWithValue("$id", conversationId);
         command.Parameters.AddWithValue("$servant", servantId);
-        command.ExecuteNonQuery();
+        var deleted = command.ExecuteNonQuery();
+        if (deleted > 0 && activeStateKey is not null)
+        {
+            command.CommandText = "DELETE FROM runtime_state WHERE state_key=$state AND state_value=$id";
+            command.Parameters.AddWithValue("$state", activeStateKey);
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     public string? ReadState(string key)

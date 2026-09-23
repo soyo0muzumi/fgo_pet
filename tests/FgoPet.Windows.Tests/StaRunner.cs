@@ -23,8 +23,8 @@ namespace FgoPet.Windows.Tests;
 /// 测试里没有它，延续直接掉到线程池上，再去读 DependencyObject 就抛
 /// <c>InvalidOperationException</c>；因为是 <c>async void</c>，异常无人接管，把 testhost 整个崩掉。
 ///
-/// 本类型把「挂死」强制退化为「失败」：后台线程 + Join 带超时 + 异步关停 + 泵送带超时，
-/// 并补上生产环境本来就有的同步上下文。
+/// 本类型用后台线程、带超时的 Join 和消息泵把挂死判为失败，并安装同步上下文。
+/// 关停请求必须在 STA 线程上泵送完成，不能投递 BeginInvokeShutdown 后直接结束线程。
 /// </summary>
 internal static class StaRunner
 {
@@ -59,7 +59,8 @@ internal static class StaRunner
             }
             finally
             {
-                ShutdownDispatcher();
+                try { ShutdownDispatcher(); }
+                catch (Exception error) { failure ??= error; }
             }
         })
         {
@@ -98,6 +99,7 @@ internal static class StaRunner
 
         var thread = new Thread(() =>
         {
+            Exception? failure = null;
             try
             {
                 InstallDispatcherSynchronizationContext();
@@ -113,16 +115,21 @@ internal static class StaRunner
                 }
 
                 work.GetAwaiter().GetResult();
-                completion.TrySetResult(null);
             }
             catch (Exception error)
             {
-                completion.TrySetException(error);
+                failure = error;
             }
             finally
             {
-                ShutdownDispatcher();
+                try { ShutdownDispatcher(); }
+                catch (Exception error) { failure ??= error; }
             }
+
+            // Shutdown belongs to the test. Publishing success before it finishes
+            // would prevent the outer timeout from reporting a hung cleanup.
+            if (failure is not null) completion.TrySetException(failure);
+            else completion.TrySetResult(null);
         })
         {
             IsBackground = true,
@@ -278,20 +285,20 @@ internal static class StaRunner
     }
 
     /// <summary>
-    /// 收尾：异步关停本线程的 Dispatcher。
+    /// 在所属线程上请求关停并泵送到完成；外层 Join 仍负责超时判定。
     /// </summary>
     private static void ShutdownDispatcher()
     {
         var dispatcher = Dispatcher.FromThread(Thread.CurrentThread);
-        if (dispatcher is null || dispatcher.HasShutdownStarted)
+        if (dispatcher is null || dispatcher.HasShutdownFinished)
         {
             return;
         }
 
-        // 必须异步关停。InvokeShutdown() 是**同步**的：它会等 dispatcher 真正收摊，
-        // 而测试线程此刻没有在泵消息（也泵不了 —— 打开过 Popup/ContextMenu 的线程尤其如此），
-        // 于是永久阻塞在关停里 —— 这才是「Windows.Tests 挂死」的真正根因，
-        // 与 ApplicationIdle 无关。BeginInvokeShutdown 只投递关停、立即返回，线程随即结束。
-        dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+        // Posting alone leaves WPF's native HWND callbacks attached to a dead
+        // managed thread. Run the dispatcher so shutdown can release them before
+        // the STA exits; Send priority avoids idle starvation from open popups.
+        if (!dispatcher.HasShutdownStarted) dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+        Dispatcher.Run();
     }
 }

@@ -773,6 +773,26 @@ public sealed class ConversationOrchestrator
     public IReadOnlyList<ChatMessage> ListConversationMessages(string conversationId, string servantId) =>
         _conversations.LoadMessages(conversationId, servantId);
 
+    public bool TryDeleteConversation(string conversationId, string servantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(conversationId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
+        lock (_gate)
+        {
+            // A cancelled request can still be unwinding and persisting its final
+            // state. Wait until it releases the request slot before deleting.
+            if (_activeCancellation is not null) return false;
+            if (!_conversations.ListConversations(servantId).Any(item => item.ConversationId == conversationId)) return false;
+            var stateKey = ActiveConversationStateKey(servantId);
+            _conversations.DeleteConversation(conversationId, servantId, stateKey);
+            if (_conversationIds.GetValueOrDefault(servantId) == conversationId)
+                _conversationIds.Remove(servantId);
+            _todoDrafts?.Cancel(conversationId, servantId);
+            _logger?.LogDebug("Conversation history deletion completed");
+            return true;
+        }
+    }
+
     public IReadOnlyList<ChatMessage> LoadConversation(string conversationId, string servantId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(conversationId);

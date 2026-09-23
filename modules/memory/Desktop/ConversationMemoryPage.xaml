@@ -61,7 +61,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <StackPanel x:Name="CandidatesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="暂无待审核记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/><TextBlock Text="候选记忆会在这里等待确认。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=CandidatesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
+                    <StackPanel x:Name="CandidatesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Margin="12"><TextBlock Text="{Binding CandidatesStatusText}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=CandidatesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
                     </Grid>
                 </DockPanel>
             </Border>
@@ -100,7 +100,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <StackPanel x:Name="StoredMemoriesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="暂无已确认记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold"/><TextBlock Text="确认后的从者记忆会显示在这里。" Style="{StaticResource SettingsStatusStyle}" Margin="0,4,0,0"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=StoredMemoriesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
+                    <StackPanel x:Name="StoredMemoriesEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Margin="12"><TextBlock Text="{Binding StoredMemoriesStatusText}" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap"/><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ElementName=StoredMemoriesList, Path=HasItems}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style></StackPanel>
                     </Grid>
                 </DockPanel>
             </Border>

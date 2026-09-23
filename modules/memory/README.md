@@ -37,6 +37,8 @@
 
 Core / App / Infrastructure / Windows 的 memory 相关测试；dialogue↔memory 契约测试；边界变更需 release 构建。
 
+记忆管理呈现的回归入口：`MemoryViewModelTests` 与 `MemoryContextIntegrationTests`。覆盖角色范围、刷新代次、失败/重试及宿主订阅释放；查询失败不能显示为“没有数据”。会话列表、继续与单条删除由 dialogue 的历史入口管理，memory 不再查询或缓存会话列表。
+
 ## 要点 / 易错处
 
 1. 改动本模块的 README 时注意：v1 README 曾把 `conversation summaries` 列进 Responsibilities，**那是越界声明，已删除**。
@@ -45,14 +47,14 @@ Core / App / Infrastructure / Windows 的 memory 相关测试；dialogue↔memor
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-⚠️ **但程序集尚未拆分**：这些文件目前仍由 `src/FgoPet.{Core,Infrastructure,App}` 三个旧 csproj 通过 `<Compile Include>` / `<Page Include>` + `<Link>` 跨目录回链编译。**物理位置已是目标架构，程序集边界仍是 v1。**
+`src/FgoPet.Memory/FgoPet.Memory.csproj` 已独立编译本模块的应用和桌面呈现等条目。部分契约、仓储与兼容依赖仍经 legacy Core / Infrastructure 提供；这不代表目标依赖方向已全部收口。
 
 - 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
-- 收口动作：按模块拆分 csproj（**需单独授权**）
+- 后续收口以实际契约和依赖方向为准，不重复创建已有工程。
 
 ## Migration debt
 
-- csproj 拆分未做（见上）
+- legacy 引用及批量数据管理呈现的历史耦合仍需按所有权逐项收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

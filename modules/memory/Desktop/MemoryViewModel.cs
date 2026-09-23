@@ -1,35 +1,41 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Privacy;
-using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
-using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Memory.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Memory;
 
-public sealed partial class MemoryViewModel : ObservableObject
+public sealed partial class MemoryViewModel : ObservableObject, IDisposable
 {
     private readonly MemoryCandidateService _memories;
     private readonly IUserDataExporter? _export;
     private readonly IUserDataDeleter? _deletion;
     private readonly IMemorySettingsStore? _settings;
-    private readonly SqliteConversationRepository? _conversations;
+    private readonly ILogger<MemoryViewModel>? _logger;
+    private readonly Func<string, CancellationToken, Task<(IReadOnlyList<MemoryCandidate> Candidates, IReadOnlyList<StoredMemory> Memories)>> _loadMemories;
+    private CancellationTokenSource? _refreshCancellation;
+    private long _refreshGeneration;
+    private bool _disposed;
 
     public MemoryViewModel(
         MemoryCandidateService memories,
         IUserDataExporter? export = null,
         IUserDataDeleter? deletion = null,
         IMemorySettingsStore? settings = null,
-        SqliteConversationRepository? conversations = null)
+        ILogger<MemoryViewModel>? logger = null)
     {
         _memories = memories ?? throw new ArgumentNullException(nameof(memories));
         _export = export;
         _deletion = deletion;
         _settings = settings;
-        _conversations = conversations;
+        _logger = logger;
+        _loadMemories = async (servantId, token) => (
+            await memories.ListCandidatesAsync(servantId, token),
+            await memories.ListAllAsync(servantId, token));
         _memoryEnabled = settings?.Load().Enabled ?? true;
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         ApproveCandidateCommand = new AsyncRelayCommand(() => ReviewCandidateAsync(MemoryReviewAction.Approve));
@@ -40,12 +46,20 @@ public sealed partial class MemoryViewModel : ObservableObject
         EditMemoryCommand = new AsyncRelayCommand(() => ReviewMemoryAsync(MemoryReviewAction.Edit));
         ExportCommand = new AsyncRelayCommand(ExportAsync);
         DeleteAllCommand = new AsyncRelayCommand(DeleteAllAsync);
-        DeleteConversationCommand = new AsyncRelayCommand(DeleteConversationAsync);
+    }
+
+    // Internal read seam keeps delayed/failing queries testable without changing
+    // module contracts, persistence, or the public construction path.
+    internal MemoryViewModel(
+        MemoryCandidateService memories,
+        Func<string, CancellationToken, Task<(IReadOnlyList<MemoryCandidate> Candidates, IReadOnlyList<StoredMemory> Memories)>> loadMemories)
+        : this(memories)
+    {
+        _loadMemories = loadMemories;
     }
 
     public ObservableCollection<MemoryCandidate> Candidates { get; } = new();
     public ObservableCollection<StoredMemory> StoredMemories { get; } = new();
-    public ObservableCollection<Conversation> Conversations { get; } = new();
 
     [ObservableProperty]
     private string _activeServantId = string.Empty;
@@ -57,9 +71,6 @@ public sealed partial class MemoryViewModel : ObservableObject
     private StoredMemory? _selectedMemory;
 
     [ObservableProperty]
-    private Conversation? _selectedConversation;
-
-    [ObservableProperty]
     private string _candidateEditText = string.Empty;
 
     [ObservableProperty]
@@ -69,7 +80,16 @@ public sealed partial class MemoryViewModel : ObservableObject
     private string _exportPath = "fgo-pet-export.zip";
 
     [ObservableProperty]
-    private string _statusText = "选择从者后管理记忆。";
+    private string _statusText = "请先选择角色。";
+
+    [ObservableProperty]
+    private string _candidatesStatusText = "请先选择角色。";
+
+    [ObservableProperty]
+    private string _storedMemoriesStatusText = "请先选择角色。";
+
+    [ObservableProperty]
+    private bool _isLoading;
 
     [ObservableProperty]
     private bool _memoryEnabled;
@@ -83,7 +103,6 @@ public sealed partial class MemoryViewModel : ObservableObject
     public IAsyncRelayCommand EditMemoryCommand { get; }
     public IAsyncRelayCommand ExportCommand { get; }
     public IAsyncRelayCommand DeleteAllCommand { get; }
-    public IAsyncRelayCommand DeleteConversationCommand { get; }
 
     partial void OnMemoryEnabledChanged(bool value)
     {
@@ -95,39 +114,95 @@ public sealed partial class MemoryViewModel : ObservableObject
 
     public void SetActiveServant(string? servantId)
     {
-        ActiveServantId = servantId?.Trim() ?? string.Empty;
-        _ = RefreshAsync();
+        if (_disposed) return;
+        var normalized = servantId?.Trim() ?? string.Empty;
+        if (string.Equals(ActiveServantId, normalized, StringComparison.Ordinal)) return;
+        ActiveServantId = normalized;
+        RefreshCommand.Execute(null);
+    }
+
+    partial void OnActiveServantIdChanged(string value)
+    {
+        _refreshGeneration++;
+        _refreshCancellation?.Cancel();
+        ClearListsAndSelection();
+        IsLoading = false;
+        StatusText = CandidatesStatusText = StoredMemoriesStatusText =
+            string.IsNullOrWhiteSpace(value) ? "请先选择角色。" : "等待刷新。";
     }
 
     public async Task RefreshAsync()
     {
-        Candidates.Clear();
-        StoredMemories.Clear();
-        Conversations.Clear();
-        if (string.IsNullOrWhiteSpace(ActiveServantId))
+        if (_disposed) return;
+        var generation = ++_refreshGeneration;
+        _logger?.LogDebug("Memory list refresh {Generation} started", generation);
+        _refreshCancellation?.Cancel();
+        var servantId = ActiveServantId;
+        ClearListsAndSelection();
+        if (string.IsNullOrWhiteSpace(servantId))
         {
+            IsLoading = false;
+            StatusText = CandidatesStatusText = StoredMemoriesStatusText = "请先选择角色。";
+            _logger?.LogDebug("Memory list refresh {Generation} skipped: {Code}", generation, "no_active_role");
             return;
         }
 
-        foreach (var candidate in await _memories.ListCandidatesAsync(ActiveServantId, CancellationToken.None))
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        IsLoading = true;
+        StatusText = "正在加载当前角色的数据…";
+        CandidatesStatusText = StoredMemoriesStatusText = "正在加载记忆…";
+        try
         {
-            Candidates.Add(candidate);
+            await LoadMemoriesAsync();
+            if (!IsCurrent()) return;
+            IsLoading = false;
+            StatusText = $"{CandidatesStatusText} · {StoredMemoriesStatusText}";
+        }
+        finally
+        {
+            _logger?.LogDebug("Memory list refresh {Generation} finished; current: {Current}", generation, IsCurrent());
+            if (ReferenceEquals(_refreshCancellation, cancellation)) _refreshCancellation = null;
         }
 
-        foreach (var memory in await _memories.ListAllAsync(ActiveServantId, CancellationToken.None))
-        {
-            StoredMemories.Add(memory);
-        }
+        bool IsCurrent() => generation == _refreshGeneration && !cancellation.IsCancellationRequested
+            && string.Equals(servantId, ActiveServantId, StringComparison.Ordinal);
 
-        if (_conversations is not null)
+        async Task LoadMemoriesAsync()
         {
-            foreach (var conversation in _conversations.ListConversations(ActiveServantId))
+            try
             {
-                Conversations.Add(conversation);
+                var snapshot = await _loadMemories(servantId, cancellation.Token);
+                if (!IsCurrent()) return;
+                foreach (var candidate in snapshot.Candidates) Candidates.Add(candidate);
+                foreach (var memory in snapshot.Memories) StoredMemories.Add(memory);
+                CandidatesStatusText = Candidates.Count == 0 ? "当前角色暂无待审核候选。" : $"候选 {Candidates.Count} 条";
+                StoredMemoriesStatusText = StoredMemories.Count == 0 ? "当前角色暂无已确认记忆。" : $"已确认记忆 {StoredMemories.Count} 条";
+            }
+            catch (OperationCanceledException) when (!IsCurrent()) { }
+            catch (Exception)
+            {
+                _logger?.LogWarning("Memory list refresh {Generation}: {Code}", generation, "memory_load_failed");
+                if (IsCurrent()) CandidatesStatusText = StoredMemoriesStatusText = "记忆加载失败，请刷新重试。";
             }
         }
+    }
 
-        StatusText = $"会话 {Conversations.Count} 个 · 候选 {Candidates.Count} 条 · 已确认记忆 {StoredMemories.Count} 条";
+    private void ClearListsAndSelection()
+    {
+        SelectedCandidate = null;
+        SelectedMemory = null;
+        Candidates.Clear();
+        StoredMemories.Clear();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _refreshGeneration++;
+        _refreshCancellation?.Cancel();
+        IsLoading = false;
     }
 
     private async Task ReviewCandidateAsync(MemoryReviewAction action)
@@ -169,16 +244,6 @@ public sealed partial class MemoryViewModel : ObservableObject
         await _deletion.DeleteAllAsync(CancellationToken.None);
         await RefreshAsync();
         StatusText = "已删除全部用户数据（不含 Phase 2 专注/羁绊历史）。";
-    }
-
-    private async Task DeleteConversationAsync()
-    {
-        if (_deletion is null || SelectedConversation is null) return;
-        await _deletion.DeleteConversationAsync(
-            SelectedConversation.ConversationId,
-            ActiveServantId,
-            CancellationToken.None);
-        await RefreshAsync();
     }
 
     partial void OnSelectedCandidateChanged(MemoryCandidate? value) =>

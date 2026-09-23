@@ -576,6 +576,145 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Equal("auto", provider.LastRequest.ToolChoice);
     }
 
+    [Fact]
+    public async Task History_deletion_requires_confirmation_and_invalidates_it_when_the_role_changes()
+    {
+        var orchestrator = CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]));
+        var result = await orchestrator.SendAsync("800100", "周末安排", CancellationToken.None);
+        var model = new ConversationViewModel(orchestrator, new FakeSettings());
+        model.SetActiveServant("800100");
+        var item = Assert.Single(model.History);
+        Assert.Equal("周末安排", item.Title);
+        Assert.Equal(item.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), item.UpdatedText);
+
+        Assert.False(model.ConfirmHistoryDeletion());
+        model.RequestHistoryDeletion(item);
+        Assert.Equal(item, model.PendingHistoryDeletion);
+        Assert.Single(CreateConversationRepository().ListConversations("800100"));
+        model.CancelHistoryDeletion();
+        Assert.False(model.ConfirmHistoryDeletion());
+        model.RequestHistoryDeletion(item);
+        model.SetActiveServant("other-role");
+        Assert.Null(model.PendingHistoryDeletion);
+        Assert.False(model.ConfirmHistoryDeletion());
+        Assert.False(orchestrator.TryDeleteConversation(result.ConversationId, "other-role"));
+        Assert.Single(CreateConversationRepository().ListConversations("800100"));
+    }
+
+    [Fact]
+    public async Task Deleting_another_history_entry_preserves_the_open_conversation_and_draft()
+    {
+        var orchestrator = CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]));
+        var older = await orchestrator.SendAsync("800100", "旧对话", CancellationToken.None);
+        orchestrator.StartNewConversation("800100");
+        var current = await orchestrator.SendAsync("800100", "当前对话", CancellationToken.None);
+        var model = new ConversationViewModel(orchestrator, new FakeSettings());
+        model.SetActiveServant("800100");
+        model.SetActiveConversation(current.ConversationId);
+        model.InputText = "尚未发送";
+        var changed = 0;
+        model.SessionChanged += () => changed++;
+
+        model.RequestHistoryDeletion(model.History.Single(item => item.ConversationId == older.ConversationId));
+        Assert.True(model.ConfirmHistoryDeletion());
+
+        Assert.Equal(current.ConversationId, model.CurrentConversationId);
+        Assert.Equal("尚未发送", model.InputText);
+        Assert.Equal(2, model.Turns.Count);
+        Assert.Equal(0, changed);
+        Assert.Equal(current.ConversationId, Assert.Single(model.History).ConversationId);
+        Assert.Equal(current.ConversationId, CreateConversationRepository().ReadState("LastActiveConversationId:800100"));
+    }
+
+    [Fact]
+    public async Task Deleting_the_open_conversation_clears_its_session_and_preserves_approved_memory()
+    {
+        var orchestrator = CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]));
+        var model = new ConversationViewModel(orchestrator, new FakeSettings());
+        model.SetActiveServant("800100");
+        model.InputText = "旧对话";
+        await model.SendCommand.ExecuteAsync(null);
+        var deletedId = model.CurrentConversationId;
+        var memories = CreateMemoryRepository();
+        memories.AddCandidate(new MemoryCandidate("approved", "800100", deletedId, "保留的记忆", DateTimeOffset.UtcNow));
+        memories.ReviewCandidate("approved", "800100", MemoryReviewAction.Approve, null, DateTimeOffset.UtcNow);
+        memories.AddCandidate(new MemoryCandidate("pending", "800100", deletedId, "待审核的记忆", DateTimeOffset.UtcNow));
+        model.PendingTodoDraftId = "draft-old";
+        model.PendingTodoDraftVersion = 2;
+        model.InputText = "保留未发送草稿";
+        var changed = 0;
+        model.SessionChanged += () => changed++;
+
+        model.RequestHistoryDeletion(Assert.Single(model.History));
+        Assert.True(model.ConfirmHistoryDeletion());
+
+        Assert.Empty(model.Turns);
+        Assert.Empty(model.History);
+        Assert.Empty(model.CurrentConversationId);
+        Assert.Null(model.PendingTodoDraftId);
+        Assert.Null(model.PendingTodoDraftVersion);
+        Assert.False(model.RetryTodoCommand.CanExecute(null));
+        Assert.Equal(1, changed);
+        Assert.Equal("保留未发送草稿", model.InputText);
+        Assert.Null(CreateConversationRepository().ReadState("LastActiveConversationId:800100"));
+        Assert.Empty(memories.ListCandidates("800100"));
+        Assert.Single(memories.ListEnabledMemories("800100"));
+
+        await model.SendCommand.ExecuteAsync(null);
+        Assert.NotEqual(deletedId, model.CurrentConversationId);
+        Assert.Equal(2, model.Turns.Count);
+        Assert.Equal(model.CurrentConversationId, Assert.Single(CreateConversationRepository().ListConversations("800100")).ConversationId);
+    }
+
+    [Fact]
+    public async Task History_deletion_is_rejected_until_a_running_request_finishes()
+    {
+        var provider = new BlockingProvider();
+        var orchestrator = CreateOrchestrator(provider);
+        var request = orchestrator.SendAsync("800100", "开始", CancellationToken.None);
+        await provider.Started.Task;
+        var conversation = Assert.Single(CreateConversationRepository().ListConversations("800100"));
+        try
+        {
+            Assert.False(orchestrator.TryDeleteConversation(conversation.ConversationId, "800100"));
+            Assert.Single(CreateConversationRepository().ListConversations("800100"));
+        }
+        finally { orchestrator.CancelCurrent(); await request; }
+        Assert.True(orchestrator.TryDeleteConversation(conversation.ConversationId, "800100"));
+        Assert.Empty(CreateConversationRepository().ListConversations("800100"));
+    }
+
+    [Theory]
+    [InlineData("conversations")]
+    [InlineData("runtime_state")]
+    public async Task A_failed_history_deletion_preserves_the_session_and_shows_a_safe_retry_message(string table)
+    {
+        var orchestrator = CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]));
+        var result = await orchestrator.SendAsync("800100", "保留对话", CancellationToken.None);
+        var model = new ConversationViewModel(orchestrator, new FakeSettings());
+        model.SetActiveServant("800100");
+        model.SetActiveConversation(result.ConversationId);
+        using var connection = new RuntimeDatabase(_databasePath).Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE TRIGGER reject_test_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT, 'synthetic private storage detail'); END;";
+        command.ExecuteNonQuery();
+
+        model.RequestHistoryDeletion(Assert.Single(model.History));
+        Assert.False(model.ConfirmHistoryDeletion());
+
+        Assert.Equal(result.ConversationId, model.CurrentConversationId);
+        Assert.Equal(2, model.Turns.Count);
+        Assert.Single(model.History);
+        Assert.Single(CreateConversationRepository().ListConversations("800100"));
+        Assert.Equal(result.ConversationId, CreateConversationRepository().ReadState("LastActiveConversationId:800100"));
+        Assert.NotNull(model.PendingHistoryDeletion);
+        Assert.Contains("删除失败", model.HistoryStatus);
+        Assert.DoesNotContain("synthetic", model.HistoryStatus);
+        command.CommandText = "DROP TRIGGER reject_test_delete";
+        command.ExecuteNonQuery();
+        Assert.True(model.ConfirmHistoryDeletion());
+    }
+
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

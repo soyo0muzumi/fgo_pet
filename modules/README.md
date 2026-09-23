@@ -81,20 +81,20 @@ Tests/                 核心、存储、UI 和边界测试
 8. 不把 B 的派生字段搬进 A 的领域模型
 9. 不新增裸丢弃任务或 `async void` 内部处理器
 
-## Migration status（2026-09-20 第 ④ 步后）
+## Migration status
 
-**源码已全部物理迁移**到上表的模块树（254 个文件：Core 72 / Infrastructure 47 / App 127 + 30 XAML）。
+源码已按模块树落位，`dialogue`、`memory`、`character`、`focus`、`work` 的 Todo / Execution / Archives 已有独立生产工程，并由 App 引用。文件归属应以当前 `.csproj` 的实际编译条目为准。
 
-⚠️ **但程序集尚未拆分**：`src/FgoPet.{Core,Infrastructure,App}` 三个旧 csproj 仍在，通过 `<Compile Include>` / `<Page Include>` + `<Link>` 跨目录回链编译这些文件。
-**物理位置已是目标架构，程序集边界仍是 v1** —— 这是用户选择"一次搬完"的已知过渡态，收口动作是按模块拆 csproj（**需单独授权**）。
+`src/FgoPet.{Core,Infrastructure,App}` 仍保留兼容职责和部分链接编译。App 承担应用组合入口，并以原 Link 编译部分共享 XAML，以保持 pack URI 兼容。独立工程已经存在，不应再次按“尚未拆项目”实施迁移；现有 legacy 引用和目标模块依赖规则仍需分别核对。
 
 | 根 | 状态 |
 |---|---|
 | `modules/speech` | ✅ **已完全迁移**（v0.3）：6 个项目由自己的 csproj 编译，无回链 |
 | `modules/agent-integration` | ✅ 4 个生产 + 4 个测试项目已迁移；Q4 决策路径与命名空间不改 |
-| `dialogue` `memory` `work` `focus` `character` | 🔵 文件已落位，csproj 待拆 |
-| `host` `platform` `ui-foundation` | 🔵 同上 |
-| `integration-tests` | 🔵 同上 |
+| `dialogue` `memory` `work` `focus` `character` | 已有独立生产工程；部分契约和基础实现仍经 legacy 工程编译 |
+| `host` | DesktopShell、HostContracts、DataManagement、SettingsHost 已有工程；应用组合入口仍由 App 编译 |
+| `platform` `ui-foundation` | UiFoundation 已有工程；部分平台源码和共享 XAML 仍链接编译 |
+| 集成测试 | 验证入口仍以 solution 中的 `tests/*` 和模块测试工程为准 |
 
 > ⚠️ 设计 §9 末句：「**不得只凭目录移动、项目编译或单元测试通过宣布全部模块独立。**」
 

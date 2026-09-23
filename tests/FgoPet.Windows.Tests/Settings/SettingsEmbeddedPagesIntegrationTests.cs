@@ -96,15 +96,15 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
     }
 
     [Fact]
-    public void Privacy_page_hosts_export_conversation_deletion_and_all_data_controls()
+    public void Privacy_page_keeps_bulk_data_controls_without_a_duplicate_history_list()
     {
         StaRun(() =>
         {
             var viewModel = new MemoryViewModel(new FakeMemoryHolder().Service);
             var page = new PrivacyPage(viewModel);
 
-            Assert.NotNull(page.ConversationsList);
-            Assert.NotNull(page.ConversationsEmptyState);
+            Assert.Null(page.FindName("ConversationsList"));
+            Assert.Null(page.FindName("ConversationsEmptyState"));
             Assert.NotNull(page.ExportPathBox);
             Assert.NotNull(page.ExportButton);
             Assert.NotNull(page.CreatePrivateBackupButton);
@@ -112,7 +112,7 @@ public sealed class SettingsEmbeddedPagesIntegrationTests
             Assert.NotNull(page.PrivateBackupStatusText);
             Assert.Equal("创建私有备份", System.Windows.Automation.AutomationProperties.GetName(page.CreatePrivateBackupButton));
             Assert.Equal("恢复私有备份", System.Windows.Automation.AutomationProperties.GetName(page.RestorePrivateBackupButton));
-            Assert.NotNull(page.DeleteConversationButton);
+            Assert.Null(page.FindName("DeleteConversationButton"));
             Assert.NotNull(page.DeleteAllButton);
             Assert.Equal("数据与隐私", PrivacyPage.SectionTitle);
         });

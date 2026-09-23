@@ -8,13 +8,24 @@
                 <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsControls.xaml" />
                 <ResourceDictionary Source="/FgoPet.App;component/Themes/SettingsIcons.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="ConnectionSection" TargetType="Border">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Margin" Value="0,0,0,24"/>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
-    <StackPanel>
-        <Border Style="{StaticResource SettingsCardStyle}">
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ScrollViewer x:Name="ConnectionScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,10,0">
             <StackPanel>
-                <TextBlock Text="服务连接" Style="{StaticResource SettingsPageHeaderStyle}" />
-                <TextBlock Margin="0,12,0,0" Text="模型供应商" Style="{StaticResource SettingsCaptionStyle}" />
+                <Border Style="{StaticResource ConnectionSection}">
+                    <StackPanel>
+                        <TextBlock Text="聊天模型" FontSize="18" Style="{StaticResource SettingsPageHeaderStyle}"/>
+                        <TextBlock Text="连接你习惯使用的模型服务。" Style="{StaticResource SettingsStatusStyle}" Margin="0,6,0,12"/>
+                        <Grid x:Name="ConnectionFields">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <StackPanel x:Name="ProviderField" Margin="0,0,16,0"><TextBlock Margin="0,12,0,0" Text="模型供应商" Style="{StaticResource SettingsCaptionStyle}" />
                 <ComboBox x:Name="ProviderComboBox"
                           Style="{StaticResource SettingsComboBoxStyle}"
                           ItemsSource="{Binding Providers}"
@@ -26,35 +37,8 @@
                             <TextBlock Text="{Binding DisplayName}" />
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <TextBlock Margin="0,14,0,0" Text="API Key" Style="{StaticResource SettingsCaptionStyle}" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <PasswordBox x:Name="ApiKeyBox"
-                                 Style="{StaticResource SettingsPasswordBoxStyle}"
-                                 ToolTip="密钥只保存到 Windows Credential Manager，不会写入设置文件。"
-                                 automation:AutomationProperties.Name="API Key" />
-                    <Button Grid.Column="1" Margin="8,0,0,0"
-                            x:Name="ClearKeyButton"
-                            Style="{StaticResource SettingsSecondaryButtonStyle}"
-                            Content="清除已保存密钥"
-                            Command="{Binding ClearKeyCommand}" />
-                </Grid>
-                <TextBlock Margin="0,5,0,0" Style="{StaticResource SettingsStatusStyle}"
-                           Text="{Binding KeyStateText}" />
-
-                <TextBlock Margin="0,14,0,0" Text="Base URL" Style="{StaticResource SettingsCaptionStyle}" />
-                <TextBox x:Name="BaseUrlBox"
-                         Style="{StaticResource SettingsTextBoxStyle}"
-                         Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                         automation:AutomationProperties.Name="Base URL" />
-
-                <TextBlock Margin="0,20,0,0" Text="模型" Style="{StaticResource SettingsPageHeaderStyle}" />
-                <TextBlock Margin="0,8,0,0" Text="默认模型 ID" Style="{StaticResource SettingsCaptionStyle}" />
+                </ComboBox></StackPanel>
+                            <StackPanel x:Name="ModelField" Grid.Column="1"><TextBlock Margin="0,12,0,0" Text="默认模型 ID" Style="{StaticResource SettingsCaptionStyle}" />
                 <Grid>
                     <TextBox x:Name="ModelTextBox"
                              Style="{StaticResource SettingsTextBoxStyle}"
@@ -83,8 +67,8 @@
 
                 <Popup x:Name="ModelPickerPopup"
                        PlacementTarget="{Binding ElementName=ModelPickerToggle}"
-                       Placement="Right"
-                       HorizontalOffset="8"
+                       Placement="Bottom"
+                       VerticalOffset="6"
                        AllowsTransparency="True"
                        StaysOpen="False"
                        IsOpen="{Binding IsModelPickerOpen, Mode=TwoWay}"
@@ -122,12 +106,34 @@
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
-                    </Border>
-                </Popup>
-            </StackPanel>
-        </Border>
-
-        <Border Style="{StaticResource SettingsCardStyle}">
+                    </Border></Popup></StackPanel>
+                        </Grid>
+                        <TextBlock Margin="0,14,0,0" Text="Base URL" Style="{StaticResource SettingsCaptionStyle}" />
+                <TextBox x:Name="BaseUrlBox"
+                         Style="{StaticResource SettingsTextBoxStyle}"
+                         Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                         automation:AutomationProperties.Name="Base URL" />
+                        <TextBlock Margin="0,14,0,0" Text="API Key" Style="{StaticResource SettingsCaptionStyle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <PasswordBox x:Name="ApiKeyBox"
+                                 Style="{StaticResource SettingsPasswordBoxStyle}"
+                                 ToolTip="密钥只保存到 Windows Credential Manager，不会写入设置文件。"
+                                 automation:AutomationProperties.Name="API Key" />
+                    <Button Grid.Column="1" Margin="8,0,0,0"
+                            x:Name="ClearKeyButton"
+                            Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Content="清除已保存密钥"
+                            Command="{Binding ClearKeyCommand}" />
+                </Grid>
+                <TextBlock Margin="0,5,0,0" Style="{StaticResource SettingsStatusStyle}"
+                           Text="{Binding KeyStateText}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource ConnectionSection}">
             <StackPanel>
                 <TextBlock Text="回复显示" Style="{StaticResource SettingsPageHeaderStyle}" />
                 <CheckBox x:Name="ShowReasoningCheck"
@@ -138,8 +144,10 @@
                            Text="对话窗口在生成回复时展示模型的思考流。关闭后仅显示生成状态；不影响对话内容本身。" />
             </StackPanel>
         </Border>
-
-        <Border Style="{StaticResource SettingsCardStyle}">
+                <TextBlock Text="未连接模型时，桌宠与本地专注仍可离线使用。" Style="{StaticResource SettingsStatusStyle}" Margin="0,0,0,16"/>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,1,0,0" Padding="0,14,0,0">
             <StackPanel>
                 <WrapPanel>
                     <Button x:Name="TestConnectionButton"
@@ -160,8 +168,8 @@
                 <TextBlock Margin="0,12,0,0" Text="{Binding StatusText}" Style="{StaticResource SettingsStatusStyle}" />
                 <TextBlock Margin="0,4,0,0" Text="{Binding ErrorText}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
                 <TextBlock Margin="0,10,0,0" Style="{StaticResource SettingsStatusStyle}"
-                           Text="提示：没有模型连接时，桌宠与本地专注功能仍可离线运行。" />
+                           Text="测试连接不会保存修改。" />
             </StackPanel>
         </Border>
-    </StackPanel>
+    </Grid>
 </UserControl>

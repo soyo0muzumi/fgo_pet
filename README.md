@@ -40,22 +40,23 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 ## Everyday use
 
 - Select the pet controls to open chat and common actions.
-- The chat window provides dialogue, history, Todo, focus, and current Agent-task entry points.
-- The settings window manages models, Agent access, speech, roles and appearances, personalization, themes, and data/privacy.
+- The workspace sidebar provides chat, Todo, focus, and settings; chat history and new conversations are available in the chat header.
+- History shows conversation titles and local times. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
+- Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. Returning to a page restores its own scroll position.
 - The system tray can show the pet, open settings, or exit the application.
 - `Esc` closes the current overlay or returns one level; primary controls expose keyboard focus and visible state feedback.
 
 ### AI model
 
-Under **Settings → AI Model and Connection**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
+Under **Settings → Capabilities → Model Services**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
 
 ### Agent
 
-Under **Settings → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
+Under **Settings → Capabilities → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 
 ### Speech
 
-Under **Settings → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
+Under **Settings → Capabilities → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
 
 ## Security and privacy boundaries
 

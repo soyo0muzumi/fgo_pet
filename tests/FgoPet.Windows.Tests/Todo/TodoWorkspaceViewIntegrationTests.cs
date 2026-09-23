@@ -1,4 +1,4 @@
-﻿using System.Runtime.ExceptionServices;
+using System.Runtime.ExceptionServices;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -1360,7 +1360,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
     }
 
     [Fact]
-    public void Parent_actions_are_at_details_top_and_empty_description_is_collapsed()
+    public void Parent_actions_follow_the_steps_and_empty_description_is_collapsed()
     {
         StaRun(() =>
         {
@@ -1377,7 +1377,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 var parentActions = FindVisualChildren<FrameworkElement>(row).Single(element => element.Name == "ParentActions");
                 var stepItems = FindVisualChildren<ItemsControl>(row).Single(control => control.Name == "StepItems");
-                Assert.True(parentActions.TranslatePoint(new Point(0, 0), row).Y < stepItems.TranslatePoint(new Point(0, 0), row).Y);
+                Assert.True(parentActions.TranslatePoint(new Point(0, 0), row).Y >= stepItems.TranslatePoint(new Point(0, stepItems.ActualHeight), row).Y);
                 Assert.Equal(Visibility.Collapsed, FindVisualChildren<TextBlock>(row).Single(text => text.Name == "DescriptionText").Visibility);
                 Assert.Equal("添加步骤", System.Windows.Automation.AutomationProperties.GetName(GetAddStepButton(row)));
                 Assert.Equal("添加任务", System.Windows.Automation.AutomationProperties.GetName(FindButton(view, "添加任务")));

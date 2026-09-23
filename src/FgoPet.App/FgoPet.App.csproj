@@ -65,7 +65,7 @@
     <Copy SourceFiles="@(PublishedCompanion)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
   <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
-  <!-- 物理位置已按 11→6 目标架构就位；程序集拆分留待后续，故此处用 Compile Include 回链。 -->
+  <!-- 业务工程已拆出；应用启动与组合入口仍由 App 链接编译。 -->
   <ItemGroup>
     <!-- host/DataManagement -->
 
@@ -75,6 +75,9 @@
     </Compile>
     <Compile Include="..\..\host\DesktopShell\Application\ServiceRegistration.cs">
       <Link>host\DesktopShell\Application\ServiceRegistration.cs</Link>
+    </Compile>
+    <Compile Include="..\..\host\DesktopShell\Application\MemoryContextConnector.cs">
+      <Link>host\DesktopShell\Application\MemoryContextConnector.cs</Link>
     </Compile>
 
     <!-- modules/character -->

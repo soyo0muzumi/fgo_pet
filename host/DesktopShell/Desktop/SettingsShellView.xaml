@@ -2,27 +2,39 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:views="clr-namespace:FgoPet.App.Settings.Views"
- Background="{DynamicResource ShellWindowBackgroundBrush}" Foreground="{DynamicResource ShellTextBrush}"
+ Background="{DynamicResource Surface.Content}" Foreground="{DynamicResource ShellTextBrush}"
  FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14">
+<UserControl.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/FgoPet.App;component/Ui/Shell/ChatControls.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></UserControl.Resources>
 <Grid>
- <Grid.ColumnDefinitions><ColumnDefinition x:Name="SettingsNavigationColumn" Width="184"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
- <Border Background="{DynamicResource ShellPanelBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
-  <Grid><Grid.RowDefinitions><RowDefinition Height="86"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-   <Border x:Name="ProductHeader"><TextBlock x:Name="ProductHeaderText" Text="设置" FontSize="22" FontWeight="SemiBold" Margin="24,0" VerticalAlignment="Center"/></Border>
-   <views:SettingsNavigationView x:Name="Navigation" Grid.Row="1" Margin="12,0"/>
-   <TextBlock Grid.Row="2" Text="FGO Pet" FontSize="12" Foreground="{DynamicResource ShellMutedTextBrush}" Margin="24,20"/>
-  </Grid>
+ <Grid.ColumnDefinitions><ColumnDefinition x:Name="SettingsNavigationColumn" Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+ <Border Background="{DynamicResource Surface.App}" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,0,1,0">
+  <DockPanel Margin="4,16,4,12">
+   <Button DockPanel.Dock="Bottom" Content="设置" Tag="{StaticResource ChatSettings}" Style="{StaticResource ShellRailSelectedButton}" ToolTip="设置" AutomationProperties.Name="设置" Margin="0"/>
+   <StackPanel><TextBlock Text="FGO" FontSize="11" Foreground="{DynamicResource Text.Secondary}" HorizontalAlignment="Center" Margin="0,6,0,24"/>
+    <Button x:Name="ChatNavigationButton" Content="聊天" Tag="{StaticResource ChatBubble}" Style="{StaticResource ShellRailButton}" ToolTip="返回聊天" AutomationProperties.Name="返回聊天" IsEnabled="False"/>
+    <Button x:Name="TodoNavigationButton" Content="待办" Tag="{StaticResource ChatTasks}" Style="{StaticResource ShellRailButton}" ToolTip="查看待办" AutomationProperties.Name="查看待办" IsEnabled="False"/>
+    <Button x:Name="FocusNavigationButton" Content="专注" Tag="{StaticResource ChatFocus}" Style="{StaticResource ShellRailButton}" ToolTip="开始专注" AutomationProperties.Name="开始专注" IsEnabled="False"/>
+   </StackPanel>
+  </DockPanel>
  </Border>
- <Grid x:Name="SettingsBody" Grid.Column="1" Margin="28,28,28,20">
-  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <StackPanel x:Name="PackageBreadcrumb" Visibility="Collapsed"><TextBlock x:Name="PackageBreadcrumbText"/></StackPanel>
-  <StackPanel Grid.Row="1" Margin="0,0,0,24">
-   <TextBlock x:Name="PageTitleText" FontSize="22" FontWeight="SemiBold"/>
-   <TextBlock x:Name="PageDescriptionText" FontSize="13" Margin="0,8,0,0" Foreground="{DynamicResource ShellMutedTextBrush}" TextWrapping="Wrap"/>
-  </StackPanel>
-  <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-   <ContentControl x:Name="SettingsContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top" />
-  </ScrollViewer>
+ <Grid Grid.Column="1"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <Border x:Name="ProductHeader" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,0,0,1" Padding="28,20,28,0">
+   <StackPanel><TextBlock x:Name="ProductHeaderText" Text="设置" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/>
+    <views:SettingsNavigationView x:Name="Navigation"/>
+   </StackPanel>
+  </Border>
+  <Grid x:Name="SettingsBody" Grid.Row="1" Margin="28,20,28,20">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <StackPanel x:Name="PackageBreadcrumb" Visibility="Collapsed" Margin="0,0,0,8"><TextBlock x:Name="PackageBreadcrumbText" Foreground="{DynamicResource Text.Secondary}"/></StackPanel>
+   <views:SettingsNavigationView x:Name="CapabilityNavigation" Grid.Row="1" Visibility="Collapsed" Margin="0,0,0,20"/>
+   <StackPanel x:Name="PageHeading" Grid.Row="2" Margin="0,0,0,20">
+    <TextBlock x:Name="PageTitleText" FontSize="18" FontWeight="SemiBold"/>
+    <TextBlock x:Name="PageDescriptionText" FontSize="13" Margin="0,6,0,0" Foreground="{DynamicResource ShellMutedTextBrush}" TextWrapping="Wrap"/>
+   </StackPanel>
+   <ScrollViewer x:Name="PageScroller" Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <ContentControl x:Name="SettingsContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top"/>
+   </ScrollViewer>
+  </Grid>
  </Grid>
 </Grid>
 </UserControl>
