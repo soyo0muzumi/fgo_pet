@@ -10,11 +10,13 @@
 - 结构化输出校验、工具调用聚合
 - 模型连接用例、会话摘要
 - `DialogueSettings` / `IDialogueSettingsStore`：模型连接元数据与推理展示偏好
+- `Desktop/Cards`：聊天中的旧 Todo 建议卡片与归档草稿卡片呈现，经 Work 契约提交用户明确确认
 
 ## Non-responsibilities
 
 - 其他模块的业务状态（Todo/记忆/专注/角色）——只消费其公开契约
 - 凭据存储本身（归 platform/Secrets）
+- 聊天、独立待办页、专注和设置之间的窗口组合（归 host/DesktopShell）；独立待办工作区仍归 Work
 
 ## Public interfaces
 
@@ -30,9 +32,11 @@
 - **允许**：`platform/*`、`ui-foundation/*`，以及**明确允许**的 memory / character / speech / work 的 `Contracts`
 - **禁止**：其他模块的 `Application` / `Infrastructure` / `Desktop`；`host`
 
-`ConversationViewModel` 的旧 Todo 卡片入口消费 Work 的 `ILegacyTodoProposalPort`，归档入口消费 `IArchiveDraftConfirmation`，不再持有 `TodoProposalService` 或 `ArchiveDraftService`。显示卡片不调用确认；编辑、明确确认与错误处理沿用 Work 卡片行为。旧卡片直接确认接口与模型提案端口互不继承，新对话继续使用 `ITodoDraftWorkflow` 的作用域、版本和幂等确认。契约所有权与兼容限制见 `../work/README.md`。
+`ConversationViewModel` 的旧 Todo 卡片入口消费 Work 的 `ILegacyTodoProposalPort`，归档入口消费 `IArchiveDraftConfirmation`，不持有 `TodoProposalService` 或 `ArchiveDraftService`。显示卡片不调用确认；旧卡片直接确认接口与模型提案端口互不继承，新对话继续使用 `ITodoDraftWorkflow` 的作用域、版本和幂等确认。契约所有权与兼容限制见 `../work/README.md`。
 
-这只隔离服务调用：卡片集合及窗口 XAML 仍使用 Work Desktop 的 ViewModel/控件，相关实现程序集引用尚未移除，不能据此声称整个 Dialogue 已满足目标依赖图。
+`TodoProposalCard`、`ArchiveDraftCard` 及其 ViewModel 由本模块编译；它们只拥有卡片编辑与反馈状态，提案解析、草稿版本、确认写入及归档清理仍归 Work。跨模块的 `DialogueWindow` 外壳由 DesktopShell 编译，组合现有对话 ViewModel 与 Work 的独立待办工作区。Dialogue 不再声明或绑定 `FgoPet.Work.Todo`、`FgoPet.Work.Execution`、`FgoPet.Work.Archives` 实现引用，也不反向引用 DesktopShell 实现。
+
+卡片与窗口保留原类型命名空间、构造函数和资源 Link 路径，但程序集归属变化；需要完整重建、部署。卡片资源位于 `/FgoPet.Dialogue;component/Views/`，窗口资源位于 `/FgoPet.DesktopShell;component/Dialogue/DialogueWindow.xaml`。这不是整个 Dialogue 已满足目标依赖图的声明。
 
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 
@@ -50,7 +54,7 @@ Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memor
 
 `scripts/test-architecture.ps1` 是本地与 CI 共用的架构验证入口。`SqliteConversationRepositoryTests` 覆盖大历史分页与旧时间格式；`ConversationOrchestratorTests` 覆盖 Memory/Work 契约调用、完整草稿预算及过期请求；Windows 的复制反馈测试覆盖窗口生命周期。
 
-`WorkCardBoundaryTests` 使用接口替身验证旧卡片与归档的零隐式写入、编辑、解析拒绝、移除和角色切换，并检查消费者的依赖类型；完整 Windows 和宿主装配测试仍覆盖实际窗口及工厂集成。
+`WorkCardBoundaryTests` 使用接口替身验证旧卡片与归档的零隐式写入、编辑、解析拒绝、移除和角色切换。`DialogueWorkPresentationBoundaryTests` 检查求值后的项目引用、真实 AssemblyRef、XAML 控件引用和类型唯一编译归属；缺少 Release 产物必须失败，不跳过。`WorkCardCompositionTests` 检查 BAML 唯一归属、新 pack URI 加载、编辑确认及事件冒泡。完整 Windows 和宿主装配测试继续覆盖实际窗口与独立待办页。
 
 ## 要点 / 易错处
 
@@ -61,14 +65,14 @@ Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memor
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-`src/FgoPet.Dialogue/FgoPet.Dialogue.csproj` 已独立编译应用和桌面呈现。部分契约与仓储仍由 legacy Core / Infrastructure 编译，部分角色、语音与卡片呈现依赖仍需收口，不能据此宣布模块完全独立。
+`src/FgoPet.Dialogue/FgoPet.Dialogue.csproj` 已独立编译应用和桌面呈现。部分契约与仓储仍由 legacy Core / Infrastructure 编译；角色、记忆及语音的现存实现引用仍需收口，不能据此宣布模块完全独立。
 
-- 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
+- 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4；当前聊天卡片与窗口呈现归属以上述工程编译边界为准。
 - 收口动作以实际调用链和公开契约为准，不重复创建已有工程。
 
 ## Migration debt
 
-- 保留的 legacy 依赖及卡片呈现等实现耦合仍需逐项收口。
+- 保留的 legacy、角色、记忆及语音实现依赖仍需逐项收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

@@ -36,14 +36,5 @@
     <Compile Include="..\..\Application\LongArchiveService.cs">
       <Link>modules\work\Archives\Application\LongArchiveService.cs</Link>
     </Compile>
-    <Page Include="..\..\Desktop\ArchiveDraftCard.xaml">
-      <Link>Views\ArchiveDraftCard.xaml</Link>
-    </Page>
-    <Compile Include="..\..\Desktop\ArchiveDraftCard.xaml.cs">
-      <Link>modules\work\Archives\Desktop\ArchiveDraftCard.xaml.cs</Link>
-    </Compile>
-    <Compile Include="..\..\Desktop\ArchiveDraftViewModel.cs">
-      <Link>modules\work\Archives\Desktop\ArchiveDraftViewModel.cs</Link>
-    </Compile>
   </ItemGroup>
 </Project>

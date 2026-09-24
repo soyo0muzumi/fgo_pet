@@ -80,6 +80,13 @@
     <Compile Include="..\..\Application\TrayService.cs">
       <Link>host\DesktopShell\Application\TrayService.cs</Link>
     </Compile>
+    <!-- The window composes Dialogue, Todo and execution UI; it owns no business state. -->
+    <Page Include="..\..\Desktop\DialogueWindow.xaml">
+      <Link>Dialogue\DialogueWindow.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\DialogueWindow.xaml.cs">
+      <Link>host\DesktopShell\Desktop\DialogueWindow.xaml.cs</Link>
+    </Compile>
     <Page Include="..\..\Desktop\AttachedPanelView.xaml">
       <Link>Panels\AttachedPanelView.xaml</Link>
     </Page>

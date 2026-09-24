@@ -29,9 +29,6 @@
     <ProjectReference Include="../../../memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
     <ProjectReference Include="../../../speech/src/FgoPet.Speech.Core/FgoPet.Speech.Core.csproj" />
     <ProjectReference Include="../../../speech/src/FgoPet.Speech.Desktop/FgoPet.Speech.Desktop.csproj" />
-    <ProjectReference Include="../../../work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
-    <ProjectReference Include="../../../work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
-    <ProjectReference Include="../../../work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -71,14 +68,27 @@
     <Compile Include="..\..\Desktop\DialogueProjectSelectionViewModel.cs">
       <Link>modules\dialogue\Desktop\DialogueProjectSelectionViewModel.cs</Link>
     </Compile>
-    <Page Include="..\..\Desktop\DialogueWindow.xaml">
-      <Link>Dialogue\DialogueWindow.xaml</Link>
-    </Page>
-    <Compile Include="..\..\Desktop\DialogueWindow.xaml.cs">
-      <Link>modules\dialogue\Desktop\DialogueWindow.xaml.cs</Link>
-    </Compile>
     <Compile Include="..\..\Desktop\DialogueWindowViewModel.cs">
       <Link>modules\dialogue\Desktop\DialogueWindowViewModel.cs</Link>
+    </Compile>
+    <!-- Conversation-specific cards consume Work contracts; the cross-module window belongs to the host. -->
+    <Page Include="..\..\Desktop\Cards\TodoProposalCard.xaml">
+      <Link>Views\TodoProposalCard.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\Cards\TodoProposalCard.xaml.cs">
+      <Link>modules\dialogue\Desktop\Cards\TodoProposalCard.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\Cards\TodoProposalViewModel.cs">
+      <Link>modules\dialogue\Desktop\Cards\TodoProposalViewModel.cs</Link>
+    </Compile>
+    <Page Include="..\..\Desktop\Cards\ArchiveDraftCard.xaml">
+      <Link>Views\ArchiveDraftCard.xaml</Link>
+    </Page>
+    <Compile Include="..\..\Desktop\Cards\ArchiveDraftCard.xaml.cs">
+      <Link>modules\dialogue\Desktop\Cards\ArchiveDraftCard.xaml.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\Cards\ArchiveDraftViewModel.cs">
+      <Link>modules\dialogue\Desktop\Cards\ArchiveDraftViewModel.cs</Link>
     </Compile>
     <Page Include="..\..\Desktop\ModelConnectionPage.xaml">
       <Link>Settings\ModelConnectionPage.xaml</Link>
