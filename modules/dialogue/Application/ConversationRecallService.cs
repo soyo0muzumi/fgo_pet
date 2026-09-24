@@ -106,13 +106,56 @@ public sealed class ConversationRecallService(IConversationRecallRepository repo
         {
             cancellationToken.ThrowIfCancellationRequested();
             var page = repository.Read(scope, anchor, remaining, cursor);
-            sources.AddRange(page.Items);
-            remaining -= page.Items.Sum(hit => hit.Excerpt.Length);
+            foreach (var hit in page.Items)
+            {
+                if (hit.Anchor.ConversationId != anchor.ConversationId || hit.Excerpt.Length > remaining)
+                    throw new InvalidOperationException("History read exceeded its scope or budget.");
+                var offset = cursor is not null && cursor.Sequence == hit.Anchor.Sequence ? cursor.TextOffset : 0;
+                AppendSource(sources, hit, offset);
+                // Charge all bytes read, including overlap, so aggregation cannot expand the read budget.
+                remaining -= hit.Excerpt.Length;
+            }
+            if (page.Next is { } next && (next.ScopeKey != scope.Key || next.ConversationId != anchor.ConversationId ||
+                next.Sequence < 1 || next.TextOffset < 0 || next == cursor))
+                throw new InvalidOperationException("History read returned an invalid or non-advancing cursor.");
             cursor = page.Next;
             if (cursor is null) break;
         }
-        return sources.Count == 0 ? new(RecallStatus.Unavailable, []) : new(RecallStatus.Found, sources);
+        cancellationToken.ThrowIfCancellationRequested();
+        return sources.Count == 0 ? new(RecallStatus.Unavailable, []) : new(RecallStatus.Found, sources.ToArray());
     }
+
+    // One source per message is shared by prompt composition and the source-card UI.
+    // Do not DistinctBy(message ID): later fragments can contain the actual correction.
+    // Keep the original anchor; the orchestrator still revalidates the assembled excerpt
+    // against the current scoped raw message before it is sent or opened.
+    private static void AppendSource(List<HistoryHit> sources, HistoryHit hit, int offset)
+    {
+        var index = sources.FindIndex(source => source.Anchor.ConversationId == hit.Anchor.ConversationId &&
+            source.Anchor.MessageId == hit.Anchor.MessageId);
+        if (index < 0)
+        {
+            if (offset != 0) throw new InvalidOperationException("History source is missing its first fragment.");
+            sources.Add(hit);
+            return;
+        }
+
+        var previous = sources[index];
+        if (previous.Anchor != hit.Anchor || previous.Title != hit.Title || offset < 0 || offset > previous.Excerpt.Length)
+            throw new InvalidOperationException("History source changed or contains a gap.");
+        var overlap = Math.Min(previous.Excerpt.Length - offset, hit.Excerpt.Length);
+        if (!previous.Excerpt.AsSpan(offset, overlap).SequenceEqual(hit.Excerpt.AsSpan(0, overlap)))
+            throw new InvalidOperationException("History fragments disagree.");
+        var end = offset + hit.Excerpt.Length;
+        if ((!previous.IsTruncated && end > previous.Excerpt.Length) ||
+            (!hit.IsTruncated && end < previous.Excerpt.Length))
+            throw new InvalidOperationException("History fragments disagree about the end of the message.");
+        if (end > previous.Excerpt.Length)
+            sources[index] = previous with { Excerpt = previous.Excerpt + hit.Excerpt[overlap..], IsTruncated = hit.IsTruncated };
+        else if (end == previous.Excerpt.Length)
+            sources[index] = previous with { IsTruncated = previous.IsTruncated && hit.IsTruncated };
+    }
+
     private static ConversationRecallResult Ambiguous(IEnumerable<HistoryHit> candidates)
     {
         var choices = candidates.GroupBy(hit => hit.Anchor.ConversationId).Take(2).Select(group =>
