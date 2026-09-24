@@ -21,8 +21,10 @@ public sealed class ModelContextResolver(
             return new(route, capacity, null, ContextLimitSource.Override, "manual");
         if (_cache.TryGetValue(route, out var cached) && cached.Expires > _clock.GetUtcNow()) return cached.Limit;
         ModelContextLimit? limit = null;
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        // The same clock governs both the metadata deadline and cache expiry. Keep the
+        // production five-second limit while allowing tests to advance time explicitly.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5), _clock);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             var models = await providerFactory(settings).ListModelsAsync(timeout.Token).WaitAsync(timeout.Token).ConfigureAwait(false);

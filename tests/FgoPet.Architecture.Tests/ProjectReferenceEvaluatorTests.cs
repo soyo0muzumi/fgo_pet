@@ -117,31 +117,72 @@ public sealed class ProjectReferenceEvaluatorTests
     [Fact]
     public async Task Cancellation_terminates_real_process_tree_and_completes_waits()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        if (!OperatingSystem.IsWindows()) return;
+        await ExerciseRealProcessAsync(cancelReadiness: false);
+    }
 
+    [Fact]
+    public async Task Cancelled_readiness_wait_still_terminates_real_process_tree()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExerciseRealProcessAsync(cancelReadiness: true));
+        Assert.Equal(new CancellationToken(canceled: true), error.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Exited_parent_is_reported_before_the_readiness_deadline()
+    {
+        using var fixture = RealProcessFixture.Create();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.WaitForChildPidAsync(Task.CompletedTask));
+        Assert.Equal("process-fixture: parent exited before child readiness", error.Message);
+    }
+
+    private static async Task ExerciseRealProcessAsync(bool cancelReadiness)
+    {
         using var fixture = RealProcessFixture.Create();
         var factory = new RealChildProcessFactory(fixture.ChildPidFile);
         var evaluator = new DotNetMsBuildProjectReferenceEvaluator(factory);
         using var cancellation = new CancellationTokenSource();
-        var evaluation = evaluator.EvaluateAsync("project.csproj", "Release", "win-x64", cancellation.Token);
-        var childPid = await fixture.WaitForChildPidAsync();
+        Task? evaluation = null;
+        int? childPid = null;
 
+        // Startup and readiness must be inside the same cleanup scope as cancellation.
         try
         {
-            Assert.True(IsProcessAlive(childPid));
+            evaluation = evaluator.EvaluateAsync("project.csproj", "Release", "win-x64", cancellation.Token);
+            childPid = await fixture.WaitForChildPidAsync(evaluation);
+            Assert.True(IsProcessAlive(childPid.Value));
+            if (cancelReadiness)
+            {
+                // Inject a failed readiness wait with a known live child so the failure
+                // path must prove that both processes and all evaluator waits are cleaned up.
+                await fixture.WaitForChildPidAsync(evaluation, new CancellationToken(canceled: true));
+            }
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => evaluation);
 
-            await WaitUntilAsync(() => !IsProcessAlive(factory.ProcessId) && !IsProcessAlive(childPid));
+            // Prove the evaluator itself terminated both processes before fixture fallback cleanup.
+            await WaitUntilAsync(() => !IsProcessAlive(factory.ProcessId) && !IsProcessAlive(childPid.Value));
             Assert.All(factory.Handle.WaitTasks, wait => Assert.True(wait.IsCompleted));
         }
         finally
         {
-            factory.KillTreeIfRunning();
-            TryKill(childPid);
+            cancellation.Cancel();
+            try { await factory.KillTreeIfRunningAsync(); }
+            finally
+            {
+                if (childPid is int pid) TryKill(pid);
+                if (evaluation is not null)
+                {
+                    try { await evaluation.WaitAsync(TimeSpan.FromSeconds(10)); }
+                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                }
+            }
+            if (childPid is int knownChild)
+            {
+                await WaitUntilAsync(() => !IsProcessAlive(factory.ProcessId) && !IsProcessAlive(knownChild));
+                Assert.All(factory.Handle.WaitTasks, wait => Assert.True(wait.IsCompleted));
+            }
         }
     }
 
@@ -172,9 +213,17 @@ public sealed class ProjectReferenceEvaluatorTests
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (!condition())
+        try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token);
+            while (!condition())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token);
+            }
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            // A cleanup timeout is a failure, never the expected caller-cancellation result.
+            throw new TimeoutException("process-fixture: process tree exit deadline exceeded");
         }
     }
 
@@ -191,6 +240,10 @@ public sealed class ProjectReferenceEvaluatorTests
         }
         catch (ArgumentException)
         {
+        }
+        catch (InvalidOperationException)
+        {
+            // It may have exited between HasExited and Kill.
         }
     }
 
@@ -333,15 +386,36 @@ public sealed class ProjectReferenceEvaluatorTests
             return fixture;
         }
 
-        public async Task<int> WaitForChildPidAsync()
+        public async Task<int> WaitForChildPidAsync(Task evaluation, CancellationToken cancellationToken = default)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (!File.Exists(ChildPidFile))
+            cancellationToken.ThrowIfCancellationRequested();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token);
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    timeout.Token.ThrowIfCancellationRequested();
+                    if (File.Exists(ChildPidFile))
+                    {
+                        var text = await File.ReadAllTextAsync(ChildPidFile, timeout.Token);
+                        if (int.TryParse(text, System.Globalization.NumberStyles.None,
+                            System.Globalization.CultureInfo.InvariantCulture, out var pid) && pid > 0) return pid;
+                        throw new InvalidOperationException("process-fixture: invalid child readiness record");
+                    }
+                    if (evaluation.IsCompleted)
+                    {
+                        await evaluation;
+                        throw new InvalidOperationException("process-fixture: parent exited before child readiness");
+                    }
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token);
+                }
             }
-
-            return int.Parse(await File.ReadAllTextAsync(ChildPidFile), System.Globalization.CultureInfo.InvariantCulture);
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("process-fixture: child readiness deadline exceeded");
+            }
         }
 
         public void Dispose()
@@ -364,7 +438,12 @@ public sealed class ProjectReferenceEvaluatorTests
 
         public IProcessHandle Start(ProcessStartInfo _)
         {
-            var script = $"$child=Start-Process -FilePath $env:ComSpec -ArgumentList '/c','timeout /t 30 /nobreak > nul' -PassThru; [IO.File]::WriteAllText('{_childPidFile.Replace("'", "''")}', [string]$child.Id); Wait-Process -Id $child.Id";
+            // Unlike cmd.exe's interactive timeout command, this child cannot exit merely
+            // because stdin is redirected. Its lifetime ends only when the process tree is killed.
+            var childCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(
+                "[System.Threading.Thread]::Sleep([System.Threading.Timeout]::Infinite)"));
+            var pidFile = _childPidFile.Replace("'", "''");
+            var script = $"$ErrorActionPreference='Stop'; $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand','{childCommand}' -PassThru; [IO.File]::WriteAllText('{pidFile}.tmp', [string]$child.Id); [IO.File]::Move('{pidFile}.tmp', '{pidFile}'); Wait-Process -Id $child.Id";
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
@@ -383,14 +462,14 @@ public sealed class ProjectReferenceEvaluatorTests
             return Handle;
         }
 
-        public void KillTreeIfRunning()
+        public async Task KillTreeIfRunningAsync()
         {
             try
             {
                 if (Handle is not null && !Handle.HasExited)
                 {
                     Handle.Kill(entireProcessTree: true);
-                    Handle.WaitForExitAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    await Handle.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
                 }
             }
             catch (InvalidOperationException)
@@ -411,7 +490,7 @@ public sealed class ProjectReferenceEvaluatorTests
         }
 
         public int ProcessId { get; }
-        public List<Task<int>> WaitTasks { get; } = [];
+        public System.Collections.Concurrent.ConcurrentBag<Task<int>> WaitTasks { get; } = new();
         public StreamReader StandardOutput => _inner.StandardOutput;
         public StreamReader StandardError => _inner.StandardError;
         public bool HasExited => _inner.HasExited;
