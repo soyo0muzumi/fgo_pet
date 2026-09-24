@@ -79,10 +79,14 @@ public sealed class RuntimeTransportRegressionTests
         using var app = NewServer(names.App, out _);
         using var adapter = NewServer(names.Adapter, out _);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var responding = RespondAsync(app, ConnectionResponse("1", appOnline: false));
         var adapterConnection = adapter.WaitForConnectionAsync(deadline.Token);
+        // A rejected app response is allowed to cancel the sibling adapter probe.
+        // Make the intended successful adapter handshake explicit before sending the
+        // mismatched response, instead of racing that cancellation in fixture cleanup.
+        var responding = RespondAsync(app, ConnectionResponse("1", appOnline: false), beforeResponse: adapterConnection);
         var result = await new DefaultRelayProbe().ProbeAsync(options, deadline.Token);
         Assert.False(result.Ready);
+        Assert.Equal("The app relay pipe did not return a valid connection response.", result.Error);
         await Task.WhenAll(responding, adapterConnection);
     }
 
@@ -215,14 +219,15 @@ public sealed class RuntimeTransportRegressionTests
     }
 
     private static async Task RespondAsync(NamedPipeServerStream server, byte[] response, int requestCount = 1,
-        bool allowDisconnect = false, bool readRequestAfterResponse = false, bool correlateProbe = false)
+        bool allowDisconnect = false, bool readRequestAfterResponse = false, bool correlateProbe = false,
+        Task? beforeResponse = null)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        await server.WaitForConnectionAsync(deadline.Token);
+        await server.WaitForConnectionAsync(deadline.Token).ConfigureAwait(false);
         using var reader = new StreamReader(server, Encoding.UTF8, false, 1024, leaveOpen: true);
         for (var i = 0; i < requestCount; i++)
         {
-            var request = await reader.ReadLineAsync(deadline.Token);
+            var request = await reader.ReadLineAsync(deadline.Token).ConfigureAwait(false);
             Assert.NotNull(request);
             if (request.Contains("connection_test", StringComparison.Ordinal))
             {
@@ -238,9 +243,10 @@ public sealed class RuntimeTransportRegressionTests
         }
         try
         {
-            await server.WriteAsync(response, deadline.Token);
-            await server.FlushAsync(deadline.Token);
-            if (readRequestAfterResponse) Assert.NotNull(await reader.ReadLineAsync(deadline.Token));
+            if (beforeResponse is not null) await beforeResponse.WaitAsync(deadline.Token).ConfigureAwait(false);
+            await server.WriteAsync(response, deadline.Token).ConfigureAwait(false);
+            await server.FlushAsync(deadline.Token).ConfigureAwait(false);
+            if (readRequestAfterResponse) Assert.NotNull(await reader.ReadLineAsync(deadline.Token).ConfigureAwait(false));
         }
         catch (IOException) when (allowDisconnect) { }
     }

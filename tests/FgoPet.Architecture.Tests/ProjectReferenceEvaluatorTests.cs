@@ -438,26 +438,10 @@ public sealed class ProjectReferenceEvaluatorTests
 
         public IProcessHandle Start(ProcessStartInfo _)
         {
-            // Unlike cmd.exe's interactive timeout command, this child cannot exit merely
-            // because stdin is redirected. Its lifetime ends only when the process tree is killed.
-            var childCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(
-                "[System.Threading.Thread]::Sleep([System.Threading.Timeout]::Infinite)"));
-            var pidFile = _childPidFile.Replace("'", "''");
-            var script = $"$ErrorActionPreference='Stop'; $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList '-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand','{childCommand}' -PassThru; [IO.File]::WriteAllText('{pidFile}.tmp', [string]$child.Id); [IO.File]::Move('{pidFile}.tmp', '{pidFile}'); Wait-Process -Id $child.Id";
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            startInfo.ArgumentList.Add("-NoLogo");
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-NonInteractive");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add(script);
-            var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start process fixture.");
+            // Use an already-built, minimal .NET host, not a shell with an unrelated startup cost.
+            // The child remains a genuine OS process and all original cancellation deadlines remain.
+            var process = Process.Start(ProcessFixtureHost.CreateParentStartInfo(_childPidFile))
+                ?? throw new InvalidOperationException("Unable to start process fixture.");
             Handle = new TrackingProcessHandle(new ProcessHandle(process), process.Id);
             return Handle;
         }
