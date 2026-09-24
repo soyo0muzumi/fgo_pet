@@ -43,25 +43,34 @@ public sealed class MemoryExtractionQueue : IAsyncDisposable, IDisposable
     private async Task RunAsync()
     {
         await foreach (var job in _jobs.Reader.ReadAllAsync().ConfigureAwait(false))
+            await ProcessAsync(job.Work, job.Lease).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Processes one admitted job and owns its lease through receipt cleanup. Kept separate
+    /// from channel scheduling so the pre-extraction and commit fences have one testable path.
+    /// </summary>
+    internal async Task ProcessAsync(MemoryExtractionWork work, DialogueContextLifetime.Lease lease)
+    {
+        using (lease)
         {
-            using var lease = job.Lease;
             try
             {
                 lease.CheckCurrent();
-                if (!_isCurrent(job.Work.Connection) || !_isSourceCurrent(job.Work.Ticket.Source)) continue;
+                if (!_isCurrent(work.Connection) || !_isSourceCurrent(work.Ticket.Source)) return;
                 // WaitAsync detaches a provider that ignores cancellation; its result has no write continuation.
-                var proposals = await _extractor.ExtractAsync(job.Work, lease.Token).WaitAsync(lease.Token).ConfigureAwait(false);
+                var proposals = await _extractor.ExtractAsync(work, lease.Token).WaitAsync(lease.Token).ConfigureAwait(false);
                 lease.Commit(() =>
                 {
-                    if (Volatile.Read(ref _closed) == 0 && _isCurrent(job.Work.Connection) && _isSourceCurrent(job.Work.Ticket.Source))
-                        _sink.Stage(job.Work.Ticket, proposals);
+                    if (Volatile.Read(ref _closed) == 0 && _isCurrent(work.Connection) && _isSourceCurrent(work.Ticket.Source))
+                        _sink.Stage(work.Ticket, proposals);
                 });
             }
             catch (OperationCanceledException) { }
             catch (Exception) { _logger?.LogWarning("Memory extraction failed; no approved memory written"); }
             finally
             {
-                try { _sink.Abandon(job.Work.Ticket); }
+                try { _sink.Abandon(work.Ticket); }
                 catch (Exception) { _logger?.LogWarning("Memory extraction receipt cleanup failed"); }
             }
         }
