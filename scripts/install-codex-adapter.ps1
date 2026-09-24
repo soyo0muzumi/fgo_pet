@@ -279,7 +279,15 @@ function Invoke-McpSmoke {
     $process.StartInfo = $info
     $started = $false
     try {
-        if (-not $process.Start()) { throw 'The installed adapter shim could not be started.' }
+        # Windows PowerShell/.NET Framework creates StandardInput using the
+        # console encoding and may emit a UTF-8 BOM before the first JSON frame.
+        # Capture a BOM-free encoding at process creation, then restore the host.
+        $previousInputEncoding = [Console]::InputEncoding
+        try {
+            [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+            if (-not $process.Start()) { throw 'The installed adapter shim could not be started.' }
+        }
+        finally { [Console]::InputEncoding = $previousInputEncoding }
         $started = $true
         $process.StandardInput.WriteLine('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"fgo-pet-installer-smoke","version":"1"}}}')
         $process.StandardInput.WriteLine('{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
