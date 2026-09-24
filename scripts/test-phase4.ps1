@@ -95,7 +95,10 @@ try {
             }
             foreach ($project in $testProjects) {
                 $projectName = [IO.Path]::GetFileNameWithoutExtension($project)
-                $projectTemp = Join-Path $temporaryRoot ('test-host-' + [guid]::NewGuid().ToString('N'))
+                # The invocation GUID already provides uniqueness. Keep the child
+                # short so nested backup staging paths remain usable by native IO.
+                $projectTemp = Join-Path $temporaryRoot ('t' + $testProjectCount.ToString('00'))
+                if (Test-Path -LiteralPath $projectTemp) { throw 'Refusing to reuse a project temporary directory.' }
                 [IO.Directory]::CreateDirectory($projectTemp) | Out-Null
                 $env:TEMP = $projectTemp
                 $env:TMP = $projectTemp
