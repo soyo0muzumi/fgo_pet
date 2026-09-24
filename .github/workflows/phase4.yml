@@ -1,0 +1,105 @@
+name: Phase 4 acceptance
+on:
+  pull_request:
+    paths:
+      - 'scripts/test-phase4.ps1'
+      - 'scripts/install-codex-adapter.ps1'
+      - 'scripts/uninstall-codex-adapter.ps1'
+      - 'integrations/codex/**'
+      - '.github/workflows/phase4.yml'
+  push:
+    branches: ['arch/restructure-v2', 'main']
+    paths:
+      - 'scripts/test-phase4.ps1'
+      - 'scripts/install-codex-adapter.ps1'
+      - 'scripts/uninstall-codex-adapter.ps1'
+      - 'integrations/codex/**'
+      - '.github/workflows/phase4.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  repeated-acceptance:
+    name: Three consecutive complete Phase 4 runs
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Run the full gate three times without retries or skipped builds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $expectedProjects = @(Select-String -Path FgoPet.sln -Pattern '^Project\("[^"]+"\) = "([^"]+\.Tests)",' |
+              ForEach-Object { $_.Matches[0].Groups[1].Value.ToLowerInvariant() } | Sort-Object -Unique)
+          if ($expectedProjects.Count -eq 0) { throw 'No solution test projects found.' }
+          $seen = @{}
+          $firstManifest = $null
+          for ($round = 1; $round -le 3; $round++) {
+              Write-Host "::group::Phase 4 acceptance round $round / 3"
+              # A fresh PowerShell process executes the same local entry point.
+              # A failed round stops the sequence; later successes cannot mask it.
+              & pwsh -NoProfile -File ./scripts/test-phase4.ps1
+              if ($LASTEXITCODE -ne 0) { throw "Phase 4 round $round failed with exit code $LASTEXITCODE." }
+              $summaries = @(Get-ChildItem artifacts/validation/phase4-*/phase4-summary.json |
+                  Where-Object { -not $seen.ContainsKey($_.FullName) })
+              if ($summaries.Count -ne 1) { throw 'Expected one new completed Phase 4 summary.' }
+              $summaryFile = $summaries[0]
+              $seen[$summaryFile.FullName] = $true
+              $summary = Get-Content -LiteralPath $summaryFile.FullName -Raw | ConvertFrom-Json
+              foreach ($flag in @('fullSolutionTests', 'packagingVerified', 'syntheticStatePreserved', 'userPathUnchanged', 'temporaryRootRemoved')) {
+                  if ($summary.$flag -ne $true) { throw "Phase 4 round $round did not satisfy $flag." }
+              }
+              $trxFiles = @(Get-ChildItem -LiteralPath $summaryFile.DirectoryName -Filter *.trx -Recurse)
+              if ($trxFiles.Count -ne $expectedProjects.Count) { throw 'Missing or duplicate project result files.' }
+              $actualProjects = @()
+              $manifest = @()
+              $passed = 0
+              foreach ($file in $trxFiles) {
+                  [xml]$trx = Get-Content -LiteralPath $file.FullName -Raw
+                  $counters = @($trx.GetElementsByTagName('Counters'))
+                  if ($counters.Count -ne 1 -or [int]$counters[0].total -le 0 -or
+                      [int]$counters[0].total -ne [int]$counters[0].passed -or
+                      [int]$counters[0].total -ne [int]$counters[0].executed) {
+                      throw 'A test project did not execute and pass every case.'
+                  }
+                  $results = @($trx.GetElementsByTagName('UnitTestResult'))
+                  if ($results.Count -ne [int]$counters[0].total -or @($results | Where-Object { $_.outcome -ne 'Passed' }).Count -gt 0) {
+                      throw 'A TRX result disagrees with its passing summary.'
+                  }
+                  $definitions = @($trx.GetElementsByTagName('UnitTest'))
+                  $project = [IO.Path]::GetFileNameWithoutExtension([string]$definitions[0].storage).ToLowerInvariant()
+                  $actualProjects += $project
+                  $manifest += @($results | ForEach-Object { "$project|$($_.testId)|$($_.testName)" })
+                  $passed += $results.Count
+              }
+              if (@(Compare-Object $expectedProjects @($actualProjects | Sort-Object)).Count -ne 0) {
+                  throw 'The TRX projects do not match the solution test projects.'
+              }
+              $manifest = @($manifest | Sort-Object)
+              if (@($manifest | Sort-Object -Unique).Count -ne $manifest.Count) { throw 'Duplicate test identities.' }
+              if ($null -ne $firstManifest -and @(Compare-Object $firstManifest $manifest).Count -ne 0) {
+                  throw 'The test manifest changed between consecutive runs.'
+              }
+              $firstManifest = $manifest
+              Write-Host "Round $round passed: $passed tests, $($actualProjects.Count) projects, install/MCP/uninstall, state preservation and strict cleanup."
+              Write-Host '::endgroup::'
+          }
+      - name: Preserve every round including partial failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase4-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/validation/phase4-*/**/*.trx
+            artifacts/validation/phase4-*/phase4-summary.json
+          if-no-files-found: error
+          retention-days: 14
