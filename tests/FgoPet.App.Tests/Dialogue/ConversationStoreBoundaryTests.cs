@@ -6,6 +6,7 @@ using FgoPet.Core.Packs;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Packs;
 using Xunit;
+using ConversationRecord = FgoPet.Core.Dialogue.Conversation;
 
 namespace FgoPet.App.Tests.Dialogue;
 
@@ -104,25 +105,25 @@ public sealed class ConversationStoreBoundaryTests
     }
     private sealed class ReadOnlyStore(IConversationReader inner) : IConversationReader
     {
-        public Conversation? GetConversation(string conversationId, string servantId) => inner.GetConversation(conversationId, servantId);
+        public ConversationRecord? GetConversation(string conversationId, string servantId) => inner.GetConversation(conversationId, servantId);
         public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId) => inner.LoadMessages(conversationId, servantId);
     }
     private sealed class InMemoryStore : IConversationStore
     {
-        private readonly Dictionary<string, Conversation> _conversations = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ConversationRecord> _conversations = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _state = new(StringComparer.Ordinal);
         public List<ChatMessage> Messages { get; } = [];
-        public Conversation? GetConversation(string conversationId, string servantId) =>
+        public ConversationRecord? GetConversation(string conversationId, string servantId) =>
             _conversations.TryGetValue(conversationId, out var value) && value.ServantId == servantId ? value : null;
         public bool Exists(string conversationId, string servantId) => GetConversation(conversationId, servantId) is not null;
-        public IReadOnlyList<Conversation> ListConversations(string servantId) => _conversations.Values.Where(c => c.ServantId == servantId).ToArray();
+        public IReadOnlyList<ConversationRecord> ListConversations(string servantId) => _conversations.Values.Where(c => c.ServantId == servantId).ToArray();
         public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId) =>
             Exists(conversationId, servantId) ? Messages.Where(m => m.ConversationId == conversationId && m.ServantId == servantId).OrderBy(m => m.Sequence).ToArray() : [];
-        public Conversation CreateConversation(string conversationId, string servantId, ContentContextKey contentContext,
+        public ConversationRecord CreateConversation(string conversationId, string servantId, ContentContextKey contentContext,
             DateTimeOffset createdAtUtc, string? projectId = null, string? projectLabel = null)
         {
             if (contentContext.ServantId != servantId) throw new ArgumentException("Servant mismatch.");
-            var conversation = new Conversation(conversationId, servantId, createdAtUtc, createdAtUtc, contentContext, projectId: projectId, projectLabel: projectLabel);
+            var conversation = new ConversationRecord(conversationId, servantId, createdAtUtc, createdAtUtc, contentContext, projectId: projectId, projectLabel: projectLabel);
             _conversations.Add(conversationId, conversation);
             return conversation;
         }
@@ -153,7 +154,7 @@ public sealed class ConversationStoreBoundaryTests
             Page(ListConversations(servantId), pageSize, before);
         public ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null) =>
             Page(ListConversations(scope.ServantId).Where(c => c.ProjectId == scope.ProjectId), pageSize, before);
-        private static ConversationHistoryPage Page(IEnumerable<Conversation> conversations, int pageSize, ConversationHistoryCursor? before)
+        private static ConversationHistoryPage Page(IEnumerable<ConversationRecord> conversations, int pageSize, ConversationHistoryCursor? before)
         {
             if (before is not null) throw new NotSupportedException("This test fixture does not paginate.");
             return new(conversations.Take(pageSize).Select(c => new ConversationHistoryEntry(c.ConversationId, "会话", c.UpdatedAtUtc, c.IsArchived)).ToArray(), null);
