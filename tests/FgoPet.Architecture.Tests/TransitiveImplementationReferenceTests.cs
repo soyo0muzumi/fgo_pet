@@ -1,6 +1,5 @@
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using System.Text.RegularExpressions;
 using Xunit;
 
 namespace FgoPet.Architecture.Tests;
@@ -19,7 +18,7 @@ public sealed class TransitiveImplementationReferenceTests
     private const string AppAssemblyRelativePath = "src/FgoPet.App/bin/Release/net8.0-windows/FgoPet.App.dll";
 
     [Fact]
-    public void App_binds_only_to_the_implementation_assemblies_it_declares()
+    public async Task App_binds_only_to_the_implementation_assemblies_it_declares()
     {
         var root = FindRepositoryRoot();
         var assemblyPath = Path.GetFullPath(Path.Combine(root, AppAssemblyRelativePath));
@@ -27,7 +26,11 @@ public sealed class TransitiveImplementationReferenceTests
         // 找不到产物就红，不跳过——跳过会产生假绿，这正是本项目已踩过的坑。
         Assert.True(File.Exists(assemblyPath), $"未找到 {assemblyPath}；本测试需要 FgoPet.App 的 Release 构建产物。");
 
-        var declared = ReadDeclaredProjectReferences(Path.Combine(root, AppProjectRelativePath));
+        var evaluated = await new DotNetMsBuildProjectReferenceEvaluator().EvaluateAsync(
+            Path.Combine(root, AppProjectRelativePath), "Release");
+        var declared = evaluated.References.Where(reference => reference.Kind == ProjectReferenceKind.Compile)
+            .Select(reference => Path.GetFileNameWithoutExtension(reference.ProjectPath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var bound = ReadBoundAssemblyNames(assemblyPath);
 
         var undeclaredImplementations = bound
@@ -37,24 +40,6 @@ public sealed class TransitiveImplementationReferenceTests
             .ToArray();
 
         Assert.Empty(undeclaredImplementations);
-    }
-
-    /// <summary>App.csproj 里显式声明的项目引用（按程序集名）。</summary>
-    private static IReadOnlySet<string> ReadDeclaredProjectReferences(string projectPath)
-    {
-        Assert.True(File.Exists(projectPath), $"未找到 {projectPath}。");
-
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match match in Regex.Matches(
-                     File.ReadAllText(projectPath),
-                     "<ProjectReference\\s+Include=\"(?<path>[^\"]+)\"",
-                     RegexOptions.IgnoreCase))
-        {
-            names.Add(Path.GetFileNameWithoutExtension(match.Groups["path"].Value));
-        }
-
-        Assert.NotEmpty(names);
-        return names;
     }
 
     /// <summary>读取 PE 的 AssemblyRef 表——即编译期真实绑定到的程序集，含传递依赖。</summary>
