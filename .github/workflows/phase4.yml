@@ -1,0 +1,89 @@
+name: Phase 4 acceptance
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/phase4.yml'
+      - 'scripts/test-phase4.ps1'
+      - 'scripts/install-codex-adapter.ps1'
+      - 'scripts/uninstall-codex-adapter.ps1'
+      - 'tests/xunit.runner.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  phase4:
+    name: Three consecutive full Phase 4 runs
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify three full isolated runs without retries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $resultsRoot = Join-Path $PWD 'artifacts/validation'
+          [IO.Directory]::CreateDirectory($resultsRoot) | Out-Null
+          $iterations = [Collections.Generic.List[object]]::new()
+          $expectedTests = $null
+          $expectedProjects = $null
+          try {
+            foreach ($iteration in 1..3) {
+              $before = @(Get-ChildItem -LiteralPath $resultsRoot -Directory | Select-Object -ExpandProperty Name)
+              # No SkipBuild or PublishedSource: each iteration restores, builds,
+              # tests every project, publishes, installs, smokes and uninstalls.
+              & ./scripts/test-phase4.ps1
+              if ($LASTEXITCODE -ne 0) { throw "Phase 4 iteration $iteration failed." }
+              $created = @(Get-ChildItem -LiteralPath $resultsRoot -Directory | Where-Object { $_.Name -notin $before })
+              if ($created.Count -ne 1) { throw 'Expected exactly one new Phase 4 results directory.' }
+              $summary = Get-Content -LiteralPath (Join-Path $created[0].FullName 'phase4-summary.json') -Raw | ConvertFrom-Json
+              if ($summary.Outcome -ne 'passed' -or -not $summary.FullSolutionPassed -or
+                  $summary.PublishedSourceSupplied -or -not $summary.PackagingPassed -or
+                  -not $summary.SyntheticStatePreserved -or -not $summary.UnownedFilePreserved -or
+                  -not $summary.TemporaryRootCleaned) { throw 'Incomplete Phase 4 acceptance evidence.' }
+              $files = @(Get-ChildItem -LiteralPath $created[0].FullName -Filter '*.trx' -Recurse -File)
+              if ($files.Count -eq 0) { throw 'Full solution run produced no TRX results.' }
+              $total = 0
+              foreach ($file in $files) {
+                [xml]$trx = Get-Content -LiteralPath $file.FullName -Raw
+                $counters = @($trx.SelectNodes("//*[local-name()='ResultSummary']/*[local-name()='Counters']"))
+                if ($counters.Count -ne 1) { throw 'A TRX file has no unique summary.' }
+                $count = $counters[0]
+                if ([int]$count.total -le 0 -or [int]$count.executed -ne [int]$count.total -or
+                    [int]$count.passed -ne [int]$count.total) { throw 'A test failed, was skipped, or did not finish.' }
+                $total += [int]$count.total
+              }
+              if ($null -ne $expectedTests -and ($total -ne $expectedTests -or $files.Count -ne $expectedProjects)) {
+                throw 'Consecutive runs did not execute the same number of projects and test cases.'
+              }
+              $expectedTests = $total
+              $expectedProjects = $files.Count
+              $iterations.Add([ordered]@{ iteration = $iteration; results = $created[0].Name;
+                tests = $total; projects = $files.Count; summary = $summary })
+              Write-Host "Phase 4 iteration $iteration passed: $total tests, $($files.Count) projects, isolated packaging and cleanup."
+            }
+          }
+          finally {
+            [IO.File]::WriteAllText((Join-Path $resultsRoot 'phase4-sequence.json'),
+              (@{ commit = $env:GITHUB_SHA; completedIterations = $iterations.Count;
+                  iterations = @($iterations.ToArray()) } | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+          }
+      - name: Preserve every iteration and any failure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase4-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/validation/**/*.trx
+            artifacts/validation/**/phase4-summary.json
+            artifacts/validation/phase4-sequence.json
+          if-no-files-found: error
+          retention-days: 14
