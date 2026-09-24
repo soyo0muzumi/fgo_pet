@@ -5,28 +5,8 @@ using FgoPet.Core.Todo;
 
 namespace FgoPet.App.Dialogue;
 
-public enum TodoToolCallFailure
-{
-    None,
-    InvalidJson,
-    MissingTodos,
-    UnsupportedField,
-    TooMany,
-    NotPlanning,
-}
-
-public sealed record ToolCallProposalResult(
-    bool Success,
-    IReadOnlyList<TodoProposal>? Proposals = null,
-    TodoToolCallFailure Failure = TodoToolCallFailure.None,
-    string? FieldName = null)
-{
-    public static ToolCallProposalResult Ok(IReadOnlyList<TodoProposal> proposals) => new(true, proposals);
-    public static ToolCallProposalResult Fail(TodoToolCallFailure failure, string? fieldName = null) => new(false, null, failure, fieldName);
-}
-
 /// <summary>Parses bounded model proposals and writes them only after explicit confirmation.</summary>
-public sealed partial class TodoProposalService
+public sealed partial class TodoProposalService : ITodoConversationPort
 {
     private static readonly Regex AbsolutePath = new(
         @"[A-Za-z]:[\\/][^\s,;]+|\\\\[^\s,;]+|(?<!\w)/(?:Users|home|workspace|tmp)/[^\s,;]+",

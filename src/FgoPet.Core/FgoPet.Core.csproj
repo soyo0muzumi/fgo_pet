@@ -260,4 +260,10 @@
     <Compile Include="../../modules/dialogue/Contracts/MemoryExtractionContracts.cs" />
     <Compile Include="../../modules/dialogue/Contracts/PromptBudget.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Work owns these contracts; compiling them here avoids a dependency on its WPF implementation. -->
+    <Compile Include="../../modules/work/Todo/Contracts/TodoProposal.cs" Link="modules/work/Todo/Contracts/TodoProposal.cs" />
+    <Compile Include="../../modules/work/Todo/Contracts/TodoDraftContracts.cs" Link="modules/work/Todo/Contracts/TodoDraftContracts.cs" />
+    <Compile Include="../../modules/work/Todo/Contracts/TodoConversationContracts.cs" Link="modules/work/Todo/Contracts/TodoConversationContracts.cs" />
+  </ItemGroup>
 </Project>

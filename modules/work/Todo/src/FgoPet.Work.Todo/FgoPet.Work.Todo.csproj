@@ -31,15 +31,12 @@
     <Compile Include="..\..\Application\TodoApplicationService.cs">
       <Link>modules\work\Todo\Application\TodoApplicationService.cs</Link>
     </Compile>
-    <Compile Include="..\..\Contracts\TodoDraftContracts.cs" />
+    <!-- Todo proposal/draft contracts are compiled once by Core. -->
     <Compile Include="..\..\Application\TodoContinuationState.cs">
       <Link>modules\work\Todo\Application\TodoContinuationState.cs</Link>
     </Compile>
     <Compile Include="..\..\Application\TodoProposalService.cs">
       <Link>modules\work\Todo\Application\TodoProposalService.cs</Link>
-    </Compile>
-    <Compile Include="..\..\Contracts\TodoProposal.cs">
-      <Link>modules\work\Todo\Contracts\TodoProposal.cs</Link>
     </Compile>
     <Page Include="..\..\Desktop\ExpandedTodoView.xaml">
       <Link>Views\ExpandedTodoView.xaml</Link>
