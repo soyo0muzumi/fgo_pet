@@ -98,7 +98,7 @@ public sealed class ConversationOrchestrator
     private readonly IDialogueSettingsStore? _settings;
     private readonly IMemorySettingsStore? _memorySettings;
     private readonly ConversationSummaryService? _summaries;
-    private readonly TodoProposalService? _todoProposals;
+    private readonly ITodoProposalReader? _todoProposals;
     private readonly ILogger<ConversationOrchestrator>? _logger;
     private readonly ITodoDraftWorkflow? _todoDrafts;
     private readonly IModelContextResolver _contextResolver;
@@ -120,7 +120,7 @@ public sealed class ConversationOrchestrator
         IDialogueSettingsStore? settings = null,
         IMemorySettingsStore? memorySettings = null,
         ConversationSummaryService? summaries = null,
-        TodoProposalService? todoProposals = null,
+        ITodoConversationPort? todoProposals = null,
         ILogger<ConversationOrchestrator>? logger = null,
         ITodoDraftWorkflow? todoDrafts = null,
         IModelContextResolver? contextResolver = null,
