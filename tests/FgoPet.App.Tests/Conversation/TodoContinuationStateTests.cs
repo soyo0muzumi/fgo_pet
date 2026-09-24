@@ -52,7 +52,7 @@ public sealed class TodoContinuationStateTests
 
         Assert.Equal(TodoDraftResultKind.Committed, result.Kind);
         Assert.Equal(2, result.Todos.Count);
-        Assert.Equal(["first", "second"], result.Todos.Select(todo => todo.Title).ToArray());
+        Assert.Equal<string>(["first", "second"], result.Todos.Select(todo => todo.Title));
         Assert.Equal(result.Todos[0].Id, result.Todo?.Id);
         Assert.Equal(2, repository.Items.Count);
     }
@@ -109,7 +109,7 @@ public sealed class TodoContinuationStateTests
 
         Assert.Single(results, result => result.Kind == TodoDraftResultKind.Committed);
         Assert.Equal(15, results.Count(result => result.Kind == TodoDraftResultKind.AlreadyCommitted));
-        Assert.All(results, result => Assert.Equal(["first", "second"], result.Todos.Select(todo => todo.Title).ToArray()));
+        Assert.All(results, result => Assert.Equal<string>(["first", "second"], result.Todos.Select(todo => todo.Title)));
         Assert.Equal(2, repository.SaveCount);
         Assert.Equal(2, repository.Items.Count);
     }

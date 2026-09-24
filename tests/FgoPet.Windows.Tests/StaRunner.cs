@@ -23,7 +23,7 @@ namespace FgoPet.Windows.Tests;
 /// 测试里没有它，延续直接掉到线程池上，再去读 DependencyObject 就抛
 /// <c>InvalidOperationException</c>；因为是 <c>async void</c>，异常无人接管，把 testhost 整个崩掉。
 ///
-/// 本类型用后台线程、带超时的 Join 和消息泵把挂死判为失败，并安装同步上下文。
+/// 本类型用后台线程、带超时的等待和消息泵把挂死判为失败，并安装同步上下文。
 /// 关停请求必须在 STA 线程上泵送完成，不能投递 BeginInvokeShutdown 后直接结束线程。
 /// </summary>
 internal static class StaRunner
@@ -37,12 +37,19 @@ internal static class StaRunner
     /// <summary>异步等待结束后留给线程收尾的宽限期。</summary>
     private static TimeSpan ShutdownGrace { get; } = TimeSpan.FromSeconds(5);
 
+    // Only fixed lifecycle labels are recorded, never UI text or test input.
+    private sealed class ExecutionState
+    {
+        public volatile string Phase = "thread-start";
+    }
+
     public static void Run(Action action, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(action);
 
         var budget = timeout ?? DefaultTimeout;
         Exception? failure = null;
+        var state = new ExecutionState();
 
         // IsBackground 是关键：即便下面的超时兜底生效、测试被判失败，卡住的 STA 线程也不会
         // 再把进程吊住。没有这一行，Join 超时只是让"挂死"变成"慢一点的挂死"。
@@ -50,7 +57,9 @@ internal static class StaRunner
         {
             try
             {
+                state.Phase = "dispatcher-initialization";
                 InstallDispatcherSynchronizationContext();
+                state.Phase = "test-action";
                 action();
             }
             catch (Exception error)
@@ -59,8 +68,10 @@ internal static class StaRunner
             }
             finally
             {
+                state.Phase = "dispatcher-shutdown";
                 try { ShutdownDispatcher(); }
                 catch (Exception error) { failure ??= error; }
+                state.Phase = "thread-exit";
             }
         })
         {
@@ -73,11 +84,7 @@ internal static class StaRunner
 
         if (!thread.Join(budget))
         {
-            throw new TimeoutException(
-                $"STA 测试线程在 {budget.TotalSeconds:0.#}s 内未结束，判定为挂死。" +
-                "最常见原因是 STA 线程收尾时卡在同步的 Dispatcher.InvokeShutdown() 上，" +
-                "或打开了 WPF Popup/ContextMenu 后仍调用 " +
-                "Dispatcher.Invoke(..., ApplicationIdle) —— 那就改用 StaRunner.Pump(...)。");
+            throw CreateTimeoutException(thread, budget, state.Phase);
         }
 
         if (failure is not null)
@@ -96,22 +103,25 @@ internal static class StaRunner
 
         var budget = timeout ?? DefaultTimeout;
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var state = new ExecutionState();
 
         var thread = new Thread(() =>
         {
             Exception? failure = null;
             try
             {
+                state.Phase = "dispatcher-initialization";
                 InstallDispatcherSynchronizationContext();
+                state.Phase = "test-action";
                 var work = action();
+                state.Phase = "awaiting-test-action";
 
                 // 不能写 work.GetAwaiter().GetResult()：装了 DispatcherSynchronizationContext 之后，
                 // 异步延续要靠这个线程泵消息才能跑，而 GetResult() 会把线程堵死 —— 自锁。
                 // 所以一边泵一边等，等到了再 GetResult() 取回业务异常。
                 if (!WaitForCompletion(work, budget))
                 {
-                    throw new TimeoutException(
-                        $"STA 测试线程内的异步操作在 {budget.TotalSeconds:0.#}s 内未完成，判定为挂死。");
+                    throw CreateTimeoutException(Thread.CurrentThread, budget, state.Phase);
                 }
 
                 work.GetAwaiter().GetResult();
@@ -122,8 +132,10 @@ internal static class StaRunner
             }
             finally
             {
+                state.Phase = "dispatcher-shutdown";
                 try { ShutdownDispatcher(); }
                 catch (Exception error) { failure ??= error; }
+                state.Phase = "thread-exit";
             }
 
             // Shutdown belongs to the test. Publishing success before it finishes
@@ -139,15 +151,50 @@ internal static class StaRunner
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        if (!thread.Join(budget + ShutdownGrace))
+        // Do not Join here: the caller may need to release work awaited by the STA.
+        // The returned task includes dispatcher shutdown AND actual thread exit.
+        return ObserveThreadAsync(thread, completion.Task, budget, state);
+    }
+
+    private static async Task ObserveThreadAsync(Thread thread, Task completion, TimeSpan budget, ExecutionState state)
+    {
+        using var deadline = new CancellationTokenSource(budget + ShutdownGrace);
+        Exception? failure = null;
+        try
         {
-            // 线程是后台线程，超时后即便它继续卡着也吊不住进程；这里只负责把结果判成失败。
-            completion.TrySetException(new TimeoutException(
-                $"STA 测试线程在 {budget.TotalSeconds:0.#}s 内未结束，判定为挂死。"));
+            await completion.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            // A late fault must be observed even after the outer timeout was reported.
+            _ = completion.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            throw CreateTimeoutException(thread, budget + ShutdownGrace, state.Phase);
+        }
+        catch (Exception error)
+        {
+            failure = error;
         }
 
-        return completion.Task;
+        try
+        {
+            // Completion is signalled at the end of the thread delegate, just before
+            // the OS thread exits. Join(0) observes that exit without blocking a worker.
+            while (!thread.Join(TimeSpan.Zero))
+                await Task.Delay(1, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            throw CreateTimeoutException(thread, budget + ShutdownGrace, state.Phase);
+        }
+
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
+
+    private static TimeoutException CreateTimeoutException(Thread thread, TimeSpan budget, string phase) =>
+        new($"STA 测试线程在 {budget.TotalSeconds:0.#}s 内未结束，判定为挂死。" +
+            $"phase={phase}; threadState={thread.ThreadState}; threadId={thread.ManagedThreadId}。" +
+            "此记录只定位超时阶段，不预先认定为 Dispatcher 关停或业务逻辑错误。");
 
     /// <summary>
     /// 泵送当前 Dispatcher 的消息队列，直到 ApplicationIdle **或**超时（以先到者为准）。
@@ -285,7 +332,7 @@ internal static class StaRunner
     }
 
     /// <summary>
-    /// 在所属线程上请求关停并泵送到完成；外层 Join 仍负责超时判定。
+    /// 在所属线程上请求关停并泵送到完成；外层等待仍负责超时判定。
     /// </summary>
     private static void ShutdownDispatcher()
     {
