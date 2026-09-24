@@ -12,7 +12,7 @@
 ## Non-responsibilities
 
 - Agent 传输协议与 Relay/Runtime/Adapter（归 `adapters/agent-integration`，本模块只发布**窄派发契约**）
-- 对话运行过程（归 dialogue）
+- 对话运行过程及聊天专用的提案/归档卡片呈现（归 dialogue）；跨模块窗口组合归 host
 
 ## Public interfaces
 
@@ -25,6 +25,8 @@
 `Archives/Contracts/ArchiveDraftContracts.cs` 发布原有 `ArchiveDraft` 值对象与仅含 `Confirm` 的 `IArchiveDraftConfirmation`。界面编辑标题、摘要后提交原草稿的副本；归档标识、来源、覆盖条目、日期、成果与模型输入字段保持原有传递语义。草稿创建、归档持久化与覆盖 Todo 清理由 Work 实现负责，不经界面契约暴露仓储。
 
 这两组界面契约和归档值对象由 Core 编译一次，保留历史命名空间。宿主显式工厂继续传入既有服务实例；接口不是新的服务生命周期或授权机制。归档 DTO 的程序集归属及界面构造函数签名已变化，需要完整重建、部署，不支持只替换单个 DLL。
+
+聊天专用的 `TodoProposalCard`、`ArchiveDraftCard` 及其 ViewModel 位于 `modules/dialogue/Desktop/Cards`，由 Dialogue 编译，并通过上述确认契约调用 Work。独立的 `TodoWorkspaceView`、`TodoListViewModel`、执行界面及全部业务服务仍由 Work 编译；宿主组合窗口，不把这些能力搬入 Dialogue，也不新增 Work 对 Dialogue 的反向引用。卡片迁移保留类型命名空间与行为，但需完整重建以更新程序集及 BAML 资源归属。
 
 ## Dependencies
 
@@ -57,14 +59,14 @@ Core / App / Infrastructure / Windows 的 todo / execution / archive 测试；wo
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-Todo、Execution、Archives 已各有现存工程编译应用和桌面条目；部分共享值对象、仓储仍由 legacy Core / Infrastructure 编译。工程拆分不等于全部跨模块依赖已收口。
+Todo、Execution、Archives 已各有现存工程；Todo 与 Execution 保留独立桌面界面，聊天卡片呈现由 Dialogue 编译。部分共享值对象、仓储仍由 legacy Core / Infrastructure 编译。工程拆分不等于全部跨模块依赖已收口。
 
-- 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
+- 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4；当前聊天卡片归属以上述工程编译边界为准。
 - 收口以实际调用链与契约为准，不重复创建已有工程。
 
 ## Migration debt
 
-- Dialogue 已通过契约使用提案解析与归档确认，但仍组合 Work 的卡片 ViewModel 和 XAML 控件；桌面呈现与程序集引用边界仍需收口。
+- Dialogue 对 Work 实现的项目引用与卡片呈现依赖已移除；Work 的 legacy Core / Infrastructure 编译归属和宿主注册边界仍需收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

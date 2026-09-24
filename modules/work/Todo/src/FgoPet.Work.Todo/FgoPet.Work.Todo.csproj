@@ -53,15 +53,6 @@
     <Compile Include="..\..\Desktop\TodoListViewModel.cs">
       <Link>modules\work\Todo\Desktop\TodoListViewModel.cs</Link>
     </Compile>
-    <Page Include="..\..\Desktop\TodoProposalCard.xaml">
-      <Link>Views\TodoProposalCard.xaml</Link>
-    </Page>
-    <Compile Include="..\..\Desktop\TodoProposalCard.xaml.cs">
-      <Link>modules\work\Todo\Desktop\TodoProposalCard.xaml.cs</Link>
-    </Compile>
-    <Compile Include="..\..\Desktop\TodoProposalViewModel.cs">
-      <Link>modules\work\Todo\Desktop\TodoProposalViewModel.cs</Link>
-    </Compile>
     <Page Include="..\..\Desktop\TodoWorkspaceView.xaml">
       <Link>Views\TodoWorkspaceView.xaml</Link>
     </Page>
