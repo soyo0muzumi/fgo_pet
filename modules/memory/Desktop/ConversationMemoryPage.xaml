@@ -37,6 +37,7 @@
                         <TextBlock Text="选择从者后显示候选记忆。" Style="{StaticResource SettingsStatusStyle}" />
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding CandidateDetails}" Style="{StaticResource SettingsStatusStyle}" Margin="0,0,0,8" />
                         <TextBox x:Name="CandidateEditBox"
                                  Style="{StaticResource SettingsTextBoxStyle}"
                                  Text="{Binding CandidateEditText, UpdateSourceTrigger=PropertyChanged}"
@@ -49,6 +50,8 @@
                                     Command="{Binding ApproveCandidateCommand}" />
                             <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="拒绝"
                                     Command="{Binding RejectCandidateCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="更正右侧选中记忆"
+                                    Command="{Binding SelectReplacementCommand}" />
                         </WrapPanel>
                     </StackPanel>
                     <Grid MinHeight="150">
@@ -70,9 +73,10 @@
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock Text="已确认记忆" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
-                        <TextBlock Text="记忆按从者保存，外观切换不会移动记忆。" Style="{StaticResource SettingsStatusStyle}" />
+                        <TextBlock Text="角色通用偏好可跨项目使用；项目记忆只在对应项目召回。外观切换不影响记忆。" Style="{StaticResource SettingsStatusStyle}" />
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding MemoryDetails}" Style="{StaticResource SettingsStatusStyle}" Margin="0,0,0,8" />
                         <TextBox x:Name="MemoryEditBox"
                                  Style="{StaticResource SettingsTextBoxStyle}"
                                  Text="{Binding MemoryEditText, UpdateSourceTrigger=PropertyChanged}"
@@ -83,6 +87,8 @@
                                     Command="{Binding EditMemoryCommand}" />
                             <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="停用"
                                     Command="{Binding DisableMemoryCommand}" />
+                            <Button Margin="6,0,0,0" Style="{StaticResource SettingsSecondaryButtonStyle}" Content="启用"
+                                    Command="{Binding EnableMemoryCommand}" />
                             <Button Margin="6,0,0,0" Style="{StaticResource SettingsDangerButtonStyle}" Content="删除"
                                     Command="{Binding DeleteMemoryCommand}" />
                         </WrapPanel>

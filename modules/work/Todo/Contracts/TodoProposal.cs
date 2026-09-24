@@ -17,9 +17,9 @@ public sealed record TodoProposal
             : ValidateText(description, nameof(description), 4_000);
         Priority = priority;
         DueAt = dueAt;
-        StepTitles = (stepTitles ?? Array.Empty<string>())
+        StepTitles = Array.AsReadOnly((stepTitles ?? Array.Empty<string>())
             .Select(step => ValidateText(step, "step title", 200))
-            .ToArray();
+            .ToArray());
         if (StepTitles.Count > 20)
         {
             throw new ArgumentException("A Todo proposal may contain at most 20 steps.", nameof(stepTitles));

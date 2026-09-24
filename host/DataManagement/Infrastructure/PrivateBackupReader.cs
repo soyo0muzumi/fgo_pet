@@ -295,7 +295,7 @@ public sealed class PrivateBackupReader
             throw new BackupException(code, "Backup database schema metadata does not match the database.");
         }
 
-        var staged = new RuntimeDatabase(path);
+        var staged = new RuntimeDatabase(path, pooling: false);
         new RuntimeDatabaseMigrator(staged).Migrate();
         long migratedVersion;
         using (var connection = OpenReadOnly(path))
@@ -337,6 +337,7 @@ public sealed class PrivateBackupReader
             DataSource = path,
             Mode = SqliteOpenMode.ReadOnly,
             Cache = SqliteCacheMode.Private,
+            Pooling = false,
         }.ToString());
         connection.Open();
         return connection;

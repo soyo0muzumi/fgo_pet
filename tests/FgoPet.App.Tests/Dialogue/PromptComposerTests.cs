@@ -8,6 +8,61 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class PromptComposerTests
 {
+    private static readonly ModelRouteKey Route = new("test", "endpoint", "model", "1");
+    private static readonly PromptBudget Budget = PromptBudget.Resolve(
+        new ModelContextLimit(Route, 16384, null, ContextLimitSource.Override, "test"), 2048);
+    private static ComposedPrompt Compose(PromptContext context) => new PromptComposer().Compose(context, Route, Budget);
+
+    [Fact]
+    public void History_budget_reports_overflow_without_silently_dropping_messages()
+    {
+        var key = new ContentContextKey("800100", "test", "1.0.0", "casual", "p1", "k1");
+        var history = Enumerable.Range(0, 40).Select(index => new PromptMessage(
+            index % 2 == 0 ? ChatMessageRole.User : ChatMessageRole.Assistant,
+            $"turn-{index:D2}:" + new string('x', 800))).ToArray();
+        var context = new PromptContext(key, new PersonaBundle("800100", "test", "1.0.0", "p1", new string('p', 12_000), []),
+            [], [], "", history, "continue");
+
+        var prompt = Compose(context);
+        var sent = prompt.Messages.Where(message => message.Text.Contains("source=\"history:", StringComparison.Ordinal)).ToArray();
+
+        Assert.NotEmpty(sent);
+        Assert.Contains("turn-39:", sent[^1].Text);
+        Assert.Contains("turn-00:", sent[0].Text);
+        Assert.False(prompt.FitsBudget);
+        Assert.Equal(sent.OrderBy(message => message.Text.Substring(
+            message.Text.IndexOf("turn-", StringComparison.Ordinal) + 5, 2)).ToArray(), sent);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Oversized_pending_draft_is_rejected_instead_of_losing_fields(bool escaping)
+    {
+        var key = new ContentContextKey("800100", "test", "1.0.0", "casual", "p1", "k1");
+        var error = Assert.Throws<PromptBudgetException>(() =>
+        {
+            var context = new PromptContext(key, new PersonaBundle("800100", "test", "1.0.0", "p1", "persona", []),
+                [], [], "", [], "continue", pendingTodoDraft: new string(escaping ? '"' : 'x', escaping ? 8_000 : 12_001));
+            Compose(context);
+        });
+        Assert.Equal(PromptBudgetFailure.PendingDraftTooLarge, error.Failure);
+    }
+
+    [Fact]
+    public void Escaped_context_is_bounded_after_wrapping()
+    {
+        var key = new ContentContextKey("800100", "test", "1.0.0", "casual", "p1", "k1");
+        var context = new PromptContext(key, new PersonaBundle("800100", "test", "1.0.0", "p1", new string('"', 8_000), []),
+            [], [], "", [], "continue");
+
+        var prompt = Compose(context);
+
+        Assert.Equal(PromptAssemblyStatus.Truncated, prompt.Status);
+        Assert.True(prompt.EstimatedTokens <= Budget.InputTokens);
+        Assert.All(prompt.Messages, message => Assert.True(message.Text.Length <= 12_000));
+    }
+
     [Fact]
     public void Compose_includes_the_todo_tool_usage_without_granting_direct_agent_control()
     {
@@ -21,7 +76,7 @@ public sealed class PromptComposerTests
             [],
             "帮我安排今天的工作。");
 
-        var texts = new PromptComposer().Compose(context).Messages.Select(message => message.Text).ToArray();
+        var texts = Compose(context).Messages.Select(message => message.Text).ToArray();
 
         Assert.Contains(texts, text => text.Contains("submit_todo_proposals", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
@@ -45,7 +100,7 @@ public sealed class PromptComposerTests
             "继续",
             new ConversationRequestContext("project-1", "FGO Pet", ["plan.md"], "todo", "整理成待办"));
 
-        var texts = new PromptComposer().Compose(context).Messages.Select(message => message.Text).ToArray();
+        var texts = Compose(context).Messages.Select(message => message.Text).ToArray();
 
         Assert.Contains(texts, text => text.Contains("项目：FGO Pet", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("附件名称：plan.md", StringComparison.Ordinal));
@@ -79,7 +134,7 @@ public sealed class PromptComposerTests
             [new PromptMessage(ChatMessageRole.User, "上一轮消息")],
             "请讲讲你的剧情经历。");
 
-        var prompt = new PromptComposer().Compose(context);
+        var prompt = Compose(context);
         var texts = prompt.Messages.Select(message => message.Text).ToArray();
 
         Assert.Equal(PromptAssemblyStatus.Complete, prompt.Status);
@@ -113,7 +168,7 @@ public sealed class PromptComposerTests
             [],
             "请陪我专注工作。");
 
-        var texts = new PromptComposer().Compose(context).Messages.Select(message => message.Text).ToArray();
+        var texts = Compose(context).Messages.Select(message => message.Text).ToArray();
 
         Assert.Contains(texts, text => text.Contains("approved profile", StringComparison.Ordinal));
         Assert.DoesNotContain(texts, text => text.Contains("approved story", StringComparison.Ordinal));
@@ -126,9 +181,9 @@ public sealed class PromptComposerTests
         var persona = new PersonaBundle("800100", "test-persona", "1.0.0", "2.1.0", new string('人', 16_000), []);
         var context = new PromptContext(contextKey, persona, [], [], string.Empty, [], "继续");
 
-        var prompt = new PromptComposer().Compose(context);
+        var prompt = Compose(context);
 
         Assert.Equal(PromptAssemblyStatus.Truncated, prompt.Status);
-        Assert.True(prompt.EstimatedTokens <= 2_500 + 20);
+        Assert.True(prompt.EstimatedTokens <= Budget.InputTokens);
     }
 }

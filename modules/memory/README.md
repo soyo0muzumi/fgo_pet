@@ -18,6 +18,10 @@
 
 仅 `Contracts/` 下的类型可被其他模块引用。跨模块调用必须走 `modules/README.md` 登记的契约边，**除登记的 8 条外任何跨模块引用都是违规**。
 
+`IMemoryRecall.Query` 每请求读取最新 revision，按角色通用/当前项目范围及查询词裁选完整条目。`IMemoryCandidateSink.Begin/Stage/Abandon` 提供带 generation、revision 和原文来源的候选写入端口，不提供审批、修改或删除能力。`IConversationMemory` 仅保留兼容读取适配，不再暴露候选写入。管理操作统一由 `MemoryCandidateService` 处理。
+
+候选只落 Pending；审批更正必须匹配准确 ID、同一 scope 和 expected version。来源与规范化正文分别去重；删除回执阻止同源重建。每角色 200 条 / 40,000 字符含停用记录，旧数据超额时仍保留。`IMemoryWriteLifetime.StartSession` 在启动恢复和数据库迁移后旋转代次，旧 pending 作业不恢复执行。Memory 本身不发模型请求，也不反向引用 Dialogue。
+
 ## Dependencies
 
 - **允许**：`platform/*`、`ui-foundation/*`
@@ -25,9 +29,9 @@
 
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 
-`memory_candidates` `memories`（2 张）
+`memory_candidates` `memories` `memory_write_state` `memory_ingestions`
 
-> 本模块的仓储**只能碰上面这些表**；碰别人的表是 Q2=b 违规。
+仓储只写本模块的表。来源所属角色、项目、原文版本由 Dialogue 验证；Memory 的来源存在性查询仅用于 FK/归属完整性复核和“来源已删除”状态，不读取或检索历史正文。项目名称保存在来源快照中，管理页不从 Dialogue 查询会话列表。
 
 ## Data and security boundaries
 

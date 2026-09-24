@@ -1,5 +1,6 @@
 ﻿using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Character.Settings;
+using FgoPet.Core.Dialogue;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
@@ -19,6 +20,7 @@ public sealed class UserDataDeletionService : IUserDataDeleter
     private readonly IDialogueSettingsStore? _dialogueSettings;
     private readonly ICharacterSettingsStore? _characterSettings;
     private readonly ProviderCatalog? _catalog;
+    private readonly IDialogueContextLifetime? _dialogueLifetime;
 
     public UserDataDeletionService(
         RuntimeDatabase database,
@@ -27,7 +29,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         ICredentialStore? credentials = null,
         IDialogueSettingsStore? dialogueSettings = null,
         ICharacterSettingsStore? characterSettings = null,
-        ProviderCatalog? catalog = null)
+        ProviderCatalog? catalog = null,
+        IDialogueContextLifetime? dialogueLifetime = null)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
         _conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
@@ -36,13 +39,15 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         _dialogueSettings = dialogueSettings;
         _characterSettings = characterSettings;
         _catalog = catalog;
+        _dialogueLifetime = dialogueLifetime;
     }
 
-    public Task DeleteConversationAsync(string conversationId, string servantId, CancellationToken cancellationToken)
+    public async Task DeleteConversationAsync(string conversationId, string servantId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _memories.InvalidateWrites();
+        using var suspension = _dialogueLifetime is null ? null : await _dialogueLifetime.SuspendAsync(cancellationToken);
         _conversations.DeleteConversation(conversationId, servantId);
-        return Task.CompletedTask;
     }
 
     public Task DeleteMemoryAsync(string memoryId, string servantId, CancellationToken cancellationToken)
@@ -61,6 +66,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
     public async Task DeleteAllAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _memories.InvalidateWrites();
+        using var suspension = _dialogueLifetime is null ? null : await _dialogueLifetime.SuspendAsync(cancellationToken);
         var dialogue = _dialogueSettings?.Load();
         if (_credentials is not null)
         {
@@ -83,6 +90,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
             DELETE FROM conversations;
             DELETE FROM content_bindings;
             DELETE FROM runtime_state;
+            DELETE FROM memory_ingestions;
+            UPDATE memory_write_state SET generation=lower(hex(randomblob(16))),revision=revision+1 WHERE singleton_id=1;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

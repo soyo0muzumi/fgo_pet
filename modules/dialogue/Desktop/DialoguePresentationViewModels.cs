@@ -137,6 +137,13 @@ public sealed record DialogueContextChip(string Id, string Label);
 /// Transient, presentation-owned context for the shared conversation. It exposes
 /// only safe display names to the prompt layer and never creates Todo/Focus data.
 /// </summary>
+public sealed class HistorySourceViewModel(FgoPet.Core.Dialogue.HistoryHit source, Action open)
+{
+    public string Title => source.Title;
+    public string Detail => source.Anchor.CreatedAtUtc.ToLocalTime().ToString("MM-dd HH:mm") + " · " + source.Excerpt;
+    public IRelayCommand OpenCommand { get; } = new RelayCommand(open);
+}
+
 public sealed class DialogueSessionContextViewModel : ObservableObject
 {
     private static readonly IReadOnlyDictionary<string, string> IntentLabels =

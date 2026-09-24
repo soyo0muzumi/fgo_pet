@@ -4,9 +4,13 @@ namespace FgoPet.Core.Dialogue;
 
 public sealed record ProviderModel
 {
-    public ProviderModel(string id, string? displayName = null)
+    public ProviderModel(string id, string? displayName = null, int? contextWindowTokens = null, int? maxOutputTokens = null)
     {
         Id = Phase3Validation.Id(id, nameof(id));
+        if (contextWindowTokens is <= 0 || maxOutputTokens is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(contextWindowTokens));
+        ContextWindowTokens = contextWindowTokens;
+        MaxOutputTokens = maxOutputTokens;
         DisplayName = string.IsNullOrWhiteSpace(displayName)
             ? Id
             : Phase3Validation.Text(displayName, nameof(displayName), 128);
@@ -14,6 +18,8 @@ public sealed record ProviderModel
 
     public string Id { get; }
     public string DisplayName { get; }
+    public int? ContextWindowTokens { get; }
+    public int? MaxOutputTokens { get; }
 }
 
 public sealed record ProviderDescriptor

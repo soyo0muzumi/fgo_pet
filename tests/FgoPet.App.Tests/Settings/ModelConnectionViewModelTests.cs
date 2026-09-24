@@ -15,6 +15,47 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class ModelConnectionViewModelTests
 {
     [Fact]
+    public async Task Context_override_and_output_are_validated_and_saved()
+    {
+        var settings = new FakeSettings();
+        var model = CreateViewModel(settings, new FakeCredentials());
+        model.SetApiKey("fixture");
+        model.ContextWindowOverrideText = "32768";
+        model.MaxOutputTokensText = "4096";
+        Assert.Contains("手工设置", model.ContextLimitText);
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(32768, settings.Saved!.ModelConnection!.ContextWindowOverride);
+        Assert.Equal(4096, settings.Saved.ModelConnection.MaxOutputTokens);
+        model.MaxOutputTokensText = "40000";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.NotEmpty(model.ErrorText);
+        Assert.Equal(4096, settings.Saved.ModelConnection.MaxOutputTokens);
+        model.ContextWindowOverrideText = "";
+        model.MaxOutputTokensText = "2048";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Null(settings.Saved.ModelConnection.ContextWindowOverride);
+    }
+
+    [Fact]
+    public async Task Stale_model_refresh_cannot_apply_capacity_to_another_endpoint()
+    {
+        var handler = new DelayedRespondingHandler();
+        var credentials = new FakeCredentials();
+        var catalog = new ProviderCatalog();
+        var model = new ModelConnectionViewModel(new FakeSettings(), credentials, catalog,
+            new ChatProviderFactory(catalog, credentials, new HttpClient(handler)));
+        model.SetApiKey("fixture");
+        var refresh = model.RefreshModelsCommand.ExecuteAsync(null);
+        await handler.RequestStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        model.BaseUrl = "https://other.test/v1";
+        handler.Complete();
+        await refresh;
+        Assert.Empty(model.AvailableModels);
+        Assert.Contains("未获取到上限", model.ContextLimitText);
+        Assert.Contains("估算", model.ContextLimitText);
+    }
+
+    [Fact]
     public async Task Save_persists_provider_and_model_metadata_but_sends_key_to_credential_store()
     {
         var settings = new FakeSettings();

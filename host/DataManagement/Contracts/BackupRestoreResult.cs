@@ -7,6 +7,7 @@ public enum BackupRestoreStatus
     Restored,
     Rejected,
     RolledBack,
+    RecoveryRequired,
 }
 
 public sealed record BackupRestoreResult(

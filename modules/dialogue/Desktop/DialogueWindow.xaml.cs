@@ -8,6 +8,16 @@ using FgoPet.Core.Panels;
 
 namespace FgoPet.App.Dialogue;
 
+public interface IClipboardWriter
+{
+    void SetText(string text);
+}
+
+internal sealed class SystemClipboardWriter : IClipboardWriter
+{
+    public void SetText(string text) => Clipboard.SetText(text);
+}
+
 /// <summary>Chat presentation shell. Conversation and task state remain owned by their view models.</summary>
 public partial class DialogueWindow : Window
 {
@@ -20,6 +30,8 @@ public partial class DialogueWindow : Window
     private bool _following = true;
     private Button? _drawerOrigin;
     private Button? _historyDeleteOrigin;
+    private readonly IClipboardWriter _clipboard;
+    private readonly Dictionary<Button, System.Windows.Threading.DispatcherTimer> _copyFeedback = new();
     internal ContextMenu? LastMoreMenu { get; private set; }
     public event Action? Hidden;
 
@@ -28,11 +40,13 @@ public partial class DialogueWindow : Window
         FgoPet.App.Services.TodoApplicationService? todoService = null,
         FgoPet.Core.Agents.IAgentRepository? agents = null,
         AgentCurrentTaskViewModel? currentTask = null,
-        FgoPet.App.Portraits.PortraitController? portrait = null)
+        FgoPet.App.Portraits.PortraitController? portrait = null,
+        IClipboardWriter? clipboard = null)
     {
         _viewModel = viewModel;
         _todos = todos;
         _panel = panel;
+        _clipboard = clipboard ?? new SystemClipboardWriter();
         InitializeComponent();
         DataContext = viewModel;
         FocusShortcutButton.IsEnabled = panel is not null;
@@ -87,13 +101,46 @@ public partial class DialogueWindow : Window
                 viewModel.NotifyActivated();
                 if (_showingTasks) _workspace?.EnterView();
             }
-            else { CloseDrawers(); viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
+            else { ClearCopyFeedback(); CloseDrawers(); viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
+        };
+        viewModel.Conversation.SessionChanged += ClearCopyFeedback;
+        Dispatcher.ShutdownStarted += OnCopyDispatcherShutdown;
+        Closed += (_, _) =>
+        {
+            ClearCopyFeedback();
+            viewModel.Conversation.SessionChanged -= ClearCopyFeedback;
+            Dispatcher.ShutdownStarted -= OnCopyDispatcherShutdown;
         };
         Activated += (_, _) => viewModel.NotifyActivated();
         Deactivated += (_, _) => viewModel.NotifyDeactivated();
         PreviewKeyDown += OnKeyDown;
         RefreshConversation();
         UpdateResponsiveLayout();
+    }
+
+    private async void OnProjectClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Conversation.IsStreaming) return;
+        var menu = new ContextMenu { PlacementTarget = ProjectButton };
+        ProjectButton.ContextMenu = menu;
+        var clear = new MenuItem { Header = "不关联项目", IsCheckable = true,
+            IsChecked = string.IsNullOrEmpty(_viewModel.Conversation.SessionContext.ProjectId) };
+        clear.Click += (_, _) => { if (!_viewModel.Conversation.IsStreaming) _viewModel.RemoveContextChip("project"); };
+        menu.Items.Add(clear);
+        var status = new MenuItem { Header = "正在读取项目…", IsEnabled = false };
+        menu.Items.Add(status);
+        menu.IsOpen = true;
+        await _viewModel.ProjectSelection.RefreshAsync();
+        if (!menu.IsOpen || !IsVisible) return;
+        menu.Items.Remove(status);
+        foreach (var option in _viewModel.ProjectSelection.Projects)
+        {
+            var item = new MenuItem { Header = option.Label, IsCheckable = true,
+                IsChecked = option.Id == _viewModel.Conversation.SessionContext.ProjectId };
+            item.Click += (_, _) => { if (!_viewModel.Conversation.IsStreaming) _viewModel.SelectProject(option); };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new MenuItem { Header = _viewModel.ProjectSelection.StatusText, IsEnabled = false });
     }
 
     private void OnOpenRequested() { Show(); Activate(); if (!_showingTasks) InputBox.Focus(); }
@@ -135,6 +182,7 @@ public partial class DialogueWindow : Window
     }
     private void ShowTasks(bool tasks)
     {
+        if (tasks) ClearCopyFeedback();
         var enteringTasks = tasks && !_showingTasks;
         CloseDrawers();
         _showingTasks = tasks;
@@ -246,14 +294,15 @@ public partial class DialogueWindow : Window
         MessageScroller.ScrollToEnd();
         JumpButton.Visibility = Visibility.Collapsed;
     }
-    private async void OnCopyClick(object sender, RoutedEventArgs e)
+    private void OnCopyClick(object sender, RoutedEventArgs e)
     {
+        if (!IsVisible || Dispatcher.HasShutdownStarted) return;
         if (sender is Button { Tag: ConversationTurnViewModel turn } && turn.Actions.CanCopy)
         {
             var button = (Button)sender;
             var feedbackIcon = FindResource("ChatCopied");
             var feedbackText = "已复制";
-            try { Clipboard.SetText(turn.Text); }
+            try { _clipboard.SetText(turn.Text); }
             catch (System.Runtime.InteropServices.ExternalException)
             {
                 feedbackIcon = FindResource("ChatCopyFailed");
@@ -265,13 +314,39 @@ public partial class DialogueWindow : Window
             // same logical ToolTip twice and terminate the dispatcher.
             button.ToolTip = feedbackText;
             System.Windows.Automation.AutomationProperties.SetName(button, feedbackText);
-            await Task.Delay(1200);
-            // An older click must not reset newer feedback.
-            if (!Equals(button.ToolTip, feedbackText)) return;
-            button.Content = FindResource("ChatCopy");
-            button.ToolTip = "复制";
-            System.Windows.Automation.AutomationProperties.SetName(button, "复制");
+            if (_copyFeedback.Remove(button, out var previous)) previous.Stop();
+            var timer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
+                { Interval = TimeSpan.FromMilliseconds(1200) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                if (!_copyFeedback.TryGetValue(button, out var current) || !ReferenceEquals(timer, current)) return;
+                _copyFeedback.Remove(button);
+                if (!Dispatcher.HasShutdownStarted) ResetCopyFeedback(button);
+            };
+            _copyFeedback[button] = timer;
+            timer.Start();
         }
+    }
+
+    private void ResetCopyFeedback(Button button)
+    {
+        button.Content = FindResource("ChatCopy");
+        button.ToolTip = "复制";
+        System.Windows.Automation.AutomationProperties.SetName(button, "复制");
+    }
+
+    private void OnCopyDispatcherShutdown(object? sender, EventArgs e) => ClearCopyFeedback();
+
+    private void ClearCopyFeedback()
+    {
+        foreach (var (button, timer) in _copyFeedback)
+        {
+            timer.Stop();
+            if (!Dispatcher.HasShutdownStarted) ResetCopyFeedback(button);
+        }
+        _copyFeedback.Clear();
     }
     private async void OnSpeechClick(object sender, RoutedEventArgs e)
     {

@@ -347,6 +347,69 @@ public sealed class RuntimeDatabaseMigrator
               UNIQUE(todo_id, sort_order));
             CREATE INDEX ix_todo_steps_todo_order
               ON todo_steps(todo_id, sort_order, step_id);
+            """),
+        new(12, """
+            ALTER TABLE conversations ADD COLUMN project_id TEXT NULL;
+            ALTER TABLE conversations ADD COLUMN project_label TEXT NULL;
+            ALTER TABLE conversations ADD COLUMN context_revision INTEGER NOT NULL DEFAULT 0;
+            CREATE INDEX ix_conversations_scope ON conversations(servant_id, project_id, updated_at_utc DESC, conversation_id);
+            CREATE VIRTUAL TABLE chat_message_search USING fts5(text, content='chat_messages', content_rowid='rowid', tokenize='trigram');
+            INSERT INTO chat_message_search(chat_message_search) VALUES('rebuild');
+            CREATE TRIGGER chat_message_search_insert AFTER INSERT ON chat_messages BEGIN
+              INSERT INTO chat_message_search(rowid,text) VALUES(new.rowid,new.text);
+              UPDATE conversations SET context_revision=context_revision+1 WHERE conversation_id=new.conversation_id;
+            END;
+            CREATE TRIGGER chat_message_search_update AFTER UPDATE ON chat_messages BEGIN
+              INSERT INTO chat_message_search(chat_message_search,rowid,text) VALUES('delete',old.rowid,old.text);
+              INSERT INTO chat_message_search(rowid,text) VALUES(new.rowid,new.text);
+              UPDATE conversations SET context_revision=context_revision+1 WHERE conversation_id IN (old.conversation_id,new.conversation_id);
+            END;
+            CREATE TRIGGER chat_message_search_delete AFTER DELETE ON chat_messages BEGIN
+              INSERT INTO chat_message_search(chat_message_search,rowid,text) VALUES('delete',old.rowid,old.text);
+              UPDATE conversations SET context_revision=context_revision+1 WHERE conversation_id=old.conversation_id;
+            END;
+            """),
+        new(13, """
+            CREATE TABLE conversation_contexts(
+              conversation_id TEXT PRIMARY KEY REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              summary_id TEXT NOT NULL REFERENCES conversation_summaries(summary_id) ON DELETE CASCADE,
+              projection_revision INTEGER NOT NULL CHECK(projection_revision>0),
+              source_revision INTEGER NOT NULL,
+              covered_through_sequence INTEGER NOT NULL,
+              covered_through_message_id TEXT NOT NULL,
+              prefix_fingerprint TEXT NOT NULL,
+              route_key TEXT NOT NULL,
+              input_tokens_before INTEGER NOT NULL,
+              input_tokens_after INTEGER NOT NULL,
+              updated_at_utc TEXT NOT NULL);
+            """),
+        new(14, """
+            ALTER TABLE memory_candidates ADD COLUMN project_id TEXT NULL;
+            ALTER TABLE memory_candidates ADD COLUMN source_fingerprint TEXT NULL;
+            ALTER TABLE memory_candidates ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'UnknownLegacy';
+            ALTER TABLE memory_candidates ADD COLUMN origin_at_utc TEXT NULL;
+            ALTER TABLE memory_candidates ADD COLUMN source_project_label TEXT NULL;
+            ALTER TABLE memory_candidates ADD COLUMN replaces_memory_id TEXT NULL;
+            ALTER TABLE memory_candidates ADD COLUMN expected_memory_version INTEGER NULL;
+            ALTER TABLE memories ADD COLUMN project_id TEXT NULL;
+            ALTER TABLE memories ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+            ALTER TABLE memories ADD COLUMN source_key TEXT NULL;
+            ALTER TABLE memories ADD COLUMN source_fingerprint TEXT NULL;
+            ALTER TABLE memories ADD COLUMN origin_conversation_id TEXT NULL;
+            ALTER TABLE memories ADD COLUMN origin_message_id TEXT NULL;
+            ALTER TABLE memories ADD COLUMN origin_at_utc TEXT NULL;
+            ALTER TABLE memories ADD COLUMN origin_project_label TEXT NULL;
+            ALTER TABLE memories ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'UnknownLegacy';
+            CREATE TABLE memory_write_state(
+              singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),
+              generation TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>=0));
+            INSERT INTO memory_write_state VALUES(1, lower(hex(randomblob(16))), 0);
+            CREATE TABLE memory_ingestions(
+              source_key TEXT PRIMARY KEY, servant_id TEXT NOT NULL, project_id TEXT NULL,
+              ticket_id TEXT NOT NULL, generation TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('pending','staged','rejected','deleted','abandoned')),
+              updated_at_utc TEXT NOT NULL);
+            CREATE INDEX ix_memories_scope ON memories(servant_id, project_id, is_enabled, updated_at_utc DESC);
             """)
     };
 

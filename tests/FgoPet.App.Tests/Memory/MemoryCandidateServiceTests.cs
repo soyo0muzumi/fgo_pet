@@ -61,7 +61,7 @@ public sealed class MemoryCandidateServiceTests : IDisposable
 
     private RuntimeDatabase CreateDatabase()
     {
-        var database = new RuntimeDatabase(_path);
+        var database = TestRuntimeDatabase.Create(_path);
         new RuntimeDatabaseMigrator(database).Migrate();
         return database;
     }

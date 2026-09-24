@@ -1,7 +1,16 @@
-using FgoPet.Core.Dialogue;
+
 using FgoPet.Core.Validation;
 
 namespace FgoPet.Core.Memory;
+
+/// <summary>Legacy read adapter. Automatic writes use IMemoryCandidateSink exclusively.</summary>
+public interface IConversationMemory : IMemoryRecall
+{
+    IReadOnlyList<StoredMemory> ListEnabledMemories(string servantId);
+    MemoryRecallSnapshot IMemoryRecall.Query(MemoryScope scope, string query, int maxItems, int maxChars) =>
+        new(0, ListEnabledMemories(scope.ServantId).Where(m => m.ProjectId is null || m.ProjectId == scope.ProjectId)
+            .Take(Math.Min(maxItems, 8)).ToArray());
+}
 
 public enum MemoryCandidateStatus
 {
@@ -29,7 +38,9 @@ public sealed record MemoryCandidate
         DateTimeOffset createdAtUtc,
         string? sourceMessageId = null,
         string? appearanceId = null,
-        MemoryCandidateStatus status = MemoryCandidateStatus.Pending)
+        MemoryCandidateStatus status = MemoryCandidateStatus.Pending,
+        string? projectId = null, MemorySource? source = null, string? replacesMemoryId = null,
+        int? expectedMemoryVersion = null)
     {
         CandidateId = Phase3Validation.Id(candidateId, nameof(candidateId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
@@ -42,7 +53,16 @@ public sealed record MemoryCandidate
         AppearanceId = string.IsNullOrWhiteSpace(appearanceId)
             ? null
             : Phase3Validation.Id(appearanceId, nameof(appearanceId));
+        if (!Enum.IsDefined(status)) throw new ArgumentOutOfRangeException(nameof(status));
         Status = status;
+        ProjectId = new MemoryScope(servantId, projectId).ProjectId;
+        if (source is not null && (source.Scope != new MemoryScope(servantId, ProjectId) ||
+            source.ConversationId != conversationId || source.MessageId != sourceMessageId))
+            throw new ArgumentException("Memory source must match candidate scope and origin.");
+        Source = source;
+        var proposal = new MemoryProposal(text, replacesMemoryId, expectedMemoryVersion);
+        ReplacesMemoryId = proposal.ReplacesMemoryId;
+        ExpectedMemoryVersion = proposal.ExpectedMemoryVersion;
     }
 
     public string CandidateId { get; }
@@ -53,6 +73,10 @@ public sealed record MemoryCandidate
     public string? SourceMessageId { get; }
     public string? AppearanceId { get; }
     public MemoryCandidateStatus Status { get; }
+    public string? ProjectId { get; }
+    public MemorySource? Source { get; }
+    public string? ReplacesMemoryId { get; }
+    public int? ExpectedMemoryVersion { get; }
 }
 
 public sealed record StoredMemory
@@ -64,7 +88,8 @@ public sealed record StoredMemory
         bool isEnabled,
         DateTimeOffset createdAtUtc,
         DateTimeOffset updatedAtUtc,
-        string? sourceCandidateId = null)
+        string? sourceCandidateId = null, string? projectId = null, int version = 1,
+        MemorySource? source = null, bool sourceAvailable = false)
     {
         MemoryId = Phase3Validation.Id(memoryId, nameof(memoryId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
@@ -75,6 +100,13 @@ public sealed record StoredMemory
         SourceCandidateId = string.IsNullOrWhiteSpace(sourceCandidateId)
             ? null
             : Phase3Validation.Id(sourceCandidateId, nameof(sourceCandidateId));
+        ProjectId = new MemoryScope(servantId, projectId).ProjectId;
+        if (version <= 0) throw new ArgumentOutOfRangeException(nameof(version));
+        if (source is not null && source.Scope != new MemoryScope(servantId, ProjectId))
+            throw new ArgumentException("Memory source must match scope.");
+        Version = version;
+        Source = source;
+        SourceAvailable = sourceAvailable;
     }
 
     public string MemoryId { get; }
@@ -84,44 +116,8 @@ public sealed record StoredMemory
     public DateTimeOffset CreatedAtUtc { get; }
     public DateTimeOffset UpdatedAtUtc { get; }
     public string? SourceCandidateId { get; }
-}
-
-public sealed record ConversationSummary
-{
-    public ConversationSummary(
-        string summaryId,
-        string conversationId,
-        string servantId,
-        string summaryText,
-        int coveredThroughSequence,
-        string coveredThroughMessageId,
-        ContentContextKey contentContext,
-        DateTimeOffset createdAtUtc,
-        DateTimeOffset updatedAtUtc)
-    {
-        if (coveredThroughSequence < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(coveredThroughSequence));
-        }
-
-        SummaryId = Phase3Validation.Id(summaryId, nameof(summaryId));
-        ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
-        ServantId = Phase3Validation.Id(servantId, nameof(servantId));
-        SummaryText = Phase3Validation.Text(summaryText, nameof(summaryText), 6_000);
-        CoveredThroughSequence = coveredThroughSequence;
-        CoveredThroughMessageId = Phase3Validation.Id(coveredThroughMessageId, nameof(coveredThroughMessageId));
-        ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
-        CreatedAtUtc = createdAtUtc;
-        UpdatedAtUtc = updatedAtUtc;
-    }
-
-    public string SummaryId { get; }
-    public string ConversationId { get; }
-    public string ServantId { get; }
-    public string SummaryText { get; }
-    public int CoveredThroughSequence { get; }
-    public string CoveredThroughMessageId { get; }
-    public ContentContextKey ContentContext { get; }
-    public DateTimeOffset CreatedAtUtc { get; }
-    public DateTimeOffset UpdatedAtUtc { get; }
+    public string? ProjectId { get; }
+    public int Version { get; }
+    public MemorySource? Source { get; }
+    public bool SourceAvailable { get; }
 }

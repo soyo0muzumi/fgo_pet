@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
   <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
@@ -31,10 +31,8 @@
     <Compile Include="..\..\Contracts\MemorySettings.cs">
       <Link>modules\memory\Contracts\MemorySettings.cs</Link>
     </Compile>
-    <Compile Include="..\..\Application\ConversationSummaryService.cs">
-      <Link>modules\memory\Application\ConversationSummaryService.cs</Link>
-    </Compile>
-    <Compile Include="..\..\Application\MemoryCandidateService.cs">
+    <Compile Include="../../Application/MemoryRecallService.cs" />
+<Compile Include="..\..\Application\MemoryCandidateService.cs">
       <Link>modules\memory\Application\MemoryCandidateService.cs</Link>
     </Compile>
     <Page Include="..\..\Desktop\ConversationMemoryPage.xaml">

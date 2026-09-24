@@ -20,6 +20,11 @@
 
 仅 `Contracts/` 下的类型可被其他模块引用。跨模块调用必须走 `modules/README.md` 登记的契约边，**除登记的 8 条外任何跨模块引用都是违规**。
 
+- `IConversationHistoryQuery.ReadPage` 返回会话标识、最多 50 字符的标题、更新时间与归档状态；每页最多 50 条，游标按角色隔离并保留数据库原始排序值。SQLite 用一次分页投影读取标题前缀，打开会话才读取完整消息。
+- 对话通过 Memory 的 `IMemoryRecall` 读取当前范围和版本的记忆，通过 `IMemoryCandidateSink` 的来源票据提交待审候选；没有审批或删除权限。`ITodoDraftWorkflow` 仍由 Work 拥有，压缩前后完整再注入当前草稿。
+- `IModelContextResolver` / `IRequestTokenMeter` / `PromptBudget` 统一主请求、历史定位、摘要和记忆提取的路由与预算。`IConversationRecallRepository` 按角色/项目发现与读取原文；`IConversationContextStore` 原子提交摘要及覆盖位置。原始消息不被压缩改写。
+- `DialogueContextLifetime` 拥有请求和后台提取的取消、提交复核及维护期暂停；`MemoryExtractionQueue` 为每个作业持有独立 lease，容量 8、单消费者、每轮最多一次辅助模型调用。退出有界等待，迟到结果无写入 continuation。
+
 ## Dependencies
 
 - **允许**：`platform/*`、`ui-foundation/*`，以及**明确允许**的 memory / character / speech / work 的 `Contracts`
@@ -27,7 +32,7 @@
 
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 
-`conversations` `chat_messages` `conversation_summaries` `runtime_state`（4 张）
+`conversations` `chat_messages` `conversation_summaries` `conversation_contexts` `chat_message_search`（含 FTS5 辅助表）`runtime_state`
 
 > 本模块的仓储**只能碰上面这些表**；碰别人的表是 Q2=b 违规。
 
@@ -39,6 +44,8 @@
 
 Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memory / character / speech / work）的契约测试；改动提示词或预算常量需跑 EndToEnd。
 
+`scripts/test-architecture.ps1` 是本地与 CI 共用的架构验证入口。`SqliteConversationRepositoryTests` 覆盖大历史分页与旧时间格式；`ConversationOrchestratorTests` 覆盖 Memory/Work 契约调用、完整草稿预算及过期请求；Windows 的复制反馈测试覆盖窗口生命周期。
+
 ## 要点 / 易错处
 
 1. **工具机制归本模块，工具定义不归**：`ChatToolDefinition` / `ChatToolCallDelta` / `ConversationRequest.Tools` 槽位是 dialogue 的；各模块自己的工具 schema 住在各模块 `Contracts/`（规则 `no-foreign-tool-schema`）。
@@ -48,14 +55,14 @@ Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memor
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-⚠️ **但程序集尚未拆分**：这些文件目前仍由 `src/FgoPet.{Core,Infrastructure,App}` 三个旧 csproj 通过 `<Compile Include>` / `<Page Include>` + `<Link>` 跨目录回链编译。**物理位置已是目标架构，程序集边界仍是 v1。**
+`src/FgoPet.Dialogue/FgoPet.Dialogue.csproj` 已独立编译应用和桌面呈现。部分契约与仓储仍由 legacy Core / Infrastructure 编译，部分角色、语音、提案解析与呈现依赖仍需收口，不能据此宣布模块完全独立。
 
 - 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
-- 收口动作：按模块拆分 csproj（**需单独授权**）
+- 收口动作以实际调用链和公开契约为准，不重复创建已有工程。
 
 ## Migration debt
 
-- csproj 拆分未做（见上）
+- 保留的 legacy 依赖及提案解析/呈现等实现耦合仍需逐项收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处

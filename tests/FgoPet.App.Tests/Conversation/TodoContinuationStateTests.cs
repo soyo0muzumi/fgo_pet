@@ -98,11 +98,59 @@ public sealed class TodoContinuationStateTests
     private static TodoContinuationState CreateState(FakeTodoRepository repository) =>
         new(new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System)));
 
+    [Fact]
+    public async Task Concurrent_confirmations_commit_once_and_all_retries_return_the_same_todos()
+    {
+        var repository = new FakeTodoRepository();
+        var state = CreateState(repository);
+        var draft = state.Replace("conversation", "servant", [new TodoProposal("first"), new TodoProposal("second")]);
+        var results = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+            state.Confirm("conversation", "servant", draft.DraftId, draft.Version, "same-request"))));
+
+        Assert.Single(results, result => result.Kind == TodoDraftResultKind.Committed);
+        Assert.Equal(15, results.Count(result => result.Kind == TodoDraftResultKind.AlreadyCommitted));
+        Assert.All(results, result => Assert.Equal(["first", "second"], result.Todos.Select(todo => todo.Title).ToArray()));
+        Assert.Equal(2, repository.SaveCount);
+        Assert.Equal(2, repository.Items.Count);
+    }
+
+    [Fact]
+    public void Reusing_a_retry_key_in_another_context_never_returns_the_first_contexts_todos()
+    {
+        var repository = new FakeTodoRepository();
+        var state = CreateState(repository);
+        var first = state.Replace("a", "role-a", [new TodoProposal("first")]);
+        state.Confirm("a", "role-a", first.DraftId, first.Version, "shared-key");
+        var second = state.Replace("b", "role-b", [new TodoProposal("second")]);
+
+        var result = state.Confirm("b", "role-b", second.DraftId, second.Version, "shared-key");
+
+        Assert.Equal(TodoDraftResultKind.Committed, result.Kind);
+        Assert.Equal("second", Assert.Single(result.Todos).Title);
+        Assert.Equal(2, repository.Items.Count);
+        Assert.Equal(TodoDraftResultKind.Stale,
+            state.Confirm("a", "role-a", first.DraftId, first.Version + 1, "shared-key").Kind);
+    }
+
+    [Fact]
+    public void Pending_draft_contents_cannot_change_without_replacement_and_a_new_version()
+    {
+        var state = CreateState(new FakeTodoRepository());
+        var proposals = new[] { new TodoProposal("original", stepTitles: ["original step"]) };
+        var draft = state.Replace("conversation", "servant", proposals);
+        proposals[0] = new TodoProposal("different");
+
+        Assert.Equal("original", draft.Proposals[0].Title);
+        Assert.Throws<NotSupportedException>(() => ((IList<TodoProposal>)draft.Proposals)[0] = new TodoProposal("mutated"));
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)draft.Proposals[0].StepTitles)[0] = "mutated");
+    }
+
     private sealed class FakeTodoRepository : ITodoRepository
     {
         public List<TodoItem> Items { get; } = [];
         public int? ThrowOnSaveNumber { get; set; }
         private int _saveCount;
+        public int SaveCount => _saveCount;
         public void Save(TodoItem todo)
         {
             _saveCount++;

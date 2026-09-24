@@ -18,7 +18,9 @@ public sealed class AgentReconnectServiceTests
         var path = Path.Combine(Path.GetTempPath(), $"fgo-reconnect-ack-{Guid.NewGuid():N}.db");
         try
         {
-            var database = new RuntimeDatabase(path);
+            // This temporary fixture must release its own handles on Dispose,
+            // without relying on global pool cleanup in parallel test classes.
+            var database = new RuntimeDatabase(path, pooling: false);
             new RuntimeDatabaseMigrator(database).Migrate();
             var todos = new SqliteTodoRepository(database);
             var agents = new SqliteAgentRepository(database);
@@ -61,7 +63,6 @@ public sealed class AgentReconnectServiceTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
             {
                 var file = path + suffix;
@@ -93,7 +94,7 @@ public sealed class AgentReconnectServiceTests
         var path = Path.Combine(Path.GetTempPath(), $"fgo-reconnect-{Guid.NewGuid():N}.db");
         try
         {
-            var database = new RuntimeDatabase(path);
+            var database = new RuntimeDatabase(path, pooling: false);
             new RuntimeDatabaseMigrator(database).Migrate();
             var todos = new SqliteTodoRepository(database);
             var agents = new SqliteAgentRepository(database);
@@ -118,7 +119,6 @@ public sealed class AgentReconnectServiceTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
             {
                 var file = path + suffix;

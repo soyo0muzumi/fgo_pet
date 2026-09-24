@@ -5,9 +5,19 @@ using FgoPet.Infrastructure.Persistence;
 namespace FgoPet.App.Bootstrap;
 
 /// <summary>Adapts the SQLite migrator to the migration boundary.</summary>
-public sealed class SqliteRuntimeDatabaseMigrator(RuntimeDatabase database) : IRuntimeDatabaseMigrator
+public sealed class SqliteRuntimeDatabaseMigrator(RuntimeDatabase database, FgoPet.Core.Memory.IMemoryWriteLifetime? memoryWrites = null) : IRuntimeDatabaseMigrator
 {
-    public void Migrate() => new RuntimeDatabaseMigrator(database).Migrate();
+    private bool _memorySessionStarted;
+    public void Migrate()
+    {
+        new RuntimeDatabaseMigrator(database).Migrate();
+        // Startup restore precedes this boundary; later shell activations must not rotate the session again.
+        if (!_memorySessionStarted)
+        {
+            memoryWrites?.StartSession();
+            _memorySessionStarted = true;
+        }
+    }
 }
 
 /// <summary>Adapts the focus service to the restore boundary.</summary>

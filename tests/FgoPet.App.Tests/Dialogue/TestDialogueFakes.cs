@@ -29,7 +29,7 @@ internal static class TestDialogueFakes
     public static ConversationViewModel CreateConversation(TestDialogueSettingsStore? suppliedSettings = null)
     {
         var settings = suppliedSettings ?? TestDialogueSettingsStore.WithModelConnection();
-        var database = new FgoPet.Infrastructure.Persistence.RuntimeDatabase(
+        var database = TestRuntimeDatabase.Create(
             Path.Combine(Path.GetTempPath(), $"fgo-p1b-{Guid.NewGuid():N}.db"));
         new FgoPet.Infrastructure.Persistence.RuntimeDatabaseMigrator(database).Migrate();
         var orchestrator = new ConversationOrchestrator(

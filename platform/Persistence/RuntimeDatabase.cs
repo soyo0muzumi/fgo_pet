@@ -10,15 +10,19 @@ public sealed class RuntimeDatabase
 {
     private readonly string _connectionString;
 
-    public RuntimeDatabase(string databasePath)
+    public RuntimeDatabase(string databasePath, bool pooling = true)
     {
         DatabasePath = Path.GetFullPath(databasePath);
-        _connectionString = new SqliteConnectionStringBuilder
+        var builder = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
-        }.ToString();
+        };
+        // Preserve the existing pool identity for normal runtime connections.
+        // Only temporary validation databases opt out of pooling explicitly.
+        if (!pooling) builder.Pooling = false;
+        _connectionString = builder.ToString();
     }
 
     public string DatabasePath { get; }

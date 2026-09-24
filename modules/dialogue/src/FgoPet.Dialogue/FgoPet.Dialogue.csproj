@@ -41,9 +41,6 @@
     <Compile Include="..\..\Application\ConversationOrchestrator.cs">
       <Link>modules\dialogue\Application\ConversationOrchestrator.cs</Link>
     </Compile>
-    <Compile Include="..\..\Application\PromptBudget.cs">
-      <Link>modules\dialogue\Application\PromptBudget.cs</Link>
-    </Compile>
     <Compile Include="..\..\Application\PromptComposer.cs">
       <Link>modules\dialogue\Application\PromptComposer.cs</Link>
     </Compile>
@@ -98,5 +95,20 @@
     <Compile Include="..\..\Infrastructure\ChatProviderFactory.cs">
       <Link>modules\dialogue\Infrastructure\ChatProviderFactory.cs</Link>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../../../modules/dialogue/Application/ModelContextResolver.cs" Link="modules/dialogue/Application/ModelContextResolver.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Application/DialogueContextLifetime.cs" Link="modules/dialogue/Application/DialogueContextLifetime.cs" />
+    <Compile Include="../../Application/ConversationRecallService.cs" Link="modules/dialogue/Application/ConversationRecallService.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Application/CompactionPlanner.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Application/ConversationSummaryService.cs" />
+    <Compile Include="../../Application/MemoryExtractionQueue.cs" />
+    <Compile Include="../../Application/MemoryExtractionSourceReader.cs" />
   </ItemGroup>
 </Project>

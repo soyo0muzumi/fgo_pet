@@ -100,11 +100,12 @@ public sealed class DialogueProjectSelectionViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(option);
         ArgumentNullException.ThrowIfNull(context);
-        if (!Projects.Any(project => project.Id == option.Id))
+        var selected = Projects.FirstOrDefault(project => project.Id == option.Id);
+        if (selected is null)
         {
             return false;
         }
 
-        return context.TrySetProject(option.Id, option.Label);
+        return context.TrySetProject(selected.Id, selected.Label);
     }
 }

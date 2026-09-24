@@ -102,5 +102,7 @@ Tests/                 核心、存储、UI 和边界测试
 
 - 权威边界文档（工作区）：`modules-v2/README.md` + 各模块 `.md`
 - 完整文件落点表：`architecture/module-target-map-v2.md`
-- 机器可读基线：`architecture/dependencies-v2.json` + 校验脚本 `architecture/validate-policy.py`
+- 当前可执行入口：`powershell -NoProfile -File scripts/test-architecture.ps1`（仓库根目录运行，Windows + .NET 8）。本地与 `.github/workflows/architecture.yml` 使用同一入口。
+- 门禁先构建 Release App，再验证真实 MSBuild 求值引用图无环、编译/伴随引用分类、App PE 中的实现引用，以及严格策略解析器的合法/非法/重复键/换行/不可变性测试。求值失败、环路或测试失败均返回非零。
+- 目标依赖规则尚未作为整仓允许列表强制执行；策略解析测试不等于迁移完成。本入口不从现有引用图生成允许列表。
 - 第 ④ 步执行日志：`step4-migration-log.md`

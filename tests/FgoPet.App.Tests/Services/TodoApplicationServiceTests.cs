@@ -178,7 +178,7 @@ public sealed class TodoApplicationServiceTests
         var path = CreateTemporaryDatabasePath();
         try
         {
-            var database = new RuntimeDatabase(path);
+            var database = TestRuntimeDatabase.Create(path);
             new RuntimeDatabaseMigrator(database).Migrate();
             var agents = new SqliteAgentRepository(database);
             agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution(
@@ -263,7 +263,7 @@ public sealed class TodoApplicationServiceTests
         var path = Path.Combine(Path.GetTempPath(), $"fgo-todo-service-{Guid.NewGuid():N}.db");
         try
         {
-            var database = new RuntimeDatabase(path);
+            var database = TestRuntimeDatabase.Create(path);
             new RuntimeDatabaseMigrator(database).Migrate();
             var repository = new SqliteTodoRepository(database);
             var firstTime = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-13T01:02:03Z"));
@@ -320,7 +320,7 @@ public sealed class TodoApplicationServiceTests
         var path = Path.Combine(Path.GetTempPath(), $"fgo-todo-service-{Guid.NewGuid():N}.db");
         try
         {
-            var database = new RuntimeDatabase(path);
+            var database = TestRuntimeDatabase.Create(path);
             new RuntimeDatabaseMigrator(database).Migrate();
             var agents = new SqliteAgentRepository(database);
             agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution("execution-1", completed.Id, "codex", "instance-1", "task-1", "request-1",

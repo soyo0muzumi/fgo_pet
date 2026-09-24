@@ -158,15 +158,20 @@ internal sealed class SettingsDocumentV2Codec
     private sealed record ModelConnectionDto(
         [property: JsonPropertyName("provider_id")] string? ProviderId,
         [property: JsonPropertyName("base_url")] string? BaseUrl,
-        [property: JsonPropertyName("model_id")] string? ModelId)
+        [property: JsonPropertyName("model_id")] string? ModelId,
+        [property: JsonPropertyName("tools_supported")] bool? ToolsSupported = null,
+        [property: JsonPropertyName("context_window_override")] int? ContextWindowOverride = null,
+        [property: JsonPropertyName("max_output_tokens")] int? MaxOutputTokens = null)
     {
         public ModelConnectionSettings? ToModel() =>
             string.IsNullOrWhiteSpace(ProviderId) || string.IsNullOrWhiteSpace(BaseUrl) || string.IsNullOrWhiteSpace(ModelId)
                 ? null
-                : new ModelConnectionSettings(ProviderId, BaseUrl, ModelId);
+                : new ModelConnectionSettings(ProviderId, BaseUrl, ModelId, ToolsSupported ?? true,
+                    ContextWindowOverride, MaxOutputTokens ?? 2048);
 
         public static ModelConnectionDto? FromModel(ModelConnectionSettings? settings) =>
-            settings is null ? null : new ModelConnectionDto(settings.ProviderId, settings.BaseUrl, settings.ModelId);
+            settings is null ? null : new ModelConnectionDto(settings.ProviderId, settings.BaseUrl, settings.ModelId,
+                settings.ToolsSupported, settings.ContextWindowOverride, settings.MaxOutputTokens);
     }
 
     private sealed record SpeechConnectionDto(

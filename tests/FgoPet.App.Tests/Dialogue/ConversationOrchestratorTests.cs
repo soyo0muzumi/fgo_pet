@@ -333,6 +333,152 @@ public sealed class ConversationOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Dialogue_reads_memory_and_submits_only_a_pending_candidate_through_the_owner_contract()
+    {
+        var memory = new RecordingConversationMemory();
+        var provider = new FakeProvider([new ChatStreamChunk("{\"text\":\"收到。\",\"memory_candidate\":\"candidate text\"}", IsComplete: true)]);
+        var orchestrator = CreateOrchestrator(provider, conversationMemory: memory);
+        var result = await orchestrator.SendAsync("800100", "记住", CancellationToken.None);
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.Equal("800100", Assert.Single(memory.Reads));
+        Assert.Contains(provider.LastRequest!.Messages, message => message.Text.Contains("approved memory"));
+        Assert.Equal(MemoryCandidateStatus.Pending, Assert.Single(memory.Candidates).Status);
+    }
+
+    [Fact]
+    public async Task Dialogue_confirms_via_injected_work_contract_without_constructing_a_proposal_service()
+    {
+        var repository = new RecordingTodoRepository();
+        ITodoDraftWorkflow work = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System)).Drafts;
+        var context = new ContentContextKey("800100", "test", "1", "default", "p1", "k1");
+        var conversations = CreateConversationRepository();
+        conversations.CreateConversation("contract-conversation", "800100", context, DateTimeOffset.UtcNow);
+        conversations.WriteState("LastActiveConversationId:800100", "contract-conversation", DateTimeOffset.UtcNow);
+        work.Replace("contract-conversation", "800100", [new TodoProposal("contract todo")]);
+        var provider = new FakeProvider([]);
+        var result = await CreateOrchestrator(provider, todoDrafts: work).SendAsync("800100", "确认创建", CancellationToken.None);
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.Equal("contract todo", Assert.Single(repository.Items).Title);
+        Assert.Null(provider.LastRequest);
+    }
+
+    private sealed class RecordingConversationMemory : IConversationMemory, IMemoryCandidateSink
+    {
+        public List<string> Reads { get; } = [];
+        public List<MemoryCandidate> Candidates { get; } = [];
+        public IReadOnlyList<StoredMemory> ListEnabledMemories(string servantId)
+        {
+            Reads.Add(servantId);
+            return [new StoredMemory("memory", servantId, "approved memory", true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)];
+        }
+        public MemoryWriteTicket Begin(MemorySource source) => new("ticket", "generation", 0, source);
+        public MemoryStageResult Stage(MemoryWriteTicket ticket, IReadOnlyList<MemoryProposal> proposals)
+        {
+            Assert.Equal(MemoryEvidenceKind.AssistantSuggestion, ticket.Source.Kind);
+            foreach (var proposal in proposals) Candidates.Add(new MemoryCandidate("candidate", ticket.Source.Scope.ServantId,
+                ticket.Source.ConversationId, proposal.Text, DateTimeOffset.UtcNow, ticket.Source.MessageId, source: ticket.Source));
+            return new(MemoryStageStatus.Staged, ["candidate"]);
+        }
+        public void Abandon(MemoryWriteTicket ticket) { }
+    }
+
+    [Theory]
+    [InlineData("不要加入待办")]
+    [InlineData("先别确认创建")]
+    [InlineData("确认创建？")]
+    [InlineData("加入待办吗")]
+    [InlineData("“确认创建”")]
+    [InlineData("你说的加入待办是什么意思")]
+    [InlineData("就这样？")]
+    [InlineData("好的")]
+    [InlineData("可以")]
+    [InlineData("确认创建，但先改标题")]
+    public async Task Ambiguous_or_negated_todo_confirmation_never_writes(string text)
+    {
+        var provider = new FakeProvider([
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, id: "call-1", name: "submit_todo_proposals")),
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, argumentsDelta: "{\"todos\":[{\"title\":\"合成待办\"}]}")),
+            new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "tool_calls"),
+        ]);
+        var repository = new RecordingTodoRepository();
+        var proposals = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+        var orchestrator = CreateOrchestrator(provider, proposals);
+        await orchestrator.SendAsync("800100", "请安排一个计划", CancellationToken.None);
+
+        await orchestrator.SendAsync("800100", text, CancellationToken.None);
+
+        Assert.Empty(repository.Items);
+    }
+
+    [Fact]
+    public async Task Long_multi_proposal_edits_send_every_proposal_field_and_current_version()
+    {
+        var title = "first-" + new string('a', 490);
+        var second = "second-" + new string('b', 480);
+        var arguments = System.Text.Json.JsonSerializer.Serialize(new { todos = new[] {
+            new { title, description = "first description", priority = "High", due_at = "2026-10-01T09:00:00Z", steps = new[] { new { title = "first step" } } },
+            new { title = second, description = "second description", priority = "Normal", due_at = "2026-10-02T09:00:00Z", steps = new[] { new { title = "second step" } } },
+        }});
+        var provider = new FakeProvider([
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, id: "call-1", name: "submit_todo_proposals")),
+            new ChatStreamChunk(string.Empty, ToolCallDelta: new ChatToolCallDelta(0, argumentsDelta: arguments)),
+            new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "tool_calls"),
+        ]);
+        var repository = new RecordingTodoRepository();
+        var orchestrator = CreateOrchestrator(provider, new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System)));
+        Assert.Equal(ConversationSendStatus.Completed, (await orchestrator.SendAsync("800100", "准备两个计划", CancellationToken.None)).Status);
+
+        var result = await orchestrator.SendAsync("800100", "把第二项改到后天", CancellationToken.None);
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        var prompt = string.Join("\n", provider.LastRequest!.Messages.Select(message => message.Text));
+        foreach (var expected in new[] { title, second, "first description", "second description", "first step", "second step", "2026-10-02", "第 1 版" })
+            Assert.Contains(expected, prompt);
+        Assert.Empty(repository.Items);
+    }
+
+    [Theory]
+    [InlineData(false, "role")]
+    [InlineData(true, "role")]
+    [InlineData(false, "new")]
+    [InlineData(true, "new")]
+    [InlineData(false, "dispose")]
+    [InlineData(true, "dispose")]
+    [InlineData(false, "return")]
+    [InlineData(true, "return")]
+    public async Task Late_request_completion_cannot_modify_the_replaced_view(bool fail, string transition)
+    {
+        var provider = new DelayedCompletionProvider(fail);
+        var model = new ConversationViewModel(CreateOrchestrator(provider), new FakeSettings());
+        model.SetActiveServant("800100");
+        model.InputText = "same draft";
+        var send = model.SendCommand.ExecuteAsync(null);
+        await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var originalConversation = model.CurrentConversationId;
+        if (transition == "role") model.SetActiveServant("role-b");
+        else if (transition == "new") model.NewConversationCommand.Execute(null);
+        else if (transition == "return")
+        {
+            model.SetActiveServant("role-b");
+            model.SetActiveServant("800100");
+            model.SetActiveConversation(originalConversation);
+        }
+        else model.Dispose();
+        model.InputText = "same draft";
+        model.ErrorText = "new role status";
+        Assert.True(model.SessionContext.TryAddAttachment("new-context.txt"));
+        provider.Release.TrySetResult(true);
+        await send;
+
+        Assert.Equal("new role status", model.ErrorText);
+        Assert.Equal("same draft", model.InputText);
+        Assert.Equal("new-context.txt", Assert.Single(model.SessionContext.AttachmentNames));
+        if (transition == "dispose") Assert.False(model.CanSend);
+        else if (transition == "return") Assert.Single(model.Turns);
+        else Assert.Empty(model.Turns);
+    }
+
+    [Fact]
     public async Task Invalid_tool_arguments_surface_a_typed_error()
     {
         var provider = new FakeProvider(
@@ -455,6 +601,19 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
         Assert.Equal(ConversationSendStatus.Failed, result.Status);
         Assert.Equal("对话初始化失败：角色包内容不可用，请检查当前角色包后重试。", result.SafeError);
+    }
+
+    [Fact]
+    public async Task Reasoning_exhausting_output_budget_reports_an_actionable_error()
+    {
+        var provider = new FakeProvider([
+            new ChatStreamChunk(string.Empty, ReasoningDelta: "合成思考"),
+            new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "length"),
+        ]);
+        var result = await CreateOrchestrator(provider).SendAsync("800100", "合成问题", CancellationToken.None);
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        Assert.Contains("最大输出", result.SafeError);
+        Assert.DoesNotContain("合成思考", result.SafeError);
     }
 
     [Fact]
@@ -694,7 +853,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         var model = new ConversationViewModel(orchestrator, new FakeSettings());
         model.SetActiveServant("800100");
         model.SetActiveConversation(result.ConversationId);
-        using var connection = new RuntimeDatabase(_databasePath).Open();
+        using var connection = TestRuntimeDatabase.Create(_databasePath).Open();
         using var command = connection.CreateCommand();
         command.CommandText = $"CREATE TRIGGER reject_test_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT, 'synthetic private storage detail'); END;";
         command.ExecuteNonQuery();
@@ -745,7 +904,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
         TodoProposalService? todoProposals = null,
         IDialogueSettingsStore? settings = null,
         IConversationContentResolver? contentResolver = null,
-        IMemorySettingsStore? memorySettings = null)
+        IMemorySettingsStore? memorySettings = null,
+        IConversationMemory? conversationMemory = null,
+        ITodoDraftWorkflow? todoDrafts = null)
     {
         var binding = new ContentBinding(
             new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0"),
@@ -758,12 +919,13 @@ public sealed class ConversationOrchestratorTests : IDisposable
             new FakeProviderResolver(provider),
             contentResolver ?? new FakeContentResolver(binding),
             CreateConversationRepository(),
-            CreateMemoryRepository(),
+            conversationMemory ?? CreateMemoryRepository(),
             new PromptComposer(),
             TimeProvider.System,
             settings: settings,
             memorySettings: memorySettings,
-            todoProposals: todoProposals);
+            todoProposals: todoProposals,
+            todoDrafts: todoDrafts);
     }
 
     [Fact]
@@ -780,14 +942,14 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
     private SqliteConversationRepository CreateConversationRepository()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         return new SqliteConversationRepository(database);
     }
 
     private SqliteMemoryRepository CreateMemoryRepository()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         return new SqliteMemoryRepository(database);
     }
@@ -846,6 +1008,23 @@ public sealed class ConversationOrchestratorTests : IDisposable
             Started.TrySetResult(true);
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             yield break;
+        }
+    }
+
+    private sealed class DelayedCompletionProvider(bool fail) : IChatProvider
+    {
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string ProviderId => "test";
+        public string ModelId => "test-model";
+        public Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ProviderModel>>([]);
+        public async IAsyncEnumerable<ChatStreamChunk> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Started.TrySetResult(true);
+            await Release.Task; // Deliberately late even when cancellation was requested.
+            if (fail) throw new InvalidOperationException("synthetic delayed failure");
+            yield return new ChatStreamChunk("late answer", IsComplete: true);
         }
     }
 

@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Providers;
+using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
 using FgoPet.Dialogue.Settings;
@@ -35,6 +36,8 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         SelectedProviderId = selected.ProviderId;
         BaseUrl = saved?.BaseUrl ?? selected.DefaultBaseUrl;
         ModelId = saved?.ModelId ?? DefaultModel(selected.ProviderId);
+        ContextWindowOverrideText = saved?.ContextWindowOverride?.ToString() ?? string.Empty;
+        MaxOutputTokensText = (saved?.MaxOutputTokens ?? 2048).ToString();
         ShowReasoning = _settings.Load().ShowReasoning;
         AvailableModels = Array.Empty<ProviderModel>();
         StatusText = "未测试连接。";
@@ -71,16 +74,74 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     [ObservableProperty]
     private string _baseUrl;
 
-    partial void OnBaseUrlChanged(string value) => _draftVersion++;
+    partial void OnBaseUrlChanged(string value)
+    {
+        _draftVersion++;
+        AvailableModels = Array.Empty<ProviderModel>();
+        OnPropertyChanged(nameof(ContextLimitText));
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModelStatusText))]
     private string _modelId;
 
-    partial void OnModelIdChanged(string value) => _draftVersion++;
+    partial void OnModelIdChanged(string value)
+    {
+        _draftVersion++;
+        OnPropertyChanged(nameof(ContextLimitText));
+    }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextLimitText))]
     private IReadOnlyList<ProviderModel> _availableModels;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextLimitText))]
+    private string _contextWindowOverrideText = string.Empty;
+    partial void OnContextWindowOverrideTextChanged(string value) => _draftVersion++;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextLimitText))]
+    private string _maxOutputTokensText = "2048";
+    partial void OnMaxOutputTokensTextChanged(string value) => _draftVersion++;
+
+    public string ContextLimitText
+    {
+        get
+        {
+            try { return CurrentLimit(BuildConnection()).DisplayText + "；输入按完整请求保守估算。"; }
+            catch (ArgumentException) { return "请输入有效的上下文上限和最大输出。"; }
+        }
+    }
+
+    private ModelConnectionSettings BuildConnection()
+    {
+        int? capacity = null;
+        if (!string.IsNullOrWhiteSpace(ContextWindowOverrideText))
+        {
+            if (!int.TryParse(ContextWindowOverrideText, out var parsed) || parsed <= 0)
+                throw new ArgumentException("上下文上限须为正整数。");
+            capacity = parsed;
+        }
+        if (!int.TryParse(MaxOutputTokensText, out var output) || output <= 0)
+            throw new ArgumentException("最大输出须为正整数。");
+        var previous = _settings.Load().ModelConnection;
+        var supportsTools = previous is null || previous.ProviderId != SelectedProviderId ||
+            previous.BaseUrl != BaseUrl || previous.ModelId != ModelId || previous.ToolsSupported;
+        return new(SelectedProviderId, BaseUrl, ModelId, supportsTools, capacity, output);
+    }
+
+    private ModelContextLimit CurrentLimit(ModelConnectionSettings connection)
+    {
+        var route = ModelRouteKey.From(connection);
+        if (connection.ContextWindowOverride is int capacity)
+            return new(route, capacity, null, ContextLimitSource.Override, "manual");
+        var metadata = AvailableModels?.FirstOrDefault(model => model.Id == connection.ModelId);
+        if (metadata?.ContextWindowTokens is int window)
+            return new(route, window, metadata.MaxOutputTokens, ContextLimitSource.ProviderMetadata, "provider-model-list");
+        return KnownModelContextCatalog.Find(connection) ??
+            new ModelContextLimit(route, 8192, null, ContextLimitSource.ConservativeFallback, "fallback-v1");
+    }
 
     [ObservableProperty]
     private bool _isModelPickerOpen;
@@ -157,9 +218,16 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     private async Task RefreshModelsAsync()
     {
+        var testedDraftVersion = _draftVersion;
         await ExecuteProviderOperationAsync("刷新模型", async provider =>
         {
-            AvailableModels = await provider.ListModelsAsync(CancellationToken.None);
+            var models = await provider.ListModelsAsync(CancellationToken.None);
+            if (testedDraftVersion != _draftVersion)
+            {
+                StatusText = "刷新完成，但草稿已更改；结果未应用。";
+                return;
+            }
+            AvailableModels = models;
             StatusText = $"已刷新 {AvailableModels.Count} 个模型。";
         });
     }
@@ -170,7 +238,8 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         ErrorText = string.Empty;
         try
         {
-            var connection = new ModelConnectionSettings(SelectedProviderId, BaseUrl, ModelId);
+            var connection = BuildConnection();
+            _ = PromptBudget.Resolve(CurrentLimit(connection), connection.MaxOutputTokens);
             if (!string.IsNullOrEmpty(_pendingApiKey))
             {
                 await _credentials.SaveAsync(CredentialTarget(), _pendingApiKey, CancellationToken.None);
@@ -190,6 +259,10 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         catch (ArgumentException error)
         {
             ErrorText = $"设置无效：{error.Message}";
+        }
+        catch (PromptBudgetException)
+        {
+            ErrorText = "最大输出超出模型限制，或没有为输入留下空间。";
         }
         catch (ProviderRequestException error)
         {

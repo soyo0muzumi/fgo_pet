@@ -6,19 +6,79 @@ using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Dialogue;
 
-public sealed class SqliteConversationRepository
+public sealed class SqliteConversationRepository : IConversationHistoryQuery
 {
     private readonly RuntimeDatabase _database;
 
     public SqliteConversationRepository(RuntimeDatabase database) => _database = database;
 
+    public ConversationHistoryPage ReadPage(string servantId, int pageSize = 50, ConversationHistoryCursor? before = null)
+        => ReadPageCore(servantId, null, pageSize, before);
+
+    public ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null)
+        => ReadPageCore(scope.ServantId, scope, pageSize, before);
+
+    private ConversationHistoryPage ReadPageCore(string servantId, ConversationScope? scope, int pageSize, ConversationHistoryCursor? before)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
+        if (pageSize is < 1 or > 50) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        if (before is not null && before.ServantId != servantId) throw new ArgumentException("History cursor belongs to another role.", nameof(before));
+        if (before is not null && before.ScopeKey != scope?.Key) throw new ArgumentException("History cursor belongs to another scope.", nameof(before));
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        // Page metadata first. The correlated projection reads at most 51 title
+        // prefixes, never materializing all messages or joining content bindings.
+        command.CommandText = """
+            SELECT c.conversation_id, c.updated_at_utc, c.status,
+                   (SELECT substr(m.text, 1, 50) FROM chat_messages m
+                    WHERE m.conversation_id=c.conversation_id AND m.servant_id=$servant AND m.role='user'
+                    ORDER BY m.sequence LIMIT 1) AS title
+            FROM (SELECT conversation_id, updated_at_utc, status FROM conversations
+                  WHERE servant_id=$servant AND ($all=1 OR project_id IS $project) AND ($before IS NULL OR updated_at_utc<$before
+                        OR (updated_at_utc=$before AND conversation_id<$id))
+                  ORDER BY updated_at_utc DESC, conversation_id DESC LIMIT $count) c
+            ORDER BY c.updated_at_utc DESC, c.conversation_id DESC
+            """;
+        command.Parameters.AddWithValue("$servant", servantId);
+        command.Parameters.AddWithValue("$all", scope is null ? 1 : 0);
+        command.Parameters.AddWithValue("$project", (object?)scope?.ProjectId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$before", before is null ? DBNull.Value : before.UpdatedAtSortKey);
+        command.Parameters.AddWithValue("$id", before?.ConversationId ?? string.Empty);
+        command.Parameters.AddWithValue("$count", pageSize + 1);
+        using var reader = command.ExecuteReader();
+        var items = new List<ConversationHistoryEntry>();
+        ConversationHistoryCursor? cursor = null;
+        while (reader.Read())
+        {
+            var title = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Replace('\r', ' ').Replace('\n', ' ').Trim();
+            items.Add(new ConversationHistoryEntry(reader.GetString(0), string.IsNullOrWhiteSpace(title) ? "新会话" : title,
+                ParseUtc(reader.GetString(1)), reader.GetString(2) == "archived"));
+            if (items.Count == pageSize) cursor = new ConversationHistoryCursor(servantId, reader.GetString(1), reader.GetString(0), scope?.Key);
+        }
+        var hasMore = items.Count > pageSize;
+        if (hasMore) items.RemoveAt(items.Count - 1);
+        return new ConversationHistoryPage(items.AsReadOnly(), hasMore ? cursor : null);
+    }
+
+    public bool Exists(string conversationId, string servantId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM conversations WHERE conversation_id=$id AND servant_id=$servant";
+        command.Parameters.AddWithValue("$id", conversationId);
+        command.Parameters.AddWithValue("$servant", servantId);
+        return command.ExecuteScalar() is not null;
+    }
+
     public Conversation CreateConversation(
         string conversationId,
         string servantId,
         ContentContextKey contentContext,
-        DateTimeOffset createdAtUtc)
+        DateTimeOffset createdAtUtc,
+        string? projectId = null,
+        string? projectLabel = null)
     {
-        var conversation = new Conversation(conversationId, servantId, createdAtUtc, createdAtUtc, contentContext);
+        var conversation = new Conversation(conversationId, servantId, createdAtUtc, createdAtUtc, contentContext, projectId: projectId, projectLabel: projectLabel);
         if (!string.Equals(conversation.ServantId, contentContext.ServantId, StringComparison.Ordinal))
         {
             throw new ArgumentException("The servant ID must match the content context.", nameof(servantId));
@@ -38,14 +98,16 @@ public sealed class SqliteConversationRepository
         command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO conversations(
-              conversation_id, servant_id, created_at_utc, updated_at_utc, status, current_binding_id)
-            VALUES($id, $servant, $created, $updated, 'active', $binding)
+              conversation_id, servant_id, created_at_utc, updated_at_utc, status, current_binding_id, project_id, project_label)
+            VALUES($id, $servant, $created, $updated, 'active', $binding, $project, $label)
             """;
         command.Parameters.AddWithValue("$id", conversation.ConversationId);
         command.Parameters.AddWithValue("$servant", conversation.ServantId);
         command.Parameters.AddWithValue("$created", createdAtUtc.ToString("O"));
         command.Parameters.AddWithValue("$updated", createdAtUtc.ToString("O"));
         command.Parameters.AddWithValue("$binding", bindingId);
+        command.Parameters.AddWithValue("$project", (object?)conversation.ProjectId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$label", (object?)conversation.ProjectLabel ?? DBNull.Value);
         command.ExecuteNonQuery();
         transaction.Commit();
 
@@ -112,7 +174,13 @@ public sealed class SqliteConversationRepository
     public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId)
     {
         using var connection = _database.Open();
+        return LoadMessages(connection, null, conversationId, servantId);
+    }
+
+    internal static IReadOnlyList<ChatMessage> LoadMessages(SqliteConnection connection, SqliteTransaction? transaction, string conversationId, string servantId)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             SELECT m.message_id, m.conversation_id, m.servant_id, m.role, m.text, m.status,
                    m.created_at_utc, m.sequence,
@@ -168,6 +236,13 @@ public sealed class SqliteConversationRepository
 
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
+        using (var active = connection.CreateCommand())
+        {
+            active.Transaction = transaction;
+            active.CommandText = "SELECT 1 FROM conversation_contexts WHERE summary_id=$id";
+            active.Parameters.AddWithValue("$id", summary.SummaryId);
+            if (active.ExecuteScalar() is not null) throw new InvalidOperationException("Active summaries are owned by the context store.");
+        }
         var conversationServant = ReadConversationServant(connection, transaction, summary.ConversationId);
         if (!string.Equals(conversationServant, summary.ServantId, StringComparison.Ordinal))
         {
@@ -259,19 +334,45 @@ public sealed class SqliteConversationRepository
     }
 
     public IReadOnlyList<Conversation> ListConversations(string servantId)
+        => ListConversationsCore(servantId, null);
+
+    public Conversation? GetConversation(string conversationId, string servantId)
+        => ListConversationsCore(servantId, conversationId).SingleOrDefault();
+
+    public bool IsCurrentSource(ConversationScope scope, HistoryHit source)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT m.created_at_utc FROM chat_messages m JOIN conversations c ON c.conversation_id=m.conversation_id
+            WHERE c.servant_id=$servant AND m.servant_id=c.servant_id AND c.project_id IS $project
+              AND c.conversation_id=$conversation AND m.message_id=$message AND m.sequence=$sequence
+              AND m.status='completed' AND m.role IN ('user','assistant') AND instr(m.text,$excerpt)>0
+            """;
+        command.Parameters.AddWithValue("$servant", scope.ServantId);
+        command.Parameters.AddWithValue("$project", (object?)scope.ProjectId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$conversation", source.Anchor.ConversationId);
+        command.Parameters.AddWithValue("$message", source.Anchor.MessageId);
+        command.Parameters.AddWithValue("$sequence", source.Anchor.Sequence);
+        command.Parameters.AddWithValue("$excerpt", source.Excerpt);
+        return command.ExecuteScalar() is string created && ParseUtc(created) == source.Anchor.CreatedAtUtc;
+    }
+
+    private IReadOnlyList<Conversation> ListConversationsCore(string servantId, string? conversationId)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.conversation_id, c.servant_id, c.created_at_utc, c.updated_at_utc,
                    c.status, b.servant_id, b.package_id, b.package_version, b.appearance_id,
-                   b.persona_version, b.knowledge_version
+                   b.persona_version, b.knowledge_version, c.project_id, c.project_label
             FROM conversations c
             LEFT JOIN content_bindings b ON b.binding_id=c.current_binding_id
-            WHERE c.servant_id=$servant
+            WHERE c.servant_id=$servant AND ($conversation IS NULL OR c.conversation_id=$conversation)
             ORDER BY c.updated_at_utc DESC, c.conversation_id
             """;
         command.Parameters.AddWithValue("$servant", servantId);
+        command.Parameters.AddWithValue("$conversation", (object?)conversationId ?? DBNull.Value);
         using var reader = command.ExecuteReader();
         var conversations = new List<Conversation>();
         while (reader.Read())
@@ -294,7 +395,8 @@ public sealed class SqliteConversationRepository
                 ParseUtc(reader.GetString(2)),
                 ParseUtc(reader.GetString(3)),
                 context,
-                string.Equals(reader.GetString(4), "archived", StringComparison.OrdinalIgnoreCase)));
+                string.Equals(reader.GetString(4), "archived", StringComparison.OrdinalIgnoreCase),
+                reader.IsDBNull(11) ? null : reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return conversations;

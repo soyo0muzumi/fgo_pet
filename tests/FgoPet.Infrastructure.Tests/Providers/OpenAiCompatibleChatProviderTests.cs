@@ -10,6 +10,81 @@ namespace FgoPet.Infrastructure.Tests.Providers;
 
 public sealed class OpenAiCompatibleChatProviderTests
 {
+    [Theory]
+    [InlineData("https://api.openai.com/v1", "max_completion_tokens")]
+    [InlineData("https://proxy.test/v1", "max_tokens")]
+    public async Task Output_field_matches_the_actual_endpoint(string endpoint, string field)
+    {
+        var handler = new RecordingHandler(_ => StreamResponse("data: [DONE]\n\n"));
+        var provider = new OpenAiCompatibleChatProvider("openai", new Uri(endpoint), "m",
+            new TestCredentialReader(), new HttpClient(handler));
+        await ConsumeAsync(provider, new ChatRequest("mash", "c", [new(ChatMessageRole.User, "hello")], maxOutputTokens: 1234));
+        Assert.Contains("\"" + field + "\":1234", handler.RequestLog);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("\"4096\"")]
+    [InlineData("999999999999")]
+    public async Task Invalid_output_metadata_invalidates_capacity_metadata(string value)
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) {
+            Content = new StringContent("{\"data\":[{\"id\":\"m\",\"context_length\":32768,\"max_output_tokens\":" + value + "}]}") });
+        var model = Assert.Single(await CreateProvider(handler, "secret").ListModelsAsync(default));
+        Assert.Null(model.ContextWindowTokens);
+    }
+
+    private sealed class TestCredentialReader : ICredentialReader
+    {
+        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>("fixture");
+    }
+
+    [Fact]
+    public async Task Selected_output_budget_is_actually_sent()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse("data: [DONE]\n\n"));
+        await ConsumeAsync(CreateProvider(handler, "secret"), new ChatRequest("mash", "c",
+            [new(ChatMessageRole.User, "继续")], maxOutputTokens: 1234));
+        Assert.Contains("\"max_tokens\":1234", handler.RequestLog);
+    }
+
+    [Fact]
+    public async Task Usage_only_trailer_does_not_require_choices()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"},\"finish_reason\":\"stop\"}]}\n\n" +
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":123,\"completion_tokens\":7}}\n\n" +
+            "data: [DONE]\n\n"));
+        var chunks = await StreamAll(CreateProvider(handler, "secret"),
+            new ChatRequest("mash", "c", [new(ChatMessageRole.User, "你好")]));
+        var usage = Assert.Single(chunks.Where(chunk => chunk.Usage is not null)).Usage!;
+        Assert.Equal(123, usage.InputTokens);
+        Assert.Equal(7, usage.OutputTokens);
+        Assert.Equal("你好", string.Concat(chunks.Select(chunk => chunk.TextDelta)));
+    }
+
+    [Fact]
+    public async Task Model_discovery_reads_supported_capacity_metadata()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) {
+            Content = new StringContent("""{"data":[{"id":"unknown","context_length":32768,"max_output_tokens":4096}]}"""),
+        });
+        var model = Assert.Single(await CreateProvider(handler, "secret").ListModelsAsync(default));
+        Assert.Equal(32768, model.ContextWindowTokens);
+        Assert.Equal(4096, model.MaxOutputTokens);
+    }
+
+    [Fact]
+    public async Task Context_limit_error_is_not_misclassified_as_tools_rejection()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest) {
+            Content = new StringContent("""{"error":{"code":"context_length_exceeded","message":"too long"}}"""),
+        });
+        var error = await Assert.ThrowsAsync<ProviderRequestException>(() =>
+            ConsumeAsync(CreateProvider(handler, "secret"), BuildToolRequest()));
+        Assert.NotEqual(ProviderFailureCategory.ToolsRejected, error.Category);
+    }
+
     [Fact]
     public async Task Model_discovery_returns_ids_without_logging_the_key()
     {

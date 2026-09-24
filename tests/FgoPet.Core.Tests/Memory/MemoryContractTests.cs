@@ -6,6 +6,18 @@ namespace FgoPet.Core.Tests.Memory;
 public sealed class MemoryContractTests
 {
     [Fact]
+    public void Provenance_requires_valid_scope_evidence_and_exact_replacement_pair()
+    {
+        Assert.Throws<ArgumentException>(() => new MemoryScope("", null));
+        Assert.Throws<ArgumentException>(() => new MemoryProposal(new string('x', 2001)));
+        Assert.Throws<ArgumentException>(() => new MemoryProposal("text", "id"));
+        Assert.Throws<ArgumentException>(() => new MemoryProposal("text", expectedMemoryVersion: 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MemorySource(new("a", null), "c", "m", "f", DateTimeOffset.UtcNow, (MemoryEvidenceKind)99));
+        var source = new MemorySource(new("a", "p"), "c", "m", "f", DateTimeOffset.UtcNow, MemoryEvidenceKind.UserStatement);
+        Assert.Throws<ArgumentException>(() => new MemoryCandidate("id", "a", "c", "text", DateTimeOffset.UtcNow, "m", projectId: "other", source: source));
+        Assert.Throws<ArgumentException>(() => new StoredMemory("id", "b", "text", true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, source: source));
+    }
+    [Fact]
     public void New_memory_candidate_is_pending_and_servant_scoped()
     {
         var candidate = new MemoryCandidate(

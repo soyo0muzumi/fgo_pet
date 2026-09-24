@@ -5,17 +5,24 @@ namespace FgoPet.Core.Settings;
 /// <summary>Non-secret model connection metadata. API keys are stored separately.</summary>
 public sealed record ModelConnectionSettings
 {
-    public ModelConnectionSettings(string providerId, string baseUrl, string modelId, bool toolsSupported = true)
+    public ModelConnectionSettings(string providerId, string baseUrl, string modelId, bool toolsSupported = true,
+        int? contextWindowOverride = null, int maxOutputTokens = 2048)
     {
         ProviderId = Phase3Validation.Id(providerId, nameof(providerId));
         BaseUrl = Phase3Validation.Text(baseUrl, nameof(baseUrl), 512);
         ModelId = Phase3Validation.Id(modelId, nameof(modelId));
         ToolsSupported = toolsSupported;
+        if (contextWindowOverride is <= 0) throw new ArgumentOutOfRangeException(nameof(contextWindowOverride));
+        if (maxOutputTokens <= 0) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
+        ContextWindowOverride = contextWindowOverride;
+        MaxOutputTokens = maxOutputTokens;
     }
 
     public string ProviderId { get; }
     public string BaseUrl { get; }
     public string ModelId { get; }
+    public int? ContextWindowOverride { get; }
+    public int MaxOutputTokens { get; }
 
     /// <summary>
     /// Per-connection memory of whether the service accepts the tools parameter.

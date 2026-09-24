@@ -24,7 +24,8 @@
 <Button x:Name="NewConversationButton" Content="{StaticResource ChatNew}" Style="{StaticResource ChatMessageAction}" Click="OnNewClick" ToolTip="新对话" AutomationProperties.Name="新对话" Margin="4,0"/>
 <Button Style="{StaticResource ChatMessageAction}" Content="{StaticResource ChatHide}" ToolTip="收起窗口，桌宠继续显示" AutomationProperties.Name="收起窗口" Click="OnHideClick"/>
 </StackPanel></Grid></Border>
-<Grid Grid.Column="1" Grid.Row="1" x:Name="ChatBody" Margin="24,16,24,18"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+<Grid Grid.Column="1" Grid.Row="1" x:Name="ChatBody" Margin="24,16,24,18"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+<Button x:Name="ProjectButton" Grid.Row="2" HorizontalAlignment="Left" MaxWidth="260" Margin="0,6,0,0" Click="OnProjectClick" ToolTip="选择对话项目；切换项目会开始新对话" AutomationProperties.Name="选择对话项目"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource ChatTextButton}"><Style.Triggers><DataTrigger Binding="{Binding Conversation.IsStreaming}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers></Style></Button.Style><TextBlock Text="{Binding Conversation.SessionContext.ProjectSelectionText}" TextTrimming="CharacterEllipsis"/></Button>
 <Grid>
 <ScrollViewer x:Name="MessageScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 <StackPanel x:Name="ReadingColumn" MaxWidth="680" Margin="0,8,0,16">
@@ -46,6 +47,7 @@
 </StackPanel>
 </StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
 <ItemsControl ItemsSource="{Binding Conversation.TodoProposals}"><ItemsControl.ItemTemplate><DataTemplate><views:TodoProposalCard/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+<ItemsControl ItemsSource="{Binding Conversation.RecalledSources}"><ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,4,0,8"><Button Content="{Binding Title}" Command="{Binding OpenCommand}" Style="{StaticResource ChatTextButton}" HorizontalAlignment="Left" ToolTip="打开历史来源"/><TextBlock Text="{Binding Detail}" TextTrimming="CharacterEllipsis" MaxHeight="36" Foreground="{DynamicResource ShellMutedTextBrush}" FontSize="12"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
 <TextBlock Text="{Binding Conversation.RequestStatusText}" Foreground="{DynamicResource ShellMutedTextBrush}" TextWrapping="Wrap" FontSize="12"/>
 <Border x:Name="FailureNotice" BorderBrush="{DynamicResource State.Danger}" BorderThickness="3,0,0,0" Padding="12,8" Margin="0,8" Visibility="Collapsed"><StackPanel><TextBlock Text="{Binding Conversation.ErrorText}" Foreground="{DynamicResource State.Danger}" TextWrapping="Wrap"/><TextBlock Text="输入内容已保留，可以检查后重新发送。" FontSize="12" Foreground="{DynamicResource Text.Secondary}" Margin="0,6"/><Button Content="重新发送输入内容" Command="{Binding Conversation.SendCommand}" Style="{StaticResource ChatTextButton}" HorizontalAlignment="Left"/></StackPanel></Border><TextBlock x:Name="StoppedNotice" Text="已停止生成" FontSize="12" Foreground="{DynamicResource Text.Secondary}" Visibility="Collapsed" Margin="0,8"/>
 <Button Content="配置聊天模型" Command="{Binding Conversation.OpenSettingsCommand}" Style="{StaticResource ChatTextButton}" HorizontalAlignment="Left" Visibility="{Binding Conversation.IsConfigurationStateVisible, Converter={StaticResource Bool}}"/>
@@ -62,9 +64,10 @@
 <Grid Margin="14">
  <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
  <DockPanel><Button DockPanel.Dock="Right" Style="{StaticResource ChatButton}" Content="{StaticResource ChatClose}" ContentTemplate="{StaticResource ChatIcon}" Click="OnCloseClick" ToolTip="返回聊天"/><TextBlock Text="历史对话" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
- <Grid Grid.Row="1" Margin="0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+ <Grid Grid.Row="1" Margin="0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <Button Content="新对话" Style="{StaticResource ChatTextButton}" Click="OnNewClick"/>
   <Button Grid.Column="1" Content="刷新" Style="{StaticResource ChatTextButton}" Margin="8,0,0,0" Click="OnHistoryRefreshClick" ToolTip="刷新历史对话"/>
+  <CheckBox Grid.Row="1" Grid.ColumnSpan="2" Content="仅当前项目（未选时为无项目）" IsChecked="{Binding Conversation.FilterHistoryByProject}" Margin="0,8,0,0" FontSize="12"/>
  </Grid>
  <ListBox x:Name="HistoryList" Grid.Row="2" ItemsSource="{Binding Conversation.History}" ItemContainerStyle="{StaticResource ChatHistoryItem}" BorderThickness="0" Background="Transparent" KeyDown="OnHistoryKeyDown" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="历史对话">
   <ListBox.ItemTemplate><DataTemplate><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
@@ -75,7 +78,10 @@
    <Button x:Name="HistoryDeleteButton" Grid.Column="1" Style="{StaticResource ChatMessageAction}" Content="{StaticResource HistoryDeleteIcon}" Click="OnHistoryDeleteClick" Tag="{Binding}" ToolTip="删除这段对话" AutomationProperties.Name="删除这段对话" IsEnabled="{Binding DataContext.Conversation.CanDeleteHistory, RelativeSource={RelativeSource AncestorType=Window}}"/>
   </Grid></DataTemplate></ListBox.ItemTemplate>
  </ListBox>
- <TextBlock x:Name="HistoryStatusText" Grid.Row="3" Text="{Binding Conversation.HistoryStatus}" Foreground="{DynamicResource Text.Secondary}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite"/>
+ <StackPanel Grid.Row="3">
+  <Button Content="加载更多" Style="{StaticResource ChatTextButton}" Command="{Binding Conversation.LoadMoreHistoryCommand}" Visibility="{Binding Conversation.HasMoreHistory, Converter={StaticResource Bool}}" Margin="0,6,0,0"/>
+  <TextBlock x:Name="HistoryStatusText" Text="{Binding Conversation.HistoryStatus}" Foreground="{DynamicResource Text.Secondary}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite"/>
+ </StackPanel>
  <Border x:Name="HistoryDeleteConfirmation" Grid.Row="4" Margin="0,10,0,0" Padding="10" CornerRadius="8" Background="{DynamicResource Surface.Subtle}" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="1" Visibility="{Binding Conversation.HasPendingHistoryDeletion, Converter={StaticResource Bool}}">
   <StackPanel>
    <TextBlock Text="删除这段对话？" FontWeight="SemiBold"/>

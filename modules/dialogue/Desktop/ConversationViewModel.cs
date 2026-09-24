@@ -29,7 +29,7 @@ public enum TodoNoticeKind
     Fallback,
 }
 
-public sealed partial class ConversationViewModel : ObservableObject
+public sealed partial class ConversationViewModel : ObservableObject, IDisposable
 {
     // Legacy tool-only turns have no user-facing text. This exact assistant/completed
     // sentinel is the only history entry hidden here; ordinary user text is untouched.
@@ -40,9 +40,19 @@ public sealed partial class ConversationViewModel : ObservableObject
     private readonly TodoProposalService? _todoProposals;
     private readonly ArchiveDraftService? _archiveDrafts;
     private readonly IConfiguredModelAuthority? _modelAuthority;
+    private readonly IConversationHistoryQuery _history;
+    private ConversationHistoryCursor? _historyCursor;
+    [ObservableProperty]
+    private bool _filterHistoryByProject = true;
+    partial void OnFilterHistoryByProjectChanged(bool value) => LoadHistory();
+    private bool _acceptRequestUpdates;
     private string _activeConversationId = string.Empty;
     public string CurrentConversationId => _activeConversationId;
     private bool _configurationRequired;
+    private long _sessionGeneration;
+    private bool _disposed;
+    private bool _restoringContext;
+    private string _contextProjectId = string.Empty;
     private readonly StringBuilder _pendingReasoning = new();
     private readonly HashSet<string> _completedNotifications = new(StringComparer.Ordinal);
     public event Action<FgoPet.Core.Portraits.ExpressionSemantic>? ExpressionRequested;
@@ -54,20 +64,23 @@ public sealed partial class ConversationViewModel : ObservableObject
         IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
         TodoProposalService? todoProposals = null,
-        ArchiveDraftService? archiveDrafts = null)
+        ArchiveDraftService? archiveDrafts = null,
+        IConversationHistoryQuery? history = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _modelConnection = modelConnection;
         _todoProposals = todoProposals;
         _archiveDrafts = archiveDrafts;
+        _history = history ?? orchestrator.HistoryQuery;
         _modelAuthority = modelConnection is null ? null : new DialogueModelConnectionSource(modelConnection);
         if (_modelConnection is not null)
         {
             _modelConnection.ConnectionSaved += OnConnectionSaved;
-            _modelConnection.ShowReasoningChanged += _ => OnPropertyChanged(nameof(ShowReasoning));
+            _modelConnection.ShowReasoningChanged += OnShowReasoningChanged;
         }
         _orchestrator.Updated += OnConversationUpdated;
+        SessionContext.PropertyChanged += OnSessionContextChanged;
         var model = _settings.Load().ModelConnection;
         ProviderStatusText = model?.ProviderId ?? "未配置供应商";
         ModelStatusText = model?.ModelId ?? "未配置模型";
@@ -80,6 +93,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         RetryTodoCommand = new AsyncRelayCommand(RetryTodoAsync, () => !IsStreaming && !string.IsNullOrWhiteSpace(_lastUserMessage) && !string.IsNullOrWhiteSpace(ActiveServantId));
         ManualTodoCommand = new RelayCommand(() => ManualTodoRequested?.Invoke());
         RetryHistoryCommand = new RelayCommand(LoadHistory);
+        LoadMoreHistoryCommand = new RelayCommand(() => LoadHistoryPage(append: true), () => HasMoreHistory && !IsHistoryLoading && !_disposed);
     }
 
     /// <summary>Raised when the user asks to configure the model; the host owns the settings route.</summary>
@@ -89,6 +103,7 @@ public sealed partial class ConversationViewModel : ObservableObject
     public ObservableCollection<TodoProposalViewModel> TodoProposals { get; } = new();
     public ObservableCollection<ArchiveDraftViewModel> ArchiveDrafts { get; } = new();
     public ObservableCollection<ConversationHistoryItem> History { get; } = new();
+    public ObservableCollection<HistorySourceViewModel> RecalledSources { get; } = new();
     public DialogueSessionContextViewModel SessionContext { get; } = new();
 
     [ObservableProperty]
@@ -163,7 +178,7 @@ public sealed partial class ConversationViewModel : ObservableObject
         || ErrorText.Contains("模型 API Key", StringComparison.Ordinal)
         || ErrorText.Contains("无法连接模型服务", StringComparison.Ordinal)
         || ErrorText.Contains("对话服务暂时不可用", StringComparison.Ordinal);
-    public bool CanSend => !IsStreaming
+    public bool CanSend => !_disposed && !IsStreaming
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(InputText);
 
@@ -216,6 +231,8 @@ public sealed partial class ConversationViewModel : ObservableObject
     public IAsyncRelayCommand RetryTodoCommand { get; }
     public IRelayCommand ManualTodoCommand { get; }
     public IRelayCommand RetryHistoryCommand { get; }
+    public IRelayCommand LoadMoreHistoryCommand { get; }
+    public bool HasMoreHistory => _historyCursor is not null;
 
     private void SetTodoNotice(string text, TodoNoticeKind kind)
     {
@@ -244,20 +261,22 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     public void SetActiveServant(string servantId)
     {
+        if (_disposed) return;
         var normalizedServantId = servantId?.Trim() ?? string.Empty;
         if (string.Equals(ActiveServantId, normalizedServantId, StringComparison.Ordinal))
         {
             return;
         }
 
+        InvalidateSession();
         SessionChanged?.Invoke();
-        _orchestrator.CancelCurrent();
         Turns.Clear();
         StopThinkingTimer();
         _pendingReasoning.Clear();
         ClearTodoProposals();
         ArchiveDrafts.Clear();
-        SessionContext.Clear();
+        RestoreProjectContext(null);
+        RecalledSources.Clear();
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
@@ -271,30 +290,73 @@ public sealed partial class ConversationViewModel : ObservableObject
         LoadHistory();
     }
 
-    public void LoadHistory()
+    public void LoadHistory() => LoadHistoryPage(append: false);
+
+    private void OnSessionContextChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
+        if (_disposed || _restoringContext || args.PropertyName != nameof(SessionContext.ProjectId) ||
+            _contextProjectId == SessionContext.ProjectId) return;
+        _contextProjectId = SessionContext.ProjectId;
+        if (!string.IsNullOrWhiteSpace(ActiveServantId))
+        {
+            _orchestrator.StartNewConversation(ActiveServantId);
+            ResetConversationView(clearContext: false);
+            LoadHistory();
+        }
+    }
+
+    private void RestoreProjectContext(Conversation? conversation)
+    {
+        _restoringContext = true;
+        try
+        {
+            SessionContext.Clear();
+            if (conversation?.ProjectId is { } project)
+                SessionContext.TrySetProject(project, conversation.ProjectLabel ?? "已保存项目");
+            _contextProjectId = SessionContext.ProjectId;
+        }
+        finally { _restoringContext = false; }
+    }
+
+    private void OpenSource(HistoryHit source)
+    {
+        var scope = new ConversationScope(ActiveServantId, SessionContext.ProjectId);
+        if (!_orchestrator.CanOpenSource(scope, source))
+        {
+            ErrorText = "这条历史来源已不可用，请刷新后重试。";
+            return;
+        }
+        SetActiveConversation(source.Anchor.ConversationId);
+    }
+
+    private void LoadHistoryPage(bool append)
+    {
+        if (_disposed) return;
         IsHistoryLoading = true;
-        History.Clear();
+        if (!append) { History.Clear(); _historyCursor = null; }
         if (string.IsNullOrWhiteSpace(ActiveServantId))
         {
             HistoryStatus = "暂无历史对话";
             IsHistoryLoading = false;
+            OnPropertyChanged(nameof(HasMoreHistory));
+            LoadMoreHistoryCommand.NotifyCanExecuteChanged();
             return;
         }
 
         try
         {
-            foreach (var conversation in _orchestrator.ListConversations(ActiveServantId))
+            var page = FilterHistoryByProject
+                ? _history.ReadPage(new ConversationScope(ActiveServantId, SessionContext.ProjectId), before: append ? _historyCursor : null)
+                : _history.ReadPage(ActiveServantId, before: append ? _historyCursor : null);
+            foreach (var conversation in page.Items)
             {
-                var first = _orchestrator.ListConversationMessages(conversation.ConversationId, ActiveServantId)
-                    .FirstOrDefault(message => message.Role == ChatMessageRole.User);
-                var title = string.IsNullOrWhiteSpace(first?.Text) ? "新会话" : first.Text;
                 History.Add(new ConversationHistoryItem(
                     conversation.ConversationId,
-                    title.Length > 50 ? title[..50] : title,
+                    conversation.Title,
                     conversation.UpdatedAtUtc,
                     conversation.IsArchived ? "已归档" : "正常"));
             }
+            _historyCursor = page.Next;
             HistoryStatus = History.Count == 0 ? "暂无历史对话" : string.Empty;
         }
         catch (Exception)
@@ -304,22 +366,24 @@ public sealed partial class ConversationViewModel : ObservableObject
         finally
         {
             IsHistoryLoading = false;
+            OnPropertyChanged(nameof(HasMoreHistory));
+            LoadMoreHistoryCommand.NotifyCanExecuteChanged();
         }
     }
 
     public void SetActiveConversation(string conversationId)
     {
-        if (string.IsNullOrWhiteSpace(ActiveServantId)) return;
+        if (_disposed || string.IsNullOrWhiteSpace(ActiveServantId)) return;
         CancelHistoryDeletion();
         try
         {
+            InvalidateSession();
             SessionChanged?.Invoke();
-            _orchestrator.CancelCurrent();
             var messages = _orchestrator.LoadConversation(conversationId, ActiveServantId);
             Turns.Clear();
             ClearTodoProposals();
             ArchiveDrafts.Clear();
-            SessionContext.Clear();
+            RestoreProjectContext(_orchestrator.GetConversation(conversationId, ActiveServantId));
             _activeConversationId = conversationId;
             foreach (var message in messages.Where(m => m.Role is ChatMessageRole.User or ChatMessageRole.Assistant))
             {
@@ -352,6 +416,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private void OnConnectionSaved(ModelConnectionSettings connection)
     {
+        InvalidateSession();
         ProviderStatusText = connection.ProviderId;
         ModelStatusText = connection.ModelId;
         _configurationRequired = false;
@@ -370,8 +435,9 @@ public sealed partial class ConversationViewModel : ObservableObject
             return;
         }
 
+        var generation = _sessionGeneration;
         var completed = await SendCoreAsync(text);
-        if (completed && string.Equals(InputText, draft, StringComparison.Ordinal))
+        if (!_disposed && generation == _sessionGeneration && completed && string.Equals(InputText, draft, StringComparison.Ordinal))
         {
             InputText = string.Empty;
         }
@@ -379,19 +445,24 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private async Task<bool> SendCoreAsync(string text)
     {
+        if (_disposed) return false;
+        var generation = _sessionGeneration;
+        var servant = ActiveServantId;
         ErrorText = string.Empty;
         SetTodoNotice(string.Empty, TodoNoticeKind.None);
         StopThinkingTimer();
         _pendingReasoning.Clear();
         IsStreaming = true;
+        _acceptRequestUpdates = true;
         try
         {
             _lastUserMessage = text;
             var result = await _orchestrator.SendAsync(
-                ActiveServantId,
+                servant,
                 text,
                 CancellationToken.None,
                 SessionContext.ToRequestContext());
+            if (!IsCurrent()) return false;
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
@@ -413,8 +484,9 @@ public sealed partial class ConversationViewModel : ObservableObject
         }
         finally
         {
-            IsStreaming = false;
+            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; }
         }
+        bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId;
     }
 
     private void ApplyTodoOutcome(TodoToolCallOutcome outcome, string? detail, string? structuredResponse)
@@ -529,8 +601,9 @@ public sealed partial class ConversationViewModel : ObservableObject
         ResetConversationView();
     }
 
-    private void ResetConversationView()
+    private void ResetConversationView(bool clearContext = true)
     {
+        InvalidateSession();
         CancelHistoryDeletion();
         SessionChanged?.Invoke();
         Turns.Clear();
@@ -538,7 +611,8 @@ public sealed partial class ConversationViewModel : ObservableObject
         _pendingReasoning.Clear();
         ClearTodoProposals();
         ArchiveDrafts.Clear();
-        SessionContext.Clear();
+        if (clearContext) RestoreProjectContext(null);
+        RecalledSources.Clear();
         _activeConversationId = string.Empty;
         _lastUserMessage = null;
         PendingTodoDraftId = null;
@@ -557,6 +631,7 @@ public sealed partial class ConversationViewModel : ObservableObject
 
     private void OnConversationUpdated(ConversationUpdate update)
     {
+        if (_disposed || !_acceptRequestUpdates) return;
         if (!string.IsNullOrWhiteSpace(update.ServantId)
             && !string.Equals(update.ServantId, ActiveServantId, StringComparison.Ordinal))
         {
@@ -589,11 +664,17 @@ public sealed partial class ConversationViewModel : ObservableObject
 
         switch (update.Type)
         {
+            case ConversationUpdateType.HistorySources:
+                RecalledSources.Clear();
+                foreach (var source in update.HistorySources ?? [])
+                    RecalledSources.Add(new HistorySourceViewModel(source, () => OpenSource(source)));
+                break;
             case ConversationUpdateType.RequestStage:
                 LastHttpStatusCode = update.HttpStatusCode;
                 RequestStatusText = update.RequestStage switch
                 {
                     ConversationRequestStage.Preparing => "正在准备请求…",
+                    ConversationRequestStage.Compacting => "正在整理较早的对话…",
                     ConversationRequestStage.RequestStarted => "请求已发出 · 等待模型响应…",
                     ConversationRequestStage.ResponseHeadersReceived => "已收到模型响应",
                     ConversationRequestStage.StreamingReasoning => "正在思考…",
@@ -841,6 +922,37 @@ public sealed partial class ConversationViewModel : ObservableObject
     {
         SendCommand.NotifyCanExecuteChanged();
         SendOrStopCommand.NotifyCanExecuteChanged();
+    }
+
+    private void InvalidateSession()
+    {
+        _sessionGeneration++;
+        _acceptRequestUpdates = false;
+        _orchestrator.CancelCurrent();
+        IsStreaming = false;
+        _lastUserMessage = null;
+        PendingTodoDraftId = null;
+        PendingTodoDraftVersion = null;
+        SetTodoNotice(string.Empty, TodoNoticeKind.None);
+        RetryTodoCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnShowReasoningChanged(bool value) => OnPropertyChanged(nameof(ShowReasoning));
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        InvalidateSession();
+        _orchestrator.Updated -= OnConversationUpdated;
+        SessionContext.PropertyChanged -= OnSessionContextChanged;
+        if (_modelConnection is not null)
+        {
+            _modelConnection.ConnectionSaved -= OnConnectionSaved;
+            _modelConnection.ShowReasoningChanged -= OnShowReasoningChanged;
+        }
+        StopThinkingTimer();
+        _thinkingTimer?.Dispose();
     }
 
     partial void OnActiveServantIdChanged(string value)

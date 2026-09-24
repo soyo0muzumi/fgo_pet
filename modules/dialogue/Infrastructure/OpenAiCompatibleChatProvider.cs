@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using FgoPet.Core.Dialogue;
+using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Secrets;
 
 namespace FgoPet.Infrastructure.Providers;
@@ -16,6 +17,7 @@ public enum ProviderFailureCategory
     ServiceUnavailable,
     InvalidResponse,
     ToolsRejected,
+    ContextLimitExceeded,
 }
 
 public sealed class ProviderRequestException : Exception
@@ -106,7 +108,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
                 return data.EnumerateArray()
                     .Select(item => item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
-                        ? new ProviderModel(id.GetString()!)
+                        ? ReadModel(item, id.GetString()!)
                         : null)
                     .OfType<ProviderModel>()
                     .ToArray();
@@ -124,35 +126,10 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     {
         ArgumentNullException.ThrowIfNull(request);
         using var httpRequest = await CreateAuthorizedRequestAsync(HttpMethod.Post, "chat/completions", cancellationToken);
-        var payload = new Dictionary<string, object?>
-        {
-            ["model"] = ModelId,
-            ["stream"] = true,
-            ["messages"] = request.Messages.Select(message => new
-            {
-                role = message.Role.ToString().ToLowerInvariant(),
-                content = message.Text,
-            }),
-        };
-        if (request.Tools is { Count: > 0 })
-        {
-            payload["tools"] = request.Tools.Select(tool => new
-            {
-                type = tool.Type,
-                function = new
-                {
-                    name = tool.Name,
-                    description = tool.Description,
-                    parameters = JsonSerializer.SerializeToElement(tool.Parameters),
-                },
-            });
-            payload["tool_choice"] = request.ToolChoice switch
-            {
-                null or "auto" => "auto",
-                _ => request.ToolChoice,
-            };
-        }
-        httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var route = ModelRouteKey.From(new ModelConnectionSettings(ProviderId, _baseUri.AbsoluteUri, ModelId));
+        httpRequest.Content = new StringContent(
+            ChatRequestPayloadWriter.Write(route, request),
+            Encoding.UTF8, "application/json");
 
         HttpResponseMessage response;
         try
@@ -202,19 +179,28 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
                 string? finishReason = null;
                 ChatToolCallDelta? toolCallDelta = null;
-                string? textDelta;
-                string? reasoningDelta;
+                string? textDelta = null;
+                string? reasoningDelta = null;
+                ChatUsage? usage = null;
                 try
                 {
                     using var document = JsonDocument.Parse(data);
                     var root = document.RootElement;
-                    if (!root.TryGetProperty("choices", out var choices)
-                        || choices.ValueKind != JsonValueKind.Array
-                        || choices.GetArrayLength() == 0)
+                    if (root.TryGetProperty("usage", out var usageElement) && usageElement.ValueKind == JsonValueKind.Object)
+                    {
+                        var input = ReadNonnegativeInt(usageElement, "prompt_tokens");
+                        var output = ReadNonnegativeInt(usageElement, "completion_tokens");
+                        if (input is int inputTokens && output is int outputTokens)
+                            usage = new ChatUsage(inputTokens, outputTokens);
+                    }
+                    var hasChoices = root.TryGetProperty("choices", out var choices)
+                        && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0;
+                    if (!hasChoices && usage is null)
                     {
                         throw new JsonException("Streaming response contains no choices.");
                     }
-
+                    if (hasChoices)
+                    {
                     var choice = choices[0];
                     finishReason = choice.TryGetProperty("finish_reason", out var finish) && finish.ValueKind == JsonValueKind.String
                         ? finish.GetString()
@@ -231,6 +217,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                     {
                         textDelta = null;
                         reasoningDelta = null;
+                    }
                     }
                 }
                 catch (JsonException error)
@@ -250,14 +237,15 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 // A single delta may carry content, reasoning, tool calls or a finish
                 // reason together; emitting the first match only would drop the rest.
                 if (!string.IsNullOrEmpty(textDelta) || toolCallDelta is not null
-                    || reasoningDelta is not null || finishReason is not null)
+                    || reasoningDelta is not null || finishReason is not null || usage is not null)
                 {
                     yield return new ChatStreamChunk(
                         textDelta ?? string.Empty,
                         IsComplete: false,
                         FinishReason: finishReason,
                         ToolCallDelta: toolCallDelta,
-                        ReasoningDelta: reasoningDelta);
+                        ReasoningDelta: reasoningDelta,
+                        Usage: usage);
                 }
             }
 
@@ -266,6 +254,26 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 yield return new ChatStreamChunk(string.Empty, IsComplete: true);
             }
         }
+    }
+
+    private static int? ReadNonnegativeInt(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number) && number >= 0 ? number : null;
+
+    private static ProviderModel ReadModel(JsonElement item, string id)
+    {
+        foreach (var field in new[] { "context_window", "context_length", "max_output_tokens" })
+            if (item.TryGetProperty(field, out var value) && value.ValueKind != JsonValueKind.Null &&
+                ReadNonnegativeInt(item, field) is not > 0)
+                return new ProviderModel(id);
+        var window = ReadNonnegativeInt(item, "context_window");
+        var length = ReadNonnegativeInt(item, "context_length");
+        var maximum = ReadNonnegativeInt(item, "max_output_tokens");
+        var capacity = window ?? length;
+        if (window is not null && length is not null && window != length ||
+            capacity is <= 0 || maximum is <= 0 || maximum > capacity)
+            return new ProviderModel(id);
+        return new ProviderModel(id, contextWindowTokens: capacity, maxOutputTokens: maximum);
     }
 
     private static string? ReadReasoningDelta(JsonElement delta)
@@ -374,6 +382,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     {
         string? providerCode = null;
         string? providerMessage = null;
+        string? parameter = null;
         try
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -382,6 +391,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 using var document = JsonDocument.Parse(body);
                 if (document.RootElement.TryGetProperty("error", out var error))
                 {
+                    parameter = error.TryGetProperty("param", out var param) && param.ValueKind == JsonValueKind.String ? param.GetString() : null;
                     providerCode = error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
                         ? code.GetString()
                         : null;
@@ -397,6 +407,14 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         }
 
         var detail = string.IsNullOrWhiteSpace(providerMessage) ? fallback : providerMessage.Trim();
+        if (providerCode is "context_length_exceeded" or "context_window_exceeded")
+            category = ProviderFailureCategory.ContextLimitExceeded;
+        if (parameter is "max_tokens" or "max_completion_tokens")
+        {
+            category = ProviderFailureCategory.Configuration;
+            fallback = "当前服务不接受输出上限设置，请检查模型连接配置。";
+            detail = fallback;
+        }
         var messageText = $"{fallback}（HTTP {(int)response.StatusCode}）：{detail}";
         return new ProviderRequestException(category, messageText, httpStatusCode: response.StatusCode, providerCode: providerCode, requestWasSent: true);
     }

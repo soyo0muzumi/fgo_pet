@@ -244,4 +244,20 @@
       <Link>ui-foundation\Theming\AppTheme.cs</Link>
     </Compile>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Contracts/ModelContextContracts.cs" Link="modules/dialogue/Contracts/ModelContextContracts.cs" />
+    <Compile Include="../../modules/dialogue/Contracts/RequestTokenContracts.cs" Link="modules/dialogue/Contracts/RequestTokenContracts.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Contracts/ConversationRecallContracts.cs" Link="modules/dialogue/Contracts/ConversationRecallContracts.cs" />
+    <Compile Include="../../modules/dialogue/Contracts/DialogueContextLifetimeContracts.cs" Link="modules/dialogue/Contracts/DialogueContextLifetimeContracts.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Contracts/ConversationContextContracts.cs" />
+    <Compile Include="../../modules/memory/Contracts/MemoryCandidateWriteContracts.cs" />
+    <Compile Include="../../modules/memory/Contracts/MemoryRecallContracts.cs" />
+    <Compile Include="../../modules/memory/Domain/MemoryTextIdentity.cs" />
+    <Compile Include="../../modules/dialogue/Contracts/MemoryExtractionContracts.cs" />
+    <Compile Include="../../modules/dialogue/Contracts/PromptBudget.cs" />
+  </ItemGroup>
 </Project>

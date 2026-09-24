@@ -54,10 +54,15 @@ public sealed class MemoryCandidateService
         string memoryId,
         MemoryReviewAction action,
         string? editedText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? expectedVersion = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _repository.ReviewMemory(memoryId, servantId, action, editedText, _clock.GetUtcNow());
+        _repository.ReviewMemory(memoryId, servantId, action, editedText, _clock.GetUtcNow(), expectedVersion);
         return Task.CompletedTask;
     }
+    public void InvalidateWrites() => _repository.InvalidateWrites();
+    public string ScopeLabel(string servantId, string? projectId) => _repository.ScopeLabel(servantId, projectId);
+    public void SelectReplacement(string servantId, string candidateId, string memoryId, int expectedVersion) =>
+        _repository.SetReplacement(candidateId, servantId, memoryId, expectedVersion);
 }

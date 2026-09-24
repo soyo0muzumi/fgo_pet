@@ -7,6 +7,15 @@ namespace FgoPet.Core.Dialogue;
 public static class PromptContracts
 {
     public const int MaxRuntimeStateChars = 250;
+    public const int MaxPendingTodoDraftChars = 12_000;
+    public const int MaxMessageChars = 12_000;
+}
+
+public enum PromptBudgetFailure { PendingDraftTooLarge, InsufficientContext, UserInputTooLarge }
+
+public sealed class PromptBudgetException(PromptBudgetFailure failure) : Exception("Prompt context exceeds its bounded budget.")
+{
+    public PromptBudgetFailure Failure { get; } = failure;
 }
 
 public sealed record PromptMessage
@@ -14,7 +23,7 @@ public sealed record PromptMessage
     public PromptMessage(ChatMessageRole role, string text)
     {
         Role = role;
-        Text = Phase3Validation.Text(text, nameof(text), 12_000);
+        Text = Phase3Validation.Text(text, nameof(text), PromptContracts.MaxMessageChars);
     }
 
     public ChatMessageRole Role { get; }
@@ -93,16 +102,26 @@ public sealed record PromptContext
         string runtimeState,
         IReadOnlyList<PromptMessage> messages,
         string userMessage,
-        ConversationRequestContext? requestContext = null)
+        ConversationRequestContext? requestContext = null,
+        string? pendingTodoDraft = null,
+        IReadOnlyList<HistoryHit>? recalledHistory = null,
+        RecallStatus recallStatus = RecallStatus.Empty,
+        ConversationSummary? conversationSummary = null)
     {
         ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
         Persona = persona ?? throw new ArgumentNullException(nameof(persona));
         Knowledge = knowledge is null ? throw new ArgumentNullException(nameof(knowledge)) : knowledge.ToArray();
         Memories = memories is null ? throw new ArgumentNullException(nameof(memories)) : memories.ToArray();
         RuntimeState = Phase3Validation.OptionalText(runtimeState, nameof(runtimeState), PromptContracts.MaxRuntimeStateChars);
+        if (pendingTodoDraft?.Length > PromptContracts.MaxPendingTodoDraftChars)
+            throw new PromptBudgetException(PromptBudgetFailure.PendingDraftTooLarge);
+        PendingTodoDraft = pendingTodoDraft ?? string.Empty;
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
         UserMessage = Phase3Validation.Text(userMessage, nameof(userMessage), 12_000);
         RequestContext = requestContext ?? new ConversationRequestContext();
+        RecalledHistory = recalledHistory?.ToArray() ?? [];
+        RecallStatus = recallStatus;
+        ConversationSummary = conversationSummary;
     }
 
     public ContentContextKey ContentContext { get; }
@@ -110,9 +129,13 @@ public sealed record PromptContext
     public IReadOnlyList<KnowledgeEntry> Knowledge { get; }
     public IReadOnlyList<StoredMemory> Memories { get; }
     public string RuntimeState { get; }
+    public string PendingTodoDraft { get; }
     public IReadOnlyList<PromptMessage> Messages { get; }
     public string UserMessage { get; }
     public ConversationRequestContext RequestContext { get; }
+    public IReadOnlyList<HistoryHit> RecalledHistory { get; }
+    public RecallStatus RecallStatus { get; }
+    public ConversationSummary? ConversationSummary { get; }
 }
 
 public enum PromptAssemblyStatus
@@ -127,22 +150,24 @@ public sealed record ComposedPrompt
     public ComposedPrompt(
         ContentContextKey contentContext,
         IReadOnlyList<PromptMessage> messages,
-        int estimatedTokens,
-        PromptAssemblyStatus status)
+        TokenMeasurement usage,
+        PromptAssemblyStatus status,
+        int maxOutputTokens,
+        bool fitsBudget)
     {
-        if (estimatedTokens < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(estimatedTokens));
-        }
-
         ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
-        EstimatedTokens = estimatedTokens;
+        Usage = usage;
         Status = status;
+        MaxOutputTokens = maxOutputTokens;
+        FitsBudget = fitsBudget;
     }
 
     public ContentContextKey ContentContext { get; }
     public IReadOnlyList<PromptMessage> Messages { get; }
-    public int EstimatedTokens { get; }
+    public TokenMeasurement Usage { get; }
+    public int EstimatedTokens => Usage.InputTokens;
+    public int MaxOutputTokens { get; }
+    public bool FitsBudget { get; }
     public PromptAssemblyStatus Status { get; }
 }

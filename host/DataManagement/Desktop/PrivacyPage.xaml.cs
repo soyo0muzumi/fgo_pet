@@ -12,17 +12,20 @@ public partial class PrivacyPage : UserControl
 
     private readonly Memory.MemoryViewModel _viewModel;
     private readonly PrivateBackupService? _privateBackup;
-    private readonly PrivateBackupRestoreService? _privateBackupRestore;
+    private readonly PendingBackupRestoreService? _privateBackupRestore;
+    private readonly Action? _exitForRestore;
 
     public PrivacyPage(
         Memory.MemoryViewModel viewModel,
         PrivateBackupService? privateBackup = null,
-        PrivateBackupRestoreService? privateBackupRestore = null)
+        PendingBackupRestoreService? privateBackupRestore = null,
+        Action? exitForRestore = null)
     {
         InitializeComponent();
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _privateBackup = privateBackup;
         _privateBackupRestore = privateBackupRestore;
+        _exitForRestore = exitForRestore;
         DataContext = viewModel;
         Loaded += OnLoaded;
     }
@@ -95,7 +98,7 @@ public partial class PrivacyPage : UserControl
         }
 
         if (MessageBox.Show(
-                "恢复会替换当前业务数据；API Key 和 Agent 凭据不会恢复，进行中的 Agent 任务需要重新核对且不会自动重新派发。确定继续吗？",
+                "备份校验后将关闭应用，请重新打开以完成恢复。恢复会替换当前业务数据；API Key 和 Agent 凭据不会恢复，进行中的 Agent 任务需要重新核对且不会自动重新派发。确定继续吗？",
                 "确认恢复私有备份",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) != MessageBoxResult.Yes)
@@ -105,15 +108,9 @@ public partial class PrivacyPage : UserControl
 
         try
         {
-            var result = await _privateBackupRestore.RestoreAsync(dialog.FileName, CancellationToken.None);
-            PrivateBackupStatusText.Text = result.Status switch
-            {
-                BackupRestoreStatus.Restored when result.PackageReinstallRequired => "私有备份已恢复；请重新安装缺失的角色包。",
-                BackupRestoreStatus.Restored when result.AgentPairingRequired => "私有备份已恢复；Agent 需要重新配对并核对任务。",
-                BackupRestoreStatus.Restored => "私有备份已恢复。",
-                BackupRestoreStatus.RolledBack => "恢复未完成，已回滚当前数据。",
-                _ => $"恢复已拒绝：{result.FailureCode}",
-            };
+            await _privateBackupRestore.PrepareAsync(dialog.FileName, CancellationToken.None);
+            PrivateBackupStatusText.Text = "备份已校验，请重新打开应用以完成恢复。";
+            _exitForRestore?.Invoke();
         }
         catch (OperationCanceledException)
         {

@@ -135,6 +135,18 @@
                 </Border>
                 <Border Style="{StaticResource ConnectionSection}">
             <StackPanel>
+                <TextBlock Text="上下文与输出" Style="{StaticResource SettingsPageHeaderStyle}" />
+                <TextBlock Text="上下文上限（tokens，可留空使用模型资料）" Style="{StaticResource SettingsCaptionStyle}" Margin="0,12,0,0" />
+                <TextBox Text="{Binding ContextWindowOverrideText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}"
+                         automation:AutomationProperties.Name="上下文上限覆盖" />
+                <TextBlock Text="最大输出（tokens）" Style="{StaticResource SettingsCaptionStyle}" Margin="0,12,0,0" />
+                <TextBox Text="{Binding MaxOutputTokensText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}"
+                         automation:AutomationProperties.Name="最大输出" />
+                <TextBlock Text="{Binding ContextLimitText}" Style="{StaticResource SettingsStatusStyle}" TextWrapping="Wrap" Margin="0,8,0,0" />
+            </StackPanel>
+        </Border>
+                <Border Style="{StaticResource ConnectionSection}">
+            <StackPanel>
                 <TextBlock Text="回复显示" Style="{StaticResource SettingsPageHeaderStyle}" />
                 <CheckBox x:Name="ShowReasoningCheck"
                           Content="显示模型思考过程"

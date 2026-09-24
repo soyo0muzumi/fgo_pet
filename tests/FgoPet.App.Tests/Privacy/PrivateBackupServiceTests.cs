@@ -182,7 +182,7 @@ public sealed class PrivateBackupServiceTests : IDisposable
 
     private RuntimeDatabase CreateDatabase()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         return database;
     }

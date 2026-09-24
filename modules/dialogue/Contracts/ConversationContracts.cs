@@ -3,6 +3,18 @@ using FgoPet.Core.Validation;
 
 namespace FgoPet.Core.Dialogue;
 
+/// <summary>Metadata only. Opening a conversation is a separate full-message query.</summary>
+public interface IConversationHistoryQuery
+{
+    ConversationHistoryPage ReadPage(string servantId, int pageSize = 50, ConversationHistoryCursor? before = null);
+    ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null);
+}
+
+public sealed record ConversationHistoryEntry(string ConversationId, string Title, DateTimeOffset UpdatedAtUtc, bool IsArchived);
+// Preserve the storage sort key verbatim; reformatting older UTC strings can skip a page.
+public sealed record ConversationHistoryCursor(string ServantId, string UpdatedAtSortKey, string ConversationId, string? ScopeKey = null);
+public sealed record ConversationHistoryPage(IReadOnlyList<ConversationHistoryEntry> Items, ConversationHistoryCursor? Next);
+
 public enum ChatMessageRole
 {
     System,
@@ -34,7 +46,9 @@ public sealed record Conversation
         DateTimeOffset createdAtUtc,
         DateTimeOffset updatedAtUtc,
         ContentContextKey contentContext,
-        bool isArchived = false)
+        bool isArchived = false,
+        string? projectId = null,
+        string? projectLabel = null)
     {
         ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
@@ -42,6 +56,8 @@ public sealed record Conversation
         CreatedAtUtc = createdAtUtc;
         UpdatedAtUtc = updatedAtUtc;
         IsArchived = isArchived;
+        ProjectId = new ConversationScope(servantId, projectId).ProjectId;
+        ProjectLabel = string.IsNullOrWhiteSpace(projectLabel) ? null : Phase3Validation.Text(projectLabel, nameof(projectLabel), 160);
     }
 
     public string ConversationId { get; }
@@ -50,6 +66,8 @@ public sealed record Conversation
     public DateTimeOffset UpdatedAtUtc { get; }
     public ContentContextKey ContentContext { get; }
     public bool IsArchived { get; }
+    public string? ProjectId { get; }
+    public string? ProjectLabel { get; }
 }
 
 public sealed record ChatMessage
@@ -102,6 +120,7 @@ public sealed record ConversationSendResult(
 
 public enum ConversationUpdateType
 {
+    HistorySources,
     UserMessagePersisted,
     RequestStage,
     AssistantDelta,
@@ -113,6 +132,7 @@ public enum ConversationUpdateType
 public enum ConversationRequestStage
 {
     Preparing,
+    Compacting,
     RequestStarted,
     ResponseHeadersReceived,
     StreamingReasoning,
@@ -155,7 +175,8 @@ public sealed record ConversationUpdate(
     FgoPet.Core.Portraits.ExpressionSemantic? Expression = null,
     string? TodoDraftId = null,
     int? TodoDraftVersion = null,
-    string? CreatedTodoId = null);
+    string? CreatedTodoId = null,
+    IReadOnlyList<HistoryHit>? HistorySources = null);
 
 public sealed record ChatRequest
 {
@@ -166,10 +187,13 @@ public sealed record ChatRequest
         ContentContextKey? contentContext = null,
         IReadOnlyDictionary<string, string>? metadata = null,
         IReadOnlyList<ChatToolDefinition>? tools = null,
-        string? toolChoice = null)
+        string? toolChoice = null,
+        int? maxOutputTokens = null)
     {
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
         ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
+        if (maxOutputTokens is <= 0) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
+        MaxOutputTokens = maxOutputTokens;
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
         if (Messages.Count == 0)
         {
@@ -202,9 +226,10 @@ public sealed record ChatRequest
     public IReadOnlyDictionary<string, string> Metadata { get; }
     public IReadOnlyList<ChatToolDefinition>? Tools { get; }
     public string? ToolChoice { get; }
+    public int? MaxOutputTokens { get; }
 }
 
-public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null, ChatToolCallDelta? ToolCallDelta = null, string? ReasoningDelta = null)
+public sealed record ChatStreamChunk(string TextDelta, bool IsComplete = false, string? FinishReason = null, ChatToolCallDelta? ToolCallDelta = null, string? ReasoningDelta = null, ChatUsage? Usage = null)
 {
     // Streaming fragments are concatenated as-is: never trim them or a provider that
     // splits on word boundaries loses every space between English words.

@@ -60,6 +60,8 @@ using FgoPet.Speech.Settings;
 using FgoPet.UiFoundation.Theming;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
+using FgoPet.Core.Dialogue;
+using FgoPet.Core.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Bootstrap;
@@ -128,7 +130,7 @@ public static class ServiceRegistration
             eventName => provider.GetRequiredService<ILogger<PrivateBackupService>>()
                 .LogInformation("{BackupEvent}", eventName)))
         .AddSingleton<FgoPet.App.Bootstrap.IRuntimeDatabaseMigrator>(provider =>
-            new SqliteRuntimeDatabaseMigrator(provider.GetRequiredService<RuntimeDatabase>()))
+            new SqliteRuntimeDatabaseMigrator(provider.GetRequiredService<RuntimeDatabase>(), provider.GetRequiredService<IMemoryWriteLifetime>()))
         .AddSingleton<IPhase2Availability, Phase2Availability>()
         .AddSingleton<IBondProgressionPolicy, DefaultBondProgressionPolicy>()
         .AddSingleton<SqliteFocusRepository>()
@@ -143,6 +145,7 @@ public static class ServiceRegistration
         .AddSingleton<IWorkArchiveRepository>(provider => provider.GetRequiredService<SqliteWorkArchiveRepository>())
         .AddSingleton<TodoApplicationService>()
         .AddSingleton<TodoProposalService>()
+        .AddSingleton<ITodoDraftWorkflow>(provider => provider.GetRequiredService<TodoProposalService>().Drafts)
         .AddSingleton<ArchiveDraftService>()
         .AddSingleton<ILongArchiveSummaryStore, MemoryLongArchiveSummaryStore>()
         .AddSingleton<LongArchiveService>()
@@ -322,13 +325,41 @@ public static class ServiceRegistration
         })
         // Phase 3 dialogue: user-triggered orchestration only; no startup model call.
         .AddSingleton<ApprovedKnowledgeQuery>()
+        .AddSingleton<IRequestTokenMeter, RequestTokenMeter>()
+        .AddSingleton<IModelContextResolver>(provider => new ModelContextResolver(
+            connection => provider.GetRequiredService<ChatProviderFactory>().Create(connection),
+            provider.GetRequiredService<TimeProvider>()))
         .AddSingleton<PromptComposer>()
+        .AddSingleton<DialogueContextLifetime>()
+        .AddSingleton<IDialogueContextLifetime>(provider => provider.GetRequiredService<DialogueContextLifetime>())
         .AddSingleton<SqliteConversationRepository>()
+        .AddSingleton<IConversationRecallRepository, SqliteConversationRecallRepository>()
+        .AddSingleton<IConversationRecall, ConversationRecallService>()
+        .AddSingleton<IConversationContextStore, SqliteConversationContextStore>()
+        .AddSingleton<IConversationSummarizer, ProviderConversationSummarizer>()
+        .AddSingleton<IConversationHistoryQuery>(provider => provider.GetRequiredService<SqliteConversationRepository>())
         .AddSingleton<SqliteMemoryRepository>()
+        .AddSingleton<IMemoryCandidateSink>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
+        .AddSingleton<IMemoryWriteLifetime>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
+        .AddSingleton<IMemorySnapshotReader>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
+        .AddSingleton<IMemoryRecall, MemoryRecallService>()
+        .AddSingleton<IMemoryCandidateExtractor>(provider => new ProviderMemoryCandidateExtractor(
+            connection => provider.GetRequiredService<IChatProviderResolver>().Resolve(connection),
+            provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
+            provider.GetRequiredService<IMemoryRecall>()))
+        .AddSingleton(provider => new MemoryExtractionQueue(provider.GetRequiredService<IMemoryCandidateExtractor>(),
+            provider.GetRequiredService<IMemoryCandidateSink>(), provider.GetRequiredService<IMemoryWriteLifetime>(),
+            provider.GetRequiredService<DialogueContextLifetime>(), connection =>
+                provider.GetRequiredService<IMemorySettingsStore>().Load().Enabled &&
+                provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection == connection,
+            provider.GetRequiredService<ILogger<MemoryExtractionQueue>>(),
+            isSourceCurrent: source => new MemoryExtractionSourceReader(provider.GetRequiredService<SqliteConversationRepository>()).IsCurrent(source)))
         .AddSingleton<ConversationSummaryService>()
         .AddSingleton<MemoryCandidateService>()
         .AddSingleton<UserDataExportService>()
         .AddSingleton<UserDataDeletionService>()
+        .AddSingleton<PendingBackupRestoreService>(provider => new PendingBackupRestoreService(
+            paths.StorageRoot, provider.GetRequiredService<IApplicationSettingsDocument>(), provider.GetRequiredService<PrivateBackupReader>()))
         .AddSingleton<PrivateBackupRestoreService>(provider => new PrivateBackupRestoreService(
             provider.GetRequiredService<RuntimeDatabase>(),
             provider.GetRequiredService<IApplicationSettingsDocument>(),
@@ -346,27 +377,37 @@ public static class ServiceRegistration
         .AddSingleton<PrivacyPage>(provider => new PrivacyPage(
             provider.GetRequiredService<MemoryViewModel>(),
             provider.GetService<PrivateBackupService>(),
-            provider.GetService<PrivateBackupRestoreService>()))
+            provider.GetService<PendingBackupRestoreService>(),
+            provider.GetRequiredService<IAppLifetime>().RequestNormalExit))
         .AddSingleton<IChatProviderResolver, ConfiguredChatProviderResolver>()
         .AddSingleton<IConversationContentResolver, InstalledContentBindingResolver>()
         .AddSingleton(provider => new ConversationOrchestrator(
             provider.GetRequiredService<IChatProviderResolver>(),
             provider.GetRequiredService<IConversationContentResolver>(),
             provider.GetRequiredService<SqliteConversationRepository>(),
-            provider.GetRequiredService<SqliteMemoryRepository>(),
+            provider.GetRequiredService<IMemoryRecall>(),
             provider.GetRequiredService<PromptComposer>(),
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<IMemorySettingsStore>(),
             provider.GetRequiredService<ConversationSummaryService>(),
             provider.GetRequiredService<TodoProposalService>(),
-            provider.GetRequiredService<ILogger<ConversationOrchestrator>>()))
+            provider.GetRequiredService<ILogger<ConversationOrchestrator>>(),
+            provider.GetRequiredService<ITodoDraftWorkflow>(),
+            provider.GetRequiredService<IModelContextResolver>(),
+            provider.GetRequiredService<IRequestTokenMeter>(),
+            provider.GetRequiredService<DialogueContextLifetime>(),
+            provider.GetRequiredService<IConversationRecall>(),
+            provider.GetRequiredService<IConversationContextStore>(),
+            provider.GetRequiredService<IMemoryCandidateSink>(),
+            provider.GetRequiredService<MemoryExtractionQueue>()))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<TodoProposalService>(),
-            provider.GetRequiredService<ArchiveDraftService>()))
+            provider.GetRequiredService<ArchiveDraftService>(),
+            provider.GetRequiredService<IConversationHistoryQuery>()))
         .AddSingleton<DialogueWindowViewModel>(provider => new DialogueWindowViewModel(
             provider.GetRequiredService<ConversationViewModel>(),
             provider.GetRequiredService<ServantLibraryViewModel>(),

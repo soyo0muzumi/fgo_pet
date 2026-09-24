@@ -57,13 +57,13 @@ public sealed class RuntimeDatabaseTests : IDisposable
     public void Migration_11_adds_empty_steps_without_rewriting_legacy_description()
     {
         var database = new RuntimeDatabase(_path);
-        new RuntimeDatabaseMigrator(database).Migrate();
+        CreateLegacy(database, 10);
 
         using (var connection = database.Open())
         {
             Execute(connection, "INSERT INTO todo_items(todo_id, title, description, priority, due_at_utc, status, created_at_utc, updated_at_utc, completed_at_utc) VALUES('legacy', 'Legacy', '1. Keep this text\n2. Do not convert', 'normal', NULL, 'planned', '2026-09-13T00:00:00Z', '2026-09-13T00:00:00Z', NULL)");
-            Execute(connection, "DROP TABLE todo_steps");
-            Execute(connection, "DELETE FROM schema_migrations WHERE version=11");
+
+
         }
 
         new RuntimeDatabaseMigrator(database).Migrate();
@@ -93,37 +93,9 @@ public sealed class RuntimeDatabaseTests : IDisposable
     public void Migrate_upgrades_the_prior_agent_schema_with_reconciliation_and_archive_tables()
     {
         var database = new RuntimeDatabase(_path);
+        CreateLegacy(database, 6);
         using (var connection = database.Open())
         {
-            Execute(connection, "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at_utc TEXT NOT NULL)");
-            Execute(connection, "INSERT INTO schema_migrations(version, applied_at_utc) VALUES(6, '2026-08-30T00:00:00Z')");
-            Execute(connection, """
-                CREATE TABLE agent_executions(
-                  execution_id TEXT PRIMARY KEY,
-                  todo_id TEXT NOT NULL,
-                  source_type TEXT NOT NULL,
-                  source_instance TEXT NOT NULL,
-                  task_id TEXT NOT NULL,
-                  dispatch_request_id TEXT NOT NULL UNIQUE,
-                  status TEXT NOT NULL CHECK(status IN ('dispatching','active','attention','completed','failed','cancelled')),
-                  started_at_utc TEXT NULL,
-                  updated_at_utc TEXT NOT NULL,
-                  ended_at_utc TEXT NULL,
-                  UNIQUE(source_type, source_instance, task_id));
-                CREATE INDEX ix_agent_executions_todo_current
-                  ON agent_executions(todo_id, updated_at_utc DESC);
-                CREATE TABLE agent_event_receipts(
-                  source_type TEXT NOT NULL,
-                  source_instance TEXT NOT NULL,
-                  task_id TEXT NOT NULL,
-                  sequence INTEGER NOT NULL CHECK(sequence > 0),
-                  event_type TEXT NOT NULL,
-                  occurred_at_utc TEXT NOT NULL,
-                  is_private INTEGER NOT NULL CHECK(is_private IN (0,1)),
-                  PRIMARY KEY(source_type, source_instance, task_id, sequence));
-                CREATE INDEX ix_agent_event_receipts_task
-                  ON agent_event_receipts(source_type, source_instance, task_id, sequence DESC);
-                """);
             Execute(connection, """
                 INSERT INTO agent_executions(
                   execution_id, todo_id, source_type, source_instance, task_id, dispatch_request_id,
@@ -287,6 +259,87 @@ public sealed class RuntimeDatabaseTests : IDisposable
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='future_table'"));
     }
 
+    private static void CreateLegacy(RuntimeDatabase database, int version)
+    {
+        // Construct the complete historical schema, not a partial table fixture that
+        // incorrectly claims a newer schema version.
+        var migrations = (IReadOnlyList<Migration>)typeof(RuntimeDatabaseMigrator).GetField("Migrations",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        using var connection = database.Open();
+        RuntimeDatabaseMigrator.ReadVersion(connection);
+        foreach (var migration in migrations.Where(item => item.Version <= version))
+        {
+            using var transaction = connection.BeginTransaction();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = migration.Sql;
+            command.ExecuteNonQuery();
+            command.CommandText = "INSERT INTO schema_migrations VALUES($version,'2026-09-23T00:00:00Z')";
+            command.Parameters.AddWithValue("$version", migration.Version);
+            command.ExecuteNonQuery();
+            transaction.Commit();
+        }
+    }
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(12)]
+    [InlineData(13)]
+    public void Older_schemas_preserve_memories_as_legacy_general_and_never_activate_old_concatenated_summaries(int schema)
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        CreateLegacy(database, schema);
+        using (var connection = database.Open())
+        {
+            Execute(connection, "INSERT INTO conversations(conversation_id,servant_id,created_at_utc,updated_at_utc,status) VALUES('old','mash','2026-09-23','2026-09-23','active')");
+            Execute(connection, "INSERT INTO memories VALUES('memory','mash','已确认的旧偏好',1,NULL,'2026-09-23','2026-09-23')");
+            Execute(connection, "INSERT INTO conversation_summaries(summary_id,conversation_id,servant_id,summary_text,covered_through_sequence,created_at_utc,updated_at_utc,covered_through_message_id) VALUES('summary','old','mash','旧拼接摘要',1,'2026-09-23','2026-09-23','old-message')");
+        }
+        new RuntimeDatabaseMigrator(database).Migrate();
+        var memory = Assert.Single(new FgoPet.Infrastructure.Memory.SqliteMemoryRepository(database).ListMemories("mash"));
+        Assert.Null(memory.ProjectId);
+        Assert.Null(memory.Source);
+        Assert.Equal(1, memory.Version);
+        Assert.Equal("已确认的旧偏好", memory.Text);
+        using var verify = database.Open();
+        Assert.Equal(0L, Scalar<long>(verify, "SELECT COUNT(*) FROM conversation_contexts"));
+        Assert.Equal(1L, Scalar<long>(verify, "SELECT COUNT(*) FROM conversation_summaries"));
+        Assert.Equal(1L, Scalar<long>(verify, "SELECT COUNT(*) FROM memory_write_state WHERE length(generation)>0"));
+    }
+
+    [Fact]
+    public void Migration_12_indexes_legacy_messages_without_assigning_a_project()
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        CreateLegacy(database, 11);
+        using (var connection = database.Open())
+        {
+            Execute(connection, "INSERT INTO conversations VALUES('old','mash','2026-09-23','2026-09-23','active',NULL)");
+            Execute(connection, "INSERT INTO chat_messages VALUES('m1','old','mash',1,'user','旧的导师面谈','completed','2026-09-23',NULL)");
+        }
+        new RuntimeDatabaseMigrator(database).Migrate();
+        using var verify = database.Open();
+        Assert.Equal(1L, Scalar<long>(verify, "SELECT COUNT(*) FROM conversations WHERE project_id IS NULL AND project_label IS NULL"));
+        Assert.Equal(1L, Scalar<long>(verify, "SELECT COUNT(*) FROM chat_message_search WHERE chat_message_search MATCH '导师面谈'"));
+    }
+
+    [Fact]
+    public void Migration_12_failure_rolls_back_columns_and_version_then_can_retry()
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        CreateLegacy(database, 11);
+        using (var connection = database.Open()) Execute(connection, "CREATE TABLE chat_message_search(conflict INTEGER)");
+        Assert.Throws<SqliteException>(() => new RuntimeDatabaseMigrator(database).Migrate());
+        using (var verify = database.Open())
+        {
+            Assert.Equal(11L, Scalar<long>(verify, "SELECT MAX(version) FROM schema_migrations"));
+            Assert.Equal(0L, Scalar<long>(verify, "SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name='project_id'"));
+            Execute(verify, "DROP TABLE chat_message_search");
+        }
+        new RuntimeDatabaseMigrator(database).Migrate();
+        using var final = database.Open();
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, RuntimeDatabaseMigrator.ReadVersion(final));
+    }
     private static T Scalar<T>(SqliteConnection connection, string sql)
     {
         using var command = connection.CreateCommand();

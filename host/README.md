@@ -7,6 +7,8 @@
 - DesktopShell：应用启动与生命周期、服务装配、托盘、窗口与几何、设置外壳、附加面板与立绘窗的呈现编排
 - DesktopShell：`AttachedPanelState` / `AttachedPanelStateMachine`（纯 UI 容器状态机，Q10）
 - DataManagement：私有备份/恢复、导出、清理的**具名应用流程**
+
+私有恢复由 `PendingBackupRestoreService` 校验并暂存副本，界面随后请求正常退出。DesktopShell 持有数据目录的独占文件锁，在下一次启动的主题、窗口、计时与轮询服务创建前执行恢复；`CompleteStartup` 后维护协调器拒绝直接换库。回滚失败或发现中断标记时保留原始回滚文件并阻止常规启动，不能返回“已回滚”。
 - Settings：拥有唯一 schema-v2 codec 与进程内读-改-写协调器，实现各所有者发布的设置端口
 - 设置外壳只保存导航分组、最近的能力子页和各页面的滚动位置；页面草稿仍由原有模块 ViewModel 持有。侧栏通过 DesktopAppUi 返回现有聊天、待办或专注界面。
 

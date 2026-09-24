@@ -26,7 +26,7 @@ public sealed class FocusSessionServiceTests : IDisposable
     public FocusSessionServiceTests()
     {
         _time = new MutableTimeProvider(Epoch);
-        _database = new RuntimeDatabase(Path.Combine(Path.GetTempPath(), $"fgo-service-{Guid.NewGuid():N}.db"));
+        _database = TestRuntimeDatabase.Create(Path.Combine(Path.GetTempPath(), $"fgo-service-{Guid.NewGuid():N}.db"));
         new RuntimeDatabaseMigrator(_database).Migrate();
         _repository = new SqliteFocusRepository(_database);
         _completion = new SqliteFocusCompletionUnit(
@@ -58,6 +58,34 @@ public sealed class FocusSessionServiceTests : IDisposable
         _time.Advance(TimeSpan.FromSeconds(7));
         _service.Tick();
         Assert.Equal(1_493, _service.Current.RemainingSeconds);
+    }
+
+    [Theory]
+    [InlineData(1_000L)]
+    [InlineData(1_000_000_000L)]
+    public void Tick_retains_fractional_time_using_the_providers_timestamp_frequency(long frequency)
+    {
+        var time = new FrequencyTimeProvider(frequency);
+        var service = new FocusSessionService(time, new SqliteFocusSnapshotStore(_repository), _completion);
+        service.Start(FocusPreset.Create(25, 5, 4), "servant-mash");
+        time.Advance(1.25);
+        service.Tick();
+        Assert.Equal(1_499, service.Current.RemainingSeconds);
+        time.Advance(0.5);
+        service.Tick();
+        Assert.Equal(1_499, service.Current.RemainingSeconds);
+        time.Advance(0.25);
+        service.Tick();
+        Assert.Equal(1_498, service.Current.RemainingSeconds);
+    }
+
+    private sealed class FrequencyTimeProvider(long frequency) : TimeProvider
+    {
+        private long _timestamp;
+        public override long TimestampFrequency => frequency;
+        public override long GetTimestamp() => _timestamp;
+        public override DateTimeOffset GetUtcNow() => Epoch.AddSeconds((double)_timestamp / frequency);
+        public void Advance(double seconds) => _timestamp += (long)(seconds * frequency);
     }
 
     [Fact]
@@ -258,8 +286,7 @@ public sealed class FocusSessionServiceTests : IDisposable
 
         public override long GetTimestamp() => Now.UtcTicks;
 
-        public new TimeSpan GetElapsedTime(long startingTimestamp, long endingTimestamp) =>
-            new TimeSpan(endingTimestamp - startingTimestamp);
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public void Advance(TimeSpan delta) => Now += delta;
     }

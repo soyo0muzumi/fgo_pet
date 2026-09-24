@@ -47,7 +47,10 @@ public sealed partial class TodoProposalService
     public TodoProposalService(TodoApplicationService todos)
     {
         _todos = todos ?? throw new ArgumentNullException(nameof(todos));
+        Drafts = new TodoContinuationState(this);
     }
+
+    public ITodoDraftWorkflow Drafts { get; }
 
     public IReadOnlyList<TodoProposal> Parse(string modelResponse)
     {

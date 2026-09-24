@@ -44,6 +44,8 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
         DisableMemoryCommand = new AsyncRelayCommand(() => ReviewMemoryAsync(MemoryReviewAction.Disable));
         DeleteMemoryCommand = new AsyncRelayCommand(() => ReviewMemoryAsync(MemoryReviewAction.Delete));
         EditMemoryCommand = new AsyncRelayCommand(() => ReviewMemoryAsync(MemoryReviewAction.Edit));
+        EnableMemoryCommand = new AsyncRelayCommand(() => ReviewMemoryAsync(MemoryReviewAction.Approve));
+        SelectReplacementCommand = new AsyncRelayCommand(SelectReplacementAsync);
         ExportCommand = new AsyncRelayCommand(ExportAsync);
         DeleteAllCommand = new AsyncRelayCommand(DeleteAllAsync);
     }
@@ -101,6 +103,17 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand DisableMemoryCommand { get; }
     public IAsyncRelayCommand DeleteMemoryCommand { get; }
     public IAsyncRelayCommand EditMemoryCommand { get; }
+    public IAsyncRelayCommand EnableMemoryCommand { get; }
+    public IAsyncRelayCommand SelectReplacementCommand { get; }
+    public string CandidateDetails => SelectedCandidate is not { } candidate ? "选择候选查看来源与范围。" :
+        $"{(candidate.ReplacesMemoryId is null ? "新增记忆" : "更正记忆")} · {_memories.ScopeLabel(candidate.ServantId, candidate.ProjectId)}\n{Evidence(candidate.Source, candidate.Source is not null)}" +
+        (candidate.ReplacesMemoryId is null ? "" : $"\n原值：{StoredMemories.FirstOrDefault(m => m.MemoryId == candidate.ReplacesMemoryId)?.Text ?? "目标已删除"}\n新值：{candidate.Text}");
+    public string MemoryDetails => SelectedMemory is not { } memory ? "选择记忆查看来源与范围。" :
+        $"{_memories.ScopeLabel(memory.ServantId, memory.ProjectId)} · 第 {memory.Version} 版\n{Evidence(memory.Source, memory.SourceAvailable)}";
+
+    private static string Evidence(MemorySource? source, bool available) => source is null ? "旧版数据：来源不完整" :
+        $"{source.Kind switch { MemoryEvidenceKind.UserStatement => "用户原话", MemoryEvidenceKind.AssistantSuggestion => "助手建议", MemoryEvidenceKind.ConfirmedDecision => "已明确确认的决定", _ => "来源不完整" }} · {source.OccurredAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}" +
+        (available ? "" : " · 来源记录已删除");
     public IAsyncRelayCommand ExportCommand { get; }
     public IAsyncRelayCommand DeleteAllCommand { get; }
 
@@ -110,6 +123,7 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
         {
             _settings.Save(_settings.Load() with { Enabled = value });
         }
+        if (!value) _memories.InvalidateWrites();
     }
 
     public void SetActiveServant(string? servantId)
@@ -174,7 +188,7 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
             {
                 var snapshot = await _loadMemories(servantId, cancellation.Token);
                 if (!IsCurrent()) return;
-                foreach (var candidate in snapshot.Candidates) Candidates.Add(candidate);
+                foreach (var candidate in snapshot.Candidates.Where(candidate => candidate.Status == MemoryCandidateStatus.Pending)) Candidates.Add(candidate);
                 foreach (var memory in snapshot.Memories) StoredMemories.Add(memory);
                 CandidatesStatusText = Candidates.Count == 0 ? "当前角色暂无待审核候选。" : $"候选 {Candidates.Count} 条";
                 StoredMemoriesStatusText = StoredMemories.Count == 0 ? "当前角色暂无已确认记忆。" : $"已确认记忆 {StoredMemories.Count} 条";
@@ -209,16 +223,41 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
     {
         if (SelectedCandidate is null || string.IsNullOrWhiteSpace(ActiveServantId)) return;
         var text = action == MemoryReviewAction.Edit ? CandidateEditText : null;
-        await _memories.ReviewAsync(ActiveServantId, SelectedCandidate.CandidateId, action, text, CancellationToken.None);
-        await RefreshAsync();
+        try
+        {
+            await _memories.ReviewAsync(ActiveServantId, SelectedCandidate.CandidateId, action, text, CancellationToken.None);
+            await RefreshAsync();
+        }
+        catch (MemoryReviewException error) { StatusText = error.Message; }
+        catch (ArgumentException) { StatusText = "记忆正文不能为空，且不能超过 2,000 字。"; }
+        catch (Exception) { StatusText = "记忆操作未完成，请刷新后重试。"; }
     }
 
     private async Task ReviewMemoryAsync(MemoryReviewAction action)
     {
         if (SelectedMemory is null || string.IsNullOrWhiteSpace(ActiveServantId)) return;
         var text = action == MemoryReviewAction.Edit ? MemoryEditText : null;
-        await _memories.ReviewMemoryAsync(ActiveServantId, SelectedMemory.MemoryId, action, text, CancellationToken.None);
-        await RefreshAsync();
+        try
+        {
+            await _memories.ReviewMemoryAsync(ActiveServantId, SelectedMemory.MemoryId, action, text, CancellationToken.None, SelectedMemory.Version);
+            await RefreshAsync();
+        }
+        catch (MemoryReviewException error) { StatusText = error.Message; }
+        catch (ArgumentException) { StatusText = "记忆正文不能为空，且不能超过 2,000 字。"; }
+        catch (Exception) { StatusText = "记忆操作未完成，请刷新后重试。"; }
+    }
+    private async Task SelectReplacementAsync()
+    {
+        if (SelectedCandidate is not { } candidate || SelectedMemory is not { } memory) { StatusText = "请同时选中候选和要更正的已确认记忆。"; return; }
+        try
+        {
+            _memories.SelectReplacement(ActiveServantId, candidate.CandidateId, memory.MemoryId, memory.Version);
+            await RefreshAsync();
+            SelectedCandidate = Candidates.FirstOrDefault(item => item.CandidateId == candidate.CandidateId);
+            StatusText = "已选定更正目标，请核对原值与新值，再点确认。";
+        }
+        catch (MemoryReviewException error) { StatusText = error.Message; }
+        catch (Exception) { StatusText = "更正目标未保存，请刷新后重试。"; }
     }
 
     private async Task ExportAsync()
@@ -246,9 +285,16 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
         StatusText = "已删除全部用户数据（不含 Phase 2 专注/羁绊历史）。";
     }
 
-    partial void OnSelectedCandidateChanged(MemoryCandidate? value) =>
+    partial void OnSelectedCandidateChanged(MemoryCandidate? value)
+    {
         CandidateEditText = value?.Text ?? string.Empty;
+        OnPropertyChanged(nameof(CandidateDetails));
+    }
 
-    partial void OnSelectedMemoryChanged(StoredMemory? value) =>
+    partial void OnSelectedMemoryChanged(StoredMemory? value)
+    {
         MemoryEditText = value?.Text ?? string.Empty;
+        OnPropertyChanged(nameof(MemoryDetails));
+        OnPropertyChanged(nameof(CandidateDetails));
+    }
 }

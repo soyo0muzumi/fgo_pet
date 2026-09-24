@@ -319,7 +319,7 @@ public sealed class DialogueWindowIntegrationTests
             var viewModel = CreateViewModel();
             var turn = new ConversationTurnViewModel("assistant-copy", ChatMessageRole.Assistant, "可复制的回复");
             viewModel.Conversation.Turns.Add(turn);
-            var window = new DialogueWindow(viewModel);
+            var window = new DialogueWindow(viewModel, clipboard: new RecordingClipboard());
             try
             {
                 window.Show();
@@ -334,12 +334,90 @@ public sealed class DialogueWindowIntegrationTests
                 Assert.True(window.IsVisible);
                 Assert.Equal("已复制", System.Windows.Automation.AutomationProperties.GetName(copy));
                 Assert.Equal("已复制", copy.ToolTip);
+
+                window.Hide();
+                Assert.Equal("复制", copy.ToolTip);
             }
             finally
             {
                 window.Dispatcher.InvokeShutdown();
             }
         });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task Repeated_copy_replaces_feedback_timer_and_clipboard_failure_can_retry(bool failFirst) => StaRunner.RunAsync(async () =>
+    {
+        var clipboard = new RecordingClipboard { Fail = failFirst };
+        var (window, copy, _) = CreateCopyWindow(clipboard);
+        try
+        {
+            copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(failFirst ? "复制失败，请重试" : "已复制", copy.ToolTip);
+            await Task.Delay(750);
+            clipboard.Fail = false;
+            copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(750);
+            Assert.Equal("已复制", copy.ToolTip);
+            await Task.Delay(600);
+            Assert.Equal("复制", copy.ToolTip);
+            Assert.Equal(2, clipboard.Calls);
+        }
+        finally { window.Hide(); }
+    });
+
+    [Theory]
+    [InlineData("hide")]
+    [InlineData("close")]
+    [InlineData("session")]
+    [InlineData("tasks")]
+    public Task Leaving_chat_clears_copy_feedback_before_any_delayed_callback(string transition) => StaRunner.RunAsync(async () =>
+    {
+        var (window, copy, model) = CreateCopyWindow(new RecordingClipboard());
+        copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        if (transition == "close") window.Close();
+        else if (transition == "hide") window.Hide();
+        else if (transition == "session") model.Conversation.SetActiveServant("another-role");
+        else ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("复制", copy.ToolTip);
+        await Task.Delay(1350);
+        Assert.Equal("复制", copy.ToolTip);
+        window.Hide();
+    });
+
+    [Fact]
+    public void Copy_feedback_can_be_discarded_during_dispatcher_shutdown() => StaRun(() =>
+    {
+        var (window, copy, _) = CreateCopyWindow(new RecordingClipboard());
+        copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        window.Dispatcher.InvokeShutdown();
+        Assert.True(window.Dispatcher.HasShutdownFinished);
+    });
+
+    private static (DialogueWindow, Button, DialogueWindowViewModel) CreateCopyWindow(IClipboardWriter clipboard)
+    {
+        var model = CreateViewModel();
+        var turn = new ConversationTurnViewModel("copy", ChatMessageRole.Assistant, "synthetic reply");
+        model.Conversation.Turns.Add(turn);
+        var window = new DialogueWindow(model, clipboard: clipboard);
+        window.Show();
+        window.UpdateLayout();
+        var copy = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
+            ReferenceEquals(button.Tag, turn) && System.Windows.Automation.AutomationProperties.GetName(button) == "复制"));
+        return (window, copy, model);
+    }
+
+    private sealed class RecordingClipboard : IClipboardWriter
+    {
+        public bool Fail { get; set; }
+        public int Calls { get; private set; }
+        public void SetText(string text)
+        {
+            Calls++;
+            if (Fail) throw new System.Runtime.InteropServices.ExternalException("Clipboard is busy.");
+        }
     }
 
     [Fact]
@@ -544,6 +622,43 @@ public sealed class DialogueWindowIntegrationTests
                 window.Dispatcher.InvokeShutdown();
             }
         });
+    }
+
+    [Fact]
+    public void Project_menu_selects_clears_and_displays_saved_unavailable_project()
+    {
+        StaRun(() =>
+        {
+            var vm = CreateViewModel(projectCatalog: new AcceptanceProjectCatalog());
+            var window = new DialogueWindow(vm) { Width = 500, Height = 540 };
+            try
+            {
+                window.Show();
+                StaRunner.Pump(window.Dispatcher);
+                var button = Assert.IsType<Button>(window.FindName("ProjectButton"));
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                StaRunner.Pump(window.Dispatcher);
+                var menu = Assert.IsType<ContextMenu>(button.ContextMenu);
+                var project = menu.Items.OfType<MenuItem>().Single(x => Equals(x.Header, "验收项目"));
+                project.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert.Equal("acceptance", vm.Conversation.SessionContext.ProjectId);
+                StaRunner.Pump(window.Dispatcher);
+                Assert.Equal("验收项目", ((TextBlock)button.Content).Text);
+                menu.Items.OfType<MenuItem>().First().RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert.Equal("", vm.Conversation.SessionContext.ProjectId);
+                vm.Conversation.SessionContext.TrySetProject("unavailable", "已保存的项目");
+                StaRunner.Pump(window.Dispatcher);
+                Assert.Equal("已保存的项目", ((TextBlock)button.Content).Text);
+                AssertInside((Grid)window.Content, button);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    private sealed class AcceptanceProjectCatalog : IDialogueProjectCatalog
+    {
+        public Task<DialogueProjectCatalogResult> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DialogueProjectCatalogResult(true, [new("acceptance", "验收项目", "", true)]));
     }
 
     private static DialogueWindow CreateWindow() => new(CreateViewModel());
@@ -1033,7 +1148,47 @@ public sealed class DialogueWindowIntegrationTests
         public void ClearAgentTodoData() => _items.Clear();
     }
 
-    private static DialogueWindowViewModel CreateViewModel()
+    [Fact]
+    public void History_load_more_button_uses_the_paged_query_and_hides_when_exhausted() => StaRun(() =>
+    {
+        var query = new TwoPageHistory();
+        var model = CreateViewModel(query);
+        model.Conversation.SetActiveServant("800100");
+        var window = new DialogueWindow(model);
+        try
+        {
+            window.Show();
+            ((Button)window.FindName("HistoryButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.UpdateLayout();
+            var more = Assert.Single(FindVisualChildren<Button>(window).Where(button => Equals(button.Content, "加载更多")));
+            Assert.True(more.IsVisible);
+            Assert.Equal(50, model.Conversation.History.Count);
+            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(more);
+            ((System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            StaRunner.Pump();
+            window.UpdateLayout();
+            Assert.Equal(51, model.Conversation.History.Count);
+            Assert.False(more.IsVisible);
+            Assert.True(query.SawCursor);
+        }
+        finally { window.Hide(); }
+    });
+
+    private sealed class TwoPageHistory : IConversationHistoryQuery
+    {
+        public ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null) =>
+            ReadPage(scope.ServantId, pageSize, before);
+        public bool SawCursor { get; private set; }
+        public ConversationHistoryPage ReadPage(string servantId, int pageSize = 50, ConversationHistoryCursor? before = null)
+        {
+            SawCursor |= before is not null;
+            var items = Enumerable.Range(before is null ? 1 : 51, before is null ? 50 : 1)
+                .Select(index => new ConversationHistoryEntry("c-" + index, "Synthetic title " + index, DateTimeOffset.UtcNow, false)).ToArray();
+            return new ConversationHistoryPage(items, before is null ? new ConversationHistoryCursor(servantId, "cursor", "c-50") : null);
+        }
+    }
+
+    private static DialogueWindowViewModel CreateViewModel(IConversationHistoryQuery? history = null, IDialogueProjectCatalog? projectCatalog = null)
     {
         var settingsStore = new FakeSettingsStore(
             DialogueSettings.Defaults with
@@ -1051,7 +1206,7 @@ public sealed class DialogueWindowIntegrationTests
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);
-        return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore));
+        return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore, history: history), projectCatalog: projectCatalog);
     }
 
     private static DependencyObject? FindField(DialogueWindow window, string name) =>

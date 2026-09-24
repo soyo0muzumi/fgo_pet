@@ -4,6 +4,10 @@ using FgoPet.App.Privacy;
 using FgoPet.Character.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Backup;
+using FgoPet.Core.Dialogue;
+using FgoPet.Core.Memory;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -55,6 +59,8 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM timeline_entries WHERE entry_id='timeline-1'"));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM servant_bonds WHERE servant_id='mash_kyrielight'"));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM conversations WHERE conversation_id='conversation-1'"));
+        Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM conversations WHERE conversation_id='conversation-1' AND project_id='project-a' AND project_label='项目 A'"));
+        Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM chat_message_search WHERE chat_message_search MATCH '导师面谈'"));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM chat_messages WHERE message_id='message-1'"));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM conversation_summaries WHERE summary_id='summary-1'"));
         Assert.Equal(1L, Scalar(current.Database.DatabasePath, "SELECT COUNT(*) FROM memory_candidates WHERE candidate_id='candidate-1'"));
@@ -133,6 +139,50 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
         Assert.Equal(BackupRestoreStatus.Rejected, futureResult.Status);
         Assert.Equal(BackupFailureCode.UnsupportedVersion, futureResult.FailureCode);
         Assert.Equal(before, File.ReadAllBytes(current.Database.DatabasePath));
+    }
+
+    [Fact]
+    public async Task Projection_raw_tail_and_memory_provenance_survive_backup_but_pending_tickets_do_not_resume()
+    {
+        // Hermes seam / kept-exchanges: restore the projection once and read the raw retained exchanges.
+        var source = CreateState(_sourceRoot, seedBusinessData: false);
+        var current = CreateState(_currentRoot, seedBusinessData: false);
+        var raw = new SqliteConversationRepository(source.Database);
+        var key = new ContentContextKey("mash", "test", "1", "default", "1", "1");
+        var scope = new ConversationScope("mash", "project");
+        var now = DateTimeOffset.UtcNow;
+        raw.CreateConversation("context", "mash", key, now, "project", "项目");
+        for (var i = 1; i <= 8; i++) raw.Append(new("m" + i, "context", "mash", i % 2 == 1 ? ChatMessageRole.User : ChatMessageRole.Assistant,
+            "raw " + i, ChatMessageStatus.Completed, now, key, i));
+        var projection = new SqliteConversationContextStore(source.Database);
+        Assert.True(projection.TryCommit(new(projection.Read(scope, "context"),
+            new("summary", "context", "mash", "已确认资料方向；下一步继续。来源 m1 m2 m3 m4", 4, "m4", key, now, now),
+            new("test", "endpoint", "model", "configuration"), 9000, 4000)));
+        var memory = new SqliteMemoryRepository(source.Database);
+        var provenance = new MemorySource(new("mash", "project"), "context", "m1", "fingerprint", now, MemoryEvidenceKind.UserStatement, "项目");
+        var ticket = memory.Begin(provenance);
+        var candidate = Assert.Single(memory.Stage(ticket, [new("项目偏好")]).CandidateIds);
+        var approved = memory.ReviewCandidate(candidate, "mash", MemoryReviewAction.Approve, null, now)!;
+        memory.ReviewMemory(approved.MemoryId, "mash", MemoryReviewAction.Edit, "更正后的项目偏好", now.AddSeconds(1), approved.Version);
+        var pending = memory.Begin(new(new("mash", "project"), "context", "m3", "pending-fingerprint", now, MemoryEvidenceKind.UserStatement));
+        var path = Path.Combine(_root, "context-memory.fgopetbackup");
+        await CreateBackupAsync(source, path);
+        Assert.Equal(BackupRestoreStatus.Restored, (await CreateRestoreService(current, new FakeAgentRuntime()).RestoreAsync(path, default)).Status);
+        var restored = new SqliteConversationContextStore(current.Database).Read(scope, "context");
+        Assert.NotNull(restored.Summary);
+        Assert.Equal(new[] { "m5", "m6", "m7", "m8" }, restored.UncoveredMessages.Select(m => m.MessageId));
+        Assert.Equal(8, new SqliteConversationRepository(current.Database).LoadMessages("context", "mash").Count);
+        var restoredMemory = new SqliteMemoryRepository(current.Database);
+        var stored = Assert.Single(restoredMemory.ListMemories("mash"));
+        Assert.Equal(provenance, stored.Source);
+        Assert.Equal("project", stored.ProjectId);
+        Assert.Equal("项目：项目", restoredMemory.ScopeLabel("mash", "project"));
+        Assert.Equal(2, stored.Version);
+        Assert.Equal("更正后的项目偏好", stored.Text);
+        restoredMemory.StartSession();
+        Assert.Equal(MemoryStageStatus.Stale, restoredMemory.Stage(pending, [new("迟到结果")]).Status);
+        Assert.Equal(MemoryStageStatus.Duplicate, restoredMemory.Stage(restoredMemory.Begin(provenance), [new("重复结果")]).Status);
+        Assert.Single(restoredMemory.ListCandidates("mash"));
     }
 
     public void Dispose()
@@ -233,13 +283,15 @@ public sealed class BackupRestoreEndToEndTests : IDisposable
             VALUES('event-1','focus-1','focus_completed','2026-09-02T00:05:00Z',1,'focus','mash_kyrielight',300,300,1,1,NULL,'system',NULL,'完成专注',0);
             INSERT INTO timeline_entries VALUES('timeline-1','event-1','2026-09-02T00:05:00Z','focus_completed','mash_kyrielight',300,300,NULL);
             INSERT INTO servant_bonds VALUES('mash_kyrielight',300,1,'bond-v1','2026-09-02T00:05:00Z');
-            INSERT INTO conversations VALUES('conversation-1','mash_kyrielight','2026-09-02T00:00:00Z','2026-09-02T00:06:00Z','active',NULL);
-            INSERT INTO chat_messages VALUES('message-1','conversation-1','mash_kyrielight',1,'user','你好','completed','2026-09-02T00:01:00Z',NULL);
+            INSERT INTO conversations(conversation_id,servant_id,created_at_utc,updated_at_utc,status,current_binding_id,project_id,project_label)
+              VALUES('conversation-1','mash_kyrielight','2026-09-02T00:00:00Z','2026-09-02T00:06:00Z','active',NULL,'project-a','项目 A');
+            INSERT INTO chat_messages VALUES('message-1','conversation-1','mash_kyrielight',1,'user','你好，导师面谈计划','completed','2026-09-02T00:01:00Z',NULL);
             INSERT INTO conversation_summaries(summary_id,conversation_id,servant_id,summary_text,covered_through_sequence,created_at_utc,updated_at_utc,binding_id,covered_through_message_id)
             VALUES('summary-1','conversation-1','mash_kyrielight','摘要',1,'2026-09-02T00:02:00Z','2026-09-02T00:02:00Z',NULL,'message-1');
             INSERT INTO memory_candidates(candidate_id,conversation_id,source_message_id,servant_id,appearance_id,candidate_text,status,created_at_utc,reviewed_at_utc)
             VALUES('candidate-1','conversation-1','message-1','mash_kyrielight','casual','候选','approved','2026-09-02T00:03:00Z','2026-09-02T00:04:00Z');
-            INSERT INTO memories VALUES('memory-1','mash_kyrielight','记忆',1,'candidate-1','2026-09-02T00:04:00Z','2026-09-02T00:04:00Z');
+            INSERT INTO memories(memory_id,servant_id,memory_text,is_enabled,source_candidate_id,created_at_utc,updated_at_utc)
+            VALUES('memory-1','mash_kyrielight','记忆',1,'candidate-1','2026-09-02T00:04:00Z','2026-09-02T00:04:00Z');
             INSERT INTO todo_items VALUES('todo-1','任务',NULL,'normal',NULL,'planned','2026-09-02T00:00:00Z','2026-09-02T00:00:00Z',NULL);
             INSERT INTO agent_executions(execution_id,todo_id,source_type,source_instance,task_id,dispatch_request_id,status,started_at_utc,updated_at_utc,ended_at_utc,previous_execution_id,remote_task_id)
             VALUES('execution-1','todo-1','codex','instance-1','task-1','request-1','active','2026-09-02T00:01:00Z','2026-09-02T00:02:00Z',NULL,NULL,'remote-task-1');

@@ -182,4 +182,19 @@
       <Link>platform\Windowing\WindowsScreenLayoutService.cs</Link>
     </Compile>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Infrastructure/KnownModelContextCatalog.cs" Link="modules/dialogue/Infrastructure/KnownModelContextCatalog.cs" />
+    <Compile Include="../../modules/dialogue/Infrastructure/ChatRequestPayloadWriter.cs" Link="modules/dialogue/Infrastructure/ChatRequestPayloadWriter.cs" />
+    <Compile Include="../../modules/dialogue/Infrastructure/RequestTokenMeter.cs" Link="modules/dialogue/Infrastructure/RequestTokenMeter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Infrastructure/SqliteConversationRecallRepository.cs" Link="modules/dialogue/Infrastructure/SqliteConversationRecallRepository.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Infrastructure/SqliteConversationContextStore.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/dialogue/Infrastructure/ProviderConversationSummarizer.cs" />
+    <Compile Include="../../modules/dialogue/Infrastructure/ProviderMemoryCandidateExtractor.cs" />
+  </ItemGroup>
 </Project>

@@ -83,7 +83,7 @@ public sealed class FocusSessionService : IFocusSessionService
 
         var result = FocusStateMachine.Apply(Current, new FocusCommand.Elapsed(wholeSeconds), _time.GetUtcNow());
         Current = result.Session;
-        _baselineTimestamp += wholeSeconds * TimeSpan.TicksPerSecond;
+        _baselineTimestamp += wholeSeconds * _time.TimestampFrequency;
         _secondsSinceSnapshot += wholeSeconds;
         ApplyTransition(result, isUserCommand: false);
     }

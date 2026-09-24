@@ -88,7 +88,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     [Fact]
     public async Task Sqlite_dispatch_ack_cannot_reactivate_a_todo_completed_before_ack()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);
@@ -114,7 +114,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     [Fact]
     public async Task Cancelled_dispatch_keeps_a_sqlite_reservation_for_outcome_reconciliation()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);
@@ -143,7 +143,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     [Fact]
     public async Task Relay_io_failure_after_remote_start_marks_outcome_unknown_for_reconciliation()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);
@@ -168,7 +168,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     [Fact]
     public async Task Offline_ack_after_enqueue_keeps_the_reservation_for_reconciliation()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);
@@ -188,7 +188,7 @@ public sealed class AgentDispatchServiceTests : IDisposable
     [Fact]
     public async Task Explicit_relay_rejection_uses_projector_and_refreshes_todo_ui()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         var todos = new SqliteTodoRepository(database);
         var agents = new SqliteAgentRepository(database);

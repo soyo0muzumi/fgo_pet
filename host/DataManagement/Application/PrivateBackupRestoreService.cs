@@ -92,6 +92,8 @@ public sealed class PrivateBackupRestoreService
     private readonly BackupPackageReferencesCodec _packageCodec = new();
     private readonly Action<string>? _safeLog;
 
+    internal static string RecoveryMarkerPath(string storageRoot) => Path.Combine(storageRoot, ".restore-recovery-required.json");
+
     public PrivateBackupRestoreService(
         RuntimeDatabase currentDatabase,
         IApplicationSettingsDocument settingsDocument,
@@ -143,14 +145,18 @@ public sealed class PrivateBackupRestoreService
         var rollbackDirectory = Path.Combine(_storageRoot, $".restore-{Guid.NewGuid():N}.rollback");
         var rollbackState = default(RollbackState);
         var swapStarted = false;
+        var retainRecovery = false;
+        IAsyncDisposable? lease = null;
         try
         {
             var restoreMetadata = _settingsDocument.ValidateForRestore(
                 File.ReadAllText(validated.SettingsPath, Utf8));
-            await using var lease = await _maintenance.EnterAsync(cancellationToken).ConfigureAwait(false);
+            lease = await _maintenance.EnterAsync(cancellationToken).ConfigureAwait(false);
+            if (File.Exists(RecoveryMarkerPath(_storageRoot)))
+                return new BackupRestoreResult(BackupRestoreStatus.RecoveryRequired, BackupFailureCode.SwapFailed, false, false);
             _safeLog?.Invoke("restore.maintenance.entered");
 
-            BackupDatabaseNormalizer.Normalize(new RuntimeDatabase(validated.RuntimeDatabasePath), _clock.GetUtcNow());
+            BackupDatabaseNormalizer.Normalize(new RuntimeDatabase(validated.RuntimeDatabasePath, pooling: false), _clock.GetUtcNow());
             SqliteConnection.ClearAllPools();
 
             var rollbackArchive = Path.Combine(_storageRoot, "restore-rollback.fgopetbackup");
@@ -158,6 +164,18 @@ public sealed class PrivateBackupRestoreService
             rollbackState = CaptureCurrentState(rollbackDirectory);
             SqliteConnection.ClearAllPools();
 
+            // Durable recovery materials precede the first destructive move. A
+            // crash leaves this marker and blocks normal application startup.
+            var manifest = JsonSerializer.Serialize(rollbackState.Files.Select(file => new
+            {
+                Target = Path.GetFileName(file.CurrentPath),
+                Saved = Path.GetFileName(file.RollbackPath),
+                file.Existed,
+            }));
+            File.WriteAllText(Path.Combine(rollbackDirectory, "manifest.json"), manifest, Utf8);
+            File.WriteAllText(RecoveryMarkerPath(_storageRoot),
+                JsonSerializer.Serialize(new { Directory = Path.GetFileName(rollbackDirectory) }), Utf8);
+            retainRecovery = true;
             _safeLog?.Invoke("restore.swap.started");
             swapStarted = true;
             await _swapper.SwapAsync(new BackupStateSwapContext(
@@ -171,6 +189,8 @@ public sealed class PrivateBackupRestoreService
             await RunStartupSelfCheckAsync(cancellationToken).ConfigureAwait(false);
 
             var missingPackage = await IsMissingPackageAsync(validated.PackageReferences.Selected, cancellationToken).ConfigureAwait(false);
+            File.Delete(RecoveryMarkerPath(_storageRoot));
+            retainRecovery = false;
             _safeLog?.Invoke("restore.completed");
             return new BackupRestoreResult(
                 BackupRestoreStatus.Restored,
@@ -182,8 +202,7 @@ public sealed class PrivateBackupRestoreService
         {
             if (swapStarted)
             {
-                Rollback(rollbackState);
-                return new BackupRestoreResult(BackupRestoreStatus.RolledBack, BackupFailureCode.SwapFailed, false, false);
+                return Recover(BackupFailureCode.SwapFailed);
             }
 
             throw;
@@ -192,8 +211,7 @@ public sealed class PrivateBackupRestoreService
         {
             if (swapStarted)
             {
-                Rollback(rollbackState);
-                return new BackupRestoreResult(BackupRestoreStatus.RolledBack, exception.Code, false, false);
+                return Recover(exception.Code);
             }
 
             return Rejected(exception.Code);
@@ -202,9 +220,7 @@ public sealed class PrivateBackupRestoreService
         {
             if (swapStarted)
             {
-                Rollback(rollbackState);
-                _safeLog?.Invoke("restore.rolled_back");
-                return new BackupRestoreResult(BackupRestoreStatus.RolledBack, BackupFailureCode.SettingsInvalid, false, false);
+                return Recover(BackupFailureCode.SettingsInvalid);
             }
 
             return Rejected(BackupFailureCode.SettingsInvalid);
@@ -213,9 +229,7 @@ public sealed class PrivateBackupRestoreService
         {
             if (swapStarted)
             {
-                Rollback(rollbackState);
-                _safeLog?.Invoke("restore.rolled_back");
-                return new BackupRestoreResult(BackupRestoreStatus.RolledBack, ClassifyFailure(exception), false, false);
+                return Recover(ClassifyFailure(exception));
             }
 
             return Rejected(ClassifyFailure(exception));
@@ -223,7 +237,23 @@ public sealed class PrivateBackupRestoreService
         finally
         {
             TryDeleteDirectory(stagingPath);
-            TryDeleteDirectory(rollbackDirectory);
+            if (!retainRecovery) TryDeleteDirectory(rollbackDirectory);
+            if (lease is not null) await lease.DisposeAsync().ConfigureAwait(false);
+        }
+
+        BackupRestoreResult Recover(BackupFailureCode failure)
+        {
+            _safeLog?.Invoke("restore.rollback.started");
+            var recovered = Rollback(rollbackState);
+            if (recovered)
+            {
+                try { File.Delete(RecoveryMarkerPath(_storageRoot)); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { recovered = false; }
+            }
+            retainRecovery = !recovered;
+            _safeLog?.Invoke(recovered ? "restore.rolled_back" : "restore.recovery_required");
+            return new BackupRestoreResult(recovered ? BackupRestoreStatus.RolledBack : BackupRestoreStatus.RecoveryRequired,
+                failure, false, false);
         }
     }
 
@@ -305,11 +335,11 @@ public sealed class PrivateBackupRestoreService
         return new RollbackState(files);
     }
 
-    private void Rollback(RollbackState? state)
+    private bool Rollback(RollbackState? state)
     {
         if (state is null)
         {
-            return;
+            return false;
         }
 
         try
@@ -317,23 +347,24 @@ public sealed class PrivateBackupRestoreService
             SqliteConnection.ClearAllPools();
             foreach (var file in state.Files)
             {
-                TryDelete(file.CurrentPath);
+                if (file.Existed)
+                {
+                    var directory = Path.GetDirectoryName(file.CurrentPath);
+                    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                    File.Copy(file.RollbackPath, file.CurrentPath, overwrite: true);
+                }
+                else if (File.Exists(file.CurrentPath)) File.Delete(file.CurrentPath);
+                else if (Directory.Exists(file.CurrentPath)) return false;
             }
-
-            foreach (var file in state.Files.Where(file => file.Existed))
-            {
-                var directory = Path.GetDirectoryName(file.CurrentPath);
-                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                File.Copy(file.RollbackPath, file.CurrentPath, overwrite: true);
-            }
+            return true;
         }
         catch (IOException)
         {
-            _safeLog?.Invoke("restore.rollback.cleanup_failed");
+            return false;
         }
         catch (UnauthorizedAccessException)
         {
-            _safeLog?.Invoke("restore.rollback.cleanup_failed");
+            return false;
         }
     }
 
@@ -344,16 +375,6 @@ public sealed class PrivateBackupRestoreService
         exception is IOException or UnauthorizedAccessException
             ? BackupFailureCode.SwapFailed
             : BackupFailureCode.StartupCheckFailed;
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path)) File.Delete(path);
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-    }
 
     private static void TryDeleteDirectory(string path)
     {

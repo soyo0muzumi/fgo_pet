@@ -18,7 +18,7 @@ public sealed class MemoryViewModelTests : IDisposable
 
     public MemoryViewModelTests()
     {
-        _database = new RuntimeDatabase(_path);
+        _database = TestRuntimeDatabase.Create(_path);
         new RuntimeDatabaseMigrator(_database).Migrate();
         _conversations = new SqliteConversationRepository(_database);
         _memories = new MemoryCandidateService(new SqliteMemoryRepository(_database), TimeProvider.System);
@@ -92,7 +92,28 @@ public sealed class MemoryViewModelTests : IDisposable
     }
 
     private void AddConversation(string role, string id) => _conversations.CreateConversation(
-        id, role, new ContentContextKey(role, "test", "1.0.0", "casual", "p1", "k1"), DateTimeOffset.UtcNow);
+            id, role, new ContentContextKey(role, "test", "1.0.0", "casual", "p1", "k1"), DateTimeOffset.UtcNow);
+
+    [Fact]
+    public async Task Review_surface_shows_exact_correction_and_conflict_without_overwriting_newer_memory()
+    {
+        AddCandidate("a", "first");
+        var repository = new SqliteMemoryRepository(_database);
+        var original = repository.ReviewCandidate("first", "a", MemoryReviewAction.Approve, null, DateTimeOffset.UtcNow)!;
+        repository.AddCandidate(new("second", "a", "conversation-a", "改为咖啡", DateTimeOffset.UtcNow));
+        using var model = new MemoryViewModel(_memories) { ActiveServantId = "a" };
+        await model.RefreshAsync();
+        model.SelectedCandidate = Assert.Single(model.Candidates);
+        model.SelectedMemory = Assert.Single(model.StoredMemories);
+        await model.SelectReplacementCommand.ExecuteAsync(null);
+        Assert.Contains("角色通用", model.CandidateDetails);
+        Assert.Contains("原值：合成记忆", model.CandidateDetails);
+        Assert.Contains("新值：改为咖啡", model.CandidateDetails);
+        repository.ReviewMemory(original.MemoryId, "a", MemoryReviewAction.Edit, "用户更新", DateTimeOffset.UtcNow, original.Version);
+        await model.ApproveCandidateCommand.ExecuteAsync(null);
+        Assert.Contains("已被修改", model.StatusText);
+        Assert.Equal("用户更新", Assert.Single(repository.ListMemories("a")).Text);
+    }
 
     private void AddCandidate(string role, string id)
     {

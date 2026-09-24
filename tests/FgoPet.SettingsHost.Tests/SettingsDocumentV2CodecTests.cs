@@ -7,6 +7,47 @@ namespace FgoPet.SettingsHost.Tests;
 
 public sealed class SettingsDocumentV2CodecTests
 {
+    [Theory]
+    [InlineData("context_window_override", "-1")]
+    [InlineData("context_window_override", "2147483648")]
+    [InlineData("max_output_tokens", "0")]
+    public void Invalid_context_configuration_is_rejected(string name, string value)
+    {
+        var json = File.ReadAllText(Fixture("settings-v2-complete.json"));
+        var root = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        root["model_connection"]![name] = System.Text.Json.Nodes.JsonNode.Parse(value);
+        Assert.Throws<JsonException>(() => new SettingsDocumentV2Codec().Deserialize(root.ToJsonString()));
+    }
+
+    [Fact]
+    public void Context_and_output_limits_round_trip_without_changing_legacy_defaults()
+    {
+        var codec = new SettingsDocumentV2Codec();
+        var old = codec.Deserialize(File.ReadAllText(Fixture("settings-v2-complete.json")));
+        Assert.Null(old.Dialogue.ModelConnection!.ContextWindowOverride);
+        Assert.Equal(2048, old.Dialogue.ModelConnection.MaxOutputTokens);
+        var updated = old with { Dialogue = old.Dialogue with {
+            ModelConnection = new ModelConnectionSettings("test", "https://example.test", "m",
+                contextWindowOverride: 32768, maxOutputTokens: 4096) } };
+        var json = codec.Serialize(updated);
+        Assert.Contains("\"context_window_override\":32768", json);
+        var restored = codec.Deserialize(codec.SerializeForBackup(updated)).Dialogue.ModelConnection!;
+        Assert.Equal(32768, restored.ContextWindowOverride);
+        Assert.Equal(4096, restored.MaxOutputTokens);
+    }
+
+    [Fact]
+    public void Tools_support_downgrade_survives_save_and_backup_without_changing_legacy_default()
+    {
+        var codec = new SettingsDocumentV2Codec();
+        var legacy = codec.Deserialize(File.ReadAllText(Fixture("settings-v2-complete.json")));
+        Assert.True(legacy.Dialogue.ModelConnection!.ToolsSupported);
+        var disabled = legacy with { Dialogue = legacy.Dialogue with { ModelConnection = legacy.Dialogue.ModelConnection with { ToolsSupported = false } } };
+
+        Assert.False(codec.Deserialize(codec.Serialize(disabled)).Dialogue.ModelConnection!.ToolsSupported);
+        Assert.False(codec.Deserialize(codec.SerializeForBackup(disabled)).Dialogue.ModelConnection!.ToolsSupported);
+    }
+
     [Fact]
     public void Deserialize_complete_v2_fixture_maps_every_field_from_hand_derived_expectations()
     {

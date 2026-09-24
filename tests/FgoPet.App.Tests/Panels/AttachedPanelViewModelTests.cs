@@ -173,7 +173,7 @@ public sealed class AttachedPanelViewModelTests
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
-        var database = new RuntimeDatabase(":memory:");
+        var database = TestRuntimeDatabase.Create(":memory:");
         var orchestrator = new ConversationOrchestrator(
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
