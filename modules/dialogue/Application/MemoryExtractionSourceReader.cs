@@ -3,12 +3,11 @@ using System.Text;
 using System.Text.Json;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
-using FgoPet.Infrastructure.Dialogue;
 
 namespace FgoPet.App.Dialogue;
 
 /// <summary>Dialogue validates its raw source; Memory receives only a trusted provenance snapshot.</summary>
-public sealed class MemoryExtractionSourceReader(SqliteConversationRepository conversations)
+public sealed class MemoryExtractionSourceReader(IConversationReader conversations)
 {
     public MemorySource Read(ConversationScope scope, string conversationId, string messageId, MemoryEvidenceKind kind)
     {

@@ -9,9 +9,7 @@ using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
 using FgoPet.Core.Todo;
 using FgoPet.Dialogue.Settings;
-using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Packs;
-using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Memory.Settings;
 using Microsoft.Extensions.Logging;
@@ -91,7 +89,7 @@ public sealed class ConversationOrchestrator
 {
     private readonly IChatProviderResolver _providerResolver;
     private readonly IConversationContentResolver _contentResolver;
-    private readonly SqliteConversationRepository _conversations;
+    private readonly IConversationStore _conversations;
     private readonly IMemoryRecall _memories;
     private readonly IMemoryCandidateSink? _memoryCandidates;
     private readonly MemoryExtractionQueue? _memoryExtractions;
@@ -115,7 +113,7 @@ public sealed class ConversationOrchestrator
     public ConversationOrchestrator(
         IChatProviderResolver providerResolver,
         IConversationContentResolver contentResolver,
-        SqliteConversationRepository conversations,
+        IConversationStore conversations,
         IMemoryRecall memories,
         PromptComposer composer,
         TimeProvider time,

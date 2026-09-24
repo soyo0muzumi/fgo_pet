@@ -10,6 +10,33 @@ public interface IConversationHistoryQuery
     ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null);
 }
 
+/// <summary>Read-only raw dialogue access for source validation; no storage implementation leaks through this port.</summary>
+public interface IConversationReader
+{
+    Conversation? GetConversation(string conversationId, string servantId);
+    IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId);
+}
+
+/// <summary>
+/// Application-facing conversation operations. Summary projections keep their own
+/// IConversationContextStore contract; SQL connections and backup operations are not exposed.
+/// Implementations must enforce servant ownership and validate recall sources within the supplied scope.
+/// </summary>
+public interface IConversationStore : IConversationReader, IConversationHistoryQuery
+{
+    bool Exists(string conversationId, string servantId);
+    IReadOnlyList<Conversation> ListConversations(string servantId);
+    Conversation CreateConversation(string conversationId, string servantId, ContentContextKey contentContext,
+        DateTimeOffset createdAtUtc, string? projectId = null, string? projectLabel = null);
+    void Append(ChatMessage message);
+    bool IsCurrentSource(ConversationScope scope, HistoryHit source);
+    // Deletion and removal of the matching active-conversation state must be atomic.
+    void DeleteConversation(string conversationId, string servantId, string? activeStateKey = null);
+    string? ReadState(string key);
+    void WriteState(string key, string value, DateTimeOffset updatedAtUtc);
+    void DeleteState(string key);
+}
+
 public sealed record ConversationHistoryEntry(string ConversationId, string Title, DateTimeOffset UpdatedAtUtc, bool IsArchived);
 // Preserve the storage sort key verbatim; reformatting older UTC strings can skip a page.
 public sealed record ConversationHistoryCursor(string ServantId, string UpdatedAtSortKey, string ConversationId, string? ScopeKey = null);
