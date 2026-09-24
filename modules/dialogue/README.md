@@ -30,6 +30,10 @@
 - **允许**：`platform/*`、`ui-foundation/*`，以及**明确允许**的 memory / character / speech / work 的 `Contracts`
 - **禁止**：其他模块的 `Application` / `Infrastructure` / `Desktop`；`host`
 
+`ConversationViewModel` 的旧 Todo 卡片入口消费 Work 的 `ILegacyTodoProposalPort`，归档入口消费 `IArchiveDraftConfirmation`，不再持有 `TodoProposalService` 或 `ArchiveDraftService`。显示卡片不调用确认；编辑、明确确认与错误处理沿用 Work 卡片行为。旧卡片直接确认接口与模型提案端口互不继承，新对话继续使用 `ITodoDraftWorkflow` 的作用域、版本和幂等确认。契约所有权与兼容限制见 `../work/README.md`。
+
+这只隔离服务调用：卡片集合及窗口 XAML 仍使用 Work Desktop 的 ViewModel/控件，相关实现程序集引用尚未移除，不能据此声称整个 Dialogue 已满足目标依赖图。
+
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 
 `conversations` `chat_messages` `conversation_summaries` `conversation_contexts` `chat_message_search`（含 FTS5 辅助表）`runtime_state`
@@ -46,23 +50,25 @@ Core / App / Windows 的 dialogue 相关测试；跨模块边（dialogue→memor
 
 `scripts/test-architecture.ps1` 是本地与 CI 共用的架构验证入口。`SqliteConversationRepositoryTests` 覆盖大历史分页与旧时间格式；`ConversationOrchestratorTests` 覆盖 Memory/Work 契约调用、完整草稿预算及过期请求；Windows 的复制反馈测试覆盖窗口生命周期。
 
+`WorkCardBoundaryTests` 使用接口替身验证旧卡片与归档的零隐式写入、编辑、解析拒绝、移除和角色切换，并检查消费者的依赖类型；完整 Windows 和宿主装配测试仍覆盖实际窗口及工厂集成。
+
 ## 要点 / 易错处
 
 1. **工具机制归本模块，工具定义不归**：`ChatToolDefinition` / `ChatToolCallDelta` / `ConversationRequest.Tools` 槽位是 dialogue 的；各模块自己的工具 schema 住在各模块 `Contracts/`（规则 `no-foreign-tool-schema`）。
-2. `dialogue/Integrations/Work/` 承载 Todo 提案的 **JSON 解析 + 安全拦截半**；确认与写库半归 `work/Todo/Application`。
+2. Todo 提案的 JSON 解析与字段校验由 `work/Todo/Application/TodoProposalService` 实现，对话经 Work 契约调用；通用提示词防护与工具调用聚合仍归 Dialogue，确认及写库归 Work。
 
 ## Migration status
 
 **过渡态（2026-09-20）**：源码**已物理迁移**到本目录的 8 目录骨架（`Contracts` / `Application` / `Domain` / `Infrastructure` / `Desktop` / `Integrations`）。
 
-`src/FgoPet.Dialogue/FgoPet.Dialogue.csproj` 已独立编译应用和桌面呈现。部分契约与仓储仍由 legacy Core / Infrastructure 编译，部分角色、语音、提案解析与呈现依赖仍需收口，不能据此宣布模块完全独立。
+`src/FgoPet.Dialogue/FgoPet.Dialogue.csproj` 已独立编译应用和桌面呈现。部分契约与仓储仍由 legacy Core / Infrastructure 编译，部分角色、语音与卡片呈现依赖仍需收口，不能据此宣布模块完全独立。
 
 - 文件定位依据：工作区 `architecture/module-target-map-v2.md` §4
 - 收口动作以实际调用链和公开契约为准，不重复创建已有工程。
 
 ## Migration debt
 
-- 保留的 legacy 依赖及提案解析/呈现等实现耦合仍需逐项收口。
+- 保留的 legacy 依赖及卡片呈现等实现耦合仍需逐项收口。
 - 部分文件按落点表**主列**归位，与文档中同时列举它的另一处存在归属差异；逐条记在工作区 `step4-migration-log.md` §3.5
 
 ## 决策出处
