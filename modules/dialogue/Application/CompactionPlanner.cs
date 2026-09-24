@@ -2,7 +2,10 @@ using FgoPet.Core.Dialogue;
 
 namespace FgoPet.App.Dialogue;
 
-public sealed record CompactionTurn(int FirstSequence, int LastSequence, int InputTokens, bool IsComplete);
+// A settled historical attempt can be compacted without being a successful exchange.
+// Keep those concepts separate so failed attempts do not replace the two recent replies.
+public sealed record CompactionTurn(int FirstSequence, int LastSequence, int InputTokens, bool IsComplete,
+    bool HasCompletedReply = true);
 public sealed record CompactableRange(int FirstSequence, int LastSequence);
 
 public static class CompactionPlanner
@@ -18,7 +21,7 @@ public static class CompactionPlanner
         for (var index = turns.Count - 1; index >= 0 && (complete < 2 || retained < retainTokens); index--)
         {
             retained += turns[index].InputTokens;
-            if (turns[index].IsComplete) complete++;
+            if (turns[index].IsComplete && turns[index].HasCompletedReply) complete++;
             retainFrom = index;
         }
         var end = -1;

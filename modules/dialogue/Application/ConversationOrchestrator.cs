@@ -262,7 +262,8 @@ public sealed class ConversationOrchestrator
             if (sources.Length != recalled.Sources.Count) recalled = new(RecallStatus.Unavailable, sources);
             ComposedPrompt ComposeCurrent(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
             {
-                var tools = session.Connection?.ToolsSupported == true ? new[] { TodoToolContracts.CreateSubmitTodoProposals() } : null;
+                var tools = session.Connection?.ToolsSupported == true && !session.ToolsFallbackUsed
+                    ? new[] { TodoToolContracts.CreateSubmitTodoProposals() } : null;
                 lease.CheckCurrent();
                 EnsureCurrent(session, requestCancellation.Token);
                 var currentSources = sources.Where(source => _conversations.IsCurrentSource(scope, source)).ToArray();
@@ -315,8 +316,11 @@ public sealed class ConversationOrchestrator
             }
             try { streamed = await StreamTurnAsync(prompt, servantId, conversationId, session, requestCancellation.Token, RefreshPrompt); }
             catch (ProviderRequestException error) when (error.Category == ProviderFailureCategory.ContextLimitExceeded &&
-                session.PrimaryAttempts == 1 && !session.SawOutput)
+                !session.ContextCompactionRetryUsed && session.PrimaryAttempts < ModelSession.MaxPrimaryAttempts && !session.SawOutput)
             {
+                session.ContextCompactionRetryUsed = true;
+                // A tool downgrade may have changed both the prompt and its budgeted usage.
+                prompt = RefreshPrompt();
                 if (!await CompactAsync()) throw;
                 if (!prompt.FitsBudget) throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
                 streamed = await StreamTurnAsync(prompt, servantId, conversationId, session, requestCancellation.Token, RefreshPrompt);
@@ -599,7 +603,7 @@ public sealed class ConversationOrchestrator
         CancellationToken cancellationToken,
         Func<ComposedPrompt> refreshPrompt)
     {
-        var withTools = session.Connection?.ToolsSupported == true;
+        var withTools = session.Connection?.ToolsSupported == true && !session.ToolsFallbackUsed;
         var (text, call, sawCalls, retryWithoutTools) = await StreamOnceAsync(
             prompt, conversationId, withTools, session, cancellationToken);
         if (!retryWithoutTools)
@@ -608,6 +612,7 @@ public sealed class ConversationOrchestrator
         }
 
         EnsureCurrent(session, cancellationToken);
+        session.ToolsFallbackUsed = true;
         MarkToolsUnsupported(session);
         Publish(new ConversationUpdate(
             ConversationUpdateType.AssistantDelta,
@@ -646,7 +651,7 @@ public sealed class ConversationOrchestrator
         var completed = false;
         try
         {
-            if (session.PrimaryAttempts >= 2)
+            if (session.PrimaryAttempts >= ModelSession.MaxPrimaryAttempts)
                 throw new ProviderRequestException(ProviderFailureCategory.ServiceUnavailable, "本轮重试次数已用完，请稍后重试。");
             session.PrimaryAttempts++;
             Publish(new ConversationUpdate(
@@ -722,7 +727,8 @@ public sealed class ConversationOrchestrator
                 }
             }
         }
-        catch (ProviderRequestException error) when (withTools && !sawOutput && session.PrimaryAttempts < 2 && error.Category == ProviderFailureCategory.ToolsRejected)
+        catch (ProviderRequestException error) when (withTools && !session.SawOutput && !session.ToolsFallbackUsed &&
+            session.PrimaryAttempts < ModelSession.MaxPrimaryAttempts && error.Category == ProviderFailureCategory.ToolsRejected)
         {
             return (responseText, null, SawToolCalls: false, RetryWithoutTools: true);
         }
@@ -765,12 +771,16 @@ public sealed class ConversationOrchestrator
 
     private sealed class ModelSession(IChatProvider provider, ModelConnectionSettings? connection, ModelRouteKey route, PromptBudget budget)
     {
+        // One initial request, one tool downgrade and one context recovery, in either order.
+        public const int MaxPrimaryAttempts = 3;
         public IChatProvider Provider { get; } = provider;
         public ModelConnectionSettings? Connection { get; set; } = connection;
         public ModelRouteKey Route { get; set; } = route;
         public PromptBudget Budget { get; } = budget;
         public int PrimaryAttempts { get; set; }
         public bool SawOutput { get; set; }
+        public bool ToolsFallbackUsed { get; set; }
+        public bool ContextCompactionRetryUsed { get; set; }
     }
 
     private async Task<ModelSession> PrepareModelAsync(CancellationToken cancellationToken)
