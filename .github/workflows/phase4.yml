@@ -58,6 +58,7 @@ jobs:
               foreach ($flag in @('fullSolutionTests', 'packagingVerified', 'syntheticStatePreserved', 'userPathUnchanged', 'temporaryRootRemoved')) {
                   if ($summary.$flag -ne $true) { throw "Phase 4 round $round did not satisfy $flag." }
               }
+              if ([int]$summary.isolatedTestProjects -ne $expectedProjects.Count) { throw 'Not every solution test project used an isolated temporary root.' }
               $trxFiles = @(Get-ChildItem -LiteralPath $summaryFile.DirectoryName -Filter *.trx -Recurse)
               if ($trxFiles.Count -ne $expectedProjects.Count) { throw 'Missing or duplicate project result files.' }
               $actualProjects = @()

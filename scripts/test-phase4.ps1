@@ -25,6 +25,7 @@ $installRoot = Join-Path $temporaryRoot 'install'
 $testCodexHome = Join-Path $temporaryRoot 'codex-home'
 $testStateRoot = Join-Path $temporaryRoot 'retained-state'
 $retainedFiles = @{}
+$testProjectCount = 0
 
 function Invoke-Checked {
     param([Parameter(Mandatory = $true)][string]$Command, [Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -76,8 +77,6 @@ function Assert-RetainedAcceptanceFiles {
 
 try {
     [IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
-    # Children inherit one invocation-owned temp root; each test fixture/process
-    # adds its own unique suffix. Never reuse a previous run's temporary files.
     $env:TEMP = $temporaryRoot
     $env:TMP = $temporaryRoot
     Push-Location $repositoryRoot
@@ -85,9 +84,33 @@ try {
         if (-not $SkipBuild) {
             Invoke-Checked -Command 'dotnet' -Arguments @('restore', $solution)
             Invoke-Checked -Command 'dotnet' -Arguments @('build', $solution, '-c', 'Release', '--no-restore', '-warnaserror')
-            # Match the complete CI gate: serialize test projects, not xUnit
-            # collections or the concurrency scenarios inside each project.
-            Invoke-Checked -Command 'dotnet' -Arguments @('test', $solution, '-c', 'Release', '--no-build', '--no-restore', '-m:1', '--logger', 'trx', '--results-directory', $resultsDirectory)
+            # All solution test projects follow the .Tests naming convention.
+            # Execute each exactly once, with its own process-inherited TEMP/TMP.
+            # The acceptance workflow independently compares the resulting full
+            # project/case manifest; no test filter or xUnit parallelism override.
+            $testProjects = @(Select-String -LiteralPath $solution -Pattern '^Project\("[^"]+"\) = "([^"]+\.Tests)", "([^"]+\.csproj)"' |
+                ForEach-Object { [IO.Path]::GetFullPath((Join-Path $repositoryRoot $_.Matches[0].Groups[2].Value)) })
+            if ($testProjects.Count -eq 0 -or @($testProjects | Sort-Object -Unique).Count -ne $testProjects.Count) {
+                throw 'The solution must contain a nonempty, unique test-project list.'
+            }
+            foreach ($project in $testProjects) {
+                $projectName = [IO.Path]::GetFileNameWithoutExtension($project)
+                $projectTemp = Join-Path $temporaryRoot ('test-host-' + [guid]::NewGuid().ToString('N'))
+                [IO.Directory]::CreateDirectory($projectTemp) | Out-Null
+                $env:TEMP = $projectTemp
+                $env:TMP = $projectTemp
+                try {
+                    Invoke-Checked -Command 'dotnet' -Arguments @('test', $project, '-c', 'Release', '--no-build', '--no-restore', '-m:1', '--logger', "trx;LogFileName=$projectName.trx", '--results-directory', $resultsDirectory)
+                    $testProjectCount++
+                }
+                finally {
+                    $env:TEMP = $temporaryRoot
+                    $env:TMP = $temporaryRoot
+                    # Only this invocation's exact generated child is removed.
+                    # A locked file is a gate failure, not a swallowed IO error.
+                    Remove-Item -LiteralPath $projectTemp -Recurse -Force -ErrorAction Stop
+                }
+            }
         }
         else { Write-Host 'Skipped restore, build, and solution tests by request.' }
 
@@ -183,6 +206,7 @@ finally {
     invocationId = $invocationId
     completedUtc = [DateTime]::UtcNow.ToString('O')
     fullSolutionTests = -not [bool]$SkipBuild
+    isolatedTestProjects = $testProjectCount
     packagingVerified = $true
     syntheticStatePreserved = $true
     userPathUnchanged = $true
