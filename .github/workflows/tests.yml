@@ -28,7 +28,9 @@ jobs:
       - name: Run all solution test projects
         shell: pwsh
         run: |
-          dotnet test FgoPet.sln -c Release --no-build --logger trx --results-directory artifacts/test-results
+          # Serialize MSBuild test hosts, not xUnit collections or concurrency scenarios.
+          # Independent WPF, SQLite and process fixtures must not compete across test projects.
+          dotnet test FgoPet.sln -c Release --no-build -m:1 --logger trx --results-directory artifacts/test-results
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Preserve test results
         if: always()
