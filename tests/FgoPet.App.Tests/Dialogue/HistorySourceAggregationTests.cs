@@ -135,7 +135,7 @@ public sealed class HistorySourceAggregationTests
             var result = await Retrieve(repository);
             Assert.Equal(RecallStatus.Found, result.Status);
             var source = Assert.Single(result.Sources);
-            Assert.True(text.StartsWith(source.Excerpt, StringComparison.Ordinal));
+            Assert.StartsWith(source.Excerpt, text, StringComparison.Ordinal);
             Assert.True(source.Excerpt.Length > 1024);
             Assert.InRange(source.Excerpt.Length, 3000, 3072);
             Assert.True(source.IsTruncated);

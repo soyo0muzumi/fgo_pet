@@ -87,16 +87,13 @@ public sealed class PromptComposerTests
         Assert.DoesNotContain(texts, text => text.Contains("JSON 信封", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Compose_without_tools_uses_text_proposals_and_preserves_confirmation(bool emptyTools)
+    [Fact]
+    public void Compose_without_tools_uses_text_proposals_and_preserves_confirmation()
     {
         var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
         var context = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "稳定回应。", []),
             [], [], "", [], "帮我安排今天的工作。");
-        var prompt = new PromptComposer().Compose(context, Route, Budget,
-            emptyTools ? Array.Empty<ChatToolDefinition>() : null);
+        var prompt = new PromptComposer().Compose(context, Route, Budget);
         var text = string.Join("\n", prompt.Messages.Select(message => message.Text));
         Assert.DoesNotContain("submit_todo_proposals", text);
         Assert.Contains("当前请求没有可调用的工具", text);
@@ -104,6 +101,17 @@ public sealed class PromptComposerTests
         Assert.Contains("\"steps\":[{\"title\":", text);
         Assert.Contains("只有用户明确确认后应用才写入 Todo", text);
         Assert.Contains("不派发 Agent", text);
+    }
+
+    [Fact]
+    public void Compose_rejects_empty_tools_consistently_with_the_request_contract()
+    {
+        var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
+        var context = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "稳定回应。", []),
+            [], [], "", [], "继续");
+        var error = Assert.Throws<ArgumentException>(() =>
+            new PromptComposer().Compose(context, Route, Budget, Array.Empty<ChatToolDefinition>()));
+        Assert.Equal("tools", error.ParamName);
     }
 
     [Fact]
