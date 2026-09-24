@@ -68,9 +68,17 @@ public sealed class SqliteConversationContextStore(RuntimeDatabase database) : I
             current.PrefixFingerprint != source.PrefixFingerprint || current.Summary != source.Summary) return false;
         var raw = SqliteConversationRepository.LoadMessages(connection, transaction, source.ConversationId, source.Scope.ServantId);
         var end = raw.FirstOrDefault(message => message.Sequence == summary.CoveredThroughSequence && message.MessageId == summary.CoveredThroughMessageId);
-        if (end is null || end.Role != ChatMessageRole.Assistant || end.Status != ChatMessageStatus.Completed ||
-            end.ContentContext != summary.ContentContext || summary.CoveredThroughSequence <= (source.Summary?.CoveredThroughSequence ?? 0) ||
-            raw.Where(message => message.Sequence <= summary.CoveredThroughSequence).Any(message => message.Status != ChatMessageStatus.Completed)) return false;
+        if (end is null || end.ContentContext != summary.ContentContext ||
+            summary.CoveredThroughSequence <= (source.Summary?.CoveredThroughSequence ?? 0) ||
+            raw.Where(message => message.Sequence <= summary.CoveredThroughSequence).Any(message =>
+                message.Role is not (ChatMessageRole.User or ChatMessageRole.Assistant) ||
+                message.Status is not (ChatMessageStatus.Completed or ChatMessageStatus.Failed or ChatMessageStatus.Cancelled))) return false;
+        // A subsequent user message closes an abandoned historical attempt. It is
+        // safe to cover that whole attempt, but never a live tail or half an exchange.
+        // Do not rewrite the underlying failed/cancelled records into successful replies.
+        var next = raw.FirstOrDefault(message => message.Sequence > end.Sequence);
+        if (next is not null && (next.Role != ChatMessageRole.User || next.Sequence != end.Sequence + 1)) return false;
+        if (next is null && (end.Role != ChatMessageRole.Assistant || end.Status != ChatMessageStatus.Completed)) return false;
         var binding = SqliteContentBindingRepository.Upsert(connection, transaction, summary.ContentContext,
             summary.ContentContext.PersonaVersion, summary.ContentContext.KnowledgeVersion, summary.UpdatedAtUtc);
         using var command = connection.CreateCommand();
