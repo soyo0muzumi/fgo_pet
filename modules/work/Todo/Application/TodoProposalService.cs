@@ -6,7 +6,7 @@ using FgoPet.Core.Todo;
 namespace FgoPet.App.Dialogue;
 
 /// <summary>Parses bounded model proposals and writes them only after explicit confirmation.</summary>
-public sealed partial class TodoProposalService : ITodoConversationPort
+public sealed partial class TodoProposalService : ITodoConversationPort, ILegacyTodoProposalPort
 {
     private static readonly Regex AbsolutePath = new(
         @"[A-Za-z]:[\\/][^\s,;]+|\\\\[^\s,;]+|(?<!\w)/(?:Users|home|workspace|tmp)/[^\s,;]+",

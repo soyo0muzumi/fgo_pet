@@ -6,9 +6,9 @@ namespace FgoPet.App.ViewModels;
 
 public sealed partial class ArchiveDraftViewModel : ObservableObject
 {
-    private readonly ArchiveDraftService _service;
+    private readonly IArchiveDraftConfirmation _service;
 
-    public ArchiveDraftViewModel(ArchiveDraft draft, ArchiveDraftService service)
+    public ArchiveDraftViewModel(ArchiveDraft draft, IArchiveDraftConfirmation service)
     {
         Draft = draft ?? throw new ArgumentNullException(nameof(draft));
         _service = service ?? throw new ArgumentNullException(nameof(service));
