@@ -11,12 +11,27 @@
 
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
-dotnet test FgoPet.sln -c Release
+dotnet test FgoPet.sln -c Release --no-build -m:1
+pwsh -File scripts/test-architecture.ps1
 pwsh -File scripts/test-phase1.ps1
 pwsh -File scripts/test-phase2.ps1
 pwsh -File scripts/test-phase3-settings.ps1
 pwsh -File scripts/test-phase4.ps1
 ```
+
+完整解决方案测试使用 `-m:1` 顺序调度测试项目，避免不同进程争用 WPF、SQLite 和构建输出；不关闭 xUnit 项目内部并行，也不删除业务并发测试。先构建再使用 `--no-build`，不要把旧产物当作当前源码的验证结果。
+
+架构验证的正式入口是 `scripts/test-architecture.ps1`，本地与 Architecture CI 使用同一脚本。它先构建 Release App，再执行架构测试（包括 MSBuild 实际求值的项目图、策略解析自测、编译程序集引用与呈现边界）；任一阶段失败均返回失败。历史名称 `verify-project-dag`、`validate-policy`、`self-test-validate-policy` 不是当前可执行命令，不应出现在已执行的验收清单中。
+
+### Phase 4 完整验收
+
+`test-phase4.ps1` 默认包含 restore、warning-as-error 构建、全解决方案测试、隔离发布、安装、MCP initialize/tools-list、卸载和清理。每次调用使用独立临时根和 TRX 目录，保留构建服务器隔离；安装固定跳过用户 PATH 与插件注册。配置、配对状态保留测试使用合成文件，不读取真实凭据或调用真实模型。
+
+门禁检查安装的可执行文件、shim 与所有权哈希，卸载后检查这些自有文件及安装标记已移除，合成状态/配置及不属于安装器的文件保持不变。只有全部步骤及严格清理成功后，才在 `artifacts/validation/phase4-<id>/` 写入 `phase4-summary.json`；TRX 即使在后续打包失败时也保留。临时产物不加入版本库。
+
+Phase 4 acceptance 工作流在同一 Windows runner 上顺序执行三次完整脚本，第一轮失败就停止，不将重复运行当作失败重试。每轮校验全部测试工程、用例结果和相同的测试清单，再验证打包与清理摘要。该门禁由安装/验收脚本或插件包相关 PR 触发，也可手动触发；普通 Tests 与 Architecture 门禁保持独立。
+
+`-SkipBuild -PublishedSource <目录>` 仅适合单独检查已发布产物，摘要会明确标记未运行全量测试，不能据此宣称完整 Phase 4 通过。若没有安装外部 Codex 插件校验器，脚本会提示仅完成内置 manifest 校验；这不等价于外部校验器、真实 Codex 插件注册、受保护配对状态升级或正式安装包发行验收。
 
 运行中的程序可能占用默认输出目录；此时使用仓库外的隔离 `--artifacts-path`，不要停止用户进程或清理用户数据。测试日志与生成物不得写入源码根目录。
 
