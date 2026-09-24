@@ -76,7 +76,8 @@ public sealed class PromptComposerTests
             [],
             "帮我安排今天的工作。");
 
-        var texts = Compose(context).Messages.Select(message => message.Text).ToArray();
+        var texts = new PromptComposer().Compose(context, Route, Budget,
+            [TodoToolContracts.CreateSubmitTodoProposals()], "auto").Messages.Select(message => message.Text).ToArray();
 
         Assert.Contains(texts, text => text.Contains("submit_todo_proposals", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
@@ -84,6 +85,33 @@ public sealed class PromptComposerTests
         Assert.Contains(texts, text => text.Contains("不要把确认流程话术写入 description", StringComparison.Ordinal));
         Assert.DoesNotContain(texts, text => text.Contains("todo_protocol", StringComparison.Ordinal));
         Assert.DoesNotContain(texts, text => text.Contains("JSON 信封", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Compose_without_tools_uses_text_proposals_and_preserves_confirmation()
+    {
+        var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
+        var context = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "稳定回应。", []),
+            [], [], "", [], "帮我安排今天的工作。");
+        var prompt = new PromptComposer().Compose(context, Route, Budget);
+        var text = string.Join("\n", prompt.Messages.Select(message => message.Text));
+        Assert.DoesNotContain("submit_todo_proposals", text);
+        Assert.Contains("当前请求没有可调用的工具", text);
+        Assert.Contains("\"todos\":[", text);
+        Assert.Contains("\"steps\":[{\"title\":", text);
+        Assert.Contains("只有用户明确确认后应用才写入 Todo", text);
+        Assert.Contains("不派发 Agent", text);
+    }
+
+    [Fact]
+    public void Compose_rejects_empty_tools_consistently_with_the_request_contract()
+    {
+        var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
+        var context = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "稳定回应。", []),
+            [], [], "", [], "继续");
+        var error = Assert.Throws<ArgumentException>(() =>
+            new PromptComposer().Compose(context, Route, Budget, Array.Empty<ChatToolDefinition>()));
+        Assert.Equal("tools", error.ParamName);
     }
 
     [Fact]

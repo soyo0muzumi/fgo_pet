@@ -171,16 +171,24 @@ public sealed class ConversationCompactionEndToEndTests : IDisposable
         Assert.Equal(0, provider.SummaryCalls);
     }
     [Fact]
-    public async Task Tool_fallback_then_context_error_cannot_make_a_third_primary_call()
+    public async Task Tool_fallback_then_context_error_recovers_once_with_a_smaller_no_tool_request()
     {
         Seed(6, 700);
         _settings.Save(_settings.Load() with { ModelConnection = _settings.Load().ModelConnection! with { ToolsSupported = true } });
         var provider = new Provider { RejectToolsFirst = true, ContextError = true };
-        await Create(provider).SendAsync("mash", "继续", default);
-        Assert.Equal(2, provider.MainRequests.Count);
+        var result = await Create(provider).SendAsync("mash", "继续", default);
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.Equal(3, provider.MainRequests.Count);
         Assert.NotNull(provider.MainRequests[0].Tools);
         Assert.Null(provider.MainRequests[1].Tools);
-        Assert.Equal(0, provider.SummaryCalls);
+        Assert.Null(provider.MainRequests[2].Tools);
+        Assert.Equal(1, provider.SummaryCalls);
+        Assert.Null(Assert.Single(provider.SummaryRequests).Tools);
+        Assert.True(provider.MainRequests[2].Messages.Sum(message => message.Text.Length) <
+            provider.MainRequests[1].Messages.Sum(message => message.Text.Length));
+        Assert.Contains(provider.MainRequests[2].Messages, message => message.Text.Contains("conversation_summary"));
+        Assert.DoesNotContain(provider.MainRequests[2].Messages, message => message.Text.Contains("submit_todo_proposals"));
+        Assert.Equal(8, _conversations.LoadMessages("c", "mash").Count);
     }
 
     private ConversationOrchestrator Create(Provider provider, ITodoDraftWorkflow? work = null)

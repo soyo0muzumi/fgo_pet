@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Dialogue;
 
-public sealed class SqliteConversationRepository : IConversationHistoryQuery
+public sealed class SqliteConversationRepository : IConversationStore
 {
     private readonly RuntimeDatabase _database;
 
