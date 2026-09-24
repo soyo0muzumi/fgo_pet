@@ -6,12 +6,12 @@ namespace FgoPet.App.ViewModels;
 
 public sealed partial class TodoProposalViewModel : ObservableObject
 {
-    private readonly TodoProposalService _service;
+    private readonly ILegacyTodoProposalConfirmation _service;
     private TodoItem? _createdTodo;
     public bool IsAdded => _createdTodo is not null;
     public string? CreatedTodoId => _createdTodo?.Id;
 
-    public TodoProposalViewModel(TodoProposal proposal, TodoProposalService service)
+    public TodoProposalViewModel(TodoProposal proposal, ILegacyTodoProposalConfirmation service)
     {
         Proposal = proposal ?? throw new ArgumentNullException(nameof(proposal));
         _service = service ?? throw new ArgumentNullException(nameof(service));

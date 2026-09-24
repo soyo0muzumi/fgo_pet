@@ -37,8 +37,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private readonly ConversationOrchestrator _orchestrator;
     private readonly IDialogueSettingsStore _settings;
     private readonly ModelConnectionViewModel? _modelConnection;
-    private readonly TodoProposalService? _todoProposals;
-    private readonly ArchiveDraftService? _archiveDrafts;
+    private readonly ILegacyTodoProposalPort? _todoProposals;
+    private readonly IArchiveDraftConfirmation? _archiveDrafts;
     private readonly IConfiguredModelAuthority? _modelAuthority;
     private readonly IConversationHistoryQuery _history;
     private ConversationHistoryCursor? _historyCursor;
@@ -63,8 +63,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         ConversationOrchestrator orchestrator,
         IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
-        TodoProposalService? todoProposals = null,
-        ArchiveDraftService? archiveDrafts = null,
+        ILegacyTodoProposalPort? todoProposals = null,
+        IArchiveDraftConfirmation? archiveDrafts = null,
         IConversationHistoryQuery? history = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));

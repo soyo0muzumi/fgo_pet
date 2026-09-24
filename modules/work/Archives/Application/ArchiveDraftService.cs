@@ -3,22 +3,7 @@ using FgoPet.Core.Todo;
 
 namespace FgoPet.App.Archives;
 
-public sealed record ArchiveDraft(
-    string ArchiveId,
-    string SourceType,
-    IReadOnlyList<string> CoveredTodoKeys,
-    DateOnly ArchiveDate,
-    string Title,
-    DateOnly? StartedOn,
-    DateOnly? CompletedOn,
-    string Summary,
-    IReadOnlyList<string> Outcomes,
-    string ModelInput)
-{
-    public int CoveredTodoCount => CoveredTodoKeys.Count;
-}
-
-public sealed class ArchiveDraftService
+public sealed class ArchiveDraftService : IArchiveDraftConfirmation
 {
     private readonly ITodoRepository _todos;
     private readonly IWorkArchiveRepository _archives;
