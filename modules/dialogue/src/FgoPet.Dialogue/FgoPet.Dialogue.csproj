@@ -28,7 +28,6 @@
     <ProjectReference Include="../../../../src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj" />
     <ProjectReference Include="../../../memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
     <ProjectReference Include="../../../speech/src/FgoPet.Speech.Core/FgoPet.Speech.Core.csproj" />
-    <ProjectReference Include="../../../speech/src/FgoPet.Speech.Desktop/FgoPet.Speech.Desktop.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -70,6 +69,9 @@
     </Compile>
     <Compile Include="..\..\Desktop\DialogueWindowViewModel.cs">
       <Link>modules\dialogue\Desktop\DialogueWindowViewModel.cs</Link>
+    </Compile>
+    <Compile Include="..\..\Desktop\DialogueWindowViewModel.SpeechLifetime.cs">
+      <Link>modules\dialogue\Desktop\DialogueWindowViewModel.SpeechLifetime.cs</Link>
     </Compile>
     <!-- Conversation-specific cards consume Work contracts; the cross-module window belongs to the host. -->
     <Page Include="..\..\Desktop\Cards\TodoProposalCard.xaml">

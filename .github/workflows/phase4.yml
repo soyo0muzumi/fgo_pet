@@ -6,6 +6,8 @@ on:
       - 'scripts/install-codex-adapter.ps1'
       - 'scripts/uninstall-codex-adapter.ps1'
       - 'integrations/codex/**'
+      - 'modules/speech/src/**'
+      - 'modules/dialogue/src/**/*.csproj'
       - '.github/workflows/phase4.yml'
   push:
     branches: ['arch/restructure-v2', 'main']
@@ -14,6 +16,8 @@ on:
       - 'scripts/install-codex-adapter.ps1'
       - 'scripts/uninstall-codex-adapter.ps1'
       - 'integrations/codex/**'
+      - 'modules/speech/src/**'
+      - 'modules/dialogue/src/**/*.csproj'
       - '.github/workflows/phase4.yml'
   workflow_dispatch:
 permissions:

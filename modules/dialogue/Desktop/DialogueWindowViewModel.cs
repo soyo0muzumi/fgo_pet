@@ -44,7 +44,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
 {
     private readonly ConversationViewModel _conversation;
     private readonly ServantLibraryViewModel? _library;
-    private readonly SpeechPlaybackCoordinator? _speech;
+    private readonly IConfiguredSpeechPlayback? _speech;
     private readonly IDialogueProjectCatalog? _projectCatalog;
     private ConversationTurnViewModel? _activeSpeechTurn;
     private long _speechRequestId;
@@ -55,12 +55,13 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
     public DialogueWindowViewModel(
         ConversationViewModel conversation,
         ServantLibraryViewModel? library = null,
-        SpeechPlaybackCoordinator? speech = null,
+        IConfiguredSpeechPlayback? speech = null,
         IDialogueProjectCatalog? projectCatalog = null)
     {
         _conversation = conversation ?? throw new ArgumentNullException(nameof(conversation));
         _library = library;
         _speech = speech;
+        _speechDispatcher = speech is null ? null : System.Windows.Threading.Dispatcher.CurrentDispatcher;
         _projectCatalog = projectCatalog;
         Composer = new DialogueComposerViewModel(conversation);
         ActionCards = new DialogueActionCardHostViewModel(conversation.TodoProposals, conversation.ArchiveDrafts);
@@ -69,7 +70,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
         ModelSelection = conversation.ModelAuthority is null
             ? new DialogueModelSelectionViewModel(new EmptyConfiguredModelAuthority(), conversation.ModelStatusText)
             : new DialogueModelSelectionViewModel(conversation.ModelAuthority, conversation.ModelStatusText);
-        ModelSelection.ModelSelected += modelId => conversation.SelectModelForFutureRequests(modelId);
+        ModelSelection.ModelSelected += OnModelSelected;
         ToolDrawer.ToolSelected += OnToolSelected;
         conversation.Turns.CollectionChanged += OnTurnsChanged;
         conversation.AssistantReplyCompleted += OnAssistantReplyCompleted;
@@ -91,12 +92,12 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
 
     public ConversationViewModel Conversation => _conversation;
 
-    public SpeechPlaybackCoordinator? Speech => _speech;
+    public IConfiguredSpeechPlayback? Speech => _speech;
 
     public async Task<SpeechPlaybackResult?> ReadAloudAsync(ConversationTurnViewModel turn)
     {
         ArgumentNullException.ThrowIfNull(turn);
-        if (_speech is null || !turn.CanReadAloud)
+        if (_speechDisposed || _speech is null || !turn.CanReadAloud)
         {
             return null;
         }
@@ -123,6 +124,12 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
 
     public void StopSpeech()
     {
+        if (_speechDisposed) return;
+        StopSpeechCore();
+    }
+
+    private void StopSpeechCore()
+    {
         var active = _activeSpeechTurn;
         _activeSpeechTurn = null;
         _speechRequestId++;
@@ -134,15 +141,9 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
         _speech?.Stop();
     }
 
-    private void OnSpeechStateChanged(object? sender, EventArgs e)
+    private void ApplySpeechState(ConversationTurnViewModel turn, SpeechPlaybackState state)
     {
-        var turn = _activeSpeechTurn;
-        if (turn is null || _speech is null)
-        {
-            return;
-        }
-
-        switch (_speech.State)
+        switch (state)
         {
             case SpeechPlaybackState.Preparing:
                 turn.IsSpeechBusy = true;
@@ -195,7 +196,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
         long requestId,
         SpeechPlaybackResult result)
     {
-        if (requestId != _speechRequestId || !ReferenceEquals(_activeSpeechTurn, turn))
+        if (_speechDisposed || requestId != _speechRequestId || !ReferenceEquals(_activeSpeechTurn, turn))
         {
             return;
         }
@@ -235,7 +236,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
 
     private async Task AutoReadAsync(ConversationTurnViewModel turn)
     {
-        if (_speech is null || !_windowActive || !turn.CanReadAloud)
+        if (_speechDisposed || _speech is null || !_windowActive || !turn.CanReadAloud)
         {
             return;
         }
@@ -293,7 +294,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
 
     private void OnAssistantReplyCompleted(ConversationTurnViewModel turn)
     {
-        if (_speech is null || !_windowActive || !turn.CanReadAloud)
+        if (_speechDisposed || _speech is null || !_windowActive || !turn.CanReadAloud)
         {
             return;
         }
@@ -304,6 +305,7 @@ public sealed partial class DialogueWindowViewModel : ObservableObject
     private void OnSessionChanged() => StopSpeech();
 
     private void OnToolSelected(string toolId) => _conversation.SessionContext.TrySetIntent(toolId);
+    private void OnModelSelected(string modelId) => _conversation.SelectModelForFutureRequests(modelId);
     private sealed class EmptyConfiguredModelAuthority : IConfiguredModelAuthority
     {
         public IReadOnlyList<DialogueModelChoice> AvailableModels { get; } = Array.Empty<DialogueModelChoice>();
