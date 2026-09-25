@@ -59,9 +59,14 @@ public sealed class DialogueSpeechBoundaryTests
         var second = NewTurn("second");
         var oldWork = fixture.Model.ReadAloudAsync(first);
         RaiseOnWorker(fixture.Port, SpeechPlaybackState.Playing);
+        // Also finish the old generation in the interval after the UI selects B
+        // but before the shared playback service begins B's new generation.
+        fixture.Port.BeforePlay = () => RaiseOnWorker(fixture.Port, SpeechPlaybackState.Ended);
         var currentWork = fixture.Model.ReadAloudAsync(second);
+        Assert.Equal(SpeechPlaybackState.Preparing, fixture.Port.State);
         StaRunner.Pump();
         Assert.False(first.IsSpeechBusy);
+        Assert.True(second.IsSpeechBusy);
         Assert.Equal("准备朗读…", second.SpeechStatusText);
         fixture.Port.Calls[0].Completion.SetResult(new(false, SpeechPlaybackState.Failed, "旧请求失败"));
         await oldWork;
@@ -226,10 +231,13 @@ public sealed class DialogueSpeechBoundaryTests
         public SpeechPlaybackState State { get; private set; }
         public List<Call> Calls { get; } = [];
         public SpeechPlaybackResult? ImmediateResult { get; set; }
+        public Action? BeforePlay { get; set; }
         public int Stops { get; private set; }
         public bool Disposed { get; private set; }
         public Task<SpeechPlaybackResult> PlayConfiguredAsync(string? text, bool autoRead = false, CancellationToken cancellationToken = default)
         {
+            BeforePlay?.Invoke();
+            State = SpeechPlaybackState.Preparing;
             var completion = new TaskCompletionSource<SpeechPlaybackResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             Calls.Add(new(text, autoRead, completion));
             if (ImmediateResult is { } result) completion.SetResult(result);

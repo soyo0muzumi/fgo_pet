@@ -15,7 +15,6 @@ public sealed partial class DialogueWindowViewModel : IDisposable
         var turn = _activeSpeechTurn;
         if (turn is null) return;
         var requestId = Interlocked.Read(ref _speechRequestId);
-        var state = _speech.State;
 
         void Apply()
         {
@@ -26,7 +25,10 @@ public sealed partial class DialogueWindowViewModel : IDisposable
             // The awaited result can complete before lower-priority state posts.
             // Its precise error/configuration action must remain authoritative.
             if (!turn.IsSpeechBusy) return;
-            ApplySpeechState(turn, state);
+            // The shared coordinator may have started a new generation while this
+            // notification waited. StateChanged is a prompt to read current state,
+            // not a durable event carrying an old generation's state snapshot.
+            ApplySpeechState(turn, _speech.State);
         }
 
         if (_speechDispatcher.CheckAccess())
