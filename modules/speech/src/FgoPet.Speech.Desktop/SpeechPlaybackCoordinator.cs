@@ -3,13 +3,8 @@ using FgoPet.Speech.Settings;
 
 namespace FgoPet.App.Speech;
 
-public sealed record SpeechPlaybackResult(
-    bool Completed,
-    SpeechPlaybackState State,
-    string? SafeError = null);
-
 /// <summary>Coordinates completed-message speech, playback generation and cleanup.</summary>
-public sealed class SpeechPlaybackCoordinator : IDisposable
+public sealed class SpeechPlaybackCoordinator : IConfiguredSpeechPlayback, IDisposable
 {
     private readonly SpeechSynthesisCoordinator _synthesis;
     private readonly ISpeechAudioPlayer _player;
