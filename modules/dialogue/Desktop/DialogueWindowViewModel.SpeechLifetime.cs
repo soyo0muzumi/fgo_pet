@@ -23,6 +23,9 @@ public sealed partial class DialogueWindowViewModel : IDisposable
             // a session switch, or disposal. Never apply it to the next turn.
             if (_speechDisposed || _speechDispatcher.HasShutdownStarted ||
                 requestId != _speechRequestId || !ReferenceEquals(turn, _activeSpeechTurn)) return;
+            // The awaited result can complete before lower-priority state posts.
+            // Its precise error/configuration action must remain authoritative.
+            if (!turn.IsSpeechBusy) return;
             ApplySpeechState(turn, state);
         }
 

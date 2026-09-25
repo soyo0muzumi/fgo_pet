@@ -164,10 +164,20 @@ public sealed class DialogueSpeechBoundaryTests
     public Task Configuration_failure_and_retry_leave_text_chat_available() => StaRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Port.ImmediateResult = new(false, SpeechPlaybackState.Failed, "请检查朗读设置。");
         var turn = NewTurn("a");
-        await fixture.Model.ReadAloudAsync(turn);
+        var work = fixture.Model.ReadAloudAsync(turn);
+        // The result continuation runs at Normal; queued state posts at DataBind
+        // must not replace its precise configuration action after completion.
+        RaiseOnWorker(fixture.Port, SpeechPlaybackState.Failed);
+        fixture.Port.Calls[0].Completion.SetResult(new(false, SpeechPlaybackState.Failed, "请检查朗读设置。"));
+        await work;
+        StaRunner.Pump();
         Assert.True(turn.SpeechNeedsConfiguration);
+        Assert.Equal("去朗读设置", turn.SpeechActionText);
+        Assert.Equal("请检查朗读设置。", turn.SpeechStatusText);
+        RaiseOnWorker(fixture.Port, SpeechPlaybackState.Playing);
+        StaRunner.Pump();
+        Assert.False(turn.IsSpeechBusy);
         Assert.Equal("去朗读设置", turn.SpeechActionText);
         await fixture.SendAsync();
         Assert.Empty(fixture.Conversation.ErrorText);
