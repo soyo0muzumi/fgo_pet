@@ -13,6 +13,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Preserve tracked compilation inputs for boundary verification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Tracked engineering inputs only: no worktree data, credentials, packs,
+          # generated outputs or developer-private documentation are included.
+          git archive --format=zip --output="$env:RUNNER_TEMP/architecture-input.zip" HEAD AGENTS.md .gitattributes .gitignore Directory.Build.props FgoPet.sln src modules host platform ui-foundation tests scripts .github
+          if ($LASTEXITCODE -ne 0) { throw 'Compilation input snapshot failed.' }
+      - name: Retain compilation inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: architecture-input-${{ github.sha }}
+          path: ${{ runner.temp }}/architecture-input.zip
+          retention-days: 1
+          if-no-files-found: error
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
