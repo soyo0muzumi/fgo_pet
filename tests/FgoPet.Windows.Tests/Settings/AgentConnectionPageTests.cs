@@ -73,9 +73,8 @@ public sealed class AgentConnectionPageTests
                 Assert.DoesNotContain("允许的项目 ID", textBlocks);
                 Assert.DoesNotContain("unresolved-secret", textBlocks);
                 Assert.Empty(Descendants(page).OfType<TextBox>());
-                var archiveButton = Descendants(page).OfType<Button>().Single(button => button.Content?.ToString() == "归档安全候选");
-                Assert.False(archiveButton.IsEnabled);
-                Assert.Equal("执行 Agent 安全归档", AutomationProperties.GetName(archiveButton));
+                Assert.DoesNotContain(Descendants(page).OfType<Button>(), button =>
+                    button.Content?.ToString() is "归档安全候选" or "继续归档" or "清除全部 Agent Todo 数据");
                 Assert.False(double.IsNaN(page.DesiredSize.Height));
             }
             catch (Exception error) { failure = error; }
@@ -91,44 +90,6 @@ public sealed class AgentConnectionPageTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "Settings construction/render exceeded its deadline.");
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
-
-    [Fact]
-    public void Unknown_outcome_strip_exposes_open_and_manual_reconciliation_controls()
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                var execution = new AgentExecution(
-                    "execution-1", "todo-1", "codex", "instance-1", "task-1", "dispatch-1",
-                    DateTimeOffset.UtcNow, AgentExecutionStatus.DispatchOutcomeUnknown);
-                var projector = new AgentEventProjector();
-                projector.Restore(execution);
-                var view = new AgentCurrentTaskStrip
-                {
-                    DataContext = new AgentCurrentTaskViewModel(projector, TimeProvider.System),
-                };
-                view.Measure(new Size(620, 180));
-                view.Arrange(new Rect(0, 0, 620, 180));
-                view.UpdateLayout();
-
-                var manual = Descendants(view).OfType<Button>().Single(button => button.Content?.ToString() == "人工核对结果");
-                Assert.Equal(Visibility.Visible, manual.Visibility);
-                Assert.Equal("人工核对 Agent 执行结果", AutomationProperties.GetName(manual));
-            }
-            catch (Exception error) { failure = error; }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "Unknown outcome strip render exceeded its deadline.");
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 

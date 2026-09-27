@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 
-VERIFY_SCRIPT = Path(__file__).parents[2] / "scripts" / "verify-release.ps1"
-PUBLISH_SCRIPT = Path(__file__).parents[2] / "scripts" / "publish-release.ps1"
+VERIFY_SCRIPT = Path(__file__).parents[2] / "tools" / "scripts" / "verify-release.ps1"
+PUBLISH_SCRIPT = Path(__file__).parents[2] / "tools" / "scripts" / "publish-release.ps1"
 REQUIRED_EXECUTABLES = ["FgoPet.App.exe", "FgoPet.AgentRelay.exe", "FgoPet.CodexAdapter.exe"]
 
 

@@ -78,15 +78,13 @@ public sealed class DialoguePresentationControlsTests
     }
 
     [Fact]
-    public void Action_card_host_and_tool_drawer_are_presentation_only()
+    public void Tool_drawer_selection_changes_only_presentation_intent()
     {
         var conversation = TestDialogueFakes.CreateConversation();
-        var cards = new DialogueActionCardHostViewModel(conversation.TodoProposals, conversation.ArchiveDrafts);
         var tools = new DialogueToolDrawerViewModel([
             new DialogueToolOption("todo", "整理成待办", "准备下一条消息的意图"),
         ]);
 
-        Assert.False(cards.IsVisible);
         Assert.False(tools.IsOpen);
         Assert.True(tools.TrySelect("todo"));
         Assert.Equal("todo", tools.SelectedToolId);

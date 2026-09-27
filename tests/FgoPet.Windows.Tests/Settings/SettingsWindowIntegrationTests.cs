@@ -23,6 +23,7 @@ using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.UiFoundation.Theming;
+using FgoPet.UiSdk;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -32,6 +33,103 @@ namespace FgoPet.Windows.Tests.Settings;
 [Trait("Category", "WindowsIntegration")]
 public sealed class SettingsWindowIntegrationTests
 {
+    [Fact]
+    public void Composition_hosts_a_registered_settings_factory_without_the_concrete_page()
+    {
+        StaRun(() =>
+        {
+            var services = new ServiceCollection().AddFgoPet([], includeMemory: false, includeSpeech: false, includeAgentBackend: false);
+            Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<ModelConnectionPage>(services);
+            Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<ISettingsPageViewFactory>(services);
+            var draft = new TextBox { Text = "unsaved plugin settings" };
+            services.AddSingleton<ISettingsPageViewFactory>(new SampleSettingsFactory(draft));
+            using var provider = services.BuildServiceProvider();
+            var resolve = provider.GetRequiredService<SettingsPageContentResolver>();
+            Assert.Same(draft, resolve(SettingsSection.ModelConnection, null));
+            draft.Text = "edited plugin settings";
+            Assert.Same(draft, resolve(SettingsSection.ModelConnection, null));
+            Assert.Equal("edited plugin settings", draft.Text);
+        });
+    }
+
+    [Fact]
+    public void New_settings_factory_is_navigable_without_adding_a_legacy_section_or_shell_case()
+    {
+        StaRun(() =>
+        {
+            var services = new ServiceCollection().AddFgoPet([], includeTodo: false, includeFocus: false,
+                includeMemory: false, includeSpeech: false, includeAgentBackend: false);
+            var draft = new TextBox { Text = "sample draft" };
+            services.AddSingleton<ISettingsPageViewFactory>(new SettingsPageViewFactory("sample.settings", _ => draft));
+            using var provider = services.BuildServiceProvider();
+            var window = provider.GetRequiredService<SettingsWindow>();
+            provider.GetRequiredService<ISettingsPageNavigator>().Navigate("sample.settings");
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var tabs = Descendants<ListBox>(window).Single(item =>
+                    System.Windows.Automation.AutomationProperties.GetName(item) == "能力页面");
+                var sample = Assert.Single(tabs.Items.Cast<SettingsNavigationItem>(), item => item.Label == "sample.settings");
+                tabs.SelectedItem = sample;
+                Assert.Same(draft, window.SettingsContent.Content);
+                draft.Text = "edited sample draft";
+                var vm = provider.GetRequiredService<SettingsViewModel>();
+                vm.Select(SettingsSection.Privacy);
+                window.SettingsNavigation.SelectedValue = SettingsSection.ModelConnection;
+                Assert.Same(draft, window.SettingsContent.Content);
+                Assert.Equal("edited sample draft", draft.Text);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Missing_capability_settings_are_hidden_and_legacy_routes_return_to_an_available_page()
+    {
+        StaRun(() =>
+        {
+            var vm = new SettingsViewModel(SettingsSection.Speech);
+            var window = new SettingsWindow(vm, (section, _) => new TextBlock { Text = section.ToString() },
+                pageId => pageId != "Speech" && pageId != "AgentConnection");
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                var tabs = Descendants<ListBox>(window).Single(item =>
+                    System.Windows.Automation.AutomationProperties.GetName(item) == "能力页面");
+                Assert.Single(tabs.Items.Cast<object>());
+                Assert.Equal(SettingsSection.ModelConnection, vm.SelectedSection);
+                Assert.Equal("ModelConnection", Assert.IsType<TextBlock>(window.SettingsContent.Content).Text);
+                vm.Select(SettingsSection.AgentConnection);
+                Assert.Equal(SettingsSection.ModelConnection, vm.SelectedSection);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Settings_catalog_fences_new_views_after_shutdown_without_constructing_a_page()
+    {
+        using var stopping = new CancellationTokenSource();
+        var created = false;
+        var catalog = new SettingsPageCatalog([new SettingsPageViewFactory("sample.settings", _ =>
+        {
+            created = true;
+            return new System.Windows.Controls.Border();
+        })], stopping.Token);
+        Assert.True(catalog.Contains("sample.settings"));
+        stopping.Cancel();
+        Assert.Throws<OperationCanceledException>(() => catalog.CreateView("sample.settings"));
+        Assert.False(created);
+    }
+
+    private sealed class SampleSettingsFactory(FrameworkElement page) : ISettingsPageViewFactory
+    {
+        public string SettingsPageId => nameof(SettingsSection.ModelConnection);
+        public FrameworkElement CreateView() => page;
+    }
+
     [Fact]
     public void Settings_pages_restore_their_own_scroll_offset_without_leaking_it_to_new_pages()
     {
@@ -694,7 +792,6 @@ public sealed class SettingsWindowIntegrationTests
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
             new SqliteConversationRepository(new RuntimeDatabase(":memory:")),
-            new SqliteMemoryRepository(new RuntimeDatabase(":memory:")),
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);
@@ -1123,7 +1220,7 @@ public sealed class SettingsWindowIntegrationTests
             // so both dictionaries are needed for the palette to resolve.
             shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
             {
-                Source = new Uri("/FgoPet.App;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
+                Source = new Uri("/FgoPet.UiSdk;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
             });
             shell.Resources.MergedDictionaries.Insert(1, new ResourceDictionary
             {

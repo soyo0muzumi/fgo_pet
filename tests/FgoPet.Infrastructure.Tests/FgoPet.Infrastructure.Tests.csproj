@@ -15,9 +15,23 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\packs\**" Link="fixtures\packs\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Windows/FgoPet.AgentBackend.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Core/FgoPet.Plugin.Focus.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Core/FgoPet.Plugin.Memory.Core.csproj" />
   </ItemGroup>
 </Project>

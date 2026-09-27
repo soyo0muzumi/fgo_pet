@@ -6,6 +6,18 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class DialogueContextLifetimeTests
 {
     [Fact]
+    public void Process_shutdown_cancels_active_leases_and_rejects_new_ones()
+    {
+        using var stopping = new CancellationTokenSource();
+        var lifetime = new DialogueContextLifetime(stopping.Token);
+        using var lease = lifetime.Acquire(default);
+        stopping.Cancel();
+        Assert.True(lease.Token.IsCancellationRequested);
+        Assert.Throws<OperationCanceledException>(() => lifetime.Acquire(default));
+        Assert.False(lease.TryCommit(() => throw new InvalidOperationException("No late commit allowed")));
+    }
+
+    [Fact]
     public async Task Maintenance_prevents_new_leases_until_deletion_finishes()
     {
         var lifetime = new DialogueContextLifetime();

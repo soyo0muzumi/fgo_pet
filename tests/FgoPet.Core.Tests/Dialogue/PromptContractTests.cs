@@ -1,5 +1,5 @@
 using FgoPet.Core.Dialogue;
-using FgoPet.Core.Memory;
+using FgoPet.Extensibility;
 using FgoPet.Core.Packs;
 using Xunit;
 
@@ -15,14 +15,14 @@ public sealed class PromptContractTests
             context,
             new PersonaBundle("800100", "official.mash", "1.1.0", "persona-2", "玛修的核心设定", Array.Empty<PersonaAppearanceOverlay>()),
             new[] { new KnowledgeEntry("profile-1", "800100", "profile", "可靠的设定摘要", "approved") },
-            new[] { new StoredMemory("memory-1", "800100", "用户喜欢番茄钟", true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) },
+            new[] { new ConversationPromptBlock("test.data", "用户喜欢番茄钟") },
             "focus_running",
             new[] { new PromptMessage(ChatMessageRole.User, "上一条消息") },
             "请继续陪我工作");
 
         Assert.Equal("800100", prompt.ContentContext.ServantId);
         Assert.Single(prompt.Knowledge);
-        Assert.Single(prompt.Memories);
+        Assert.Single(prompt.Contributions);
         Assert.Equal("focus_running", prompt.RuntimeState);
         Assert.Equal(ChatMessageRole.User, Assert.Single(prompt.Messages).Role);
     }

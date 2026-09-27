@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "legacyCompileItems": [],
+  "dependencyExceptions": [
+    {
+      "from": "src/FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj",
+      "to": "plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj",
+      "to": "plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj",
+      "to": "plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj",
+      "to": "plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Contracts/FgoPet.AgentBackend.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\plugins\FgoPet.Plugin.Speech\Contracts\FgoPet.Speech.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.SettingsHost.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../FgoPet.Kernel/FgoPet.Kernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../plugins/FgoPet.Plugin.Memory/Core/FgoPet.Plugin.Memory.Core.csproj" />
+    <ProjectReference Include="../../FgoPet.Platform/Contracts/FgoPet.Platform.Contracts.csproj" />
+  </ItemGroup>
+</Project>

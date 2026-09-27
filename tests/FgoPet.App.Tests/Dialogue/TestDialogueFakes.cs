@@ -36,7 +36,6 @@ internal static class TestDialogueFakes
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
             new FgoPet.Infrastructure.Dialogue.SqliteConversationRepository(database),
-            new FgoPet.Infrastructure.Memory.SqliteMemoryRepository(database),
             new PromptComposer(),
             TimeProvider.System,
             settings);

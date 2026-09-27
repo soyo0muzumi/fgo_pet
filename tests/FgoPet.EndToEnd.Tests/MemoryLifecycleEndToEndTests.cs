@@ -43,10 +43,12 @@ public sealed class MemoryLifecycleEndToEndTests : IAsyncLifetime
         var recall = new MemoryRecallService(_repository);
         _queue = new(new ProviderMemoryCandidateExtractor(_ => _provider, limit, meter, recall), _sink, _repository, _lifetime,
             connection => _settings.Enabled && connection == _settings.Load().ModelConnection,
-            isSourceCurrent: source => new MemoryExtractionSourceReader(_conversations).IsCurrent(source));
-        _chat = new(new Resolver(_provider), new Content(), _conversations, recall, new(meter), TimeProvider.System,
-            settings: _settings, memorySettings: _settings, contextResolver: limit, tokenMeter: meter, lifetime: _lifetime,
-            memoryCandidates: _sink, memoryExtractions: _queue);
+            isSourceCurrent: source => new MemoryExtractionSourceReader(new ConversationSourceReader(_conversations)).IsCurrent(source));
+        _chat = new(new Resolver(_provider), new Content(), _conversations, new(meter), TimeProvider.System,
+            settings: _settings, contextResolver: limit, tokenMeter: meter, lifetime: _lifetime,
+            capabilities: FgoPet.Testing.ActivatedCapabilities.Create(new FgoPet.Plugin.Memory.MemoryPlugin(recall,
+                new ConversationSourceReader(_conversations), _sink, _queue, () => _settings.Enabled),
+                FgoPet.Testing.ActivatedCapabilities.Todo(_database)));
     }
     [Fact]
     public async Task User_candidate_confirmation_correction_disable_delete_are_reflected_in_actual_next_requests()

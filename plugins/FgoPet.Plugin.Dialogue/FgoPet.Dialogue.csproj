@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Contracts\DialogueProjectCatalog.cs">
+      <Link>modules\dialogue\Contracts\DialogueProjectCatalog.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ConversationTurnViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationTurnViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ConversationViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialogueItemViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialoguePresentationViewModels.cs">
+      <Link>modules\dialogue\Desktop\DialoguePresentationViewModels.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialogueProjectSelectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueProjectSelectionViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\ModelConnectionPage.xaml">
+      <Link>Settings\ModelConnectionPage.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\ModelConnectionPage.xaml.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ModelConnectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Infrastructure\ChatProviderFactory.cs">
+      <Link>modules\dialogue\Infrastructure\ChatProviderFactory.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Application/ModelConnectionRegistration.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Infrastructure/OpenAiCompatibleChatProvider.cs" />
+    <Compile Include="Infrastructure/ProviderCatalog.cs" />
+    <Compile Include="Infrastructure/SqliteContentBindingRepository.cs" />
+    <Compile Include="Infrastructure/SqliteConversationRepository.cs" />
+    <Compile Include="Infrastructure/ChatRequestPayloadWriter.cs" />
+    <Compile Include="Infrastructure/SqliteConversationRecallRepository.cs" />
+    <Compile Include="Infrastructure/SqliteConversationContextStore.cs" />
+    <Compile Include="Infrastructure/ProviderConversationSummarizer.cs" />
+  </ItemGroup>
+</Project>

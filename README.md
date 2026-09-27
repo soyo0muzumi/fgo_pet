@@ -82,15 +82,20 @@ Under **Settings → Capabilities → Speech**, select and test a speech provide
 
 Requirements: Windows, .NET SDK 8.0.x, and PowerShell 7.
 
+Repository layout: `src/` contains the app bootstrap, kernel, desktop host, platform, and shared UI SDK; `plugins/` contains capability plugins and providers; `tests/` contains unit, integration, and architecture checks; `tools/` contains scripts, installers, integrations, probes, and auxiliary Python tools.
+
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release
+pwsh -File tools/scripts/test-architecture.ps1
+pwsh -File tools/scripts/test-phase4.ps1
 ```
 
 Further documentation:
 
 - [Developer guide](docs/guides/development.md) — complete build, test, repository, and ZIP candidate workflow;
-- [Module map](modules/README.md) — ownership, dependency direction, and migration status;
+- [Architecture policy](tests/architecture/README.md) — project ownership, dependency policy, and verification entry points;
+- [Current project policy](tests/architecture/policy.json) and [shrinking-only dependency baseline](tests/architecture/baseline.json);
 - [Agent integration guide](docs/guides/agent-integration.md);
 - [Codex Adapter guide](docs/guides/codex-adapter.md);
 - [Release candidate workflow](docs/release/README.md);

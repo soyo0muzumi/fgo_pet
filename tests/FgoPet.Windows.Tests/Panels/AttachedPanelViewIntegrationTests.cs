@@ -11,12 +11,65 @@ using FgoPet.App.Settings;
 using FgoPet.Core.Focus;
 using FgoPet.Core.Panels;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
+using Microsoft.Extensions.DependencyInjection;
+using FgoPet.App.Bootstrap;
+using FgoPet.UiSdk;
+using System.ComponentModel;
 
 namespace FgoPet.Windows.Tests.Panels;
 
 [Trait("Category", "WindowsIntegration")]
 public sealed class AttachedPanelViewIntegrationTests
 {
+    [Fact]
+    public void Compact_host_consumes_registered_content_when_focus_is_removed()
+    {
+        StaRun(() =>
+        {
+            var sample = new SampleCompactSurface();
+            var services = new ServiceCollection().AddFgoPet([], includeFocus: false);
+            services.AddSingleton<ICompactSurface>(sample);
+            using var provider = services.BuildServiceProvider();
+            var model = provider.GetRequiredService<AttachedPanelViewModel>();
+            var view = new AttachedPanelView { DataContext = model };
+            var host = Assert.IsType<ContentControl>(view.FindName("CompactContentHost"));
+            Assert.Same(sample.Content, host.Content);
+            model.PortraitClick();
+            model.FocusClick();
+            Assert.True(sample.Content.Expanded);
+            sample.Activate();
+            Assert.Equal(AttachedPanelState.Compact, model.State);
+            Assert.False(sample.Content.Expanded);
+            Assert.Equal(Visibility.Visible, Assert.IsType<Border>(view.FindName("CardSurface")).Visibility);
+            view.DataContext = new AttachedPanelViewModel(TimeProvider.System);
+            Assert.True(sample.Content.Disposed);
+            Assert.Null(host.Content);
+        });
+    }
+
+    private sealed class SampleCompactSurface : ICompactSurface
+    {
+        public SampleCompactView Content { get; } = new();
+        public bool IsActive { get; private set; }
+        public bool BlocksAutoCollapse => false;
+        public event PropertyChangedEventHandler? PropertyChanged;
+        public event Action? Interaction { add { } remove { } }
+        public FrameworkElement CreateView() => Content;
+        public void Activate()
+        {
+            IsActive = true;
+            PropertyChanged?.Invoke(this, new(nameof(IsActive)));
+        }
+    }
+
+    private sealed class SampleCompactView : TextBox, ICompactSurfaceView, IDisposable
+    {
+        public bool Expanded { get; private set; }
+        public bool Disposed { get; private set; }
+        public void SetExpanded(bool expanded) => Expanded = expanded;
+        public void Dispose() => Disposed = true;
+    }
     [Fact]
     public void Compact_companion_surface_exposes_the_approved_entry_shell()
     {
@@ -117,10 +170,10 @@ public sealed class AttachedPanelViewIntegrationTests
         StaRun(() =>
         {
             var focus = new FakeFocusService();
-            var model = new AttachedPanelViewModel(TimeProvider.System, focus);
+            var model = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(focus));
             var view = new AttachedPanelView { DataContext = model };
-            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
-            var timer = Assert.IsType<Grid>(view.FindName("CompactTimer"));
+            var setup = Assert.IsType<Grid>(FocusView(view).FindName("FocusSetupCard"));
+            var timer = Assert.IsType<Grid>(FocusView(view).FindName("CompactTimer"));
             model.PortraitClick();
 
             // The compact entry shell shows neither the focus setup card nor the timer.
@@ -132,9 +185,9 @@ public sealed class AttachedPanelViewIntegrationTests
 
             Assert.Equal(Visibility.Collapsed, setup.Visibility);
             Assert.Equal(Visibility.Visible, timer.Visibility);
-            Assert.NotNull(view.FindName("FocusProgressArc"));
-            Assert.IsType<Button>(view.FindName("PauseResumeButton"));
-            Assert.IsType<Button>(view.FindName("StopTimerButton"));
+            Assert.NotNull(FocusView(view).FindName("FocusProgressArc"));
+            Assert.IsType<Button>(FocusView(view).FindName("PauseResumeButton"));
+            Assert.IsType<Button>(FocusView(view).FindName("StopTimerButton"));
         });
     }
 
@@ -194,7 +247,7 @@ public sealed class AttachedPanelViewIntegrationTests
     {
         StaRun(() =>
         {
-            var model = new AttachedPanelViewModel(TimeProvider.System);
+            var model = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(new FakeFocusService()));
             var view = new AttachedPanelView { DataContext = model };
             view.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
@@ -207,12 +260,12 @@ public sealed class AttachedPanelViewIntegrationTests
             view.UpdateLayout();
 
             var card = Assert.IsType<Border>(view.FindName("CardSurface"));
-            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
+            var setup = Assert.IsType<Grid>(FocusView(view).FindName("FocusSetupCard"));
             var surface = Assert.IsType<SolidColorBrush>(card.Background);
             Assert.Equal((Color)ColorConverter.ConvertFromString(content), surface.Color);
             Assert.Equal(
                 (Color)ColorConverter.ConvertFromString(action),
-                Assert.IsType<SolidColorBrush>(Assert.IsType<Button>(view.FindName("StartFocusButton")).Background).Color);
+                Assert.IsType<SolidColorBrush>(Assert.IsType<Button>(FocusView(view).FindName("StartFocusButton")).Background).Color);
             Assert.Equal(
                 (Color)ColorConverter.ConvertFromString(content),
                 Assert.IsType<SolidColorBrush>(Assert.IsType<Ellipse>(setup.Children[0]).Fill).Color);
@@ -225,7 +278,7 @@ public sealed class AttachedPanelViewIntegrationTests
         StaRun(() =>
         {
             var focus = new FakeFocusService();
-            var model = new AttachedPanelViewModel(TimeProvider.System, focus);
+            var model = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(focus));
             var view = new AttachedPanelView { DataContext = model };
             model.PortraitClick();
             model.SetActiveServant("servant-mash");
@@ -236,8 +289,8 @@ public sealed class AttachedPanelViewIntegrationTests
             view.Arrange(new Rect(0, 0, 240, 240));
             view.UpdateLayout();
 
-            var phase = Assert.IsType<TextBlock>(view.FindName("CompactPhaseText"));
-            var pause = Assert.IsType<Button>(view.FindName("PauseResumeButton"));
+            var phase = Assert.IsType<TextBlock>(FocusView(view).FindName("CompactPhaseText"));
+            var pause = Assert.IsType<Button>(FocusView(view).FindName("PauseResumeButton"));
             Assert.Equal("专注中", phase.Text);
             Assert.Equal("暂停专注", pause.ToolTip?.ToString());
 
@@ -270,6 +323,9 @@ public sealed class AttachedPanelViewIntegrationTests
             Assert.Equal("收起更多", System.Windows.Automation.AutomationProperties.GetName(more));
         });
     }
+
+    private static FocusCompactView FocusView(AttachedPanelView view) =>
+        Assert.IsType<FocusCompactView>(Assert.IsType<ContentControl>(view.FindName("CompactContentHost")).Content);
 
     private static void StaRun(Action action) => StaRunner.Run(action);
 

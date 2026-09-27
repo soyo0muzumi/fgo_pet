@@ -22,7 +22,7 @@ public sealed class ConversationStoreBoundaryTests
         var field = typeof(ConversationOrchestrator).GetField("_conversations", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         Assert.Equal(typeof(IConversationStore), field!.FieldType);
-        Assert.Equal(typeof(IConversationReader), Assert.Single(Assert.Single(typeof(MemoryExtractionSourceReader).GetConstructors()).GetParameters()).ParameterType);
+        Assert.Equal(typeof(FgoPet.Extensibility.IConversationSourceReader), Assert.Single(Assert.Single(typeof(MemoryExtractionSourceReader).GetConstructors()).GetParameters()).ParameterType);
         Assert.Contains(typeof(IConversationStore), typeof(SqliteConversationRepository).GetInterfaces());
         Assert.DoesNotContain(typeof(IConversationStore).GetMethods(), method => method.Name is "SaveSummary" or "LoadSummary" or "Open");
         Assert.Equal(2, typeof(IConversationReader).GetMethods().Length);
@@ -62,12 +62,12 @@ public sealed class ConversationStoreBoundaryTests
         store.Append(new("message", "history", "mash", ChatMessageRole.User, "喜欢安静工作",
             ChatMessageStatus.Completed, DateTimeOffset.UnixEpoch, Key, 1));
         // The reader wrapper deliberately implements no writes or SQLite-specific members.
-        var reader = new MemoryExtractionSourceReader(new ReadOnlyStore(store));
-        var source = reader.Read(new("mash", "project-a"), "history", "message", MemoryEvidenceKind.UserStatement);
+        var reader = new MemoryExtractionSourceReader(new ConversationSourceReader(new ReadOnlyStore(store)));
+        var source = reader.Read(new("history", "mash", "project-a"), "message", MemoryEvidenceKind.UserStatement);
         Assert.True(reader.IsCurrent(source));
-        Assert.Throws<InvalidOperationException>(() => reader.Read(new("mash", "project-b"), "history", "message", MemoryEvidenceKind.UserStatement));
-        Assert.Throws<InvalidOperationException>(() => reader.Read(new("other-servant", "project-a"), "history", "message", MemoryEvidenceKind.UserStatement));
-        Assert.Throws<InvalidOperationException>(() => reader.Read(new("mash", "project-a"), "history", "message", MemoryEvidenceKind.AssistantSuggestion));
+        Assert.Throws<InvalidOperationException>(() => reader.Read(new("history", "mash", "project-b"), "message", MemoryEvidenceKind.UserStatement));
+        Assert.Throws<InvalidOperationException>(() => reader.Read(new("history", "other-servant", "project-a"), "message", MemoryEvidenceKind.UserStatement));
+        Assert.Throws<InvalidOperationException>(() => reader.Read(new("history", "mash", "project-a"), "message", MemoryEvidenceKind.AssistantSuggestion));
         store.Messages[0] = new("message", "history", "mash", ChatMessageRole.User, "后来明确更正了偏好",
             ChatMessageStatus.Completed, DateTimeOffset.UnixEpoch, Key, 1);
         Assert.False(reader.IsCurrent(source));
@@ -76,7 +76,7 @@ public sealed class ConversationStoreBoundaryTests
     }
 
     private static ConversationOrchestrator Create(IConversationStore store) =>
-        new(new ProviderResolver(), new ContentResolver(), store, new NoMemory(), new PromptComposer(), TimeProvider.System);
+        new(new ProviderResolver(), new ContentResolver(), store, new PromptComposer(), TimeProvider.System);
     private sealed class NoMemory : IMemoryRecall
     {
         public MemoryRecallSnapshot Query(MemoryScope scope, string query, int maxItems = 8, int maxChars = 6000) => new(0, []);

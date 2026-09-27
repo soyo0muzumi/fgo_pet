@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FgoPet.App</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Contracts\FgoPet.Speech.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/FgoPet.Plugin.Speech.Core.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Platform/Contracts/FgoPet.Platform.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+</Project>

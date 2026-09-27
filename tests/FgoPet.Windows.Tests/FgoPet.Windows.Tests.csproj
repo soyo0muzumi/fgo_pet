@@ -17,22 +17,21 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FgoPet.App\FgoPet.App.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\packs\**" Link="fixtures\packs\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 阶段 1 拆分新增 -->
-    <ProjectReference Include="../../modules/character/src/FgoPet.Character/FgoPet.Character.csproj" />
-    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj" />
-    <ProjectReference Include="../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
-    <ProjectReference Include="../../modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj" />
-    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
-    <ProjectReference Include="../../modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
-    <ProjectReference Include="../../ui-foundation/src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj" />
-    <ProjectReference Include="../../modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
-    <ProjectReference Include="../../modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Core/FgoPet.Plugin.Focus.Core.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Desktop/FgoPet.AgentBackend.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Desktop/FgoPet.Plugin.Todo.Desktop.csproj" />
   </ItemGroup>
 </Project>

@@ -83,11 +83,11 @@ Agent MUST：
 
 ### 4.1 文件归属
 
-- 生产 C# 代码：`src/<ProjectName>/`。
-- C# 自动化测试：`tests/<ProjectName>.Tests/`，SHOULD 对应被测生产边界。
-- Python 辅助代码：`scripts/` 或已有 Python 包，测试遵循 `pyproject.toml`。
-- 可复用集成：`integrations/`。
-- 实验代码：`spikes/<topic>/`，并 MUST 标注为非生产代码。
+- 生产 C# 代码：应用与共享基础归入 `src/` 下的既有 owner；能力实现归入 `plugins/<PluginName>/`，provider 归入 `plugins/providers/`。
+- C# 自动化测试：`tests/<ProjectName>.Tests/` 或既有插件的 `Tests/`，SHOULD 对应被测生产边界。
+- Python 辅助代码：`tools/scripts/` 或已有 Python 包，测试遵循 `pyproject.toml`。
+- 可复用集成：`tools/integrations/`。
+- 实验代码：`tools/spikes/<topic>/`，并 MUST 标注为非生产代码。
 - 长期维护文档：`docs/` 下已有的合适分类。
 - 验收证据和预期交付物：仅在确有保留价值时放入 `artifacts/`。
 
@@ -258,10 +258,10 @@ Skill 与用户直接指令或本文件冲突时，遵守高优先级指令；�
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release
-pwsh -File scripts/test-phase1.ps1
-pwsh -File scripts/test-phase2.ps1
-pwsh -File scripts/test-phase3-settings.ps1
-pwsh -File scripts/test-phase4.ps1
+pwsh -File tools/scripts/test-phase1.ps1
+pwsh -File tools/scripts/test-phase2.ps1
+pwsh -File tools/scripts/test-phase3-settings.ps1
+pwsh -File tools/scripts/test-phase4.ps1
 ```
 
 与小改动无关时，不运行所有阶段脚本。只有实际执行并观察到退出状态后，才可声称检查通过。同一任务中，相关代码、依赖、环境和待证明结论未变化时可复用已观察的证据；相关状态变化、失败尚未解决或明确要求重跑时必须重新验证。不得以局部检查证明未验证的整体行为。

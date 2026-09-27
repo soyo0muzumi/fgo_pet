@@ -35,7 +35,7 @@ public sealed class AgentReconnectServiceTests
             {
                 if (request.MessageType == "event_ack")
                 {
-                    Assert.Equal(TodoStatus.Active, todos.Get("todo-ack")!.Status);
+                    Assert.Equal(TodoStatus.Planned, todos.Get("todo-ack")!.Status);
                     acknowledgements++;
                     pending = false;
                     return Task.FromResult(ProtocolEnvelope.Create(request.MessageId, request.MessageType,
@@ -115,7 +115,7 @@ public sealed class AgentReconnectServiceTests
             Assert.True(result.Connected);
             Assert.Equal(AgentExecutionStatus.Active, Assert.Single(projector.Current).Status);
             Assert.Equal("task-restart", projector.Current.Single().TaskId);
-            Assert.Equal(TodoStatus.Active, todos.Get("todo-restart")!.Status);
+            Assert.Equal(TodoStatus.Planned, todos.Get("todo-restart")!.Status);
         }
         finally
         {

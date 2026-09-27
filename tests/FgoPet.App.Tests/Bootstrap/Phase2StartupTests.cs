@@ -21,7 +21,7 @@ public sealed class Phase2StartupTests
         ui.OnPortrait = () => calls.Add("portrait");
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(),
+            new FakeController(), new FakeCharacterSettings(),
             ui, migrator, restorer, new FakePhase2Availability());
 
         await shell.StartAsync([], CancellationToken.None);
@@ -37,7 +37,7 @@ public sealed class Phase2StartupTests
         var ui = new RecordingUi();
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui, migrator, new FakeFocusRestorer(), availability);
+            new FakeController(), new FakeCharacterSettings(), ui, migrator, new FakeFocusRestorer(), availability);
 
         await shell.StartAsync([], CancellationToken.None);
 
@@ -52,7 +52,7 @@ public sealed class Phase2StartupTests
         var availability = new FakePhase2Availability();
         var shell = new DesktopAppShell(
             new FakeRepository(new AppearanceLocation(new PackIdentity("official.mash", "1.0.0"), "casual", "C:\\pack")),
-            new FakeController(), new FakeCharacterSettings(), new FakeWorkSettings(), ui,
+            new FakeController(), new FakeCharacterSettings(), ui,
             new FakeMigrator(), new FakeFocusRestorer { Exception = new InvalidOperationException("corrupt row") },
             availability);
 

@@ -1,3 +1,4 @@
+using FgoPet.Extensibility;
 using System.IO;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Services;
@@ -128,12 +129,13 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
         Assert.Equal(ConversationSendStatus.Completed, result.Status);
         var assistantDelta = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantDelta));
-        Assert.Equal("安排好了。", assistantDelta.TextDelta);
+        Assert.Contains("写回归测试", assistantDelta.TextDelta);
+        Assert.Contains("尚未创建", assistantDelta.TextDelta);
         Assert.DoesNotContain("{", assistantDelta.TextDelta, StringComparison.Ordinal);
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
         Assert.NotNull(completed.StructuredResponse);
         var persisted = CreateConversationRepository().LoadMessages(result.ConversationId, "800100");
-        Assert.Equal("安排好了。", persisted.Single(message => message.Role == ChatMessageRole.Assistant).Text);
+        Assert.Equal(assistantDelta.TextDelta, persisted.Single(message => message.Role == ChatMessageRole.Assistant).Text);
     }
 
     [Fact]
@@ -264,7 +266,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
 
         Assert.Equal(ConversationSendStatus.Completed, result.Status);
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(TodoToolCallOutcome.ProposalsReady, completed.TodoOutcome);
+        Assert.Equal(CapabilityOutcome.ProposalsReady, completed.ToolOutcome);
         Assert.NotNull(completed.StructuredResponse);
     }
 
@@ -319,7 +321,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         await viewModel.SendCommand.ExecuteAsync(null);
 
         var draftReply = Assert.Single(viewModel.Turns.Where(turn => turn.IsAssistant));
-        Assert.False(draftReply.CanViewTodo);
+        Assert.False(draftReply.CanOpenWorkspace);
 
         viewModel.InputText = "确认";
         await viewModel.SendCommand.ExecuteAsync(null);
@@ -327,9 +329,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
         var replies = viewModel.Turns.Where(turn => turn.IsAssistant).ToArray();
         var confirmedReply = Assert.Single(replies, turn => turn.Text.Contains("已创建待办", StringComparison.Ordinal));
         var created = Assert.Single(repository.Items);
-        Assert.True(confirmedReply.CanViewTodo);
-        Assert.Equal(created.Id, confirmedReply.CreatedTodoId);
-        Assert.DoesNotContain(replies, turn => !ReferenceEquals(turn, confirmedReply) && turn.CanViewTodo);
+        Assert.True(confirmedReply.CanOpenWorkspace);
+        Assert.Equal(created.Id, confirmedReply.CreatedItemId);
+        Assert.DoesNotContain(replies, turn => !ReferenceEquals(turn, confirmedReply) && turn.CanOpenWorkspace);
     }
 
     [Fact]
@@ -495,8 +497,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
         await orchestrator.SendAsync("800100", "请安排测试", CancellationToken.None);
 
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(TodoToolCallOutcome.InvalidToolCall, completed.TodoOutcome);
-        Assert.Contains("command", completed.TodoDetail, StringComparison.Ordinal);
+        Assert.Equal(CapabilityOutcome.InvalidToolCall, completed.ToolOutcome);
+        Assert.Contains("command", completed.CapabilityDetail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -511,7 +513,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         await orchestrator.SendAsync("800100", "帮我安排今天的工作", CancellationToken.None);
 
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(TodoToolCallOutcome.NoProposal, completed.TodoOutcome);
+        Assert.Equal(CapabilityOutcome.NoProposal, completed.ToolOutcome);
         Assert.Null(completed.StructuredResponse);
     }
 
@@ -533,8 +535,33 @@ public sealed class ConversationOrchestratorTests : IDisposable
         await orchestrator.SendAsync("800100", "请安排测试", CancellationToken.None);
 
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(TodoToolCallOutcome.InvalidToolCall, completed.TodoOutcome);
+        Assert.Equal(CapabilityOutcome.InvalidToolCall, completed.ToolOutcome);
         Assert.Null(completed.StructuredResponse);
+    }
+
+    [Theory]
+    [InlineData("{\"todos\":[{\"title\":\"整理资料\"}]}")]
+    [InlineData("[{\"title\":\"整理资料\"}]")]
+    public async Task Text_fallback_presents_readable_pending_drafts_and_writes_only_after_confirmation(string response)
+    {
+        var repository = new RecordingTodoRepository();
+        var service = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+        var settings = new RecordingDialogueSettings(supportsTools: false);
+        var provider = new FakeProvider([new ChatStreamChunk(response, IsComplete: true)]);
+        var model = new ConversationViewModel(CreateOrchestrator(provider, service, settings: settings), settings);
+        model.SetActiveServant("800100");
+        model.InputText = "整理成草稿";
+        await model.SendCommand.ExecuteAsync(null);
+        var draft = Assert.Single(model.Turns.Where(turn => turn.IsAssistant));
+        Assert.Contains("整理资料", draft.Text);
+        Assert.Contains("尚未创建", draft.Text);
+        Assert.DoesNotContain("无法解析", draft.Text);
+        Assert.DoesNotContain("\"todos\"", draft.Text);
+        Assert.Empty(repository.Items);
+        model.InputText = "确认";
+        await model.SendCommand.ExecuteAsync(null);
+        Assert.Equal("整理资料", Assert.Single(repository.Items).Title);
+        Assert.Contains(model.Turns, turn => turn.IsAssistant && turn.Text.Contains("已创建待办"));
     }
 
     [Fact]
@@ -559,7 +586,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.False(provider.LastCallHadTools);
         Assert.False(settings.Saved!.ModelConnection!.ToolsSupported);
         var completed = Assert.Single(updates.Where(update => update.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(TodoToolCallOutcome.TextFallback, completed.TodoOutcome);
+        Assert.Equal(CapabilityOutcome.TextFallback, completed.ToolOutcome);
         Assert.Contains(
             "文本提案兜底",
             updates.Where(u => u.Type == ConversationUpdateType.AssistantDelta).Select(u => u.SafeError).Single(text => !string.IsNullOrEmpty(text)),
@@ -725,7 +752,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
     public async Task Tools_are_offered_when_the_connection_supports_them()
     {
         var provider = new FakeProvider([new ChatStreamChunk("收到。", IsComplete: true)]);
-        var orchestrator = CreateOrchestrator(provider, settings: new FakeSettings());
+        var proposals = new TodoProposalService(new TodoApplicationService(new FakeTodoRepository(), TimeProvider.System));
+        var orchestrator = CreateOrchestrator(provider, proposals, settings: new FakeSettings());
 
         await orchestrator.SendAsync("800100", "你好", CancellationToken.None);
 
@@ -733,6 +761,17 @@ public sealed class ConversationOrchestratorTests : IDisposable
         var tool = Assert.Single(provider.LastRequest!.Tools!);
         Assert.Equal(TodoToolContracts.SubmitTodoProposalsToolName, tool.Name);
         Assert.Equal("auto", provider.LastRequest.ToolChoice);
+    }
+
+    [Fact]
+    public async Task Conversation_without_a_registered_capability_sends_no_tools()
+    {
+        var provider = new FakeProvider([new ChatStreamChunk("收到。", IsComplete: true)]);
+        var result = await CreateOrchestrator(provider, settings: new FakeSettings()).SendAsync("800100", "你好", default);
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.NotNull(provider.LastRequest);
+        Assert.Null(provider.LastRequest!.Tools);
+        Assert.Null(provider.LastRequest.ToolChoice);
     }
 
     [Fact]
@@ -798,8 +837,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
         memories.AddCandidate(new MemoryCandidate("approved", "800100", deletedId, "保留的记忆", DateTimeOffset.UtcNow));
         memories.ReviewCandidate("approved", "800100", MemoryReviewAction.Approve, null, DateTimeOffset.UtcNow);
         memories.AddCandidate(new MemoryCandidate("pending", "800100", deletedId, "待审核的记忆", DateTimeOffset.UtcNow));
-        model.PendingTodoDraftId = "draft-old";
-        model.PendingTodoDraftVersion = 2;
+        model.PendingDraftId = "draft-old";
+        model.PendingDraftVersion = 2;
         model.InputText = "保留未发送草稿";
         var changed = 0;
         model.SessionChanged += () => changed++;
@@ -810,9 +849,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Empty(model.Turns);
         Assert.Empty(model.History);
         Assert.Empty(model.CurrentConversationId);
-        Assert.Null(model.PendingTodoDraftId);
-        Assert.Null(model.PendingTodoDraftVersion);
-        Assert.False(model.RetryTodoCommand.CanExecute(null));
+        Assert.Null(model.PendingDraftId);
+        Assert.Null(model.PendingDraftVersion);
+        Assert.False(model.RetryCapabilityCommand.CanExecute(null));
         Assert.Equal(1, changed);
         Assert.Equal("保留未发送草稿", model.InputText);
         Assert.Null(CreateConversationRepository().ReadState("LastActiveConversationId:800100"));
@@ -915,17 +954,19 @@ public sealed class ConversationOrchestratorTests : IDisposable
             ["servant-core", "casual"],
             new string('a', 64),
             new string('b', 64));
-        return new ConversationOrchestrator(
-            new FakeProviderResolver(provider),
-            contentResolver ?? new FakeContentResolver(binding),
-            CreateConversationRepository(),
-            conversationMemory ?? CreateMemoryRepository(),
-            new PromptComposer(),
-            TimeProvider.System,
-            settings: settings,
-            memorySettings: memorySettings,
-            todoProposals: todoProposals,
-            todoDrafts: todoDrafts);
+        var conversations = CreateConversationRepository();
+        var memory = conversationMemory ?? CreateMemoryRepository();
+        var plugins = new List<FgoPet.Extensibility.IFgoPetPlugin>
+        {
+            new FgoPet.Plugin.Memory.MemoryPlugin(memory, new ConversationSourceReader(conversations),
+                memory as IMemoryCandidateSink, enabled: () => memorySettings?.Load().Enabled ?? true)
+        };
+        if (todoProposals is not null || todoDrafts is not null)
+            plugins.Add(new FgoPet.Plugin.Todo.TodoPlugin(todoProposals, todoDrafts));
+        return new ConversationOrchestrator(new FakeProviderResolver(provider),
+            contentResolver ?? new FakeContentResolver(binding), conversations,
+            new PromptComposer(), TimeProvider.System, settings: settings,
+            capabilities: FgoPet.Testing.ActivatedCapabilities.Create(plugins.ToArray()));
     }
 
     [Fact]
@@ -1137,7 +1178,6 @@ public sealed class ConversationOrchestratorTests : IDisposable
         public IReadOnlyList<TodoItem> List(TodoStatus? status = null) => Array.Empty<TodoItem>();
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
         public void Delete(string id) { }
-        public void ClearAgentTodoData() { }
     }
 
     private sealed class RecordingTodoRepository : ITodoRepository
@@ -1150,7 +1190,6 @@ public sealed class ConversationOrchestratorTests : IDisposable
             _items.Values.Where(item => status is null || item.Status == status).ToArray();
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Array.Empty<TodoItem>();
         public void Delete(string id) => _items.Remove(id);
-        public void ClearAgentTodoData() => _items.Clear();
     }
     private sealed class RecordingSpeechSynthesizer : ISpeechSynthesizer
     {

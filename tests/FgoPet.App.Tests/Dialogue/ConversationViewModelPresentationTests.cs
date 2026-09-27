@@ -147,13 +147,15 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         var assistant = new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant, "已创建待办");
         var user = new ConversationTurnViewModel("user", ChatMessageRole.User, "请安排");
 
-        Assert.False(assistant.CanViewTodo);
-        Assert.False(user.CanViewTodo);
+        Assert.False(assistant.CanOpenWorkspace);
+        Assert.False(user.CanOpenWorkspace);
 
-        assistant.CreatedTodoId = "todo-1";
+        assistant.CreatedItemId = "todo-1";
+        Assert.False(assistant.CanOpenWorkspace);
+        assistant.WorkspaceId = "todo.workspace";
 
-        Assert.True(assistant.CanViewTodo);
-        Assert.Equal("todo-1", assistant.CreatedTodoId);
+        Assert.True(assistant.CanOpenWorkspace);
+        Assert.Equal("todo-1", assistant.CreatedItemId);
     }
 
     [Fact]
@@ -265,7 +267,6 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
             new DelegatingProviderResolver(),
             new DelegatingContentResolver(),
             new SqliteConversationRepository(database),
-            new SqliteMemoryRepository(database),
             new PromptComposer(),
             TimeProvider.System,
             settings);

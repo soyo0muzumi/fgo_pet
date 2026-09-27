@@ -51,7 +51,7 @@ public sealed class RequestTokenMeterTests
         var meter = new RequestTokenMeter();
         var plain = new ChatRequest("mash", "c", [new(ChatMessageRole.User, "你好")], maxOutputTokens: 512);
         var tools = new ChatRequest("mash", "c", plain.Messages,
-            tools: [TodoToolContracts.CreateSubmitTodoProposals()], toolChoice: "auto", maxOutputTokens: 512);
+            tools: [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()], toolChoice: "auto", maxOutputTokens: 512);
         Assert.True(meter.Measure(Route, tools).InputTokens > meter.Measure(Route, plain).InputTokens + 100);
         Assert.Equal(TokenCountKind.Estimated, meter.Measure(Route, plain).Kind);
     }
@@ -67,6 +67,8 @@ public sealed class RequestTokenMeterTests
         var changed = new ChatRequest("mash", "c", [new(ChatMessageRole.User, "你好吗")], maxOutputTokens: 512);
         Assert.Equal(TokenCountKind.Estimated, meter.Measure(Route, changed).Kind);
         Assert.Equal(TokenCountKind.Estimated, meter.Measure(Route with { EndpointKey = "other" }, request).Kind);
+        Assert.Equal(TokenCountKind.Estimated, meter.Measure(Route,
+            new ChatRequest("mash", "c", request.Messages, maxOutputTokens: 1024)).Kind);
         meter.Invalidate(Route);
         Assert.Equal(TokenCountKind.Estimated, meter.Measure(Route, request).Kind);
     }

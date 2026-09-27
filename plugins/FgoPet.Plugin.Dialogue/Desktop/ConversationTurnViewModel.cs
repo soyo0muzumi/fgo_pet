@@ -1,0 +1,141 @@
+using System.Windows;
+using System.Windows.Media;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FgoPet.Core.Dialogue;
+
+namespace FgoPet.App.Dialogue;
+
+public sealed partial class ConversationTurnViewModel : ObservableObject
+{
+    private static readonly Brush AssistantBrush = new SolidColorBrush(Color.FromRgb(0x70, 0xE7, 0xF5));
+    private static readonly Brush UserBrush = new SolidColorBrush(Color.FromRgb(0xD2, 0x42, 0xE8));
+    private static readonly Brush AssistantBubbleBackground = Brushes.Transparent;
+    private static readonly Brush UserBubbleBackground = new SolidColorBrush(Color.FromArgb(0x1F, 0xD2, 0x42, 0xE8));
+
+    static ConversationTurnViewModel()
+    {
+        AssistantBrush.Freeze();
+        UserBrush.Freeze();
+        UserBubbleBackground.Freeze();
+    }
+
+    public ConversationTurnViewModel(string messageId, ChatMessageRole role, string text, bool isStreaming = false)
+    {
+        MessageId = messageId;
+        Role = role;
+        Text = text;
+        IsStreaming = isStreaming;
+        Actions = new DialogueMessageActionsViewModel(this);
+    }
+
+    public string MessageId { get; }
+    public DialogueMessageActionsViewModel Actions { get; }
+    public ChatMessageRole Role { get; }
+    public bool IsAssistant => Role == ChatMessageRole.Assistant;
+    /// <summary>Whether the turn has user-visible answer text (whitespace is not content).</summary>
+    public bool HasVisibleText => !string.IsNullOrWhiteSpace(Text);
+    public bool CanReadAloud => IsAssistant && !IsStreaming && !string.IsNullOrWhiteSpace(Text);
+
+    [ObservableProperty]
+    private bool _isSpeechBusy;
+
+    [ObservableProperty]
+    private string _speechActionText = "朗读";
+
+    [ObservableProperty]
+    private string _speechStatusText = string.Empty;
+
+    [ObservableProperty]
+    private bool _speechNeedsConfiguration;
+    public string RoleLabel => Role == ChatMessageRole.User ? "MASTER / 我" : "SERVANT / 从者";
+    public bool HasVisibleReasoning => IsAssistant && ReasoningText.Length > 0;
+    public Brush RoleBrush => Role == ChatMessageRole.User ? UserBrush : AssistantBrush;
+    public HorizontalAlignment Alignment =>
+        Role == ChatMessageRole.User ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+    public Brush BubbleBackground =>
+        Role == ChatMessageRole.User ? UserBubbleBackground : AssistantBubbleBackground;
+    public Brush BubbleBorderBrush => RoleBrush;
+    public Thickness BubbleBorderThickness => new(
+        Role == ChatMessageRole.User ? 1 : 2,
+        Role == ChatMessageRole.User ? 1 : 0,
+        Role == ChatMessageRole.User ? 1 : 0,
+        Role == ChatMessageRole.User ? 1 : 0);
+
+    [ObservableProperty]
+    private string _text;
+
+    /// <summary>Capability item identity created by this live assistant reply.</summary>
+    [ObservableProperty]
+    private string? _createdItemId;
+
+    [ObservableProperty]
+    private string? _workspaceId;
+
+    /// <summary>Navigation requires both a capability surface and a confirmed item identity.</summary>
+    public bool CanOpenWorkspace => IsAssistant && !string.IsNullOrWhiteSpace(CreatedItemId)
+        && !string.IsNullOrWhiteSpace(WorkspaceId);
+
+    partial void OnWorkspaceIdChanged(string? value) => OnPropertyChanged(nameof(CanOpenWorkspace));
+
+    partial void OnCreatedItemIdChanged(string? value) => OnPropertyChanged(nameof(CanOpenWorkspace));
+
+    partial void OnTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanReadAloud));
+        OnPropertyChanged(nameof(HasVisibleText));
+    }
+
+    [ObservableProperty]
+    private bool _isStreaming;
+
+    partial void OnIsStreamingChanged(bool value) => OnPropertyChanged(nameof(CanReadAloud));
+
+    /// <summary>Transient reasoning display (spec §9): never persisted or exported.</summary>
+    [ObservableProperty]
+    private string _reasoningText = string.Empty;
+
+    /// <summary>Dynamic one-line summary supplied by the request state/adapter layer.</summary>
+    [ObservableProperty]
+    private string _reasoningSummary = string.Empty;
+
+    /// <summary>True until the first content delta arrives; the well header shows the live timer.</summary>
+    [ObservableProperty]
+    private bool _isThinkingActive;
+
+    /// <summary>Frozen "思考 · N.Ns" label captured when the first content delta lands.</summary>
+    [ObservableProperty]
+    private string _reasoningDurationText = string.Empty;
+
+    /// <summary>Well collapsed after the first content delta; user can re-expand.</summary>
+    [ObservableProperty]
+    private bool _isReasoningExpanded;
+
+    public void Append(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        Text += text;
+        if (IsThinkingActive)
+        {
+            IsThinkingActive = false;
+            IsReasoningExpanded = false;
+        }
+    }
+
+    public void AppendReasoning(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        ReasoningText += text;
+    }
+
+    partial void OnReasoningTextChanged(string value) => OnPropertyChanged(nameof(HasVisibleReasoning));
+
+    public void SetReasoningSummary(string text) => ReasoningSummary = text?.Trim() ?? string.Empty;
+}

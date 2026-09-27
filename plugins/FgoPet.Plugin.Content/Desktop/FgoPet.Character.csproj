@@ -1,0 +1,84 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Desktop\PackageDiagnosticViewModel.cs">
+      <Link>modules\character\Desktop\PackageDiagnosticViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\PersonalizationPage.xaml">
+      <Link>Settings\PersonalizationPage.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\PersonalizationPage.xaml.cs">
+      <Link>modules\character\Desktop\PersonalizationPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\PersonalizationViewModel.cs">
+      <Link>modules\character\Desktop\PersonalizationViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\RecentServantSwitcherViewModel.cs">
+      <Link>modules\character\Desktop\RecentServantSwitcherViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\RolePackageDetailPage.xaml">
+      <Link>Settings\RolePackageDetailPage.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\RolePackageDetailPage.xaml.cs">
+      <Link>modules\character\Desktop\RolePackageDetailPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\RolePackageDetailViewModel.cs">
+      <Link>modules\character\Desktop\RolePackageDetailViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\RolePackagesPage.xaml">
+      <Link>Settings\RolePackagesPage.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\RolePackagesPage.xaml.cs">
+      <Link>modules\character\Desktop\RolePackagesPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ServantAppearanceItemViewModel.cs">
+      <Link>modules\character\Desktop\ServantAppearanceItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ServantCardViewModel.cs">
+      <Link>modules\character\Desktop\ServantCardViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ServantLibraryViewModel.cs">
+      <Link>modules\character\Desktop\ServantLibraryViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\ThemePage.xaml">
+      <Link>Settings\ThemePage.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\ThemePage.xaml.cs">
+      <Link>modules\character\Desktop\ThemePage.xaml.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/FgoPet.Plugin.Content.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Application/CharacterSettingsRegistration.cs" />
+  </ItemGroup>
+</Project>

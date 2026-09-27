@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableDefaultPageItems>false</EnableDefaultPageItems></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../FgoPet.Extensibility/FgoPet.Extensibility.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../FgoPet.Kernel/FgoPet.Kernel.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Page Include="Resources/Themes/SettingsControls.xaml" Link="Themes/SettingsControls.xaml" />
+    <Page Include="Resources/Shell/ChatControls.xaml" Link="Ui/Shell/ChatControls.xaml" />
+    <Page Include="Resources/Shell/ShellTokens.xaml" Link="Ui/Shell/ShellTokens.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+    <ProjectReference Include="../FgoPet.Platform/Contracts/FgoPet.Platform.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup><PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" /></ItemGroup>
+</Project>

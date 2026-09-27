@@ -7,7 +7,7 @@ namespace FgoPet.Infrastructure.Tests.Persistence;
 public sealed class SqliteTodoRepositoryTests : IDisposable
 {
     [Fact]
-    public void Local_update_rejects_stale_snapshot_and_nonterminal_execution()
+    public void Local_update_rejects_stale_snapshot_and_is_independent_of_backend_execution()
     {
         var database = CreateDatabase();
         var repository = new SqliteTodoRepository(database);
@@ -20,16 +20,20 @@ public sealed class SqliteTodoRepositoryTests : IDisposable
         Assert.False(repository.TryUpdateLocal(todo, todo.Complete(at.AddSeconds(2))));
         agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution("exec", todo.Id, "codex", "instance", "task", "request", at,
             FgoPet.Core.Agents.AgentExecutionStatus.DispatchOutcomeUnknown));
-        Assert.False(repository.TryUpdateLocal(edited, edited.Complete(at.AddSeconds(3))));
+        var completed = edited.Complete(at.AddSeconds(3));
+        Assert.True(repository.TryUpdateLocal(edited, completed));
         Assert.False(repository.TryUpdateLocal(edited, null));
-        Assert.Equal(edited, repository.Get(todo.Id));
+        Assert.Equal(completed, repository.Get(todo.Id));
+        var beforeEvent = System.Text.Json.JsonSerializer.Serialize(repository.Get(todo.Id));
         Assert.True(agents.TryResumeUnknown("exec", at.AddSeconds(4)));
         Assert.False(agents.TryResumeUnknown("exec", at.AddSeconds(5)));
         Assert.Equal(0, agents.GetLatestEventSequence("codex", "instance", "task"));
         Assert.Equal(FgoPet.Core.Agents.AgentEventApplyResult.Applied, agents.ApplyEvent(
             new FgoPet.Core.Agents.AgentEvent("codex", "instance", "task", 1,
                 FgoPet.Core.Agents.AgentEventType.TaskCompleted, at.AddSeconds(6), TodoId: todo.Id, DispatchRequestId: "request")));
-        Assert.Equal(TodoStatus.Completed, repository.Get(todo.Id)!.Status);
+        Assert.Equal(beforeEvent, System.Text.Json.JsonSerializer.Serialize(repository.Get(todo.Id)));
+        Assert.True(repository.TryUpdateLocal(completed, null));
+        Assert.Null(repository.Get(todo.Id));
     }
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"fgo-todo-{Guid.NewGuid():N}.db");
 
@@ -144,7 +148,7 @@ public sealed class SqliteTodoRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Delete_cascades_steps_and_rejects_unknown_execution()
+    public void Delete_cascades_steps_and_preserves_unrelated_backend_execution()
     {
         var database = CreateDatabase();
         var repository = new SqliteTodoRepository(database);
@@ -165,26 +169,10 @@ public sealed class SqliteTodoRepositoryTests : IDisposable
         repository.Save(todo);
         agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution("unknown-delete", todo.Id, "codex", "instance", "task", "request", at,
             FgoPet.Core.Agents.AgentExecutionStatus.DispatchOutcomeUnknown));
-        Assert.Throws<InvalidOperationException>(() => repository.Delete(todo.Id));
-        Assert.NotNull(repository.Get(todo.Id));
-    }
-
-    [Fact]
-    public void Clear_agent_todo_data_removes_steps_with_parent_rows()
-    {
-        var database = CreateDatabase();
-        var repository = new SqliteTodoRepository(database);
-        var at = DateTimeOffset.UtcNow;
-        repository.Save(new TodoItem("todo-clear-steps", "Clear me", null, TodoPriority.Normal, null, at, at,
-            steps: new[] { new TodoStep("step-1", "Prepare", 0) }));
-
-        repository.ClearAgentTodoData();
-
-        Assert.Null(repository.Get("todo-clear-steps"));
-        using var connection = database.Open();
-        using var count = connection.CreateCommand();
-        count.CommandText = "SELECT COUNT(*) FROM todo_steps";
-        Assert.Equal(0L, (long)count.ExecuteScalar()!);
+        var execution = agents.GetExecution("unknown-delete");
+        repository.Delete(todo.Id);
+        Assert.Null(repository.Get(todo.Id));
+        Assert.Equal(execution, agents.GetExecution("unknown-delete"));
     }
 
     public void Dispose()

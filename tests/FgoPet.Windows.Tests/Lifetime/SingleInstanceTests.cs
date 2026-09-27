@@ -51,4 +51,16 @@ public sealed class SingleInstanceTests
         var forwarded = SingleInstanceCoordinator.ForwardActivation(appId, "C:\\tmp\\x.fgopetpack", TimeSpan.FromSeconds(2));
         Assert.False(forwarded);
     }
+
+    [Fact]
+    public async Task Stopping_the_listener_cancels_an_idle_pipe_and_waits_for_its_exit()
+    {
+        var appId = $"win-single-stop-{Guid.NewGuid():N}";
+        Assert.True(SingleInstanceCoordinator.TryCreatePrimary(appId, out var coordinator, out _));
+        using var primary = coordinator!;
+        primary.ListenForActivation(_ => throw new InvalidOperationException("No activation expected"));
+        await primary.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await primary.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(SingleInstanceCoordinator.ForwardActivation(appId, "--activate", TimeSpan.FromMilliseconds(100)));
+    }
 }

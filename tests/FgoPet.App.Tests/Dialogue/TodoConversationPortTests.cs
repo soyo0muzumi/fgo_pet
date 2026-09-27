@@ -1,3 +1,4 @@
+using FgoPet.Extensibility;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
@@ -34,14 +35,13 @@ public sealed class TodoConversationPortTests : IDisposable
     }
 
     [Fact]
-    public void Orchestrator_depends_on_contracts_and_retains_only_read_access_to_proposals()
+    public void Orchestrator_routes_neutral_contributions_without_retaining_Todo_contracts_or_implementations()
     {
         var parameter = Assert.Single(Assert.Single(typeof(ConversationOrchestrator).GetConstructors())
-            .GetParameters().Where(item => item.Name == "todoProposals"));
-        Assert.Equal(typeof(ITodoConversationPort), parameter.ParameterType);
+            .GetParameters().Where(item => item.Name == "capabilities"));
+        Assert.Equal(typeof(FgoPet.Kernel.Conversation.ConversationCapabilityRouter), parameter.ParameterType);
         var fields = typeof(ConversationOrchestrator).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.Equal(typeof(ITodoProposalReader), Assert.Single(fields.Where(field => field.Name == "_todoProposals")).FieldType);
-        Assert.Equal(typeof(ITodoDraftWorkflow), Assert.Single(fields.Where(field => field.Name == "_todoDrafts")).FieldType);
+        Assert.DoesNotContain(fields, field => field.FieldType == typeof(ITodoProposalReader) || field.FieldType == typeof(ITodoDraftWorkflow));
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(TodoProposalService));
         Assert.Contains(typeof(ITodoConversationPort), typeof(TodoProposalService).GetInterfaces());
     }
@@ -64,9 +64,9 @@ public sealed class TodoConversationPortTests : IDisposable
         Assert.NotNull(draft);
         Assert.Equal(port.Proposals, draft!.Proposals);
         var update = Assert.Single(updates.Where(item => item.Type == ConversationUpdateType.AssistantCompleted));
-        Assert.Equal(tools ? TodoToolCallOutcome.ProposalsReady : TodoToolCallOutcome.TextFallback, update.TodoOutcome);
-        Assert.Equal(draft.DraftId, update.TodoDraftId);
-        Assert.Equal(draft.Version, update.TodoDraftVersion);
+        Assert.Equal(tools ? CapabilityOutcome.ProposalsReady : CapabilityOutcome.TextFallback, update.ToolOutcome);
+        Assert.Equal(draft.DraftId, update.DraftId);
+        Assert.Equal(draft.Version, update.DraftVersion);
         Assert.Contains(provider.Requests[0].Messages, message => message.Text.Contains("port-runtime-state", StringComparison.Ordinal));
         Assert.Equal(tools ? 1 : 0, port.ToolReads);
         Assert.Equal(tools ? 0 : 1, port.EnvelopeReads);
@@ -173,7 +173,7 @@ public sealed class TodoConversationPortTests : IDisposable
         Assert.Equal(ConversationSendStatus.Completed, (await orchestrator.SendAsync("mash", "继续修改", default)).Status);
         Assert.Same(draft, _drafts.Get(sent.ConversationId, "mash"));
         Assert.Empty(_todos.List());
-        Assert.Contains(updates, update => update.TodoOutcome == TodoToolCallOutcome.InvalidToolCall);
+        Assert.Contains(updates, update => update.ToolOutcome == CapabilityOutcome.InvalidToolCall);
     }
 
     [Fact]
@@ -193,8 +193,9 @@ public sealed class TodoConversationPortTests : IDisposable
     }
 
     private ConversationOrchestrator Create(ITodoConversationPort port, Provider provider, ITodoDraftWorkflow? drafts = null) =>
-        new(new Resolver(provider), new Content(), _conversations, new NoMemory(), new PromptComposer(), TimeProvider.System,
-            settings: new Settings(provider.Tools), todoProposals: port, todoDrafts: drafts);
+        new(new Resolver(provider), new Content(), _conversations, new PromptComposer(), TimeProvider.System,
+            settings: new Settings(provider.Tools), capabilities:
+                FgoPet.Testing.ActivatedCapabilities.Create(new FgoPet.Plugin.Todo.TodoPlugin(port, drafts)));
 
     private sealed class ReaderPort(ITodoDraftWorkflow drafts) : ITodoConversationPort
     {

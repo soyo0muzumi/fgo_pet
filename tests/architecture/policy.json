@@ -1,0 +1,1020 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "path": "src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj",
+      "module": "platform",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Todo/Tests/FgoPet.Plugin.Todo.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj",
+      "module": "todo",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.Kernel/FgoPet.Kernel.csproj",
+      "module": "kernel",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj",
+      "module": "desktop",
+      "layer": "host",
+      "role": "host"
+    },
+    {
+      "path": "src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj",
+      "module": "desktop",
+      "layer": "host",
+      "role": "host"
+    },
+    {
+      "path": "src/FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj",
+      "module": "desktop",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj",
+      "module": "settings-host",
+      "layer": "host",
+      "role": "host"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentProtocol/FgoPet.AgentProtocol.csproj",
+      "module": "agent-backend",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentRelay/FgoPet.AgentRelay.csproj",
+      "module": "agent-backend",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentRuntime/FgoPet.AgentRuntime.csproj",
+      "module": "agent-backend",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.CodexAdapter/FgoPet.CodexAdapter.csproj",
+      "module": "agent-backend",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.AgentProtocol.Tests/FgoPet.AgentProtocol.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.AgentRelay.Tests/FgoPet.AgentRelay.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.AgentRuntime.Tests/FgoPet.AgentRuntime.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.CodexAdapter.Tests/FgoPet.CodexAdapter.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj",
+      "module": "character",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj",
+      "module": "conversation",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj",
+      "module": "memory",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Speech/Contracts/FgoPet.Speech.Core.csproj",
+      "module": "speech",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Speech/Desktop/FgoPet.Speech.Desktop.csproj",
+      "module": "speech",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Speech/Infrastructure/FgoPet.Speech.Infrastructure.csproj",
+      "module": "speech",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Speech.Core.Tests/FgoPet.Speech.Core.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Speech.Desktop.Tests/FgoPet.Speech.Desktop.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Speech.Infrastructure.Tests/FgoPet.Speech.Infrastructure.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Todo/Desktop/FgoPet.Plugin.Todo.Desktop.csproj",
+      "module": "todo",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.App/FgoPet.App.csproj",
+      "module": "bootstrap",
+      "layer": "host",
+      "role": "host"
+    },
+    {
+      "path": "tests/FgoPet.App.Tests/FgoPet.App.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Architecture.Tests/FgoPet.Architecture.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Core.Tests/FgoPet.Core.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.EndToEnd.Tests/FgoPet.EndToEnd.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Infrastructure.Tests/FgoPet.Infrastructure.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.SettingsHost.Tests/FgoPet.SettingsHost.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Windows.Tests/FgoPet.Windows.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "src/FgoPet.Extensibility/FgoPet.Extensibility.csproj",
+      "module": "extensibility",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.UiSdk/FgoPet.UiSdk.csproj",
+      "module": "ui",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Foundation.Tests/FgoPet.Foundation.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Focus/Core/FgoPet.Plugin.Focus.Core.csproj",
+      "module": "focus",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Focus/Desktop/FgoPet.Plugin.Focus.Desktop.csproj",
+      "module": "focus",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.Platform/Contracts/FgoPet.Platform.Contracts.csproj",
+      "module": "platform",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Memory/Core/FgoPet.Plugin.Memory.Core.csproj",
+      "module": "memory",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Plugin.Memory.Tests/FgoPet.Plugin.Memory.Tests.csproj",
+      "module": "memory-tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Speech/Core/FgoPet.Plugin.Speech.Core.csproj",
+      "module": "speech",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.IndexTts/FgoPet.Provider.IndexTts.csproj",
+      "module": "speech-provider",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Contracts/FgoPet.AgentBackend.Contracts.csproj",
+      "module": "agent-backend",
+      "layer": "contract",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Windows/FgoPet.AgentBackend.Windows.csproj",
+      "module": "agent-backend",
+      "layer": "implementation",
+      "role": "production"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Desktop/FgoPet.AgentBackend.Desktop.csproj",
+      "module": "agent-backend",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Content/Core/FgoPet.Plugin.Content.Core.csproj",
+      "module": "content",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Content/Tests/FgoPet.Plugin.Content.Tests.csproj",
+      "module": "content-tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/providers/FgoPet.Portrait.Static/FgoPet.Portrait.Static.csproj",
+      "module": "rendering",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj",
+      "module": "platform",
+      "layer": "implementation",
+      "role": "production"
+    }
+  ],
+  "dependencyRules": [
+    {
+      "id": "todo-ui-to-owned-application",
+      "fromModules": [
+        "todo"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "todo"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "todo-to-platform-storage",
+      "fromModules": [
+        "todo"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "ui-sdk-to-published-contracts",
+      "fromModules": [
+        "ui"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "extensibility",
+        "platform"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "conversation-to-kernel-foundation",
+      "fromModules": [
+        "conversation"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "capabilities-to-neutral-contracts",
+      "fromModules": [
+        "conversation",
+        "character",
+        "todo",
+        "focus",
+        "memory",
+        "speech",
+        "agent-backend",
+        "kernel"
+      ],
+      "fromLayers": [
+        "application",
+        "implementation",
+        "desktop",
+        "contract"
+      ],
+      "toModules": [
+        "extensibility",
+        "kernel",
+        "platform"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "capability-ui-to-ui-sdk",
+      "fromModules": [
+        "character",
+        "todo",
+        "focus",
+        "memory",
+        "speech",
+        "conversation",
+        "desktop",
+        "agent-backend",
+        "rendering"
+      ],
+      "fromLayers": [
+        "desktop",
+        "host"
+      ],
+      "toModules": [
+        "ui"
+      ],
+      "toLayers": [
+        "desktop",
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "shell-to-kernel-and-neutral",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host",
+        "contract"
+      ],
+      "toModules": [
+        "kernel",
+        "extensibility",
+        "platform"
+      ],
+      "toLayers": [
+        "application",
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "bootstrap-composition",
+      "fromModules": [
+        "bootstrap"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "desktop",
+        "kernel",
+        "extensibility",
+        "platform",
+        "ui",
+        "todo",
+        "focus",
+        "memory",
+        "character",
+        "speech",
+        "agent-backend",
+        "content",
+        "rendering",
+        "conversation",
+        "settings-host"
+      ],
+      "toLayers": [
+        "host",
+        "application",
+        "implementation",
+        "desktop",
+        "contract"
+      ],
+      "kinds": [
+        "compile",
+        "companion"
+      ]
+    },
+    {
+      "id": "focus-to-owned-storage",
+      "fromModules": [
+        "focus"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "focus-ui-to-owned-application",
+      "fromModules": [
+        "focus"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "focus"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "platform-implementation-to-contracts",
+      "fromModules": [
+        "platform"
+      ],
+      "fromLayers": [
+        "implementation"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "memory-to-owned-storage",
+      "fromModules": [
+        "memory"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "memory-to-kernel-lifetime",
+      "fromModules": [
+        "memory"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "memory-ui-to-owned-application",
+      "fromModules": [
+        "memory"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "memory"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "extensibility-to-neutral-platform-contracts",
+      "fromModules": [
+        "extensibility"
+      ],
+      "fromLayers": [
+        "contract"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "speech-desktop-to-owned-application",
+      "fromModules": [
+        "speech"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "speech"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "speech-providers-to-published-contracts",
+      "fromModules": [
+        "speech-provider"
+      ],
+      "fromLayers": [
+        "implementation"
+      ],
+      "toModules": [
+        "speech"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "speech-provider-neutral-secrets",
+      "fromModules": [
+        "speech"
+      ],
+      "fromLayers": [
+        "implementation",
+        "desktop"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "app-to-statically-selected-speech-providers",
+      "fromModules": [
+        "bootstrap"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "speech-provider"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "agent-backend-to-owned-platform-storage",
+      "fromModules": [
+        "agent-backend"
+      ],
+      "fromLayers": [
+        "implementation"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "agent-backend-internal-services",
+      "fromModules": [
+        "agent-backend"
+      ],
+      "fromLayers": [
+        "implementation"
+      ],
+      "toModules": [
+        "agent-backend"
+      ],
+      "toLayers": [
+        "contract",
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "agent-backend-to-process-lifecycle",
+      "fromModules": [
+        "agent-backend"
+      ],
+      "fromLayers": [
+        "implementation"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "backend-administration-to-owned-backend",
+      "fromModules": [
+        "agent-backend"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "agent-backend"
+      ],
+      "toLayers": [
+        "contract",
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "settings-document-to-backend-settings-contract",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "agent-backend"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "content-to-kernel-and-storage",
+      "fromModules": [
+        "content"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "kernel",
+        "platform"
+      ],
+      "toLayers": [
+        "application",
+        "implementation",
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "static-renderer-to-content-and-kernel",
+      "fromModules": [
+        "rendering"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "content",
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "character-settings-to-published-companion-and-content",
+      "fromModules": [
+        "character"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "kernel",
+        "content"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "memory-presentation-to-conversation-lifetime-owner",
+      "fromModules": [
+        "memory"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "data-management-to-package-reader",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "content"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "conversation-to-shared-storage",
+      "fromModules": [
+        "conversation"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "desktop-to-platform-implementation",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "platform"
+      ],
+      "toLayers": [
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "settings-host-to-published-sections",
+      "fromModules": [
+        "settings-host"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "kernel",
+        "memory",
+        "agent-backend",
+        "platform",
+        "speech"
+      ],
+      "toLayers": [
+        "application",
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "desktop-to-settings-document",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "settings-host"
+      ],
+      "toLayers": [
+        "host"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "focus-presentation-to-kernel-role-and-lifetime",
+      "fromModules": [
+        "focus"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "ui-sdk-to-published-kernel-geometry",
+      "fromModules": [
+        "ui"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "window-shell-to-published-speech-playback",
+      "fromModules": [
+        "desktop"
+      ],
+      "fromLayers": [
+        "host"
+      ],
+      "toModules": [
+        "speech"
+      ],
+      "toLayers": [
+        "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    }
+  ]
+}

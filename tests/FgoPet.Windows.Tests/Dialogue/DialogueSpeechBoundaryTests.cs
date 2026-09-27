@@ -259,8 +259,7 @@ public sealed class DialogueSpeechBoundaryTests
             var database = new RuntimeDatabase(_path, pooling: false);
             new RuntimeDatabaseMigrator(database).Migrate();
             var settings = new Settings();
-            var orchestrator = new ConversationOrchestrator(new Resolver(), new Content(), new SqliteConversationRepository(database),
-                new NoMemory(), new PromptComposer(), TimeProvider.System, settings: settings);
+            var orchestrator = new ConversationOrchestrator(new Resolver(), new Content(), new SqliteConversationRepository(database), new PromptComposer(), TimeProvider.System, settings: settings);
             Conversation = new ConversationViewModel(orchestrator, settings) { ActiveServantId = "mash" };
             Model = new DialogueWindowViewModel(Conversation, speech: Port);
         }

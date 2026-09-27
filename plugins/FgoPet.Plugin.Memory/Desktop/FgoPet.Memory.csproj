@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="ConversationMemoryPage.xaml">
+      <Link>Settings\ConversationMemoryPage.xaml</Link>
+    </Page>
+    <Compile Include="ConversationMemoryPage.xaml.cs">
+      <Link>modules\memory\Desktop\ConversationMemoryPage.xaml.cs</Link>
+    </Compile>
+    <Compile Include="MemoryViewModel.cs">
+      <Link>modules\memory\Desktop\MemoryViewModel.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/FgoPet.Plugin.Memory.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MemoryRegistration.cs" />
+    <Compile Include="ProviderMemoryCandidateExtractor.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MemoryContextConnector.cs" />
+  </ItemGroup>
+</Project>

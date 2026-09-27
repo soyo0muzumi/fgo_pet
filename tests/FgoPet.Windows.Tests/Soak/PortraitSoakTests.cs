@@ -51,7 +51,6 @@ public sealed class PortraitSoakTests
         }
         Assert.Equal(Core.Panels.AttachedPanelState.Collapsed, panel.State);
         Assert.Equal(0, panel.VisibleDialogueCount);
-        Assert.Equal(0, panel.VisibleTodoCount);
 
         // Working-set samples are recorded but no fixed memory ceiling is asserted.
         samples.Add(Process.GetCurrentProcess().WorkingSet64);

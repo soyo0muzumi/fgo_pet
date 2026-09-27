@@ -85,12 +85,16 @@ FGO Pet 是面向 Windows 11 的 FGO 从者桌面伴侣。它把桌宠、专注�
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release
+pwsh -File tools/scripts/test-architecture.ps1
+pwsh -File tools/scripts/test-phase4.ps1
 ```
+
+当前目录按职责分为 `src/`（应用、Kernel、平台与 UI SDK）、`plugins/`（功能插件与 providers）、`tests/`（测试和架构策略）以及 `tools/`（脚本、安装器、集成和实验工具）。架构策略见 `tests/architecture/policy.json`；`baseline.json` 记录只允许缩减的临时依赖例外。
 
 更多入口：
 
 - [开发者指南](docs/guides/development.md)：完整构建、测试、目录和 ZIP 候选流程；
-- [模块地图](modules/README.md)：模块职责、依赖方向和迁移状态；
+- [架构策略](tests/architecture/README.md)：项目分类、依赖边界和架构验证入口；
 - [Agent 集成指南](docs/guides/agent-integration.md)；
 - [Codex Adapter 指南](docs/guides/codex-adapter.md)；
 - [Release candidate 流程](docs/release/README.md)；

@@ -12,7 +12,7 @@ public sealed class BudgetedPromptComposerTests
     {
         var context = Context("继续");
         var memory = new FgoPet.Core.Memory.StoredMemory("large", "mash", new string('偏', 2000), true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        var prompt = new PromptComposer().Compose(new(context.ContentContext, context.Persona, [], [memory], "", [], "继续"), Route, Budget(8192));
+        var prompt = new PromptComposer().Compose(new(context.ContentContext, context.Persona, [], FgoPet.Plugin.Memory.MemoryPlugin.BuildBlocks([memory], new("test", "mash", null)), "", [], "继续"), Route, Budget(8192));
         Assert.DoesNotContain(prompt.Messages, m => m.Text.Contains("source=\"memory:"));
         Assert.True(prompt.FitsBudget);
     }
@@ -62,5 +62,5 @@ public sealed class BudgetedPromptComposerTests
     private static PromptContext Context(string user, PromptMessage[]? history = null, string? draft = null) =>
         new(new ContentContextKey("mash", "pack", "1", "default", "1", "1"),
             new PersonaBundle("mash", "pack", "1", "1", "认真回应。", []),
-            [], [], "", history ?? [], user, pendingTodoDraft: draft);
+            [], [], "", history ?? [], user, pendingCapabilityState: draft);
 }

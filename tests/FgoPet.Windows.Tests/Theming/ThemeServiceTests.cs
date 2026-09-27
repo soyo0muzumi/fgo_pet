@@ -402,9 +402,11 @@ public sealed class ThemeServiceTests
     private static ResourceDictionary LoadComponentDictionary(string componentPath)
     {
         Application.ResourceAssembly ??= typeof(FgoPet.App.App).Assembly;
+        var assembly = componentPath is "Themes/SettingsControls.xaml" or "Ui/Shell/ShellTokens.xaml" or "Ui/Shell/ChatControls.xaml"
+            ? "FgoPet.UiSdk" : "FgoPet.App";
         return new ResourceDictionary
         {
-            Source = new Uri($"/FgoPet.App;component/{componentPath}", UriKind.Relative),
+            Source = new Uri($"/{assembly};component/{componentPath}", UriKind.Relative),
         };
     }
 

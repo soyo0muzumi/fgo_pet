@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 阶段 1 项目拆分：条目由 src/FgoPet.App 迁出。 -->
+  <!-- Include 相对本 csproj；Link 逐字沿用（决定 WPF 资源 URI 与生成类命名空间）。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <UseWPF>false</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <Compile Include="Phase2RuntimeContracts.cs">
+      <Link>host\DesktopShell\Contracts\Phase2RuntimeContracts.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="BackupContracts.cs" Link="Contracts/BackupContracts.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../FgoPet.Kernel/FgoPet.Kernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.Plugin.Memory.Tests" />
+  </ItemGroup>
+</Project>

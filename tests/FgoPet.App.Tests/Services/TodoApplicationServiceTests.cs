@@ -8,19 +8,6 @@ namespace FgoPet.App.Tests.Services;
 
 public sealed class TodoApplicationServiceTests
 {
-    [Fact]
-    public void Repeated_confirmation_of_one_proposal_creates_only_one_todo()
-    {
-        var repository = new FakeTodoRepository();
-        var service = new TodoApplicationService(repository, TimeProvider.System);
-        var proposal = new FgoPet.App.ViewModels.TodoProposalViewModel(
-            new FgoPet.App.Dialogue.TodoProposal("Learn Transformer", "1. Attention\n2. Architecture", TodoPriority.Normal, null),
-            new FgoPet.App.Dialogue.TodoProposalService(service));
-        var first = proposal.Confirm();
-        var second = proposal.Confirm();
-        Assert.Equal(first.Id, second.Id);
-        Assert.Equal(1, repository.SaveCount);
-    }
 
     [Fact]
     public void Creating_a_todo_persists_it_without_selecting_or_dispatching_an_agent()
@@ -162,7 +149,7 @@ public sealed class TodoApplicationServiceTests
     }
 
     [Fact]
-    public void Active_and_unknown_execution_reject_step_updates_with_review_message()
+    public void Active_status_rejects_step_updates_with_review_message()
     {
         var repository = new FakeTodoRepository();
         var service = new TodoApplicationService(repository, TimeProvider.System);
@@ -175,28 +162,6 @@ public sealed class TodoApplicationServiceTests
         Assert.Contains("核对", activeError.Message);
         Assert.DoesNotContain("兼容记录", activeError.Message);
 
-        var path = CreateTemporaryDatabasePath();
-        try
-        {
-            var database = TestRuntimeDatabase.Create(path);
-            new RuntimeDatabaseMigrator(database).Migrate();
-            var agents = new SqliteAgentRepository(database);
-            agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution(
-                "execution-unknown", planned.Id, "codex", "instance-1", "task-1", "request-1",
-                DateTimeOffset.UtcNow, FgoPet.Core.Agents.AgentExecutionStatus.DispatchOutcomeUnknown));
-            repository.Saved = planned;
-            var protectedService = new TodoApplicationService(repository, TimeProvider.System, agents);
-
-            var unknownError = Assert.Throws<InvalidOperationException>(() => protectedService.UpdateSteps(planned,
-                planned.Steps));
-            Assert.Contains("核对", unknownError.Message);
-            Assert.DoesNotContain("兼容记录", unknownError.Message);
-            Assert.Equal(planned, repository.Saved);
-        }
-        finally
-        {
-            DeleteTemporaryDatabase(path);
-        }
     }
 
     [Fact]
@@ -277,7 +242,7 @@ public sealed class TodoApplicationServiceTests
             agents.SaveExecution(execution);
 
             var reopenedAt = DateTimeOffset.Parse("2026-09-13T01:10:03Z");
-            var recreated = new TodoApplicationService(new SqliteTodoRepository(database), new FixedTimeProvider(reopenedAt), agents);
+            var recreated = new TodoApplicationService(new SqliteTodoRepository(database), new FixedTimeProvider(reopenedAt));
             var reopened = recreated.Reopen(completed.Id);
 
             Assert.Equal(TodoStatus.Planned, reopened.Status);
@@ -304,7 +269,7 @@ public sealed class TodoApplicationServiceTests
     }
 
     [Fact]
-    public void Reopen_rejects_non_completed_and_agent_protected_todos()
+    public void Reopen_uses_local_status_and_preserves_historical_backend_execution()
     {
         var repository = new FakeTodoRepository();
         var service = new TodoApplicationService(repository, TimeProvider.System);
@@ -325,10 +290,12 @@ public sealed class TodoApplicationServiceTests
             var agents = new SqliteAgentRepository(database);
             agents.SaveExecution(new FgoPet.Core.Agents.AgentExecution("execution-1", completed.Id, "codex", "instance-1", "task-1", "request-1",
                 DateTimeOffset.UtcNow, FgoPet.Core.Agents.AgentExecutionStatus.DispatchOutcomeUnknown));
-            var protectedService = new TodoApplicationService(repository, TimeProvider.System, agents);
+            var protectedService = new TodoApplicationService(repository, TimeProvider.System);
 
-            Assert.Throws<InvalidOperationException>(() => protectedService.Reopen(completed.Id));
-            Assert.Equal(completed, repository.Saved);
+            var reopened = protectedService.Reopen(completed.Id);
+            Assert.Equal(TodoStatus.Planned, reopened.Status);
+            Assert.Equal(reopened, repository.Saved);
+            Assert.Equal(FgoPet.Core.Agents.AgentExecutionStatus.DispatchOutcomeUnknown, agents.GetExecution("execution-1")!.Status);
         }
         finally
         {
@@ -414,7 +381,6 @@ public sealed class TodoApplicationServiceTests
         public IReadOnlyList<TodoItem> List(TodoStatus? status = null) => Saved is null || status is not null && Saved.Status != status ? Array.Empty<TodoItem>() : new[] { Saved };
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) => Saved?.CompletedAt?.ToLocalTime().Date == localDate.ToDateTime(TimeOnly.MinValue).Date ? new[] { Saved } : Array.Empty<TodoItem>();
         public void Delete(string id) { DeletedId = id; Saved = null; }
-        public void ClearAgentTodoData() => Saved = null;
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

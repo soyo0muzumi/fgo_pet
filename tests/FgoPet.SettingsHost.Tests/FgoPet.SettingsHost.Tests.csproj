@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -15,7 +15,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\host\Settings\src\FgoPet.SettingsHost\FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="..\..\src\FgoPet.Desktop\Settings\FgoPet.SettingsHost.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />

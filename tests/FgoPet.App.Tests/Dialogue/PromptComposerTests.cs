@@ -43,7 +43,7 @@ public sealed class PromptComposerTests
         var error = Assert.Throws<PromptBudgetException>(() =>
         {
             var context = new PromptContext(key, new PersonaBundle("800100", "test", "1.0.0", "p1", "persona", []),
-                [], [], "", [], "continue", pendingTodoDraft: new string(escaping ? '"' : 'x', escaping ? 8_000 : 12_001));
+                [], [], "", [], "continue", pendingCapabilityState: new string(escaping ? '"' : 'x', escaping ? 8_000 : 12_001));
             Compose(context);
         });
         Assert.Equal(PromptBudgetFailure.PendingDraftTooLarge, error.Failure);
@@ -71,13 +71,13 @@ public sealed class PromptComposerTests
             contextKey,
             new PersonaBundle("800100", "test-persona", "1.0.0", "2.1.0", "稳定回应。", []),
             [],
-            [],
+            new FgoPet.Plugin.Todo.TodoPromptProvider().BuildPrompt(new("test", "800100", null), "工作", true),
             string.Empty,
             [],
             "帮我安排今天的工作。");
 
         var texts = new PromptComposer().Compose(context, Route, Budget,
-            [TodoToolContracts.CreateSubmitTodoProposals()], "auto").Messages.Select(message => message.Text).ToArray();
+            [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()], "auto").Messages.Select(message => message.Text).ToArray();
 
         Assert.Contains(texts, text => text.Contains("submit_todo_proposals", StringComparison.Ordinal));
         Assert.Contains(texts, text => text.Contains("用户确认", StringComparison.Ordinal));
@@ -92,7 +92,7 @@ public sealed class PromptComposerTests
     {
         var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
         var context = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "稳定回应。", []),
-            [], [], "", [], "帮我安排今天的工作。");
+            [], new FgoPet.Plugin.Todo.TodoPromptProvider().BuildPrompt(new("test", "800100", null), "工作", false), "", [], "帮我安排今天的工作。");
         var prompt = new PromptComposer().Compose(context, Route, Budget);
         var text = string.Join("\n", prompt.Messages.Select(message => message.Text));
         Assert.DoesNotContain("submit_todo_proposals", text);
@@ -154,10 +154,10 @@ public sealed class PromptComposerTests
                 new KnowledgeEntry("pending", "800100", "草稿", "不应进入 prompt。", "pending"),
                 new KnowledgeEntry("story", "800100", "剧情", "这是 approved 的剧情资料。", "approved", KnowledgeKind.Story),
             ],
-            [
+            FgoPet.Plugin.Memory.MemoryPlugin.BuildBlocks([
                 new StoredMemory("enabled", "800100", "用户喜欢安静工作。", true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
                 new StoredMemory("disabled", "800100", "不应进入 prompt。", false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
-            ],
+            ], new("test", "800100", null)),
             "专注中",
             [new PromptMessage(ChatMessageRole.User, "上一轮消息")],
             "请讲讲你的剧情经历。");

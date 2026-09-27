@@ -8,7 +8,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using FgoPet.App.Services;
 using FgoPet.App.Views;
-using FgoPet.Core.Agents;
 using FgoPet.Core.Archives;
 using FgoPet.Core.Todo;
 using Xunit;
@@ -18,6 +17,31 @@ namespace FgoPet.Windows.Tests.Todo;
 [Trait("Category", "WindowsIntegration")]
 public sealed class TodoWorkspaceViewIntegrationTests
 {
+    [Fact]
+    public Task Plugin_shutdown_from_a_background_thread_awaits_UI_cleanup() => StaRunner.RunAsync(async () =>
+    {
+        var repository = new FakeTodoRepository();
+        var service = new TodoApplicationService(repository, TimeProvider.System);
+        var plugin = new FgoPet.Plugin.Todo.Desktop.TodoDesktopPlugin(
+            new FgoPet.Plugin.Todo.TodoPlugin(new FgoPet.App.Dialogue.TodoProposalService(service)), service);
+        await plugin.StartAsync(default);
+        var view = Assert.IsType<TodoWorkspaceView>(plugin.CreateView());
+        var window = new Window { Content = view };
+        window.Show(); window.UpdateLayout();
+        try
+        {
+            view.BeginAdd();
+            await Task.Run(async () => await plugin.StopAsync(default));
+            Assert.False(view.IsEnabled);
+            var count = ((ItemsControl)view.FindName("ActiveItems")).Items.Count;
+            service.Create("after shutdown", null, TodoPriority.Normal, null);
+            StaRunner.Pump(window.Dispatcher);
+            Assert.Equal(count, ((ItemsControl)view.FindName("ActiveItems")).Items.Count);
+            await plugin.DisposeAsync();
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void Quick_add_is_collapsed_until_begin_add_and_reveals_optional_description_on_demand()
     {
@@ -1410,7 +1434,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
     }
 
     [Fact]
-    public void Active_and_unknown_execution_rows_remain_disabled_for_completion_or_reopen()
+    public void Active_rows_remain_protected_while_completed_rows_can_reopen()
     {
         StaRun(() =>
         {
@@ -1419,10 +1443,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
             var unknown = Item("todo-unknown", "Unknown work", null).Complete(DateTimeOffset.UtcNow);
             repository.Items.Add(active);
             repository.Items.Add(unknown);
-            var agents = new FakeAgentRepository(new AgentExecution(
-                "execution-unknown", unknown.Id, "codex", "source-1", "task-1", "dispatch-1",
-                DateTimeOffset.UtcNow, AgentExecutionStatus.DispatchOutcomeUnknown));
-            var view = ShowView(repository, agents);
+            var view = ShowView(repository);
             try
             {
                 var activeRows = Assert.IsType<ItemsControl>(view.FindName("ActiveItems"));
@@ -1430,7 +1451,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.IsType<Expander>(view.FindName("CompletedSection")).IsExpanded = true;
                 view.UpdateLayout();
                 Assert.False(GetCompletionControl(activeRows, active.Id).IsEnabled);
-                Assert.False(GetCompletionControl(historyRows, unknown.Id).IsEnabled);
+                Assert.True(GetCompletionControl(historyRows, unknown.Id).IsEnabled);
             }
             finally { CloseView(view); }
         });
@@ -1467,41 +1488,6 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var delete = Assert.IsType<MenuItem>(Assert.Single(more.ContextMenu.Items));
                 Assert.Equal("删除待办", System.Windows.Automation.AutomationProperties.GetName(delete));
                 more.ContextMenu.IsOpen = false;
-            }
-            finally { CloseView(view); }
-        });
-    }
-
-    [Fact]
-    public void Unknown_execution_remains_visible_and_blocks_mutating_row_actions()
-    {
-        StaRun(() =>
-        {
-            var repository = new FakeTodoRepository();
-            var todo = Item("todo-protected", "Protected work", "Check the original task");
-            repository.Save(todo);
-            var agents = new FakeAgentRepository(new AgentExecution(
-                "execution-1", todo.Id, "codex", "source-1", "task-1", "dispatch-1",
-                DateTimeOffset.UtcNow, AgentExecutionStatus.DispatchOutcomeUnknown));
-            var view = ShowView(repository, agents);
-            try
-            {
-                var rows = Assert.IsType<ItemsControl>(view.FindName("ActiveItems"));
-                var row = FindVisualChildren<Expander>(rows).Single();
-                row.IsExpanded = true;
-                view.UpdateLayout();
-
-                Assert.False(FindVisualChildren<CheckBox>(rows).Single().IsEnabled);
-                Assert.False(FindButton(row, "编辑").IsEnabled);
-                var more = FindButton(row, "更多操作");
-                more.ContextMenu!.PlacementTarget = more;
-                more.ContextMenu!.IsOpen = true;
-                PumpDispatcher();
-                Assert.False(Assert.IsType<MenuItem>(Assert.Single(more.ContextMenu.Items)).IsEnabled);
-                more.ContextMenu.IsOpen = false;
-                Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text == "待核对");
-                Assert.DoesNotContain(FindVisualChildren<Expander>(view), expander => Equals(expander.Header, "Agent 兼容记录"));
-                Assert.DoesNotContain(FindVisualChildren<Expander>(view), expander => Equals(expander.Header, "执行记录与恢复"));
             }
             finally { CloseView(view); }
         });
@@ -1825,9 +1811,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
         });
     }
 
-    private static TodoWorkspaceView ShowView(FakeTodoRepository repository, IAgentRepository? agents = null)
+    private static TodoWorkspaceView ShowView(FakeTodoRepository repository)
     {
-        var view = new TodoWorkspaceView(new TodoApplicationService(repository, TimeProvider.System, agents), agents);
+        var view = new TodoWorkspaceView(new TodoApplicationService(repository, TimeProvider.System));
         var window = new Window { Width = 720, Height = 520, Content = view };
         window.Show();
         view.Refresh();
@@ -2008,24 +1994,6 @@ public sealed class TodoWorkspaceViewIntegrationTests
         public IReadOnlyList<TodoItem> ListCompletedOn(DateOnly localDate) =>
             Items.Where(item => item.CompletedAt?.ToLocalTime().Date == localDate.ToDateTime(TimeOnly.MinValue).Date).ToArray();
         public void Delete(string id) => Items.RemoveAll(item => item.Id == id);
-        public void ClearAgentTodoData() => Items.Clear();
     }
 
-    private sealed class FakeAgentRepository(AgentExecution execution) : IAgentRepository
-    {
-        public void SaveExecution(AgentExecution value) => throw new NotSupportedException();
-        public AgentExecution? GetExecution(string id) => execution.Id == id ? execution : null;
-        public AgentExecution? GetExecution(string sourceType, string sourceInstance, string taskId) => execution;
-        public AgentExecution? GetLatestExecutionForTodo(string todoId) => execution.TodoId == todoId ? execution : null;
-        public IReadOnlyList<AgentExecution> ListNonTerminalExecutions() => [execution];
-        public IReadOnlyList<AgentExecution> ListTerminalExecutions(DateTimeOffset endedBefore, int limit) => [];
-        public bool HasEventReceipt(string sourceType, string sourceInstance, string taskId, long sequence) => false;
-        public AgentEventApplyResult ApplyEvent(AgentEvent agentEvent) => throw new NotSupportedException();
-        public void SaveArchiveBatch(AgentArchiveBatch batch) { }
-        public AgentArchiveBatch? GetArchiveBatch(string batchId) => null;
-        public IReadOnlyList<AgentArchiveBatch> ListIncompleteArchiveBatches() => [];
-        public void CompleteArchiveBatch(string batchId, DateTimeOffset completedAt) { }
-        public void SaveConnection(PersistedAgentConnection connection, IReadOnlyList<AgentProjectTarget> allowedTargets) { }
-        public IReadOnlyList<PersistedAgentConnection> ListConnections() => [];
-    }
 }

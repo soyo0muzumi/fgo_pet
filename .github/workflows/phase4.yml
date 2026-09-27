@@ -2,22 +2,26 @@ name: Phase 4 acceptance
 on:
   pull_request:
     paths:
-      - 'scripts/test-phase4.ps1'
-      - 'scripts/install-codex-adapter.ps1'
-      - 'scripts/uninstall-codex-adapter.ps1'
-      - 'integrations/codex/**'
-      - 'modules/speech/src/**'
-      - 'modules/dialogue/src/**/*.csproj'
+      - 'tools/scripts/test-phase4.ps1'
+      - 'tools/scripts/install-codex-adapter.ps1'
+      - 'tools/scripts/uninstall-codex-adapter.ps1'
+      - 'tools/integrations/codex/**'
+      - 'plugins/FgoPet.Plugin.Speech/**'
+      - 'plugins/providers/FgoPet.Provider.IndexTts/**'
+      - 'plugins/providers/FgoPet.Provider.Codex/**'
+      - 'plugins/FgoPet.Plugin.Dialogue/*.csproj'
       - '.github/workflows/phase4.yml'
   push:
     branches: ['arch/restructure-v2', 'main']
     paths:
-      - 'scripts/test-phase4.ps1'
-      - 'scripts/install-codex-adapter.ps1'
-      - 'scripts/uninstall-codex-adapter.ps1'
-      - 'integrations/codex/**'
-      - 'modules/speech/src/**'
-      - 'modules/dialogue/src/**/*.csproj'
+      - 'tools/scripts/test-phase4.ps1'
+      - 'tools/scripts/install-codex-adapter.ps1'
+      - 'tools/scripts/uninstall-codex-adapter.ps1'
+      - 'tools/integrations/codex/**'
+      - 'plugins/FgoPet.Plugin.Speech/**'
+      - 'plugins/providers/FgoPet.Provider.IndexTts/**'
+      - 'plugins/providers/FgoPet.Provider.Codex/**'
+      - 'plugins/FgoPet.Plugin.Dialogue/*.csproj'
       - '.github/workflows/phase4.yml'
   workflow_dispatch:
 permissions:
@@ -51,7 +55,7 @@ jobs:
               Write-Host "::group::Phase 4 acceptance round $round / 3"
               # A fresh PowerShell process executes the same local entry point.
               # A failed round stops the sequence; later successes cannot mask it.
-              & pwsh -NoProfile -File ./scripts/test-phase4.ps1
+              & pwsh -NoProfile -File ./tools/scripts/test-phase4.ps1
               if ($LASTEXITCODE -ne 0) { throw "Phase 4 round $round failed with exit code $LASTEXITCODE." }
               $summaries = @(Get-ChildItem artifacts/validation/phase4-*/phase4-summary.json |
                   Where-Object { -not $seen.ContainsKey($_.FullName) })

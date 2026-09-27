@@ -13,6 +13,15 @@ namespace FgoPet.App.Tests.Framework;
 public sealed class ArchitectureTests
 {
     [Fact]
+    public void Conversation_loop_prompting_and_budgeting_compile_in_the_pure_kernel()
+    {
+        var kernel = typeof(AppRuntime).Assembly;
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.ConversationOrchestrator).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.PromptComposer).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.ConversationSummaryService).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.Infrastructure.Providers.RequestTokenMeter).Assembly);
+    }
+    [Fact]
     public void Production_projects_do_not_reference_SkiaSharp()
     {
         var files = ProjectFiles().Where(IsOnThisCheckout);
@@ -28,62 +37,23 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Core_has_no_renderer_or_transparency_selectors()
+    public void Kernel_has_no_renderer_or_transparency_selectors()
     {
-        var core = ReadProject("FgoPet.Core");
+        var core = ReadProject("FgoPet.Kernel");
         Assert.DoesNotContain(core, "RenderBackend", StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(core, "TransparencyMode", StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(core, "SkiaSharp", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Core_and_Infrastructure_do_not_use_WPF()
+    public void Kernel_and_platform_implementations_do_not_use_WPF()
     {
         var expected =
-            from name in new[] { "FgoPet.Core", "FgoPet.Infrastructure" }
+            from name in new[] { "FgoPet.Kernel", "FgoPet.Platform.Contracts", "FgoPet.Platform.Storage", "FgoPet.Platform.Windows" }
             let text = ReadProject(name)
             select new { name, hasUseWpf = text.Contains("<UseWPF>true</UseWPF>", StringComparison.OrdinalIgnoreCase) };
 
         Assert.All(expected, item => Assert.False(item.hasUseWpf, $"{item.name} must not enable WPF."));
-    }
-
-    [Fact]
-    public void Dependency_direction_keeps_feature_modules_on_foundational_contracts()
-    {
-        var core = ReferencedProjects("FgoPet.Core");
-        var infra = ReferencedProjects("FgoPet.Infrastructure");
-        var app = ReferencedProjects("FgoPet.App");
-
-        // Retiring the cross-module settings aggregate leaves Core with no
-        // project references; speech settings stay owned by Speech.Core.
-        Assert.Empty(core);
-        Assert.Equal(
-            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core" }.OrderBy(name => name, StringComparer.Ordinal),
-            infra.OrderBy(name => name, StringComparer.Ordinal));
-        // 阶段 1 项目拆分（2026-09-21）：FgoPet.App 不再是唯一的应用程序集，
-        // 各模块的 UI/应用层各自成工程（沿用 speech 的「独立程序集 + RootNamespace=FgoPet.App」范式），
-        // 组合根只负责把 HostContracts/DesktopShell 与各模块串起来。
-        // 因此这里的期望集从 3 个变为 15 个——方向不变（组合根 → 模块），只是模块不再是回链文件。
-        Assert.Equal(
-            new[]
-            {
-                "FgoPet.Character",
-                "FgoPet.Core",
-                "FgoPet.DataManagement",
-                "FgoPet.DesktopShell",
-                "FgoPet.Dialogue",
-                "FgoPet.Focus",
-                "FgoPet.HostContracts",
-                "FgoPet.Infrastructure",
-                "FgoPet.Memory",
-                "FgoPet.SettingsHost",
-                "FgoPet.Speech.Desktop",
-                "FgoPet.UiFoundation",
-                "FgoPet.Work.Archives",
-                "FgoPet.Work.Execution",
-                "FgoPet.Work.Todo",
-            }.OrderBy(name => name, StringComparer.Ordinal),
-            app.OrderBy(name => name, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -135,7 +105,7 @@ public sealed class ArchitectureTests
             runtime.SetActiveRole(new ActiveRoleState("pack", "casual", "1.0.0", "servant-mash"));
 
             Assert.Equal("servant-mash", panel.ActiveServantId);
-            Assert.True(panel.CanStartFocus);
+            Assert.True(provider.GetRequiredService<FgoPet.Plugin.Focus.Desktop.FocusCompactViewModel>().CanStartFocus);
         });
     }
 
@@ -144,8 +114,8 @@ public sealed class ArchitectureTests
     {
         var root = RepoRoot();
         // ④ 迁移后这两个文件物理搬到了根级模块树，不再位于 src/FgoPet.App 下。
-        var panel = File.ReadAllText(Path.Combine(root, "host", "DesktopShell", "Desktop", "AttachedPanelView.xaml"));
-        var tokens = XDocument.Load(Path.Combine(root, "ui-foundation", "Shell", "ShellTokens.xaml"));
+        var panel = File.ReadAllText(Path.Combine(root, "src", "FgoPet.Desktop", "Shell", "Desktop", "AttachedPanelView.xaml"));
+        var tokens = XDocument.Load(Path.Combine(root, "src", "FgoPet.UiSdk", "Resources", "Shell", "ShellTokens.xaml"));
         var definedKeys = tokens.Descendants()
             .Select(element => element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value)
             .Where(key => key is not null)

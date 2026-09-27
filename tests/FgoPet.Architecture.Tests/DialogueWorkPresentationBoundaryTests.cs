@@ -8,13 +8,13 @@ namespace FgoPet.Architecture.Tests;
 /// <summary>Protect the contract-only Dialogue-to-Work edge after desktop composition moves.</summary>
 public sealed class DialogueWorkPresentationBoundaryTests
 {
-    private const string DialogueProject = "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj";
-    private static readonly (string Name, string ProjectDirectory)[] PresentationAssemblies =
+    private const string DialogueProject = "plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj";
+    private static readonly (string Name, string ProjectDirectory, string TargetFramework)[] PresentationAssemblies =
     [
-        ("FgoPet.Dialogue", "modules/dialogue/src/FgoPet.Dialogue"),
-        ("FgoPet.DesktopShell", "host/DesktopShell/src/FgoPet.DesktopShell"),
-        ("FgoPet.Work.Todo", "modules/work/Todo/src/FgoPet.Work.Todo"),
-        ("FgoPet.Work.Archives", "modules/work/Archives/src/FgoPet.Work.Archives"),
+        ("FgoPet.Dialogue", "plugins/FgoPet.Plugin.Dialogue", "net8.0-windows"),
+        ("FgoPet.DesktopShell", "src/FgoPet.Desktop/Shell", "net8.0-windows"),
+        ("FgoPet.Plugin.Todo.Desktop", "plugins/FgoPet.Plugin.Todo/Desktop", "net8.0-windows"),
+        ("FgoPet.Plugin.Todo.Core", "plugins/FgoPet.Plugin.Todo/Core", "net8.0"),
     ];
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class DialogueWorkPresentationBoundaryTests
     [Fact]
     public void Dialogue_xaml_does_not_import_Work_or_host_implementation_controls()
     {
-        var desktop = Path.Combine(FindRepositoryRoot(), "modules", "dialogue", "Desktop");
+        var desktop = Path.Combine(FindRepositoryRoot(), "plugins", "FgoPet.Plugin.Dialogue", "Desktop");
         var files = Directory.GetFiles(desktop, "*.xaml", SearchOption.AllDirectories);
         Assert.NotEmpty(files);
         foreach (var path in files)
@@ -68,10 +68,7 @@ public sealed class DialogueWorkPresentationBoundaryTests
 
     [Theory]
     [InlineData("FgoPet.App.Dialogue.DialogueWindow", "FgoPet.DesktopShell")]
-    [InlineData("FgoPet.App.Views.TodoProposalCard", "FgoPet.Dialogue")]
-    [InlineData("FgoPet.App.Views.ArchiveDraftCard", "FgoPet.Dialogue")]
-    [InlineData("FgoPet.App.ViewModels.TodoProposalViewModel", "FgoPet.Dialogue")]
-    [InlineData("FgoPet.App.ViewModels.ArchiveDraftViewModel", "FgoPet.Dialogue")]
+    [InlineData("FgoPet.App.Dialogue.DialogueWindowViewModel", "FgoPet.DesktopShell")]
     public void Presentation_types_are_compiled_once_by_their_actual_owner(string typeName, string expectedOwner)
     {
         var root = FindRepositoryRoot();
@@ -83,13 +80,26 @@ public sealed class DialogueWorkPresentationBoundaryTests
         Assert.Equal(expectedOwner, Assert.Single(owners));
     }
 
+    [Theory]
+    [InlineData("FgoPet.App.Views.TodoProposalCard")]
+    [InlineData("FgoPet.App.Views.ArchiveDraftCard")]
+    [InlineData("FgoPet.App.ViewModels.TodoProposalViewModel")]
+    [InlineData("FgoPet.App.ViewModels.ArchiveDraftViewModel")]
+    public void Retired_action_card_types_are_absent(string typeName)
+    {
+        Assert.All(PresentationAssemblies, assembly =>
+            Assert.DoesNotContain(typeName, ReadDefinedTypes(AssemblyPath(FindRepositoryRoot(), assembly))));
+    }
+
     private static bool IsForbiddenImplementation(string name) =>
         name.StartsWith("FgoPet.Work.", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(name, "FgoPet.DesktopShell", StringComparison.OrdinalIgnoreCase);
+        || name.StartsWith("FgoPet.Plugin.Todo.", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "FgoPet.DesktopShell", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "FgoPet.Character", StringComparison.OrdinalIgnoreCase);
 
-    private static string AssemblyPath(string root, (string Name, string ProjectDirectory) assembly)
+    private static string AssemblyPath(string root, (string Name, string ProjectDirectory, string TargetFramework) assembly)
     {
-        var path = Path.Combine(root, assembly.ProjectDirectory, "bin", "Release", "net8.0-windows", assembly.Name + ".dll");
+        var path = Path.Combine(root, assembly.ProjectDirectory, "bin", "Release", assembly.TargetFramework, assembly.Name + ".dll");
         // Missing output must fail, never silently skip the assembly-boundary check.
         Assert.True(File.Exists(path), $"Missing {path}; build the complete Release solution before running this gate.");
         return path;

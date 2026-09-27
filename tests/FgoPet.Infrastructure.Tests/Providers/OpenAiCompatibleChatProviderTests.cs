@@ -149,7 +149,7 @@ public sealed class OpenAiCompatibleChatProviderTests
             "800100",
             "conversation-1",
             new[] { new PromptMessage(ChatMessageRole.User, "你好") },
-            tools: [TodoToolContracts.CreateSubmitTodoProposals()],
+            tools: [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()],
             toolChoice: "auto");
 
         await foreach (var _ in provider.StreamAsync(request, CancellationToken.None))
@@ -415,7 +415,7 @@ public sealed class OpenAiCompatibleChatProviderTests
         "800100",
         "conversation-1",
         new[] { new PromptMessage(ChatMessageRole.User, "你好") },
-        tools: [TodoToolContracts.CreateSubmitTodoProposals()],
+        tools: [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()],
         toolChoice: "auto");
 
     private static HttpResponseMessage StreamResponse(string body) => new(HttpStatusCode.OK)

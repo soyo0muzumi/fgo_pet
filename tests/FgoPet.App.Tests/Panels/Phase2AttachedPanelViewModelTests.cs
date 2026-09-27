@@ -8,20 +8,61 @@ using FgoPet.Core.Focus;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Timeline;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
 
 namespace FgoPet.App.Tests.Panels;
 
 public sealed class Phase2AttachedPanelViewModelTests
 {
+    [Fact]
+    public void Countdown_ticks_update_owned_content_without_rearranging_the_shell_and_disposal_detaches()
+    {
+        var visibilityChanges = 0;
+        _vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(AttachedPanelViewModel.IsCompactSurfaceActive)) visibilityChanges++;
+        };
+        _focus.Current = FocusingWithRemaining(1_458);
+        _focus.RaiseChanged();
+        _focus.Current = _focus.Current with { RemainingSeconds = 1_457 };
+        _focus.RaiseChanged();
+        Assert.Equal("24:17", _compact.FocusDisplay.Remaining);
+        Assert.Equal(1, visibilityChanges);
+        Assert.Equal(1, _focus.SnapshotSubscriptions);
+        _compact.Dispose();
+        Assert.Equal(0, _focus.SnapshotSubscriptions);
+        _focus.Current = FocusSession.Idle;
+        _focus.RaiseChanged();
+        Assert.Equal(1, visibilityChanges);
+    }
+
+    [Fact]
+    public void Process_stop_fences_compact_commands_and_view_construction()
+    {
+        using var stopping = new CancellationTokenSource();
+        using var compact = new FocusCompactViewModel(_focus, stopping: stopping.Token);
+        compact.SetActiveServant("servant-mash");
+        stopping.Cancel();
+        compact.StartFocus();
+        compact.PauseTimer();
+        compact.ResumeTimer();
+        compact.StopTimer();
+        Assert.False(compact.CanStartFocus);
+        Assert.Null(_focus.StartedPreset);
+        Assert.Equal(0, _focus.Pauses + _focus.Resumes + _focus.Stops);
+        Assert.Throws<OperationCanceledException>(() => compact.CreateView());
+    }
     private const string Epoch = "2026-08-27T09:00:00Z";
 
     private readonly FakeFocusService _focus;
     private readonly AttachedPanelViewModel _vm;
+    private readonly FocusCompactViewModel _compact;
 
     public Phase2AttachedPanelViewModelTests()
     {
         _focus = new FakeFocusService();
-        _vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), _focus);
+        _compact = new FocusCompactViewModel(_focus);
+        _vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), _compact);
     }
 
     [Fact]
@@ -32,50 +73,51 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.RaiseChanged();
 
         Assert.Equal(AttachedPanelState.Compact, _vm.State);
-        Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Equal("24:18", _vm.FocusDisplay.Remaining);
-        Assert.Equal("第 1 / 4 轮", _vm.FocusDisplay.Cycle);
-        Assert.Equal(2.8, _vm.ProgressPercent, 1);
+        Assert.True(_vm.IsCompactSurfaceActive);
+        Assert.Equal("24:18", _compact.FocusDisplay.Remaining);
+        Assert.Equal("第 1 / 4 轮", _compact.FocusDisplay.Cycle);
+        Assert.Equal(2.8, _compact.ProgressPercent, 1);
     }
 
     [Fact]
     public void Active_role_state_enables_focus_without_a_role_library_event()
     {
         var runtime = new AppRuntime();
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), _focus, runtime: runtime);
+        using var compact = new FocusCompactViewModel(_focus, runtime);
+        using var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compact, runtime: runtime);
 
         runtime.SetActiveRole(new ActiveRoleState("pack", "casual", "1.0.0", "servant-mash"));
 
-        Assert.True(vm.CanStartFocus);
+        Assert.True(compact.CanStartFocus);
         Assert.Equal("servant-mash", vm.ActiveServantId);
     }
 
     [Fact]
     public void Custom_summary_excludes_the_break_after_the_last_cycle()
     {
-        _vm.SelectCustomPreset();
-        _vm.CustomFocusMinutesText = "35";
-        _vm.CustomBreakMinutesText = "10";
-        _vm.CustomCyclesText = "3";
+        _compact.SelectCustomPreset();
+        _compact.CustomFocusMinutesText = "35";
+        _compact.CustomBreakMinutesText = "10";
+        _compact.CustomCyclesText = "3";
 
-        Assert.Equal("02:05:00", _vm.CustomTotalText);
+        Assert.Equal("02:05:00", _compact.CustomTotalText);
     }
 
     [Fact]
     public void Custom_step_controls_use_approved_steps_and_clamp_to_bounds()
     {
-        _vm.SelectCustomPreset();
-        _vm.CustomFocusMinutesText = "178";
-        _vm.CustomBreakMinutesText = "1";
-        _vm.CustomCyclesText = "12";
+        _compact.SelectCustomPreset();
+        _compact.CustomFocusMinutesText = "178";
+        _compact.CustomBreakMinutesText = "1";
+        _compact.CustomCyclesText = "12";
 
-        _vm.AdjustCustomFocus(1);
-        _vm.AdjustCustomBreak(-1);
-        _vm.AdjustCustomCycles(1);
+        _compact.AdjustCustomFocus(1);
+        _compact.AdjustCustomBreak(-1);
+        _compact.AdjustCustomCycles(1);
 
-        Assert.Equal("180", _vm.CustomFocusMinutesText);
-        Assert.Equal("1", _vm.CustomBreakMinutesText);
-        Assert.Equal("12", _vm.CustomCyclesText);
+        Assert.Equal("180", _compact.CustomFocusMinutesText);
+        Assert.Equal("1", _compact.CustomBreakMinutesText);
+        Assert.Equal("12", _compact.CustomCyclesText);
     }
 
     [Fact]
@@ -85,11 +127,11 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.Current = FocusingWithRemaining(1_458).RestorePaused();
         _focus.RaiseChanged();
 
-        Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Equal("24:18", _vm.FocusDisplay.Remaining);
+        Assert.True(_vm.IsCompactSurfaceActive);
+        Assert.Equal("24:18", _compact.FocusDisplay.Remaining);
         // 原为 Assert.True(_vm.IsPaused)：IsPaused 是相位文案的内部中间量，没有 XAML 绑定它。
         // 断言迁到用户真正看到的那条字符串上，锁的是行为而不是实现细节（任务卡 C 步骤 1）。
-        Assert.Equal("已暂停", _vm.FocusDisplay.Phase);
+        Assert.Equal("已暂停", _compact.FocusDisplay.Phase);
     }
 
     [Fact]
@@ -103,8 +145,8 @@ public sealed class Phase2AttachedPanelViewModelTests
         };
         _focus.RaiseChanged();
 
-        Assert.True(_vm.IsCompactTimerVisible);
-        Assert.Contains("休息", _vm.FocusDisplay.Phase);
+        Assert.True(_vm.IsCompactSurfaceActive);
+        Assert.Contains("休息", _compact.FocusDisplay.Phase);
     }
 
     [Fact]
@@ -114,7 +156,7 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.Current = FocusSession.Idle;
         _focus.RaiseChanged();
 
-        Assert.False(_vm.IsCompactTimerVisible);
+        Assert.False(_vm.IsCompactSurfaceActive);
     }
 
     [Fact]
@@ -150,39 +192,41 @@ public sealed class Phase2AttachedPanelViewModelTests
     {
         _vm.PortraitClick();
         _vm.FocusClick();
-        _vm.SelectCustomPreset();
-        _vm.CustomFocusMinutesText = "4";
+        _compact.SelectCustomPreset();
+        _compact.CustomFocusMinutesText = "4";
 
-        Assert.False(_vm.CanStartFocus);
-        Assert.True(_vm.IsEditingCustomPreset);
-        Assert.NotEmpty(_vm.CustomFocusError);
+        Assert.False(_compact.CanStartFocus);
+        Assert.True(_compact.IsEditingCustomPreset);
+        Assert.NotEmpty(_compact.CustomFocusError);
     }
 
     [Fact]
     public void Valid_custom_minutes_enable_start_and_clear_the_error()
     {
+        _compact.SetActiveServant("servant-mash");
         _vm.SetActiveServant("servant-mash");
         _vm.PortraitClick();
         _vm.FocusClick();
-        _vm.SelectCustomPreset();
-        _vm.CustomFocusMinutesText = "45";
-        _vm.CustomBreakMinutesText = "9";
-        _vm.CustomCyclesText = "3";
+        _compact.SelectCustomPreset();
+        _compact.CustomFocusMinutesText = "45";
+        _compact.CustomBreakMinutesText = "9";
+        _compact.CustomCyclesText = "3";
 
-        Assert.True(_vm.CanStartFocus);
-        Assert.Empty(_vm.CustomFocusError);
-        Assert.Empty(_vm.CustomBreakError);
-        Assert.Empty(_vm.CustomCyclesError);
+        Assert.True(_compact.CanStartFocus);
+        Assert.Empty(_compact.CustomFocusError);
+        Assert.Empty(_compact.CustomBreakError);
+        Assert.Empty(_compact.CustomCyclesError);
     }
 
     [Fact]
     public void Start_focus_uses_the_selected_builtin_preset_and_current_servant()
     {
+        _compact.SetActiveServant("servant-mash");
         _vm.SetActiveServant("servant-mash");
         _vm.PortraitClick();
         _vm.FocusClick();
-        _vm.SelectPreset(FocusPresetCatalog.Short);
-        _vm.StartFocus();
+        _compact.SelectPreset(FocusPresetCatalog.Short);
+        _compact.StartFocus();
 
         Assert.Equal(FocusPresetCatalog.Short, _focus.StartedPreset);
         Assert.Equal("servant-mash", _focus.StartedServantId);
@@ -194,9 +238,9 @@ public sealed class Phase2AttachedPanelViewModelTests
         _focus.Current = FocusingWithRemaining(1_458).RestorePaused();
         _focus.RaiseChanged();
 
-        _vm.PauseTimer();
-        _vm.ResumeTimer();
-        _vm.StopTimer();
+        _compact.PauseTimer();
+        _compact.ResumeTimer();
+        _compact.StopTimer();
 
         Assert.Equal(1, _focus.Pauses);
         Assert.Equal(1, _focus.Resumes);
@@ -204,33 +248,12 @@ public sealed class Phase2AttachedPanelViewModelTests
     }
 
     [Fact]
-    public void Today_items_refresh_from_the_query_and_show_bond_text()
-    {
-        _vm.SetActiveServant("servant-mash");
-        _focus.Current = FocusingWithRemaining(1_458);
-        _focus.RaiseChanged();
-        _vm.RefreshToday(new[]
-        {
-            new TimelineEntry("entry-1", "event-1", DateTimeOffset.Parse("2026-08-27T09:25:00Z"),
-                RuntimeEventType.FocusCompleted, "servant-mash", 1_500, 1_500, null),
-            new TimelineEntry("entry-2", "event-2", DateTimeOffset.Parse("2026-08-27T10:00:00Z"),
-                RuntimeEventType.BondLevelUp, "servant-mash", 0, 0, 3),
-        });
-        _vm.RefreshBond(new BondProgress(3, 11_700, 10_800, 21_600, false));
-
-        Assert.Equal(2, _vm.Today.Count);
-        Assert.Equal("3", _vm.BondLevelText);
-        Assert.Contains("小时", _vm.BondRemainingText);
-        Assert.Contains("25", _vm.TodayEffectiveText);
-    }
-
-    [Fact]
     public void Servant_change_during_editing_keeps_the_panel_open_but_updates_the_owner()
     {
         _vm.PortraitClick();
         _vm.FocusClick();
-        _vm.SelectCustomPreset();
-        _vm.CustomFocusMinutesText = "4";
+        _compact.SelectCustomPreset();
+        _compact.CustomFocusMinutesText = "4";
 
         _vm.SetActiveServant("servant-other");
 
@@ -241,15 +264,16 @@ public sealed class Phase2AttachedPanelViewModelTests
     [Fact]
     public void Starting_from_the_focus_column_steps_down_to_compact_and_shows_the_timer()
     {
+        _compact.SetActiveServant("servant-mash");
         _vm.SetActiveServant("servant-mash");
         _vm.PortraitClick();
         _vm.FocusClick();
-        _vm.SelectPreset(FocusPresetCatalog.Short);
-        _vm.StartFocus();
+        _compact.SelectPreset(FocusPresetCatalog.Short);
+        _compact.StartFocus();
         _focus.RaiseChanged();
 
         Assert.Equal(AttachedPanelState.Compact, _vm.State);
-        Assert.True(_vm.IsCompactTimerVisible);
+        Assert.True(_vm.IsCompactSurfaceActive);
     }
 
     [Fact]
@@ -258,10 +282,11 @@ public sealed class Phase2AttachedPanelViewModelTests
         _vm.PortraitClick();
         _vm.FocusClick();
 
-        Assert.False(_vm.CanStartFocus);
+        Assert.False(_compact.CanStartFocus);
 
+        _compact.SetActiveServant("servant-mash");
         _vm.SetActiveServant("servant-mash");
-        Assert.True(_vm.CanStartFocus);
+        Assert.True(_compact.CanStartFocus);
     }
 
     private static FocusSession FocusingWithRemaining(int remaining) => FocusSession.Start(
@@ -273,6 +298,7 @@ public sealed class Phase2AttachedPanelViewModelTests
         public FocusSession Current { get; set; } = FocusSession.Idle;
 
         public event EventHandler? SnapshotChanged;
+        public int SnapshotSubscriptions => SnapshotChanged?.GetInvocationList().Length ?? 0;
 
         public event EventHandler? PersistenceFailed
         {

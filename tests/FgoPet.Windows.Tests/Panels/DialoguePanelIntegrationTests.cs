@@ -21,6 +21,7 @@ using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Speech.Settings;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
 
 namespace FgoPet.Windows.Tests.Panels;
 
@@ -83,7 +84,7 @@ public sealed class DialoguePanelIntegrationTests
                     GptSoVitsReferenceAudioPath = "D:\\voices\\reference.wav",
                 },
             });
-            var viewModel = new AttachedPanelViewModel(TimeProvider.System, focus: null, settings: settings);
+            var viewModel = new AttachedPanelViewModel(TimeProvider.System, compactSurface: null, settings: settings);
             var view = new AttachedPanelView { DataContext = viewModel };
 
             Assert.IsType<Button>(view.FindName("SpeechEntryButton"))
@@ -110,8 +111,7 @@ public sealed class DialoguePanelIntegrationTests
             Assert.Null(view.FindName("DialogueSettingsButton"));
             var shell = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
             Assert.Equal(Visibility.Visible, shell.Visibility);
-            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("FocusSetupCard")).Visibility);
-            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("CompactTimer")).Visibility);
+            Assert.Null(Assert.IsType<ContentControl>(view.FindName("CompactContentHost")).Content);
         });
     }
 
@@ -120,17 +120,18 @@ public sealed class DialoguePanelIntegrationTests
     {
         StaRun(() =>
         {
-            var viewModel = new AttachedPanelViewModel(TimeProvider.System);
+            var viewModel = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(null));
             var view = new AttachedPanelView { DataContext = viewModel };
             viewModel.PortraitClick();
-            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
+            var content = Assert.IsType<FocusCompactView>(Assert.IsType<ContentControl>(view.FindName("CompactContentHost")).Content);
+            var setup = Assert.IsType<Grid>(content.FindName("FocusSetupCard"));
             Assert.Equal(Visibility.Collapsed, setup.Visibility);
 
             Assert.IsType<Button>(view.FindName("FocusEntryButton"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Assert.Equal(Visibility.Visible, setup.Visibility);
-            Assert.NotNull(view.FindName("StartFocusButton"));
+            Assert.NotNull(content.FindName("StartFocusButton"));
         });
     }
 
@@ -144,7 +145,6 @@ public sealed class DialoguePanelIntegrationTests
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
             NoopDatabase.CreateConversationRepository(),
-            NoopDatabase.CreateMemoryRepository(),
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);

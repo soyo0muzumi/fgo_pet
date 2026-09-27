@@ -23,7 +23,7 @@ public sealed class ChatButtonTemplateTests
             });
             button.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
-                Source = new Uri("/FgoPet.App;component/Ui/Shell/ChatControls.xaml", UriKind.Relative),
+                Source = new Uri("/FgoPet.UiSdk;component/Ui/Shell/ChatControls.xaml", UriKind.Relative),
             });
             button.Style = (Style)button.FindResource("ChatTextButton");
             var window = new Window { Content = button, Width = 180, Height = 100 };
@@ -62,7 +62,7 @@ public sealed class ChatButtonTemplateTests
             });
             button.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
-                Source = new Uri("/FgoPet.App;component/Ui/Shell/ChatControls.xaml", UriKind.Relative),
+                Source = new Uri("/FgoPet.UiSdk;component/Ui/Shell/ChatControls.xaml", UriKind.Relative),
             });
             button.Style = (Style)button.FindResource("ChatTextButton");
             button.ApplyTemplate();

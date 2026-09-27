@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><RootNamespace>FgoPet.App</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/FgoPet.Plugin.Todo.Core.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+</Project>

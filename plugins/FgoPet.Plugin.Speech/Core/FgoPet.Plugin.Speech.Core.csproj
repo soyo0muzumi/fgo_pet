@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Contracts/FgoPet.Speech.Core.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" />
+    <InternalsVisibleTo Include="FgoPet.Speech.Desktop" />
+  </ItemGroup>
+</Project>

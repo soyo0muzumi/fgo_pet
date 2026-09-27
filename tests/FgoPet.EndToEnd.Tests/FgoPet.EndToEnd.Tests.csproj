@@ -8,6 +8,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/ActivatedCapabilities.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.8.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.1">
@@ -21,14 +22,14 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FgoPet.App\FgoPet.App.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" />
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" />
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- 阶段 1 拆分新增 -->
-    <ProjectReference Include="../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
-    <ProjectReference Include="../../host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj" />
   </ItemGroup>
 </Project>

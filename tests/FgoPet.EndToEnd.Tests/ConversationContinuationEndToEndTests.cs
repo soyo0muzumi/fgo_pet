@@ -77,7 +77,7 @@ public sealed class ConversationContinuationEndToEndTests : IDisposable
         var contexts = new ModelContextResolver(_ => provider);
         var meter = new RequestTokenMeter();
         var recall = new ConversationRecallService(new SqliteConversationRecallRepository(_database), resolver, settings, contexts, meter);
-        return new(resolver, new Content(), _conversations, _memories, new PromptComposer(meter), TimeProvider.System,
+        return new(resolver, new Content(), _conversations, new PromptComposer(meter), TimeProvider.System,
             settings: settings, contextResolver: contexts, tokenMeter: meter, lifetime: _lifetime, recall: recall);
     }
     private void Seed(string id, string project, string[] messages)

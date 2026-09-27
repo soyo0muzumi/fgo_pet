@@ -20,28 +20,23 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
-    <ProjectReference Include="..\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Desktop\FgoPet.Speech.Desktop.csproj" />
-    <!-- 以下两条是运行时程序集拷贝，不是编译期引用（无 App 源码使用这两个程序集里的类型）：
-         FgoPet.Infrastructure 会按输出目录启动它们的 exe ——
-         Agents/CodexWorkerProcess.cs 解析 FgoPet.CodexAdapter.exe，文件缺失时抛 adapter_not_installed；
-         Agents/CodexTargetCatalogClient.cs 同理（adapter list）。
-         移除 ReferenceOutputAssembly="false" 会让 DI 侧拿到不该有的编译期耦合；
-         删除整条 ProjectReference 会让 exe 不再落盘，Agent 派发在运行时炸。
-         详见任务卡 B（结论：引用必需，保留）。 -->
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj" />
+
+    <ProjectReference Include="../FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\plugins\FgoPet.Plugin.Speech\Desktop\FgoPet.Speech.Desktop.csproj" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Drawing" />
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="..\..\ui-foundation\ThemeTokens.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\ThemeTokens.xaml">
       <Link>UiFoundation\ThemeTokens.xaml</Link>
     </Page>
-    <Page Include="..\..\ui-foundation\Controls.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Controls.xaml">
       <Link>UiFoundation\Controls.xaml</Link>
     </Page>
   </ItemGroup>
@@ -51,10 +46,9 @@
   </ItemGroup>
   <Target Name="CopySiblingRelay" AfterTargets="Build">
     <ItemGroup>
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.AgentRelay\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
-      <!-- WPF gets this assembly from WindowsDesktop; standalone companions need their own copy. -->
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(SiblingRelay)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
@@ -64,100 +58,38 @@
     </ItemGroup>
     <Copy SourceFiles="@(PublishedCompanion)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
-  <!-- ===== ④ 迁移：跨目录源文件（搬目录后物理位置在根级模块树） ===== -->
-  <!-- 业务工程已拆出；应用启动与组合入口仍由 App 链接编译。 -->
   <ItemGroup>
-    <!-- host/DataManagement -->
-
-    <!-- host/DesktopShell -->
-    <Compile Include="..\..\host\DesktopShell\Application\App.xaml.cs">
-      <Link>host\DesktopShell\Application\App.xaml.cs</Link>
-    </Compile>
-    <Compile Include="..\..\host\DesktopShell\Application\ServiceRegistration.cs">
-      <Link>host\DesktopShell\Application\ServiceRegistration.cs</Link>
-    </Compile>
-    <Compile Include="..\..\host\DesktopShell\Application\MemoryContextConnector.cs">
-      <Link>host\DesktopShell\Application\MemoryContextConnector.cs</Link>
-    </Compile>
-
-    <!-- modules/character -->
-
-    <!-- modules/dialogue -->
-
-    <!-- modules/focus -->
-
-    <!-- modules/memory -->
-
-    <!-- modules/work -->
-
-    <!-- ui-foundation/Theming -->
-  </ItemGroup>
-  <!-- ===== ④ 迁移：跨目录 XAML（物理位置在根级模块树；Link 保留原 App 相对路径以固定 pack URI） ===== -->
-  <ItemGroup>
-    <!-- host/DesktopShell -->
-    <ApplicationDefinition Include="..\..\host\DesktopShell\Application\App.xaml">
-      <Link>App.xaml</Link>
-    </ApplicationDefinition>
-  </ItemGroup>
-  <ItemGroup>
-    <!-- modules/dialogue -->
-
-    <!-- host/DesktopShell -->
-
-    <!-- modules/character -->
-
-    <!-- modules/memory -->
-
-    <!-- modules/dialogue -->
-
-    <!-- modules/character -->
-
-    <!-- host/DataManagement -->
-
-    <!-- modules/character -->
-
-    <!-- host/DesktopShell -->
-
-    <!-- ui-foundation/Themes -->
-    <Page Include="..\..\ui-foundation\Themes\FgoLight.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\FgoLight.xaml">
       <Link>Themes\FgoLight.xaml</Link>
     </Page>
-    <Page Include="..\..\ui-foundation\Themes\ModernGray.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\ModernGray.xaml">
       <Link>Themes\ModernGray.xaml</Link>
     </Page>
-    <Page Include="..\..\ui-foundation\Themes\SettingsControls.xaml">
-      <Link>Themes\SettingsControls.xaml</Link>
-    </Page>
-    <Page Include="..\..\ui-foundation\Themes\SettingsIcons.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\SettingsIcons.xaml">
       <Link>Themes\SettingsIcons.xaml</Link>
     </Page>
-
-    <!-- ui-foundation/Shell -->
-    <Page Include="..\..\ui-foundation\Shell\ChatControls.xaml">
-      <Link>Ui\Shell\ChatControls.xaml</Link>
-    </Page>
-    <Page Include="..\..\ui-foundation\Shell\ShellControls.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Shell\ShellControls.xaml">
       <Link>Ui\Shell\ShellControls.xaml</Link>
     </Page>
-    <Page Include="..\..\ui-foundation\Shell\ShellTokens.xaml">
-      <Link>Ui\Shell\ShellTokens.xaml</Link>
-    </Page>
-
-    <!-- modules/work -->
   </ItemGroup>
   <ItemGroup>
-    <!-- 阶段 1 拆分新增 -->
-    <ProjectReference Include="../../modules/character/src/FgoPet.Character/FgoPet.Character.csproj" />
-    <ProjectReference Include="../../host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj" />
-    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj" />
-    <ProjectReference Include="../../host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj" />
-    <ProjectReference Include="../../modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj" />
-    <ProjectReference Include="../../modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj" />
-    <ProjectReference Include="../../host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj" />
-    <ProjectReference Include="../../modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj" />
-    <ProjectReference Include="../../ui-foundation/src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj" />
-    <ProjectReference Include="../../modules/work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj" />
-    <ProjectReference Include="../../modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj" />
-    <ProjectReference Include="../../modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Desktop/FgoPet.Plugin.Focus.Desktop.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Desktop/FgoPet.AgentBackend.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Desktop/FgoPet.Plugin.Todo.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.IndexTts/FgoPet.Provider.IndexTts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Speech/Infrastructure/FgoPet.Speech.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/providers/FgoPet.Portrait.Static/FgoPet.Portrait.Static.csproj" />
   </ItemGroup>
 </Project>

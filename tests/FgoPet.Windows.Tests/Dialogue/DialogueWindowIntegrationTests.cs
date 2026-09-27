@@ -1,4 +1,7 @@
 using System.Runtime.ExceptionServices;
+using System.Reflection;
+using System.Resources;
+using FgoPet.App.Views;
 using System.Threading;
 using System.Windows;
 using FgoPet.App.Dialogue;
@@ -286,9 +289,10 @@ public sealed class DialogueWindowIntegrationTests
             repository.Save(created);
             var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
             var turn = new ConversationTurnViewModel("assistant-confirmed", ChatMessageRole.Assistant, "已创建待办“确认后的待办”。");
-            turn.CreatedTodoId = created.Id;
+            turn.WorkspaceId = "todo.workspace";
+            turn.CreatedItemId = created.Id;
             viewModel.Conversation.Turns.Add(turn);
-            var window = new DialogueWindow(viewModel, todoService: service);
+            var window = new DialogueWindow(viewModel, workspaces: Workspaces(service));
             try
             {
                 window.Show();
@@ -296,9 +300,9 @@ public sealed class DialogueWindowIntegrationTests
 
                 var viewButton = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
                     button.Tag is ConversationTurnViewModel
-                    && System.Windows.Automation.AutomationProperties.GetName(button) == "查看待办"));
+                    && System.Windows.Automation.AutomationProperties.GetName(button) == "打开工作区"));
                 Assert.Equal(Visibility.Visible, viewButton.Visibility);
-                Assert.Equal("查看待办", viewButton.ToolTip);
+                Assert.Equal("打开工作区", viewButton.ToolTip);
 
                 viewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
@@ -401,7 +405,7 @@ public sealed class DialogueWindowIntegrationTests
         var model = CreateViewModel();
         var turn = new ConversationTurnViewModel("copy", ChatMessageRole.Assistant, "synthetic reply");
         model.Conversation.Turns.Add(turn);
-        var window = new DialogueWindow(model, clipboard: clipboard);
+        var window = new DialogueWindow(model, clipboard: clipboard, workspaces: new SampleWorkspaces());
         window.Show();
         window.UpdateLayout();
         var copy = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
@@ -426,7 +430,7 @@ public sealed class DialogueWindowIntegrationTests
         StaRun(() =>
         {
             var panel = new FgoPet.App.Panels.AttachedPanelViewModel(TimeProvider.System);
-            var window = new DialogueWindow(CreateViewModel(), panel: panel);
+            var window = new DialogueWindow(CreateViewModel(), panel: panel, workspaces: Workspaces(new FgoPet.App.Services.TodoApplicationService(new FeedbackTodoRepository(), TimeProvider.System)));
             try
             {
                 window.Show();
@@ -681,7 +685,7 @@ public sealed class DialogueWindowIntegrationTests
                 FgoPet.Core.Todo.TodoPriority.Normal, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
                 steps: [new("step-1", "整理需要用到的素材", 0, true), new("step-2", "检查表情与动作", 1), new("step-3", "录制一段预览并复核", 2)]));
             var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, todoService: service) { Width = width, Height = height };
+            var window = new DialogueWindow(vm, workspaces: Workspaces(service)) { Width = width, Height = height };
             window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative) });
             window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
             try
@@ -840,7 +844,7 @@ public sealed class DialogueWindowIntegrationTests
         Assert.Equal(FgoPet.App.Settings.SettingsSection.AgentConnection, requested);
         Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
 
-        vm.NavigateTo(MainNavigationTarget.TodoDetail, selectedId: "todo-1");
+        vm.NavigateTo(MainNavigationTarget.CapabilityDetail, selectedId: "todo-1");
         Assert.Equal(MainNavigationTarget.Schedule, vm.CurrentTarget);
     }
 
@@ -850,7 +854,7 @@ public sealed class DialogueWindowIntegrationTests
         StaRun(() =>
         {
             var vm = CreateViewModel();
-            var window = new DialogueWindow(vm);
+            var window = new DialogueWindow(vm, workspaces: new SampleWorkspaces());
             try
             {
                 var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
@@ -963,89 +967,7 @@ public sealed class DialogueWindowIntegrationTests
         });
     }
 
-    [Fact]
-    public void Todo_proposal_card_shows_summary_until_editor_is_expanded()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var repository = new FeedbackTodoRepository();
-            var todoService = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var proposal = new FgoPet.App.ViewModels.TodoProposalViewModel(
-                new TodoProposal("整理学习计划", "先列出目标，再安排复习顺序。"),
-                new TodoProposalService(todoService));
-            vm.Conversation.TodoProposals.Add(proposal);
-            var window = new DialogueWindow(vm, todoService: todoService);
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
 
-                var card = Assert.Single(FindVisualChildren<FgoPet.App.Views.TodoProposalCard>(window));
-                var editor = Assert.Single(FindVisualChildren<Expander>(card));
-                Assert.False(editor.IsExpanded);
-                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "先列出目标，再安排复习顺序。");
-                Assert.All(FindVisualChildren<TextBox>(card), text => Assert.False(text.IsVisible));
-                Assert.Contains(FindVisualChildren<Button>(card), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "加入待办");
-                Assert.Contains(FindVisualChildren<Button>(card), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "忽略建议");
-
-                editor.IsExpanded = true;
-                window.UpdateLayout();
-                Assert.True(editor.IsExpanded);
-                Assert.Equal(2, FindVisualChildren<TextBox>(card).Count(text => text.IsVisible));
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Confirmed_todo_proposal_shows_id_safe_success_and_view_entry()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var repository = new FeedbackTodoRepository();
-            var todoService = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var proposal = new FgoPet.App.ViewModels.TodoProposalViewModel(
-                new TodoProposal("查看入口目标", "保留这条备注。"),
-                new TodoProposalService(todoService));
-            vm.Conversation.TodoProposals.Add(proposal);
-            var window = new DialogueWindow(vm, todoService: todoService);
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-                var card = Assert.Single(FindVisualChildren<FgoPet.App.Views.TodoProposalCard>(window));
-                var add = FindVisualChildren<Button>(card).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "加入待办");
-                add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-
-                var createdId = Assert.IsType<string>(proposal.CreatedTodoId);
-                Assert.True(proposal.IsAdded);
-                Assert.Single(repository.List());
-                Assert.Equal(createdId, repository.List().Single().Id);
-                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "已加入：");
-                Assert.Contains(FindVisualChildren<TextBlock>(card), text => text.Text == "查看入口目标");
-
-                var view = FindVisualChildren<Button>(card).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "查看待办");
-                view.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(Visibility.Visible, ((ContentControl)window.FindName("TasksPage")!).Visibility);
-                var workspace = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(((ContentControl)window.FindName("TasksPage")!).Content);
-                Assert.Single(((ItemsControl)workspace.FindName("ActiveItems")!).Items);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
 
     [Theory]
     [InlineData("FgoLight.xaml")]
@@ -1058,7 +980,7 @@ public sealed class DialogueWindowIntegrationTests
             vm.Conversation.InputText = "保留我的聊天草稿";
             var repository = new FeedbackTodoRepository();
             var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, todoService: service);
+            var window = new DialogueWindow(vm, workspaces: Workspaces(service));
             window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/Themes/" + theme, UriKind.Relative) });
             try
             {
@@ -1108,7 +1030,7 @@ public sealed class DialogueWindowIntegrationTests
                 FgoPet.Core.Todo.TodoPriority.Normal, null,
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
             var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, todoService: service);
+            var window = new DialogueWindow(vm, workspaces: Workspaces(service));
             try
             {
                 window.Show();
@@ -1145,7 +1067,6 @@ public sealed class DialogueWindowIntegrationTests
             _items.Values.Where(x => status is null || x.Status == status).ToArray();
         public IReadOnlyList<FgoPet.Core.Todo.TodoItem> ListCompletedOn(DateOnly date) => Array.Empty<FgoPet.Core.Todo.TodoItem>();
         public void Delete(string id) => _items.Remove(id);
-        public void ClearAgentTodoData() => _items.Clear();
     }
 
     [Fact]
@@ -1201,12 +1122,109 @@ public sealed class DialogueWindowIntegrationTests
             new ThrowingContentResolver(),
             new FgoPet.Infrastructure.Dialogue.SqliteConversationRepository(
                 new FgoPet.Infrastructure.Persistence.RuntimeDatabase(":memory:")),
-            new FgoPet.Infrastructure.Memory.SqliteMemoryRepository(
-                new FgoPet.Infrastructure.Persistence.RuntimeDatabase(":memory:")),
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);
         return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore, history: history), projectCatalog: projectCatalog);
+    }
+
+    [Fact]
+    public void Workspace_navigation_uses_the_reply_surface_identity_and_keeps_each_surface_state()
+    {
+        StaRun(() =>
+        {
+            var model = CreateViewModel();
+            var catalog = new SampleWorkspaces("sample.notes", "sample.calendar");
+            var reply = new ConversationTurnViewModel("reply", ChatMessageRole.Assistant, "已确认")
+                { CreatedItemId = "event-42", WorkspaceId = "sample.calendar" };
+            model.Conversation.Turns.Add(reply);
+            var window = new DialogueWindow(model, workspaces: catalog);
+            try
+            {
+                window.Show(); window.UpdateLayout();
+                var button = FindVisualChildren<Button>(window).Single(item => ReferenceEquals(item.Tag, reply)
+                    && System.Windows.Automation.AutomationProperties.GetName(item) == "打开工作区");
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Same(catalog.Views["sample.calendar"], ((ContentControl)window.FindName("TasksPage")).Content);
+                Assert.Equal("event-42", catalog.Views["sample.calendar"].LastNavigation?.ItemId);
+                catalog.Views["sample.calendar"].Text = "unsaved calendar state";
+                reply.WorkspaceId = "sample.notes";
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                reply.WorkspaceId = "sample.calendar";
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal("unsaved calendar state", catalog.Views["sample.calendar"].Text);
+                Assert.Equal(2, catalog.Created);
+                reply.WorkspaceId = "missing.workspace";
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(2, catalog.Created);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    [Fact]
+    public void Missing_workspace_capability_keeps_chat_available_and_disables_workspace_navigation()
+    {
+        StaRun(() =>
+        {
+            var window = new DialogueWindow(CreateViewModel());
+            try
+            {
+                Assert.False(((Button)window.FindName("TasksButton")).IsEnabled);
+                Assert.False(((Button)window.FindName("TodoShortcutButton")).IsEnabled);
+                Assert.Null(((ContentControl)window.FindName("TasksPage")).Content);
+                Assert.Equal(Visibility.Visible, ((Grid)window.FindName("ChatBody")).Visibility);
+            }
+            finally { window.Dispatcher.InvokeShutdown(); }
+        });
+    }
+
+    private sealed class SampleWorkspaces : FgoPet.UiSdk.IWorkspaceCatalog
+    {
+        public SampleWorkspaces(params string[] ids) => Workspaces = (ids.Length == 0 ? ["sample.workspace"] : ids)
+            .Select(id => new FgoPet.Extensibility.WorkspaceDescriptor(id, id)).ToArray();
+        public IReadOnlyList<FgoPet.Extensibility.WorkspaceDescriptor> Workspaces { get; }
+        public Dictionary<string, SampleSurface> Views { get; } = new();
+        public int Created { get; private set; }
+        public FrameworkElement CreateView(string workspaceId)
+        {
+            Created++;
+            return Views[workspaceId] = new SampleSurface();
+        }
+    }
+    private sealed class SampleSurface : TextBox, FgoPet.UiSdk.IWorkspaceSurface
+    {
+        public FgoPet.UiSdk.WorkspaceNavigation? LastNavigation { get; private set; }
+        public void Navigate(FgoPet.UiSdk.WorkspaceNavigation navigation) => LastNavigation = navigation;
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public void Shell_hosts_plugin_content_without_retired_card_resources()
+    {
+        var assemblies = new[] { typeof(DialogueWindow).Assembly, typeof(ConversationViewModel).Assembly,
+            typeof(TodoWorkspaceView).Assembly }.Distinct().ToArray();
+        var keys = assemblies.ToDictionary(assembly => assembly.GetName().Name!, ReadResourceKeys);
+        Assert.Equal("FgoPet.DesktopShell", Assert.Single(keys.Where(pair => pair.Value.Contains("dialogue/dialoguewindow.baml"))).Key);
+        Assert.Equal("FgoPet.Plugin.Todo.Desktop", typeof(TodoWorkspaceView).Assembly.GetName().Name);
+        Assert.All(keys.Values, resources =>
+        {
+            Assert.DoesNotContain("views/todoproposalcard.baml", resources);
+            Assert.DoesNotContain("views/archivedraftcard.baml", resources);
+        });
+    }
+
+    private static HashSet<string> ReadResourceKeys(Assembly assembly)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var name in assembly.GetManifestResourceNames().Where(name => name.EndsWith(".g.resources", StringComparison.Ordinal)))
+        {
+            using var stream = assembly.GetManifestResourceStream(name)!;
+            using var reader = new ResourceReader(stream);
+            var enumerator = reader.GetEnumerator();
+            while (enumerator.MoveNext()) keys.Add((string)enumerator.Key);
+        }
+        return keys;
     }
 
     private static DependencyObject? FindField(DialogueWindow window, string name) =>
@@ -1260,5 +1278,14 @@ public sealed class DialogueWindowIntegrationTests
                 string.Empty));
     }
 
+    private static FgoPet.UiSdk.IWorkspaceCatalog Workspaces(FgoPet.App.Services.TodoApplicationService service)
+    {
+        var core = new FgoPet.Plugin.Todo.TodoPlugin(new TodoProposalService(service));
+        var plugin = new FgoPet.Plugin.Todo.Desktop.TodoDesktopPlugin(core, service);
+        var catalog = FgoPet.Extensibility.PluginCatalog.Create([plugin]);
+        var runtime = new FgoPet.Extensibility.PluginRuntime(catalog);
+        Assert.True(runtime.StartAsync(default).GetAwaiter().GetResult().Succeeded);
+        return new FgoPet.UiSdk.WorkspaceCatalog(catalog, runtime, [plugin]);
+    }
     private static void StaRun(Action action) => StaRunner.Run(action);
 }

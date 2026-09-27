@@ -17,7 +17,7 @@
 
     排除实验工程的方式不做路径匹配，而是依赖 MSBuild 的就近优先语义：
     Directory.Build.props 由每个工程向上查找，**命中第一个即停止**。因此
-    spikes/Directory.Build.props 的存在会让实验工程根本不导入本文件。
+    tools/spikes/Directory.Build.props 的存在会让实验工程根本不导入本文件。
   -->
 
   <PropertyGroup Label="统一编译基线">

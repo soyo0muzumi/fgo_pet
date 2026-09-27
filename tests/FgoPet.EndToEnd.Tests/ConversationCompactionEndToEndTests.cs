@@ -148,7 +148,7 @@ public sealed class ConversationCompactionEndToEndTests : IDisposable
         var orchestrator = Create(provider, work);
         Assert.Equal(ConversationSendStatus.Completed, (await orchestrator.SendAsync("mash", "先继续讨论", default)).Status);
         Assert.True(provider.SummaryCalls > 0);
-        Assert.Contains(Assert.Single(provider.MainRequests).Messages, m => m.Text.Contains("pending_todo_draft") && m.Text.Contains("完整保留的新任务"));
+        Assert.Contains(Assert.Single(provider.MainRequests).Messages, m => m.Text.Contains("pending_capability_state") && m.Text.Contains("完整保留的新任务"));
         Assert.All(provider.SummaryRequests, r => Assert.DoesNotContain(r.Messages, m => m.Text.Contains("完整保留的新任务")));
         Assert.Equal(TodoDraftResultKind.Stale, work.Confirm("c", "mash", old.DraftId, old.Version, "old").Kind);
         Assert.Equal(ConversationSendStatus.Completed, (await orchestrator.SendAsync("mash", "确认创建", default)).Status);
@@ -195,10 +195,11 @@ public sealed class ConversationCompactionEndToEndTests : IDisposable
     {
         var store = new SqliteConversationContextStore(new RuntimeDatabase(_path, pooling: false));
         var meter = new RequestTokenMeter();
-        return new(new Resolver(provider), new Content(), _conversations, new SqliteMemoryRepository(_database),
-            new PromptComposer(meter), TimeProvider.System, settings: _settings, memorySettings: new MemoryOff(),
+        return new(new Resolver(provider), new Content(), _conversations,
+            new PromptComposer(meter), TimeProvider.System, settings: _settings,
             summaries: new ConversationSummaryService(store, new ProviderConversationSummarizer(), meter, TimeProvider.System),
-            tokenMeter: meter, lifetime: _lifetime, contextStore: store, todoDrafts: work);
+            tokenMeter: meter, lifetime: _lifetime, contextStore: store,
+            capabilities: FgoPet.Testing.ActivatedCapabilities.Create(FgoPet.Testing.ActivatedCapabilities.Todo(_database, work)));
     }
     private void Seed(int count, int chars)
     {

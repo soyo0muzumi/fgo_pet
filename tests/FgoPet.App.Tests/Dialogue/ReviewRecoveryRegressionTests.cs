@@ -36,8 +36,8 @@ public sealed class ReviewRecoveryRegressionTests
         Assert.Equal(saveFails, fixture.Settings.Load().ModelConnection!.ToolsSupported);
         Assert.All(provider.Requests.Skip(1), request =>
         {
-            Assert.Contains("\"todos\":[", request.Messages[2].Text);
-            Assert.DoesNotContain("请调用 submit_todo_proposals", request.Messages[2].Text);
+            Assert.Contains(request.Messages, message => message.Text.Contains("\"todos\":[", StringComparison.Ordinal));
+            Assert.DoesNotContain(request.Messages, message => message.Text.Contains("请调用 submit_todo_proposals", StringComparison.Ordinal));
         });
     }
 
@@ -177,9 +177,10 @@ public sealed class ReviewRecoveryRegressionTests
     public void Prompt_contract_matches_the_attached_tool_capability()
     {
         var composer = new PromptComposer();
-        var context = new PromptContext(Key, Persona, [], [], "", [], "Plan a task.");
+        var contribution = new FgoPet.Plugin.Todo.TodoPromptProvider();
+        var context = new PromptContext(Key, Persona, [], contribution.BuildPrompt(new("test", "mash", null), "Plan a task.", false), "", [], "Plan a task.");
         var fallback = composer.Compose(context, Route, Budget);
-        var instructions = fallback.Messages[2].Text;
+        var instructions = Assert.Single(fallback.Messages.Where(message => message.Text.Contains("文本提案 JSON：", StringComparison.Ordinal))).Text;
         Assert.DoesNotContain("submit_todo_proposals", instructions);
         Assert.Contains("尚未创建", instructions);
         Assert.Contains("\"todos\":[", instructions);
@@ -190,9 +191,10 @@ public sealed class ReviewRecoveryRegressionTests
         Assert.True(parsed.RootElement.TryGetProperty("text", out _));
         Assert.True(parsed.RootElement.TryGetProperty("emotion", out _));
         Assert.True(parsed.RootElement.GetProperty("todos")[0].GetProperty("steps")[0].TryGetProperty("title", out _));
-        var tools = composer.Compose(context, Route, Budget, [TodoToolContracts.CreateSubmitTodoProposals()], "auto");
-        Assert.Contains("请调用 submit_todo_proposals", tools.Messages[2].Text);
-        Assert.DoesNotContain("当前请求没有可调用的工具", tools.Messages[2].Text);
+        var toolContext = new PromptContext(Key, Persona, [], contribution.BuildPrompt(new("test", "mash", null), "Plan a task.", true), "", [], "Plan a task.");
+        var tools = composer.Compose(toolContext, Route, Budget, [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()], "auto");
+        Assert.Contains(tools.Messages, message => message.Text.Contains("请调用 submit_todo_proposals", StringComparison.Ordinal));
+        Assert.DoesNotContain(tools.Messages, message => message.Text.Contains("当前请求没有可调用的工具", StringComparison.Ordinal));
     }
 
     private const string ConversationId = "review-conversation";
@@ -243,10 +245,10 @@ public sealed class ReviewRecoveryRegressionTests
         }
         public ConversationOrchestrator Orchestrator(IChatProvider provider)
         {
-            var orchestrator = new ConversationOrchestrator(new Resolver(provider), new ContentResolver(), Repository,
-                new SqliteMemoryRepository(_database), new PromptComposer(_meter), TimeProvider.System, Settings,
+            var orchestrator = new ConversationOrchestrator(new Resolver(provider), new ContentResolver(), Repository, new PromptComposer(_meter), TimeProvider.System, Settings,
                 summaries: new ConversationSummaryService(Store, Summarizer, _meter, TimeProvider.System),
-                tokenMeter: _meter, lifetime: _lifetime, contextStore: Store);
+                tokenMeter: _meter, lifetime: _lifetime, contextStore: Store,
+                capabilities: FgoPet.Testing.ActivatedCapabilities.Create(FgoPet.Testing.ActivatedCapabilities.Todo(_database)));
             orchestrator.LoadConversation(ConversationId, "mash");
             return orchestrator;
         }

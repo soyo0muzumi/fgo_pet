@@ -61,7 +61,8 @@ public sealed class DialogueContextBudgetEndToEndTests : IDisposable
         var provider = new OpenAiCompatibleChatProvider("test", new Uri("https://fixture.test/v1"), "same",
             new Credentials(), new HttpClient(handler));
         return new(new Resolver(provider), new Content(), new SqliteConversationRepository(database),
-            new SqliteMemoryRepository(database), new PromptComposer(), TimeProvider.System, settings);
+            new PromptComposer(), TimeProvider.System, settings, capabilities:
+                FgoPet.Testing.ActivatedCapabilities.Create(FgoPet.Testing.ActivatedCapabilities.Todo(database)));
     }
 
     private sealed class Settings(ModelConnectionSettings connection) : IDialogueSettingsStore

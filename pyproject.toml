@@ -24,8 +24,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fgo_pet_content"]
+packages = ["tools/content/fgo_pet_content"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["tools/content"]
 testpaths = ["tests"]
