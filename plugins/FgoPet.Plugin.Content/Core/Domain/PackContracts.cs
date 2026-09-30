@@ -78,6 +78,32 @@ public sealed record CompositionV3
     public required double DefaultScale { get; init; }
 }
 
+/// <summary>One hashed, data-only Cubism resource relative to an appearance manifest.</summary>
+public sealed record Live2DFileV1
+{
+    [JsonPropertyName("path")]
+    public required string RelativePath { get; init; }
+
+    [JsonPropertyName("sha256")]
+    public required string Sha256 { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtraData { get; set; }
+}
+
+/// <summary>Optional Cubism appearance; the required art.v3 images remain its fallback.</summary>
+public sealed record Live2DAppearanceV1
+{
+    [JsonPropertyName("model_path")]
+    public required string ModelPath { get; init; }
+
+    [JsonPropertyName("files")]
+    public required IReadOnlyList<Live2DFileV1> Files { get; init; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtraData { get; set; }
+}
+
 /// <summary>Art manifest (schema v3): images, geometry, and expression semantics.</summary>
 public sealed record AppearanceManifestV3 : IStrictDeserializable
 {
@@ -98,6 +124,9 @@ public sealed record AppearanceManifestV3 : IStrictDeserializable
 
     [JsonPropertyName("fallback")]
     public IReadOnlyDictionary<string, string> Fallback { get; init; } = new Dictionary<string, string>();
+
+    [JsonPropertyName("live2d")]
+    public Live2DAppearanceV1? Live2D { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtraData { get; set; }
@@ -174,6 +203,20 @@ public sealed record AppearanceManifestV3 : IStrictDeserializable
                 throw Failed(PackErrorCode.ExpressionMappingInvalid, $"表情语义 '{key}' 映射到空素材 ID。");
             }
         }
+        if (Live2D is not null)
+        {
+            if (Live2D.ExtraData is { Count: > 0 }
+                || Live2D.Files is not { Count: > 0 and <= 256 }
+                || Live2D.Files.Any(file => file is null || file.ExtraData is { Count: > 0 }))
+            {
+                throw Failed(PackErrorCode.ManifestMalformed, "Live2D 声明存在未知属性或无效的文件列表。");
+            }
+            if (Live2D.Files.Select(file => file.RelativePath).Distinct(StringComparer.Ordinal).Count() != Live2D.Files.Count
+                || !Live2D.Files.Any(file => string.Equals(file.RelativePath, Live2D.ModelPath, StringComparison.Ordinal)))
+            {
+                throw Failed(PackErrorCode.ManifestMalformed, "Live2D 文件路径重复或未声明 model_path。");
+            }
+        }
     }
 
     private static PackFailureException Failed(PackErrorCode code, string message)
@@ -196,6 +239,7 @@ public static class PackCapabilityKeys
     public static IReadOnlySet<string> Known { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "art.v3",
+        "portrait.live2d.v1",
         "dialogue.v1",
         "knowledge.v1",
         "persona.v1",

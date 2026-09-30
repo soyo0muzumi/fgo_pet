@@ -28,9 +28,11 @@ public partial class ThemePage : UserControl, INotifyPropertyChanged
 
     public AppTheme CurrentTheme => _themeService.CurrentTheme;
 
-    public bool IsModernGraySelected => CurrentTheme == AppTheme.ModernGray;
+    public bool IsModernGraySelected => _themeService.SelectedTheme == AppTheme.FgoDark;
 
-    public bool IsFgoLightSelected => CurrentTheme == AppTheme.FgoLight;
+    public bool IsFgoLightSelected => _themeService.SelectedTheme == AppTheme.FgoLight;
+
+    public bool IsSystemSelected => _themeService.SelectedTheme == AppTheme.System;
 
     public string StatusText => _themeService.StatusText;
 
@@ -72,7 +74,8 @@ public partial class ThemePage : UserControl, INotifyPropertyChanged
             return;
         }
 
-        SelectTheme(ReferenceEquals(choice, FgoLightChoice) ? AppTheme.FgoLight : AppTheme.ModernGray);
+        SelectTheme(ReferenceEquals(choice, FgoLightChoice) ? AppTheme.FgoLight
+            : ReferenceEquals(choice, SystemChoice) ? AppTheme.System : AppTheme.FgoDark);
     }
 
     private void RefreshSelection()
@@ -82,6 +85,7 @@ public partial class ThemePage : UserControl, INotifyPropertyChanged
         {
             ModernGrayChoice.IsChecked = IsModernGraySelected;
             FgoLightChoice.IsChecked = IsFgoLightSelected;
+            SystemChoice.IsChecked = IsSystemSelected;
         }
         finally
         {
@@ -91,6 +95,7 @@ public partial class ThemePage : UserControl, INotifyPropertyChanged
         OnPropertyChanged(nameof(CurrentTheme));
         OnPropertyChanged(nameof(IsModernGraySelected));
         OnPropertyChanged(nameof(IsFgoLightSelected));
+        OnPropertyChanged(nameof(IsSystemSelected));
         OnPropertyChanged(nameof(StatusText));
     }
 

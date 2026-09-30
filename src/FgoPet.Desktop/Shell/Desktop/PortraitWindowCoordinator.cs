@@ -205,6 +205,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         if (gesture == GestureEvent.Click && _pressWasOnPortrait)
         {
             _window.HandlePortraitClick();
+            if (_controller is IPortraitTapSurface tapSurface) tapSurface.OnPortraitTap();
         }
         _pressWasOnPortrait = false;
         if (gesture == GestureEvent.DragEnd)

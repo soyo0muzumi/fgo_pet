@@ -46,6 +46,27 @@ class CompositionV3(BaseModel):
         return self
 
 
+class Live2DFileV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class Live2DAppearanceV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_path: str = Field(min_length=1)
+    files: tuple[Live2DFileV1, ...] = Field(min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_files(self) -> Live2DAppearanceV1:
+        paths = [file.path for file in self.files]
+        if len(paths) != len(set(paths)) or self.model_path not in paths:
+            raise ValueError("Live2D files must uniquely declare model_path")
+        return self
+
+
 class ArtManifestV3(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -55,6 +76,7 @@ class ArtManifestV3(BaseModel):
     composition: CompositionV3
     expression_semantics: dict[str, str]
     fallback: dict[str, str] = Field(default_factory=dict)
+    live2d: Live2DAppearanceV1 | None = None
 
     @model_validator(mode="after")
     def validate_contract(self) -> ArtManifestV3:

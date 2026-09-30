@@ -50,7 +50,8 @@ public static class MemoryRegistration
         {
             services.AddSingleton<ConversationMemoryPage>();
             services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-                nameof(SettingsSection.ConversationMemory), _ => provider.GetRequiredService<ConversationMemoryPage>()));
+                nameof(SettingsSection.ConversationMemory), _ => provider.GetRequiredService<ConversationMemoryPage>(),
+                "对话与记忆", "管理对话和记忆偏好。", "能力", ["对话", "记忆"], 140));
             services.AddSingleton<IFgoPetPlugin>(provider => new MemoryPlugin(
                 provider.GetRequiredService<IMemoryRecall>(), provider.GetRequiredService<IConversationSourceReader>(),
                 provider.GetRequiredService<IMemoryCandidateSink>(), provider.GetRequiredService<MemoryExtractionQueue>(),

@@ -349,6 +349,7 @@ public sealed class FgoPetPackInstaller : IPackInstaller
             }
         }
 
+        var hasLive2D = false;
         foreach (var appearance in manifest.Appearances)
         {
             var manifestPath = Path.GetFullPath(Path.Combine(fullRoot, appearance.ManifestPath));
@@ -367,12 +368,27 @@ public sealed class FgoPetPackInstaller : IPackInstaller
                 return new PackInstallResult(false, null, error.Failure);
             }
 
+            if (appearanceManifest.Live2D is not null)
+            {
+                if (!manifest.Capabilities.Contains("portrait.live2d.v1", StringComparer.Ordinal)
+                    || manifest.Files.Count == 0)
+                {
+                    return Failed(PackErrorCode.ManifestMalformed, "Live2D 外观需要 portrait.live2d.v1 capability 和完整 files 清单。", appearance.ManifestPath);
+                }
+                hasLive2D = true;
+            }
+
             var appearanceRoot = Path.GetDirectoryName(manifestPath)!;
             var validation = AppearanceValidator.Validate(appearanceManifest, appearanceRoot);
             if (!validation.IsValid)
             {
                 return new PackInstallResult(false, null, validation.Errors[0]);
             }
+        }
+
+        if (manifest.Capabilities.Contains("portrait.live2d.v1", StringComparer.Ordinal) && !hasLive2D)
+        {
+            return Failed(PackErrorCode.ManifestMalformed, "portrait.live2d.v1 capability 没有对应的 Live2D 外观。");
         }
 
         return null;

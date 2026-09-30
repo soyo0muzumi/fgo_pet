@@ -172,6 +172,27 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     }
 
     [Fact]
+    public async Task Unconfigured_model_blocks_send_while_preserving_editable_draft_across_conversations()
+    {
+        var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
+        var viewModel = CreateViewModel(settings);
+        viewModel.SetActiveServant("800100");
+        viewModel.InputText = "离线时写好的草稿";
+
+        Assert.True(viewModel.IsConfigurationRequired);
+        Assert.False(viewModel.CanSend);
+        Assert.False(viewModel.SendCommand.CanExecute(null));
+        await viewModel.SendCommand.ExecuteAsync(null);
+        Assert.Equal("离线时写好的草稿", viewModel.InputText);
+        Assert.Empty(viewModel.Turns);
+
+        viewModel.NewConversationCommand.Execute(null);
+        Assert.True(viewModel.IsConfigurationRequired);
+        Assert.False(viewModel.CanSend);
+        Assert.Equal("离线时写好的草稿", viewModel.InputText);
+    }
+
+    [Fact]
     public async Task Failed_send_preserves_draft_and_session_intent()
     {
         var viewModel = CreateViewModel();

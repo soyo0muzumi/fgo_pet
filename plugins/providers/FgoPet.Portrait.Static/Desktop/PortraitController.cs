@@ -150,7 +150,7 @@ public sealed class PortraitController : IPortraitBackend, IPortraitSurface
 
     private static PortraitSnapshot LoadSnapshot(AppearanceLocation location, AppearanceManifestV3 appearance)
     {
-        var validation = AppearanceValidator.Validate(appearance, location.AppearanceRoot);
+        var validation = AppearanceValidator.ValidateStatic(appearance, location.AppearanceRoot);
         if (!validation.IsValid)
         {
             throw new PackFailureException(validation.Errors[0]);

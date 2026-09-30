@@ -83,7 +83,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         StopCommand = new RelayCommand(Stop, () => IsStreaming);
         NewConversationCommand = new RelayCommand(NewConversation);
         OpenSettingsCommand = new RelayCommand(OpenSettings);
-        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => !IsStreaming && !string.IsNullOrWhiteSpace(_lastUserMessage) && !string.IsNullOrWhiteSpace(ActiveServantId));
+        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => !IsStreaming && !_configurationRequired && !string.IsNullOrWhiteSpace(_lastUserMessage) && !string.IsNullOrWhiteSpace(ActiveServantId));
         NewWorkspaceItemCommand = new RelayCommand(() => NewWorkspaceItemRequested?.Invoke());
         RetryHistoryCommand = new RelayCommand(LoadHistory);
         LoadMoreHistoryCommand = new RelayCommand(() => LoadHistoryPage(append: true), () => HasMoreHistory && !IsHistoryLoading && !_disposed);
@@ -170,6 +170,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         || ErrorText.Contains("无法连接模型服务", StringComparison.Ordinal)
         || ErrorText.Contains("对话服务暂时不可用", StringComparison.Ordinal);
     public bool CanSend => !_disposed && !IsStreaming
+        && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(InputText);
 
@@ -246,6 +247,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(IsConfigurationRequired));
         OnPropertyChanged(nameof(IsConfigurationStateVisible));
         OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanSendOrStop));
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+        RetryCapabilityCommand.NotifyCanExecuteChanged();
     }
 
     private void OpenSettings() => SettingsRequested?.Invoke(SettingsSection.ModelConnection);
@@ -271,13 +277,16 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _activeConversationId = string.Empty;
         ErrorText = string.Empty;
         ActiveServantId = normalizedServantId;
-        _configurationRequired = false;
+        _configurationRequired = _settings.Load().ModelConnection is null;
         RefreshModelStatus();
         OnPropertyChanged(nameof(IsConversationEmpty));
         OnPropertyChanged(nameof(IsEmptyStateVisible));
         OnPropertyChanged(nameof(IsConfigurationRequired));
         OnPropertyChanged(nameof(IsConfigurationStateVisible));
         OnPropertyChanged(nameof(CanSend));
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+        RetryCapabilityCommand.NotifyCanExecuteChanged();
         LoadHistory();
     }
 
@@ -415,6 +424,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(IsConfigurationRequired));
         OnPropertyChanged(nameof(IsConfigurationStateVisible));
         OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanSendOrStop));
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+        RetryCapabilityCommand.NotifyCanExecuteChanged();
     }
 
 
@@ -470,6 +484,9 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 OnPropertyChanged(nameof(IsConfigurationRequired));
                 OnPropertyChanged(nameof(IsConfigurationStateVisible));
                 OnPropertyChanged(nameof(IsEmptyStateVisible));
+                OnPropertyChanged(nameof(CanSend));
+                SendCommand.NotifyCanExecuteChanged();
+                SendOrStopCommand.NotifyCanExecuteChanged();
             }
 
             return result.Status == ConversationSendStatus.Completed;
@@ -524,7 +541,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         await SendCoreAsync(_lastUserMessage);
     }
 
-    private bool CanSendBase => !IsStreaming
+    private bool CanSendBase => !IsStreaming && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(_lastUserMessage);
 
@@ -611,11 +628,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         SetCapabilityNotice(string.Empty, CapabilityNoticeKind.None);
         RetryCapabilityCommand.NotifyCanExecuteChanged();
         ErrorText = string.Empty;
-        _configurationRequired = false;
         OnPropertyChanged(nameof(IsConversationEmpty));
         OnPropertyChanged(nameof(IsEmptyStateVisible));
         OnPropertyChanged(nameof(IsConfigurationRequired));
         OnPropertyChanged(nameof(IsConfigurationStateVisible));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanSendOrStop));
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
     }
 
     private void OnConversationUpdated(ConversationUpdate update)

@@ -359,15 +359,17 @@ internal sealed class SettingsDocumentV2Codec
     private static AppTheme ParseTheme(string? theme) => theme switch
     {
         "fgo_light" => AppTheme.FgoLight,
-        "modern_gray" => AppTheme.ModernGray,
+        "modern_gray" or "fgo_dark" => AppTheme.FgoDark,
+        "system" => AppTheme.System,
         _ => AppTheme.FgoLight,
     };
 
     private static string FormatTheme(AppTheme theme) => theme switch
     {
-        AppTheme.ModernGray => "modern_gray",
+        AppTheme.FgoDark => "fgo_dark",
         AppTheme.FgoLight => "fgo_light",
-        _ => "modern_gray",
+        AppTheme.System => "system",
+        _ => "fgo_light",
     };
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ParsePackageSettings(

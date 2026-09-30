@@ -119,6 +119,23 @@ public sealed class SettingsDocumentV2CodecTests
     }
 
     [Theory]
+    [InlineData("modern_gray", AppTheme.FgoDark, "fgo_dark")]
+    [InlineData("fgo_dark", AppTheme.FgoDark, "fgo_dark")]
+    [InlineData("system", AppTheme.System, "system")]
+    public void Theme_codec_accepts_legacy_dark_and_round_trips_new_modes(
+        string stored, AppTheme expected, string normalized)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(
+            File.ReadAllText(Fixture("settings-v2-complete.json")))!;
+        root["theme"] = stored;
+        var codec = new SettingsDocumentV2Codec();
+        var decoded = codec.Deserialize(root.ToJsonString());
+        Assert.Equal(expected, decoded.Theme.Theme);
+        using var document = JsonDocument.Parse(codec.Serialize(decoded));
+        Assert.Equal(normalized, document.RootElement.GetProperty("theme").GetString());
+    }
+
+    [Theory]
     [InlineData("settings-v1-minimal.json")]
     [InlineData("settings-v2-complete.json")]
     public void Deserialize_and_round_trip_supported_documents(string fixture)

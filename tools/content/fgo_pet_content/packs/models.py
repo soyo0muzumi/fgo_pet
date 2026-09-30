@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 KNOWN_CAPABILITIES = frozenset(
     {
         "art.v3",
+        "portrait.live2d.v1",
         "dialogue.v1",
         "knowledge.v1",
         "persona.v1",

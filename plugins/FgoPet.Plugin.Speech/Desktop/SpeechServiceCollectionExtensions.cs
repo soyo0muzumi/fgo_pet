@@ -19,7 +19,8 @@ public static class SpeechServiceCollectionExtensions
             provider.GetRequiredService<SpeechPlaybackCoordinator>(), voicesDirectory));
         services.AddSingleton<SpeechConnectionPage>();
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            "Speech", _ => provider.GetRequiredService<SpeechConnectionPage>(), "语音朗读", "选择角色的声音，调整朗读与播放偏好。"));
+            "Speech", _ => provider.GetRequiredService<SpeechConnectionPage>(), "语音朗读", "选择角色的声音，调整朗读与播放偏好。",
+            "能力", ["语音", "朗读", "声音"], 120));
         return services;
     }
 

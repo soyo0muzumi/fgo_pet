@@ -523,6 +523,10 @@ public sealed class DialogueWindowIntegrationTests
             var window = CreateWindow();
             window.Resources.MergedDictionaries.Add(new ResourceDictionary
             {
+                Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative),
+            });
+            window.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
                 Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
             });
             try

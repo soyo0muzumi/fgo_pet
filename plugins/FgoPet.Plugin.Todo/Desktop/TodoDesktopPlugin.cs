@@ -7,13 +7,17 @@ using FgoPet.UiSdk;
 
 namespace FgoPet.Plugin.Todo.Desktop;
 
-public sealed class TodoDesktopPlugin(TodoPlugin conversation, TodoApplicationService todos)
+public sealed class TodoDesktopPlugin(TodoPlugin conversation, TodoApplicationService todos,
+    TodoPeekSurfaceFactory? peek = null)
     : IFgoPetPlugin, IWorkspaceViewFactory, IDisposable
 {
     private readonly List<TodoWorkspaceView> _surfaces = [];
     private volatile bool _closed;
     public PluginManifest Manifest => conversation.Manifest;
-    public PluginContributions Contributions => conversation.Contributions;
+    public PluginContributions Contributions => conversation.Contributions with
+    {
+        TransientSurfaces = [new("todo.peek", "今日待办", 320, 400, TransientAnchor.Portrait)]
+    };
     public string WorkspaceId => "todo.workspace";
     public FrameworkElement CreateView()
     {
@@ -29,6 +33,7 @@ public sealed class TodoDesktopPlugin(TodoPlugin conversation, TodoApplicationSe
         await conversation.StopAsync(cancellationToken);
         foreach (var surface in _surfaces.ToArray()) await surface.DisposeAsync();
         _surfaces.Clear();
+        peek?.Dispose();
     }
     public async ValueTask DisposeAsync()
     {
@@ -41,5 +46,6 @@ public sealed class TodoDesktopPlugin(TodoPlugin conversation, TodoApplicationSe
         conversation.Dispose();
         foreach (var surface in _surfaces) surface.Dispose();
         _surfaces.Clear();
+        peek?.Dispose();
     }
 }

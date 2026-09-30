@@ -25,6 +25,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
     private readonly Dispatcher _dispatcher;
     private readonly ISpeechSettingsStore? _settings;
     private readonly CompanionPresentation? _presentation;
+    private readonly Func<string, bool>? _toggleTransient;
     private bool _disposed;
     private DateTimeOffset _lastInteraction;
     private bool _pointerInside;
@@ -41,7 +42,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
         AppRuntime? runtime = null,
         DialogueWindowViewModel? dialogueWindow = null,
         ISpeechSettingsStore? settings = null,
-        CompanionPresentation? presentation = null)
+        CompanionPresentation? presentation = null,
+        Func<string, bool>? toggleTransient = null)
     {
         _time = time;
         CompactSurface = compactSurface;
@@ -51,6 +53,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
         DialogueWindow = dialogueWindow;
         _settings = settings;
         _presentation = presentation;
+        _toggleTransient = toggleTransient;
         _isAutoReadEnabled = settings?.Load().Connection.AutoReadEnabled ?? false;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _lastInteraction = time.GetUtcNow();
@@ -221,13 +224,7 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
     public void OpenTasks()
     {
         Interact();
-        if (DialogueWindow is { } main)
-        {
-            main.NavigateTo(MainNavigationTarget.Schedule);
-            main.RequestOpen();
-            return;
-        }
-
+        if (_toggleTransient?.Invoke("todo.peek") == true) return;
         TodoClick();
     }
 

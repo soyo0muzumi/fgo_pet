@@ -31,6 +31,33 @@ public sealed class PluginCatalogTests
     }
 
     [Fact]
+    public void Transient_surface_registration_is_captured_and_checked_against_workspace_ids()
+    {
+        var sample = new SamplePlugin("test.todo")
+        {
+            Contributions = new([new EchoProvider()], [new("test.todo.workspace", "Workspace")], [])
+            {
+                TransientSurfaces = [new("test.todo.peek", "Peek", 320, 400)],
+            },
+        };
+
+        var catalog = PluginCatalog.Create([sample]);
+        Assert.Equal("test.todo.peek", Assert.Single(catalog.TransientSurfaces).Descriptor.Id);
+        sample.Contributions = PluginContributions.Empty;
+        Assert.Single(catalog.TransientSurfaces);
+
+        var duplicate = new SamplePlugin("test.todo")
+        {
+            Contributions = new([], [new("test.todo.peek", "Workspace")], [])
+            {
+                TransientSurfaces = [new("test.todo.peek", "Peek", 320, 400)],
+            },
+        };
+        Assert.Equal("PLUGIN_DUPLICATE_SURFACE",
+            Assert.Throws<PluginValidationException>(() => PluginCatalog.Create([duplicate])).Code);
+    }
+
+    [Fact]
     public void Dependencies_are_ordered_before_dependents_regardless_of_registration_order()
     {
         var dependent = new SamplePlugin("test.dependent", ["test.base"], contributes: false);

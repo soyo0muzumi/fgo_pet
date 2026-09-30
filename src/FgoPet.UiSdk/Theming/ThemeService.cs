@@ -7,7 +7,7 @@ using FgoPet.UiFoundation.Theming;
 namespace FgoPet.App.Theming;
 
 /// <summary>Loads the selected settings palette and persists it without replacing shared resources.</summary>
-public sealed class ThemeService
+public sealed class ThemeService : IDisposable
 {
     public const string ThemeDictionaryMarker = "FgoPet.ThemeDictionary";
 
@@ -15,6 +15,9 @@ public sealed class ThemeService
     private readonly ResourceDictionary _resources;
     private readonly Func<AppTheme, ResourceDictionary> _resourceLoader;
     private readonly Dispatcher? _dispatcher;
+    private readonly ISystemThemeSource _systemTheme;
+    private readonly bool _ownsSystemTheme;
+    private bool _disposed;
 
     public ThemeService(IThemeSettingsStore settings)
         : this(settings, ResolveApplicationResources(), null)
@@ -29,21 +32,56 @@ public sealed class ThemeService
     public ThemeService(
         IThemeSettingsStore settings,
         ResourceDictionary resources,
-        Func<AppTheme, ResourceDictionary>? resourceLoader)
+        Func<AppTheme, ResourceDictionary>? resourceLoader,
+        ISystemThemeSource? systemTheme = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _resources = resources ?? throw new ArgumentNullException(nameof(resources));
         _resourceLoader = resourceLoader ?? LoadThemeDictionary;
         _dispatcher = Application.Current?.Dispatcher;
+        _systemTheme = systemTheme ?? new WindowsSystemThemeSource();
+        _ownsSystemTheme = systemTheme is null;
+        _systemTheme.Changed += OnSystemThemeChanged;
         CurrentTheme = AppTheme.FgoLight;
+        SelectedTheme = AppTheme.FgoLight;
         StatusText = "主题尚未初始化";
     }
 
     public AppTheme CurrentTheme { get; private set; }
+    public AppTheme SelectedTheme { get; private set; }
 
     public string StatusText { get; private set; }
 
     public event EventHandler? ThemeChanged;
+
+    /// <summary>Reads the same semantic palette used by WPF for a local Web surface.</summary>
+    public IReadOnlyDictionary<string, string> CaptureWebPalette()
+    {
+        var colors = new Dictionary<string, string>(StringComparer.Ordinal);
+        InvokeOnResourceDispatcher(() =>
+        {
+            foreach (var (css, resource) in WebPaletteKeys)
+            {
+                if (_resources[resource] is Color color)
+                    colors[css] = color.A == 255
+                        ? $"#{color.R:X2}{color.G:X2}{color.B:X2}"
+                        : $"rgba({color.R}, {color.G}, {color.B}, {color.A / 255d:0.###})";
+            }
+        });
+        return colors;
+    }
+
+    private static readonly (string Css, string Resource)[] WebPaletteKeys =
+    [
+        ("--surface", "Semantic.ContentColor"),
+        ("--page", "Semantic.SubtleColor"),
+        ("--text", "Semantic.PrimaryTextColor"),
+        ("--muted", "Semantic.SecondaryTextColor"),
+        ("--line", "Semantic.BorderDecorativeColor"),
+        ("--accent", "Semantic.PrimaryActionColor"),
+        ("--on-accent", "Semantic.OnPrimaryActionColor"),
+        ("--danger", "DangerColor"),
+    ];
 
     public void Initialize()
     {
@@ -102,7 +140,8 @@ public sealed class ThemeService
             loadStatus = $"设置读取失败，已使用{DisplayName(AppTheme.FgoLight)}";
         }
 
-        if (TryApplyDictionary(savedTheme, allowFallback: true))
+        SelectedTheme = savedTheme;
+        if (TryApplyDictionary(ResolveEffectiveTheme(savedTheme), allowFallback: true))
         {
             StatusText = string.IsNullOrEmpty(loadStatus)
                 ? $"当前主题：{DisplayName(CurrentTheme)}"
@@ -116,10 +155,12 @@ public sealed class ThemeService
 
     private void SelectCore(AppTheme theme)
     {
-        if (!TryApplyDictionary(theme, allowFallback: false))
+        if (!TryApplyDictionary(ResolveEffectiveTheme(theme), allowFallback: false))
         {
             return;
         }
+
+        SelectedTheme = theme;
 
         try
         {
@@ -134,6 +175,43 @@ public sealed class ThemeService
         }
 
         ThemeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private AppTheme ResolveEffectiveTheme(AppTheme selected)
+    {
+        if (selected != AppTheme.System) return selected;
+        try
+        {
+            return _systemTheme.ReadTheme() == AppTheme.FgoDark
+                ? AppTheme.FgoDark : AppTheme.FgoLight;
+        }
+        catch (Exception) { return AppTheme.FgoLight; }
+    }
+
+    private void OnSystemThemeChanged(object? sender, EventArgs e)
+    {
+        if (_disposed || SelectedTheme != AppTheme.System) return;
+        void Apply()
+        {
+            if (_disposed || SelectedTheme != AppTheme.System) return;
+            var effective = ResolveEffectiveTheme(AppTheme.System);
+            if (effective == CurrentTheme || !TryApplyDictionary(effective, allowFallback: false)) return;
+            StatusText = $"当前主题：{DisplayName(AppTheme.System)}";
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
+        }
+        if (_dispatcher is not null && !_dispatcher.CheckAccess())
+        {
+            if (!_dispatcher.HasShutdownStarted) _dispatcher.BeginInvoke((Action)Apply);
+        }
+        else Apply();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _systemTheme.Changed -= OnSystemThemeChanged;
+        if (_ownsSystemTheme && _systemTheme is IDisposable disposable) disposable.Dispose();
     }
 
     private bool TryApplyDictionary(AppTheme theme, bool allowFallback)
@@ -371,6 +449,10 @@ public sealed class ThemeService
     private static AppTheme Normalize(AppTheme theme) =>
         Enum.IsDefined(theme) ? theme : AppTheme.FgoLight;
 
-    private static string DisplayName(AppTheme theme) =>
-        theme == AppTheme.FgoLight ? "FGO Light" : "现代灰";
+    private static string DisplayName(AppTheme theme) => theme switch
+    {
+        AppTheme.FgoLight => "FGO Light",
+        AppTheme.System => "跟随系统",
+        _ => "FGO Dark",
+    };
 }

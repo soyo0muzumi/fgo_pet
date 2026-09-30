@@ -47,7 +47,7 @@ def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[d
                 "schema_version": 1,
                 "runtime_identifier": "win-x64",
                 "framework_dependent": True,
-                "target_framework": "net8.0-windows",
+                "target_framework": "net8.0-windows10.0.17763.0",
                 "runtime_requirement": ".NET 8 Desktop Runtime",
                 "application_version": "0.1.0",
                 "required_executables": REQUIRED_EXECUTABLES,

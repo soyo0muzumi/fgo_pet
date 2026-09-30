@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.Json.Nodes;
 using FgoPet.Core.Packs;
 using FgoPet.Infrastructure.FileSystem;
 using FgoPet.Infrastructure.Packs;
@@ -67,6 +68,62 @@ public sealed class FgoPetPackInstallerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_packages, "official.mash", "1.0.0", "package.json")));
         Assert.True(File.Exists(Path.Combine(_packages, "official.mash", "1.0.0", "previews", "library.png")));
         AssertStagingEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Install_requires_capability_for_a_hashed_live2d_appearance(bool declareCapability)
+    {
+        var archive = Upload("live2d.fgopetpack");
+        var body = new byte[] { 1, 2, 3 };
+        var expression = new byte[] { 4, 5, 6 };
+        var moc = "MOC3"u8.ToArray();
+        var texture = new byte[] { 7, 8, 9 };
+        var model = """{"Version":3,"FileReferences":{"Moc":"mash.moc3","Textures":["texture.png"]}}""";
+        var modelBytes = System.Text.Encoding.UTF8.GetBytes(model);
+        var appearance = JsonNode.Parse(PackFixture.V3Json([
+            ("body", "full_body", "runtime/full_body.png", PackFixture.Sha256(body)),
+            ("expression", "neutral", "runtime/expressions/r01c01.png", PackFixture.Sha256(expression)),
+        ]))!.AsObject();
+        appearance["live2d"] = new JsonObject
+        {
+            ["model_path"] = "live2d/mash.model3.json",
+            ["files"] = new JsonArray
+            {
+                new JsonObject { ["path"] = "live2d/mash.model3.json", ["sha256"] = PackFixture.Sha256(modelBytes) },
+                new JsonObject { ["path"] = "live2d/mash.moc3", ["sha256"] = PackFixture.Sha256(moc) },
+                new JsonObject { ["path"] = "live2d/texture.png", ["sha256"] = PackFixture.Sha256(texture) },
+            },
+        };
+        var package = JsonNode.Parse(PackArchiveBuilder.PackManifestJson(includeCapabilities: true, includeFiles: true))!.AsObject();
+        if (declareCapability)
+        {
+            package["capabilities"]!.AsArray().Add("portrait.live2d.v1");
+        }
+        var files = package["files"]!.AsArray();
+        files.Add("appearances/casual/live2d/mash.model3.json");
+        files.Add("appearances/casual/live2d/mash.moc3");
+        files.Add("appearances/casual/live2d/texture.png");
+        PackArchiveBuilder.Raw(archive, zip =>
+        {
+            PackArchiveBuilder.AddText(zip, "package.json", package.ToJsonString());
+            PackArchiveBuilder.AddContent(zip, "previews/library.png", new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+            PackArchiveBuilder.AddContent(zip, "appearances/casual/runtime/full_body.png", body);
+            PackArchiveBuilder.AddContent(zip, "appearances/casual/runtime/expressions/r01c01.png", expression);
+            PackArchiveBuilder.AddText(zip, "appearances/casual/manifest.json", appearance.ToJsonString());
+            PackArchiveBuilder.AddText(zip, "appearances/casual/live2d/mash.model3.json", model);
+            PackArchiveBuilder.AddContent(zip, "appearances/casual/live2d/mash.moc3", moc);
+            PackArchiveBuilder.AddContent(zip, "appearances/casual/live2d/texture.png", texture);
+        });
+
+        var result = Install(archive);
+
+        Assert.Equal(declareCapability, result.Installed);
+        if (!declareCapability)
+        {
+            Assert.Equal(PackErrorCode.ManifestMalformed, result.Failure!.Code);
+        }
     }
 
     [Fact]
@@ -432,11 +489,11 @@ public sealed class PackArchivePolicyTests
         Assert.Equal(1024, production.MaxEntries);
         Assert.Equal(32L * 1024 * 1024, production.MaxEntryBytes);
         Assert.Equal(512L * 1024 * 1024, production.MaxExpandedBytes);
-        foreach (var extension in new[] { ".png", ".json", ".md", ".txt" })
+        foreach (var extension in new[] { ".png", ".json", ".md", ".txt", ".moc3" })
         {
             Assert.Contains(extension, production.AllowedExtensions);
         }
-        foreach (var extension in new[] { ".dll", ".exe", ".ps1", ".xaml", ".html" })
+        foreach (var extension in new[] { ".dll", ".exe", ".js", ".ps1", ".xaml", ".html" })
         {
             Assert.DoesNotContain(extension, production.AllowedExtensions);
         }

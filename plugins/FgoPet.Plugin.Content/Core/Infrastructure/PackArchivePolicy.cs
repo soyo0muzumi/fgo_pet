@@ -21,6 +21,6 @@ public sealed record PackArchivePolicy(
         ExpandedBytes,
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".png", ".jpg", ".jpeg", ".json", ".md", ".txt",
+            ".png", ".jpg", ".jpeg", ".json", ".md", ".txt", ".moc3",
         });
 }

@@ -8,7 +8,9 @@ The consumed legacy `ISettingsNavigator` and `PackageDetailRoute` publish presen
 
 `IUserDataExporter`/`IUserDataDeleter` publish the existing UI privacy request ports here. DataManagement owns their policy and execution; confirmation remains in the existing privacy page. These ports expose no repositories and preserve their signatures.
 
-`ThemeService` compiles here. Persisted `ThemeSettings` and `AppTheme` compile in Platform.Contracts. Existing namespaces and App theme resource URIs are preserved. The retired UiFoundation project is not a second compilation owner.
+`ThemeService` compiles here. Persisted `ThemeSettings` and `AppTheme` compile in Platform.Contracts. Existing namespaces and App theme resource URIs are preserved. `design/tokens.json` supplies both WPF theme color dictionaries and Web fallback CSS; run `python tools/scripts/generate_theme_tokens.py --check` to detect drift. System theme mode follows the Windows app color preference, while explicit light/dark selections remain fixed. The retired UiFoundation project is not a second compilation owner.
+
+Transient surfaces are registered by ID through `ITransientSurfaceViewFactory`; owners still return a `FrameworkElement`. `WebView2SurfaceHost` restricts local navigation and accepts only declared typed commands. The shell owns the separate transient window and its lifetime, and no feature receives a generic host-object bridge.
 
 Dependencies: Extensibility, Platform.Contracts and published Kernel geometry/portrait contracts, plus WPF/framework libraries and the existing CommunityToolkit command contract. No feature implementation or desktop-host dependency.
 

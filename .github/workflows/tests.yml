@@ -20,6 +20,9 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
+      - name: Verify generated theme tokens
+        shell: pwsh
+        run: python tools/scripts/generate_theme_tokens.py --check
       - name: Build the complete solution
         shell: pwsh
         run: |

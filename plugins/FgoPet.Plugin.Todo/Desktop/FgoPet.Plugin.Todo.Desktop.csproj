@@ -7,4 +7,5 @@
     <InternalsVisibleTo Include="FgoPet.App.Tests" />
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
+  <ItemGroup><Content Include="ui\todo\**\*" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

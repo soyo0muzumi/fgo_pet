@@ -44,7 +44,14 @@ public sealed class TodoApplicationService
 
     public TodoItem Update(string id, string title, string? description, IReadOnlyList<TodoStep>? steps = null)
     {
-        var current = RequireEditable(id);
+        return Update(RequireEditable(id), title, description, steps);
+    }
+
+    public TodoItem Update(TodoItem expected, string title, string? description,
+        IReadOnlyList<TodoStep>? steps = null)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        var current = RequireUnchanged(expected);
         EnsureContentEditable(current);
         var updated = new TodoItem(current.Id, title, description, current.Priority, current.DueAt,
             current.CreatedAt, _time.GetUtcNow(), current.Status, current.CompletedAt, steps ?? current.Steps);
@@ -75,7 +82,12 @@ public sealed class TodoApplicationService
 
     public TodoItem Complete(string id, bool confirmIncompleteSteps = false)
     {
-        var current = RequireEditable(id);
+        return Complete(RequireEditable(id), confirmIncompleteSteps);
+    }
+
+    public TodoItem Complete(TodoItem expected, bool confirmIncompleteSteps = false)
+    {
+        var current = RequireUnchanged(expected);
         var remaining = current.Steps.Count(step => !step.IsCompleted);
         if (remaining > 0 && !confirmIncompleteSteps)
         {
@@ -98,7 +110,12 @@ public sealed class TodoApplicationService
 
     public TodoItem Reopen(string id)
     {
-        var current = RequireEditable(id);
+        return Reopen(RequireEditable(id));
+    }
+
+    public TodoItem Reopen(TodoItem expected)
+    {
+        var current = RequireUnchanged(expected);
         if (current.Status != TodoStatus.Completed)
             throw new InvalidOperationException("只有已完成的任务可以恢复。");
 
@@ -114,7 +131,21 @@ public sealed class TodoApplicationService
 
     public void Delete(string id)
     {
-        ApplyLocal(RequireEditable(id), null);
+        Delete(RequireEditable(id));
+    }
+
+    public void Delete(TodoItem expected)
+    {
+        ApplyLocal(RequireUnchanged(expected), null);
+    }
+
+    private TodoItem RequireUnchanged(TodoItem expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        var current = RequireEditable(expected.Id);
+        if (!TodoItemValueComparer.Equals(current, expected))
+            throw new InvalidOperationException("TODO_CONFLICT");
+        return current;
     }
 
     private TodoItem RequireEditable(string id)

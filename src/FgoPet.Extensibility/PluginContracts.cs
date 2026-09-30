@@ -5,9 +5,15 @@ namespace FgoPet.Extensibility;
 
 public sealed record PluginManifest(string Id, string Version, int ApiVersion, ImmutableArray<string> Dependencies);
 public sealed record WorkspaceDescriptor(string Id, string Title);
+public enum TransientAnchor { Portrait, Launcher }
+public sealed record TransientSurfaceDescriptor(string Id, string Title, double PreferredWidthDip,
+    double PreferredHeightDip, TransientAnchor Anchor = TransientAnchor.Launcher);
 public sealed record SettingsPageDescriptor(string Id, string Title)
 {
     public string Description { get; init; } = string.Empty;
+    public string Group { get; init; } = string.Empty;
+    public ImmutableArray<string> Keywords { get; init; } = [];
+    public int Order { get; init; }
 }
 public sealed record PluginContributions(ImmutableArray<IToolProvider> Tools,
     ImmutableArray<WorkspaceDescriptor> Workspaces, ImmutableArray<SettingsPageDescriptor> SettingsPages)
@@ -20,6 +26,7 @@ public sealed record PluginContributions(ImmutableArray<IToolProvider> Tools,
     public ImmutableArray<IConversationPromptProvider> Prompts { get; init; } = [];
     public ImmutableArray<IPostTurnObserver> PostTurnObservers { get; init; } = [];
     public ImmutableArray<ICompanionFeedbackProvider> FeedbackProviders { get; init; } = [];
+    public ImmutableArray<TransientSurfaceDescriptor> TransientSurfaces { get; init; } = [];
 }
 
 /// <summary>Trusted, statically registered capability. The supplied token represents process shutdown.</summary>

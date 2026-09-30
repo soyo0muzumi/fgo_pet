@@ -7,7 +7,7 @@
 <UserControl.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/FgoPet.UiSdk;component/Ui/Shell/ChatControls.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></UserControl.Resources>
 <Grid>
  <Grid.ColumnDefinitions><ColumnDefinition x:Name="SettingsNavigationColumn" Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
- <Border Background="{DynamicResource Surface.App}" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,0,1,0">
+ <Border x:Name="LegacyRail" Background="{DynamicResource Surface.App}" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,0,1,0">
   <DockPanel Margin="4,16,4,12">
    <Button DockPanel.Dock="Bottom" Content="设置" Tag="{StaticResource ChatSettings}" Style="{StaticResource ShellRailSelectedButton}" ToolTip="设置" AutomationProperties.Name="设置" Margin="0"/>
    <StackPanel><TextBlock Text="FGO" FontSize="11" Foreground="{DynamicResource Text.Secondary}" HorizontalAlignment="Center" Margin="0,6,0,24"/>
@@ -17,6 +17,21 @@
    </StackPanel>
   </DockPanel>
  </Border>
+ <Grid x:Name="MetadataNavigation" Grid.Column="0" Visibility="Collapsed" Background="{DynamicResource Surface.App}">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <TextBox x:Name="PageSearch" Margin="12,16,12,10" Padding="8" Height="34"
+           AutomationProperties.Name="搜索设置" ToolTip="按页面名称或关键词搜索"/>
+  <ListBox x:Name="PageList" Grid.Row="1" Margin="8,0,8,12" BorderThickness="0"
+           Background="Transparent" SelectedValuePath="Id" AutomationProperties.Name="设置页面">
+   <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate>
+    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Margin="8,14,8,6"
+               Foreground="{DynamicResource Text.Secondary}"/>
+   </DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
+   <ListBox.ItemTemplate><DataTemplate>
+    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Margin="6,5"/>
+   </DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+ </Grid>
  <Grid Grid.Column="1"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
   <Border x:Name="ProductHeader" BorderBrush="{DynamicResource Border.Decorative}" BorderThickness="0,0,0,1" Padding="28,20,28,0">
    <StackPanel><TextBlock x:Name="ProductHeaderText" Text="设置" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/>

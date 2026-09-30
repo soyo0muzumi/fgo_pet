@@ -13,6 +13,7 @@ using FgoPet.App.Dialogue;
 using FgoPet.App.Lifetime;
 using FgoPet.App.Panels;
 using FgoPet.App.Portraits;
+using FgoPet.App.Portraits.Live2D;
 using FgoPet.App.Runtime;
 using FgoPet.App.Privacy;
 using FgoPet.App.Servants;
@@ -46,6 +47,7 @@ using FgoPet.Speech.Settings;
 using FgoPet.UiFoundation.Theming;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using Microsoft.Extensions.Logging;
@@ -71,7 +73,7 @@ public static class ServiceRegistration
         if (includeSpeech && includeIndexTts) services.AddIndexTtsProvider();
         services
         .AddAgentBackendServices(paths.StorageRoot, includeAgentBackend)
-        .AddTodoCapability(includeTodo)
+        .AddTodoCapability(includeTodo, paths.StorageRoot)
         .AddFocusCapability(includeFocus)
         .AddMemoryCapability(includeMemory, provider => new ProviderMemoryCandidateExtractor(
             connection => provider.GetRequiredService<IChatProviderResolver>().Resolve(connection),
@@ -103,6 +105,13 @@ public static class ServiceRegistration
         .AddContentCapability(paths.PackagesRoot, paths.StorageRoot, FgoPetAppVersion.Current)
         .AddSingleton<IExpressionResolver, ExpressionResolver>()
         .AddStaticPortraitBackend()
+        .AddSingleton(provider => new Live2DPortraitController(
+            provider.GetRequiredService<PortraitController>(),
+            provider.GetRequiredService<IArtPackageRepository>(),
+            Path.Combine(AppContext.BaseDirectory, "Live2D"),
+            Path.Combine(paths.StorageRoot, "Live2DSessions"),
+            Path.Combine(paths.StorageRoot, "Live2DWebView2")))
+        .Replace(ServiceDescriptor.Singleton<FgoPet.Kernel.Presentation.IPortraitBackend>(provider => provider.GetRequiredService<Live2DPortraitController>()))
         .AddSingleton<IPortraitSurface>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>() as IPortraitSurface
             ?? throw new InvalidOperationException("The selected portrait backend has no desktop surface."))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>())
@@ -136,6 +145,7 @@ public static class ServiceRegistration
         .AddSingleton<CompanionPresentation>()
         .AddSingleton<CompanionReactionPipeline>()
         .AddSingleton<IWorkspaceCatalog, WorkspaceCatalog>()
+        .AddSingleton<ITransientSurfaceCatalog, TransientSurfaceCatalog>()
         .AddSingleton<ArchiveDraftService>()
         .AddSingleton<ILongArchiveSummaryStore, MemoryLongArchiveSummaryStore>()
         .AddSingleton<LongArchiveService>()
@@ -166,12 +176,17 @@ public static class ServiceRegistration
         .AddSingleton<ISettingsNavigator>(provider => provider.GetRequiredService<SettingsViewModel>())
         .AddSingleton<ISettingsPageNavigator>(provider => provider.GetRequiredService<SettingsViewModel>())
         .AddSingleton<UserProfileViewModel>()
-        .AddSingleton<UserProfilePage>()
+        .AddSingleton(provider => new UserProfileWebFactory(
+            provider.GetRequiredService<ICharacterSettingsStore>(),
+            provider.GetRequiredService<UserProfileViewModel>(), paths.StorageRoot,
+            provider.GetRequiredService<ThemeService>()))
         .AddCharacterSettings()
         .AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.UserProfile), _ => provider.GetRequiredService<UserProfilePage>()))
+            nameof(SettingsSection.UserProfile), _ => provider.GetRequiredService<UserProfileWebFactory>().CreateView(),
+            "用户资料", "管理全局用户资料。", "开始使用", ["用户", "资料"], 10))
         .AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.Privacy), _ => provider.GetRequiredService<PrivacyPage>()))
+            nameof(SettingsSection.Privacy), _ => provider.GetRequiredService<PrivacyPage>(),
+            "数据与隐私", "导出或清理本地用户数据。", "管理", ["数据", "隐私", "导出"], 210))
         .AddSingleton(provider => new SettingsPageCatalog(provider.GetServices<ISettingsPageViewFactory>(),
             provider.GetRequiredService<IProcessLifetime>().StoppingToken))
         .AddSingleton<SettingsPageContentResolver>(provider => (section, route) =>
@@ -224,12 +239,21 @@ public static class ServiceRegistration
                 provider.GetRequiredService<AppRuntime>(),
                 provider.GetRequiredService<DialogueWindowViewModel>(),
                 provider.GetRequiredService<ISpeechSettingsStore>(),
-                provider.GetRequiredService<CompanionPresentation>());
+                provider.GetRequiredService<CompanionPresentation>(),
+                surfaceId => provider.GetRequiredService<TransientSurfaceCoordinator>().Toggle(surfaceId));
         })
         .AddSingleton<IAttachedPanelLauncher>(provider => provider.GetRequiredService<AttachedPanelViewModel>())
         .AddSingleton(provider => new PortraitWindow(
             provider.GetRequiredService<AttachedPanelViewModel>()))
         .AddSingleton<PortraitWindowCoordinator>()
+        .AddSingleton(provider => new TransientSurfaceCoordinator(
+            provider.GetRequiredService<ITransientSurfaceCatalog>(),
+            provider.GetRequiredService<IScreenLayoutService>(),
+            () => provider.GetRequiredService<PortraitWindow>(),
+            () => provider.GetRequiredService<PortraitWindowCoordinator>()))
+        .AddSingleton<IWorkspaceLauncher>(provider => new WorkspaceWindowCoordinator(
+            provider.GetRequiredService<IWorkspaceCatalog>(),
+            () => provider.GetRequiredService<PortraitWindow>()))
         .AddSingleton<TrayService>()
         .AddSingleton(provider => new DesktopAppUi(
             provider.GetRequiredService<TrayService>(),

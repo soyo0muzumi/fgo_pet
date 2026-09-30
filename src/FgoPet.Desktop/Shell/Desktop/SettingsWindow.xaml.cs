@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Data;
+using FgoPet.Extensibility;
 using FgoPet.UiSdk;
 
 namespace FgoPet.App.Settings;
@@ -49,6 +51,21 @@ public partial class SettingsWindow : Window
         _capabilities = [.. legacyPages, .. extensionPages];
         InitializeComponent();
         DataContext = viewModel;
+        if (catalog is not null)
+        {
+            SettingsShell.NavigationColumn.Width = new GridLength(190);
+            SettingsShell.LegacyNavigationRail.Visibility = Visibility.Collapsed;
+            SettingsShell.MetadataPageNavigation.Visibility = Visibility.Visible;
+            SettingsShell.LegacyTopNavigation.Visibility = Visibility.Collapsed;
+            SettingsShell.MetadataPageSearch.TextChanged += (_, _) => RefreshMetadataPages();
+            SettingsShell.MetadataPageList.SelectionChanged += (_, _) =>
+            {
+                if (_refreshing) return;
+                if (SettingsShell.MetadataPageList.SelectedValue is string pageId)
+                    _viewModel.Navigate(pageId);
+            };
+            RefreshMetadataPages();
+        }
         SettingsNavigation.ItemsSource = Categories;
         SettingsNavigation.SelectionChanged += SettingsNavigation_SelectionChanged;
         SettingsNavigation.AddHandler(
@@ -73,6 +90,10 @@ public partial class SettingsWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         RefreshRoute();
         Closing += OnClosing;
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible && _currentPage is null) RefreshRoute();
+        };
         PreviewMouseWheel += OnSettingsMouseWheel;
     }
 
@@ -172,8 +193,28 @@ public partial class SettingsWindow : Window
         new(SettingsSection.AgentConnection, "Agent 连接", "连接你的 Agent，管理可访问的项目。", "Agent"),
     ];
 
+    private void RefreshMetadataPages()
+    {
+        if (_settingsCatalog is null) return;
+        var view = CollectionViewSource.GetDefaultView(
+            _settingsCatalog.Search(SettingsShell.MetadataPageSearch.Text));
+        view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SettingsPageDescriptor.Group)));
+        _refreshing = true;
+        try
+        {
+            SettingsShell.MetadataPageList.ItemsSource = view;
+            SettingsShell.MetadataPageList.SelectedValue = _viewModel.SelectedPageId;
+        }
+        finally { _refreshing = false; }
+    }
+
     private void RefreshRoute()
     {
+        if (_settingsCatalog is not null)
+        {
+            RefreshCatalogRoute();
+            return;
+        }
         var category = _viewModel.SelectedSection switch
         {
             SettingsSection.RolePackages or SettingsSection.Theme => SettingsSection.Personalization,
@@ -200,7 +241,8 @@ public partial class SettingsWindow : Window
                 : _lastCapabilityPageId;
         }
         finally { _refreshing = false; }
-        SettingsShell.CapabilityBar.Visibility = isCapability ? Visibility.Visible : Visibility.Collapsed;
+        SettingsShell.CapabilityBar.Visibility = isCapability && _settingsCatalog is null
+            ? Visibility.Visible : Visibility.Collapsed;
         PackageBreadcrumb.Visibility = Visibility.Collapsed;
         var route = category == SettingsSection.Personalization && _viewModel.PackageDetail is not null
             ? _viewModel.PackageDetail
@@ -212,6 +254,14 @@ public partial class SettingsWindow : Window
             ? SettingsSection.RolePackages
             : isCapability ? _viewModel.SelectedSection : category;
         var pageId = isCapability ? _viewModel.SelectedPageId : contentSection.ToString();
+        if (_settingsCatalog?.Pages.FirstOrDefault(page => page.Id == pageId) is { } pageDescriptor)
+        {
+            PageTitleText.Text = pageDescriptor.Title;
+            PageDescriptionText.Text = pageDescriptor.Description;
+            _refreshing = true;
+            try { SettingsShell.MetadataPageList.SelectedValue = pageId; }
+            finally { _refreshing = false; }
+        }
         var pageKey = (pageId, route?.PackageId);
         if (_currentPage != pageKey)
         {
@@ -237,10 +287,53 @@ public partial class SettingsWindow : Window
         PackageBreadcrumbText.Text = route is null ? string.Empty : $"角色包 / {route.DisplayName}";
     }
 
+    private void RefreshCatalogRoute()
+    {
+        var catalog = _settingsCatalog!;
+        var pageId = _viewModel.SelectedPageId;
+        if (!catalog.Contains(pageId))
+        {
+            var fallback = catalog.Search(null).FirstOrDefault();
+            if (fallback is null) { SettingsContent.Content = null; return; }
+            _viewModel.Navigate(fallback.Id);
+            return;
+        }
+        var descriptor = catalog.Pages.First(page => page.Id == pageId);
+        var route = pageId == nameof(SettingsSection.RolePackages) ? _viewModel.PackageDetail : null;
+        _refreshing = true;
+        try { SettingsShell.MetadataPageList.SelectedValue = pageId; }
+        finally { _refreshing = false; }
+        SettingsShell.CapabilityBar.Visibility = Visibility.Collapsed;
+        SettingsShell.HeaderText.Text = "设置";
+        PageTitleText.Text = route?.DisplayName ?? descriptor.Title;
+        PageDescriptionText.Text = descriptor.Description;
+        PackageBreadcrumb.Visibility = route is null ? Visibility.Collapsed : Visibility.Visible;
+        PackageBreadcrumbText.Text = route is null ? string.Empty : $"角色包 / {route.DisplayName}";
+        var pageKey = (pageId, route?.PackageId);
+        if (_currentPage == pageKey) return;
+        SettingsShell.Scroller.UpdateLayout();
+        if (_currentPage is { } previous)
+            _scrollOffsets[previous] = SettingsShell.Scroller.VerticalOffset;
+        _currentPage = pageKey;
+        SettingsContent.Content = catalog.CreateView(pageId, new(route?.PackageId, route?.DisplayName));
+        var ownsScroll = SettingsContent.Content is ISettingsPageSurface { OwnsScrolling: true };
+        SettingsShell.Scroller.VerticalScrollBarVisibility = ownsScroll ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+        SettingsContent.VerticalContentAlignment = ownsScroll ? VerticalAlignment.Stretch : VerticalAlignment.Top;
+        SettingsShell.PageHeadingPanel.Visibility = ownsScroll ? Visibility.Collapsed : Visibility.Visible;
+        SettingsShell.UpdateLayout();
+        SettingsShell.Scroller.ScrollToVerticalOffset(_scrollOffsets.GetValueOrDefault(pageKey));
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         if (Dispatcher.HasShutdownStarted) return;
         e.Cancel = true;
+        if (SettingsContent.Content is WebView2SurfaceHost host)
+        {
+            SettingsContent.Content = null;
+            host.Dispose();
+            _currentPage = null;
+        }
         Hide();
     }
 

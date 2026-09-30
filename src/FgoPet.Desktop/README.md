@@ -4,6 +4,7 @@
 
 - `src/FgoPet.App/Composition` is the application composition root. It registers the shell and the capability-owned registration components.
 - `FgoPet.DesktopShell` provides generic Windows startup/lifetime, windows, navigation, and presentation composition. It does not own feature business state. `AttachedPanelStateMachine` belongs to Platform.Contracts; Focus owns its compact-view content. The window owns DialogueWindowViewModel, including navigation, focus/read receipts and playback presentation; dialogue messages and editing remain in the shared ConversationViewModel.
+- The shell places and closes a separate transient window for capability-owned content such as Todo Peek. Settings navigation consumes owner-supplied metadata. The registered user-profile route creates a WebView2 page; other Settings pages remain WPF, and the Web page is disposed when its route or window closes.
 - `FgoPet.DataManagement` owns named backup, restore, export, and cleanup workflows. `FgoPet.SettingsHost` owns settings document coordination and schema encoding.
 - Memory context setup belongs to the Memory plugin's `MemoryRegistration`, invoked from App composition; the former host-side connector path is gone.
 

@@ -15,7 +15,7 @@ namespace FgoPet.Architecture.Tests;
 public sealed class TransitiveImplementationReferenceTests
 {
     private const string AppProjectRelativePath = "src/FgoPet.App/FgoPet.App.csproj";
-    private const string AppAssemblyRelativePath = "src/FgoPet.App/bin/Release/net8.0-windows/FgoPet.App.dll";
+    private const string AppAssemblyRelativePath = "src/FgoPet.App/bin/Release/net8.0-windows10.0.17763.0/FgoPet.App.dll";
 
     [Fact]
     public async Task App_binds_only_to_the_implementation_assemblies_it_declares()

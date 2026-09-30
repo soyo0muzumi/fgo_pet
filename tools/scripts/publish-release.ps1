@@ -80,7 +80,7 @@ try {
 
     $projectXml = [xml](Get-Content -LiteralPath $appProject -Raw)
     $targetFramework = [string]$projectXml.Project.PropertyGroup.TargetFramework
-    if ($targetFramework -ne 'net8.0-windows') { throw "Application target framework must be net8.0-windows." }
+    if ($targetFramework -ne 'net8.0-windows10.0.17763.0') { throw "Application target framework must be net8.0-windows10.0.17763.0." }
     $versionNode = $projectXml.SelectSingleNode('/Project/PropertyGroup/Version')
     $version = if ($null -eq $versionNode) { '0.1.0' } else { [string]$versionNode.InnerText }
     if ([string]::IsNullOrWhiteSpace($version)) { $version = '0.1.0' }

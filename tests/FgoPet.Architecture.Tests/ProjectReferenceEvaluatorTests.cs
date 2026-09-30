@@ -41,7 +41,7 @@ public sealed class ProjectReferenceEvaluatorTests
         var result = await evaluator.EvaluateAsync(projectPath, "Release", "win-x64");
 
         Assert.Equal(Path.GetFullPath(projectPath), result.ProjectPath);
-        Assert.Equal("net8.0-windows", result.TargetFramework);
+        Assert.Equal("net8.0-windows10.0.17763.0", result.TargetFramework);
         Assert.Contains("win-x64", result.RuntimeIdentifiers);
         Assert.Collection(
             result.References.Where(reference => reference.Kind == ProjectReferenceKind.Companion),

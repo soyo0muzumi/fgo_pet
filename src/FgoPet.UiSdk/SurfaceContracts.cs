@@ -23,6 +23,23 @@ public interface IWorkspaceViewFactory
     FrameworkElement CreateView();
 }
 
+public interface IWorkspaceLauncher
+{
+    bool Open(string workspaceId);
+}
+
+public interface ITransientSurfaceViewFactory
+{
+    string SurfaceId { get; }
+    FrameworkElement CreateView();
+}
+
+public interface ITransientSurfaceCatalog
+{
+    IReadOnlyList<FgoPet.Extensibility.TransientSurfaceDescriptor> TransientSurfaces { get; }
+    FrameworkElement CreateView(string surfaceId);
+}
+
 public interface ISettingsPageViewFactory
 {
     string SettingsPageId { get; }
@@ -53,6 +70,12 @@ public interface IPortraitSurface : FgoPet.Core.Portraits.IPortraitController
     FrameworkElement CreateView();
 }
 
+/// <summary>Optional renderer-owned reaction to a shell-confirmed portrait click.</summary>
+public interface IPortraitTapSurface
+{
+    void OnPortraitTap();
+}
+
 /// <summary>Captures one immutable published renderer state for presentation and hit testing.</summary>
 public interface IPortraitFrame
 {
@@ -76,13 +99,17 @@ public interface ISettingsPageSurface
 
 /// <summary>Captures an owner-supplied constructor without creating a view during registration.</summary>
 public sealed class SettingsPageViewFactory(string pageId, Func<SettingsPageRoute, FrameworkElement> create,
-    string? title = null, string? description = null)
+    string? title = null, string? description = null, string? group = null,
+    string[]? keywords = null, int order = 0)
     : ISettingsPageViewFactory
 {
     public string SettingsPageId { get; } = pageId;
     public FgoPet.Extensibility.SettingsPageDescriptor Descriptor { get; } = new(pageId, title ?? pageId)
     {
-        Description = description ?? string.Empty
+        Description = description ?? string.Empty,
+        Group = group ?? string.Empty,
+        Keywords = keywords is null ? [] : [.. keywords],
+        Order = order,
     };
     public FrameworkElement CreateView() => create(new());
     public FrameworkElement CreateView(SettingsPageRoute route) => create(route);

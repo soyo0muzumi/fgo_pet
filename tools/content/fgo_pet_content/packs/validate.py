@@ -8,7 +8,7 @@ from typing import Iterable
 
 from PIL import Image
 
-from ..art.v3_models import ArtManifestV3
+from ..art.v3_models import ArtManifestV3, Live2DAppearanceV1
 from .models import (
     PackManifestV1,
     PackValidationIssue,
@@ -20,7 +20,11 @@ from .models import (
 MAX_ENTRIES = 1024
 MAX_ENTRY_BYTES = 32 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
-ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".json", ".md", ".txt"})
+ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".json", ".md", ".txt", ".moc3"})
+LIVE2D_SUFFIXES = (
+    ".model3.json", ".moc3", ".png", ".physics3.json", ".motion3.json",
+    ".exp3.json", ".cdi3.json", ".pose3.json", ".userdata3.json",
+)
 
 
 def validate_pack_project(project_dir: Path) -> PackValidationReport:
@@ -164,6 +168,22 @@ def validate_pack_project(project_dir: Path) -> PackValidationReport:
     for appearance in manifest.appearances:
         _validate_appearance(project, appearance.manifest_path, appearance.appearance_id, errors)
 
+    has_live2d = False
+    for appearance in manifest.appearances:
+        appearance_path = _safe_project_path(project, appearance.manifest_path)
+        if appearance_path is None or not appearance_path.is_file():
+            continue
+        try:
+            art = ArtManifestV3.model_validate_json(appearance_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            continue
+        if art.live2d is not None:
+            has_live2d = True
+            if "portrait.live2d.v1" not in manifest.capabilities or not manifest.files:
+                errors.append(PackValidationIssue(check_id="live2d.capability", path=appearance.manifest_path, detail="Live2D appearance requires portrait.live2d.v1 and a complete files list"))
+    if "portrait.live2d.v1" in manifest.capabilities and not has_live2d:
+        errors.append(PackValidationIssue(check_id="live2d.capability", path="package.json", detail="portrait.live2d.v1 requires a Live2D appearance"))
+
     report = _report(errors, declared_files=tuple(sorted(manifest.files)), manifest=manifest)
     return report
 
@@ -204,6 +224,9 @@ def _validate_appearance(
                 detail="appearance_id does not match package.json",
             )
         )
+
+    if manifest.live2d is not None:
+        _validate_live2d(project, manifest_path, manifest.live2d, errors)
 
     appearance_root = PurePosixPath(manifest_path).parent
     image_paths: dict[str, Path] = {}
@@ -364,6 +387,74 @@ def _is_link(path: Path) -> bool:
 
 def _relative(root: Path, path: Path, project: Path) -> str:
     return path.relative_to(project).as_posix()
+
+
+def _validate_live2d(
+    project: Path,
+    manifest_path: str,
+    live2d: Live2DAppearanceV1,
+    errors: list[PackValidationIssue],
+) -> None:
+    appearance_root = PurePosixPath(manifest_path).parent
+    if not is_safe_relative_path(live2d.model_path) or not live2d.model_path.lower().endswith(".model3.json"):
+        errors.append(PackValidationIssue(check_id="live2d.model_path", path=manifest_path, detail="invalid model_path"))
+        return
+    for file in live2d.files:
+        relative = _join_relative(appearance_root, file.path)
+        if relative is None:
+            errors.append(PackValidationIssue(check_id="live2d.path", path=file.path, detail="unsafe resource path"))
+            continue
+        if not file.path.lower().endswith(LIVE2D_SUFFIXES):
+            errors.append(PackValidationIssue(check_id="live2d.file_type", path=relative, detail="unsupported Cubism data file"))
+            continue
+        path = _safe_project_path(project, relative)
+        if path is None or not path.is_file():
+            errors.append(PackValidationIssue(check_id="live2d.missing", path=relative, detail="Cubism resource is missing"))
+            continue
+        if _sha256(path) != file.sha256:
+            errors.append(PackValidationIssue(check_id="live2d.hash", path=relative, detail="Cubism resource hash mismatch"))
+    if any(issue.check_id.startswith("live2d.") for issue in errors):
+        return
+
+    model_relative = _join_relative(appearance_root, live2d.model_path)
+    model_path = _safe_project_path(project, model_relative) if model_relative else None
+    if model_path is None:
+        errors.append(PackValidationIssue(check_id="live2d.model_path", path=manifest_path, detail="unsafe model_path"))
+        return
+    try:
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        if model["Version"] != 3:
+            raise ValueError("unsupported model Version")
+        refs = model["FileReferences"]
+        if "Moc" not in refs or "Textures" not in refs:
+            raise ValueError("Moc and Textures are required")
+        paths = []
+        for key, value in refs.items():
+            if key in {"Moc", "Physics", "Pose", "DisplayInfo", "UserData"}:
+                paths.append(value)
+            elif key == "Textures":
+                paths.extend(value)
+            elif key == "Motions":
+                for group in value.values():
+                    for motion in group:
+                        if "Sound" in motion:
+                            raise ValueError("motion audio is unsupported")
+                        paths.append(motion["File"])
+            elif key == "Expressions":
+                paths.extend(expression["File"] for expression in value)
+            else:
+                raise ValueError(f"unsupported FileReferences key: {key}")
+        model_dir = PurePosixPath(live2d.model_path).parent
+        expected = {live2d.model_path}
+        for reference in paths:
+            if not isinstance(reference, str) or not is_safe_relative_path(reference):
+                errors.append(PackValidationIssue(check_id="live2d.reference_path", path=manifest_path, detail="unsafe model resource reference"))
+                return
+            expected.add((model_dir / reference).as_posix())
+        if expected != {file.path for file in live2d.files}:
+            errors.append(PackValidationIssue(check_id="live2d.references", path=manifest_path, detail="Cubism file declarations must equal model references"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError, KeyError, AttributeError):
+        errors.append(PackValidationIssue(check_id="live2d.model", path=manifest_path, detail="invalid model3.json"))
 
 
 def _native_path(relative: str) -> Path:

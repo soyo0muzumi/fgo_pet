@@ -63,7 +63,8 @@ public static class ModelConnectionRegistration
     {
         services.AddSingleton<ModelConnectionViewModel>().AddSingleton<ModelConnectionPage>();
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.ModelConnection), _ => provider.GetRequiredService<ModelConnectionPage>(), "模型服务", "连接聊天服务，选择默认使用的模型。"));
+            nameof(SettingsSection.ModelConnection), _ => provider.GetRequiredService<ModelConnectionPage>(), "模型服务", "连接聊天服务，选择默认使用的模型。",
+            "开始使用", ["模型", "连接", "聊天"], 30));
         return services;
     }
 }

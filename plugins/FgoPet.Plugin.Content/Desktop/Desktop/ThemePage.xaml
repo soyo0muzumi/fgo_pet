@@ -16,7 +16,7 @@
         <StackPanel Margin="4,4,14,18">
             <TextBlock Margin="0,0,0,14"
                        Style="{StaticResource SettingsStatusStyle}"
-                       Text="选择浅色或深色，立即应用并保存。首次启动默认浅色；已有主题选择会保留。" />
+                       Text="选择浅色、深色或跟随系统，立即应用并保存。已有主题选择会保留。" />
 
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -25,6 +25,7 @@
                 </Grid.ColumnDefinitions>
 
                 <RadioButton x:Name="ModernGrayChoice"
+                             GroupName="AppTheme"
                              Grid.Column="0"
                              MinHeight="190"
                              HorizontalContentAlignment="Stretch"
@@ -32,8 +33,8 @@
                              Style="{StaticResource SettingsThemeChoiceStyle}"
                              IsChecked="{Binding IsModernGraySelected, Mode=OneWay}"
                              Checked="ThemeChoice_Checked"
-                             ToolTip="选择 Modern Gray"
-                             automation:AutomationProperties.Name="Modern Gray 主题"
+                             ToolTip="选择 FGO Dark"
+                             automation:AutomationProperties.Name="FGO Dark 主题"
                              automation:AutomationProperties.HelpText="深灰色表面与柔和的紫色强调色">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -71,6 +72,7 @@
                 </RadioButton>
 
                 <RadioButton x:Name="FgoLightChoice"
+                             GroupName="AppTheme"
                              Grid.Column="1"
                              MinHeight="190"
                              HorizontalContentAlignment="Stretch"
@@ -116,6 +118,12 @@
                     </Grid>
                 </RadioButton>
             </Grid>
+
+            <RadioButton x:Name="SystemChoice" GroupName="AppTheme" Margin="0,12,0,0" Padding="12,10"
+                         Style="{StaticResource SettingsThemeChoiceStyle}"
+                         IsChecked="{Binding IsSystemSelected, Mode=OneWay}"
+                         Checked="ThemeChoice_Checked" Content="跟随系统外观"
+                         automation:AutomationProperties.Name="跟随系统主题" />
 
             <TextBlock x:Name="StatusTextBlock"
                        Margin="0,16,0,0"

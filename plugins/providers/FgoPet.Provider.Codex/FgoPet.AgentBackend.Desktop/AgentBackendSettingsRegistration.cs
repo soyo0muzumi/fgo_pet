@@ -109,7 +109,8 @@ public static class AgentBackendSettingsRegistration
             provider.GetRequiredService<IAgentTargetCatalog>()));
         services.AddSingleton<AgentConnectionSettingsView>();
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            "AgentConnection", _ => provider.GetRequiredService<AgentConnectionSettingsView>(), "Agent 连接", "连接你的 Agent，管理可访问的项目。"));
+            "AgentConnection", _ => provider.GetRequiredService<AgentConnectionSettingsView>(), "Agent 连接", "连接你的 Agent，管理可访问的项目。",
+            "能力", ["Agent", "连接", "项目"], 130));
         return services;
     }
 }

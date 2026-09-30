@@ -143,6 +143,7 @@ public sealed class ThemeServiceTests
         {
             var modern = LoadDictionary("ModernGray.xaml");
             var light = LoadDictionary("FgoLight.xaml");
+            var foundation = LoadComponentDictionary("UiFoundation/ThemeTokens.xaml");
             var controls = LoadDictionary("SettingsControls.xaml");
             var icons = LoadDictionary("SettingsIcons.xaml");
 
@@ -153,6 +154,12 @@ public sealed class ThemeServiceTests
             {
                 Assert.IsAssignableFrom<Brush>(modern[key]);
                 Assert.IsAssignableFrom<Brush>(light[key]);
+            }
+            foreach (var key in RequiredFoundationBrushKeys)
+            {
+                Assert.IsAssignableFrom<Brush>(foundation[key]);
+                Assert.False(modern.Contains(key));
+                Assert.False(light.Contains(key));
             }
             foreach (var key in RequiredControlStyleKeys)
             {
@@ -237,6 +244,74 @@ public sealed class ThemeServiceTests
             Assert.Equal(secondaryText, ResolvedBrushColor(host, "ShellMutedTextBrush").ToString());
             Assert.Equal(primaryAction, ResolvedBrushColor(host, "Action.Primary").ToString());
             Assert.Equal(primaryAction, ResolvedBrushColor(host, "ShellAccentBrush").ToString());
+        });
+    }
+
+    [Fact]
+    public void System_mode_tracks_os_changes_while_explicit_selection_stays_fixed_and_unsubscribes()
+    {
+        StaRun(() =>
+        {
+            var resources = new ResourceDictionary();
+            var store = new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.System));
+            var source = new FakeSystemThemeSource(AppTheme.FgoDark);
+            using var service = new ThemeService(store, resources, ThemeService.CreateTestDictionary, source);
+            service.Initialize();
+            Assert.Equal(AppTheme.System, service.SelectedTheme);
+            Assert.Equal(AppTheme.FgoDark, service.CurrentTheme);
+            var notifications = 0;
+            service.ThemeChanged += (_, _) => notifications++;
+
+            source.Change(AppTheme.FgoLight);
+            Assert.Equal(AppTheme.FgoLight, service.CurrentTheme);
+            Assert.Equal(AppTheme.System, store.Load().Theme);
+            Assert.Equal(1, notifications);
+
+            service.Select(AppTheme.FgoDark);
+            source.Change(AppTheme.FgoLight);
+            Assert.Equal(AppTheme.FgoDark, service.CurrentTheme);
+            Assert.Equal(AppTheme.FgoDark, store.Load().Theme);
+            Assert.Equal(2, notifications);
+            service.Dispose();
+            source.Change(AppTheme.FgoLight);
+            Assert.Equal(2, notifications);
+        });
+    }
+
+    [Fact]
+    public void Web_palette_reads_the_same_semantic_colors_after_theme_switch()
+    {
+        StaRun(() =>
+        {
+            var resources = new ResourceDictionary();
+            var service = new ThemeService(new MemoryThemeSettingsStore(ThemeSettings.Defaults), resources);
+            service.Initialize();
+            Assert.Equal("#FFFFFF", service.CaptureWebPalette()["--surface"]);
+
+            service.Select(AppTheme.ModernGray);
+
+            Assert.Equal("#23242B", service.CaptureWebPalette()["--surface"]);
+            Assert.Equal("#C3A8FF", service.CaptureWebPalette()["--accent"]);
+        });
+    }
+
+    [Fact]
+    public void Theme_switch_updates_a_brush_captured_by_a_static_resource_consumer()
+    {
+        StaRun(() =>
+        {
+            var host = new Border();
+            host.Resources.MergedDictionaries.Add(LoadComponentDictionary("UiFoundation/ThemeTokens.xaml"));
+            host.Resources.MergedDictionaries.Add(LoadDictionary("FgoLight.xaml"));
+            var service = new ThemeService(new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.FgoLight)), host.Resources);
+            service.Initialize();
+
+            host.Background = Assert.IsType<SolidColorBrush>(host.FindResource("Surface.App"));
+            Assert.Equal("#FFF1F0F3", Assert.IsType<SolidColorBrush>(host.Background).Color.ToString());
+
+            service.Select(AppTheme.ModernGray);
+
+            Assert.Equal("#FF18191F", Assert.IsType<SolidColorBrush>(host.Background).Color.ToString());
         });
     }
 
@@ -338,28 +413,19 @@ public sealed class ThemeServiceTests
         "SidebarHoverBrush",
         "SidebarSelectedBrush",
         "SidebarSelectedTextBrush",
-        "Surface.App",
-        "Surface.Content",
-        "Surface.Subtle",
-        "Surface.Hover",
-        "Surface.Pressed",
         "SurfaceBrush",
         "SurfaceRaisedBrush",
-        "Text.Primary",
-        "Text.Secondary",
         "TextBrush",
         "TextOnAccentBrush",
-        "Action.Primary",
-        "Action.OnPrimary",
-        "Accent.Relation",
-        "State.Success",
-        "State.Pending",
-        "State.Danger",
-        "Border.Decorative",
-        "Border.Control",
-        "Focus.Ring",
         "WarningBrush",
         "WindowBackgroundBrush",
+    ];
+
+    private static readonly string[] RequiredFoundationBrushKeys =
+    [
+        "Surface.App", "Surface.Content", "Surface.Subtle", "Surface.Hover", "Surface.Pressed",
+        "Text.Primary", "Text.Secondary", "Action.Primary", "Action.OnPrimary", "Accent.Relation",
+        "State.Success", "State.Pending", "State.Danger", "Border.Decorative", "Border.Control", "Focus.Ring",
     ];
 
     private static readonly string[] RequiredControlStyleKeys =
@@ -494,5 +560,13 @@ public sealed class ThemeServiceTests
         public ThemeSettings Load() => settings;
 
         public void Save(ThemeSettings value) => throw new IOException("test save failure");
+    }
+
+    private sealed class FakeSystemThemeSource(AppTheme initial) : ISystemThemeSource
+    {
+        private AppTheme _theme = initial;
+        public event EventHandler? Changed;
+        public AppTheme ReadTheme() => _theme;
+        public void Change(AppTheme theme) { _theme = theme; Changed?.Invoke(this, EventArgs.Empty); }
     }
 }

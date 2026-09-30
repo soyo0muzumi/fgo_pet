@@ -11,6 +11,7 @@ public sealed class PluginValidationException(string code) : Exception(code)
 public sealed record RegisteredPlugin(PluginManifest Manifest, IFgoPetPlugin Instance);
 public sealed record RegisteredTool(string PluginId, ToolDescriptor Descriptor, IToolProvider Provider);
 public sealed record RegisteredWorkspace(string PluginId, WorkspaceDescriptor Descriptor);
+public sealed record RegisteredTransientSurface(string PluginId, TransientSurfaceDescriptor Descriptor);
 public sealed record RegisteredSettingsPage(string PluginId, SettingsPageDescriptor Descriptor);
 
 /// <summary>Captures typed contributions once; there is no mutable registration API after construction.</summary>
@@ -21,6 +22,7 @@ public sealed class PluginCatalog
     public ImmutableArray<RegisteredPlugin> Plugins { get; }
     public ImmutableArray<RegisteredTool> Tools { get; }
     public ImmutableArray<RegisteredWorkspace> Workspaces { get; }
+    public ImmutableArray<RegisteredTransientSurface> TransientSurfaces { get; }
     public ImmutableArray<RegisteredSettingsPage> SettingsPages { get; }
     public ImmutableArray<RegisteredContribution<IConversationContextProvider>> Contexts { get; }
     public ImmutableArray<RegisteredContribution<IConversationContinuationProvider>> Continuations { get; }
@@ -31,7 +33,8 @@ public sealed class PluginCatalog
     public ImmutableArray<RegisteredContribution<ICompanionFeedbackProvider>> FeedbackProviders { get; }
 
     private PluginCatalog(ImmutableArray<RegisteredPlugin> plugins, ImmutableArray<RegisteredTool> tools,
-        ImmutableArray<RegisteredWorkspace> workspaces, ImmutableArray<RegisteredSettingsPage> settings,
+        ImmutableArray<RegisteredWorkspace> workspaces, ImmutableArray<RegisteredTransientSurface> transients,
+        ImmutableArray<RegisteredSettingsPage> settings,
         ImmutableArray<RegisteredContribution<IConversationContextProvider>> contexts,
         ImmutableArray<RegisteredContribution<IConversationContinuationProvider>> continuations,
         ImmutableArray<RegisteredContribution<ITextReplyInterpreter>> interpreters,
@@ -40,7 +43,7 @@ public sealed class PluginCatalog
         ImmutableArray<RegisteredContribution<IPostTurnObserver>> observers,
         ImmutableArray<RegisteredContribution<ICompanionFeedbackProvider>> feedbackProviders)
     {
-        Plugins = plugins; Tools = tools; Workspaces = workspaces; SettingsPages = settings;
+        Plugins = plugins; Tools = tools; Workspaces = workspaces; TransientSurfaces = transients; SettingsPages = settings;
         Contexts = contexts; Continuations = continuations; TextInterpreters = interpreters;
         Signals = signals;
         Prompts = prompts; PostTurnObservers = observers; FeedbackProviders = feedbackProviders;
@@ -60,7 +63,7 @@ public sealed class PluginCatalog
                 || manifest.Dependencies.Distinct(StringComparer.Ordinal).Count() != manifest.Dependencies.Length)
                 throw new PluginValidationException("PLUGIN_INVALID_DEPENDENCIES");
             var contributions = instance.Contributions;
-            if (contributions is null || contributions.Tools.IsDefault || contributions.Workspaces.IsDefault || contributions.SettingsPages.IsDefault
+            if (contributions is null || contributions.Tools.IsDefault || contributions.Workspaces.IsDefault || contributions.TransientSurfaces.IsDefault || contributions.SettingsPages.IsDefault
                 || contributions.Contexts.IsDefault || contributions.Continuations.IsDefault || contributions.TextInterpreters.IsDefault || contributions.Signals.IsDefault
                 || contributions.Contexts.Any(provider => provider is null) || contributions.Continuations.Any(provider => provider is null)
                 || contributions.TextInterpreters.Any(provider => provider is null) || contributions.Signals.Any(provider => provider is null)
@@ -78,6 +81,7 @@ public sealed class PluginCatalog
 
         var tools = ImmutableArray.CreateBuilder<RegisteredTool>();
         var workspaces = ImmutableArray.CreateBuilder<RegisteredWorkspace>();
+        var transients = ImmutableArray.CreateBuilder<RegisteredTransientSurface>();
         var settings = ImmutableArray.CreateBuilder<RegisteredSettingsPage>();
         var contexts = ImmutableArray.CreateBuilder<RegisteredContribution<IConversationContextProvider>>();
         var continuations = ImmutableArray.CreateBuilder<RegisteredContribution<IConversationContinuationProvider>>();
@@ -112,6 +116,16 @@ public sealed class PluginCatalog
                 if (!surfaceIds.Add(descriptor.Id)) throw new PluginValidationException("PLUGIN_DUPLICATE_WORKSPACE");
                 workspaces.Add(new(plugin.Manifest.Id, descriptor));
             }
+            foreach (var descriptor in contribution.TransientSurfaces)
+            {
+                if (descriptor is null || !IsId(descriptor.Id) || !IsTitle(descriptor.Title)
+                    || !double.IsFinite(descriptor.PreferredWidthDip) || descriptor.PreferredWidthDip is < 100 or > 1200
+                    || !double.IsFinite(descriptor.PreferredHeightDip) || descriptor.PreferredHeightDip is < 100 or > 1200
+                    || !Enum.IsDefined(descriptor.Anchor))
+                    throw new PluginValidationException("PLUGIN_INVALID_TRANSIENT_SURFACE");
+                if (!surfaceIds.Add(descriptor.Id)) throw new PluginValidationException("PLUGIN_DUPLICATE_SURFACE");
+                transients.Add(new(plugin.Manifest.Id, descriptor));
+            }
             foreach (var descriptor in contribution.SettingsPages)
             {
                 if (descriptor is null || !IsId(descriptor.Id) || !IsTitle(descriptor.Title)) throw new PluginValidationException("PLUGIN_INVALID_SETTINGS");
@@ -119,7 +133,7 @@ public sealed class PluginCatalog
                 settings.Add(new(plugin.Manifest.Id, descriptor));
             }
         }
-        return new(sorted.ToImmutable(), tools.ToImmutable(), workspaces.ToImmutable(), settings.ToImmutable(),
+        return new(sorted.ToImmutable(), tools.ToImmutable(), workspaces.ToImmutable(), transients.ToImmutable(), settings.ToImmutable(),
             contexts.ToImmutable(), continuations.ToImmutable(), interpreters.ToImmutable(), signals.ToImmutable(),
             prompts.ToImmutable(), observers.ToImmutable(), feedbackProviders.ToImmutable());
 

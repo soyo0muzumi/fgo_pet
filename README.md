@@ -42,7 +42,7 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 - Select the pet controls to open chat and common actions.
 - The workspace sidebar provides chat, Todo, focus, and settings; chat history and new conversations are available in the chat header.
 - History shows conversation titles and local times, 50 conversations per page; use Load more for older conversations. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
-- Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. Returning to a page restores its own scroll position.
+- Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. User Profile uses a WebView2 page backed by the existing settings service; other settings pages remain WPF. Returning to a page restores its own scroll position.
 - The system tray can show the pet, open settings, or exit the application.
 - `Esc` closes the current overlay or returns one level; primary controls expose keyboard focus and visible state feedback.
 

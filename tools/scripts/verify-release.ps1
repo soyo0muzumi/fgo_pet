@@ -47,7 +47,7 @@ try {
     if (-not (Test-Path -LiteralPath $sumsPath -PathType Leaf)) { Fail 'SHA256SUMS is missing.' }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     if ($manifest.schema_version -ne 1 -or $manifest.runtime_identifier -ne 'win-x64' -or $manifest.framework_dependent -ne $true -or
-        $manifest.target_framework -ne 'net8.0-windows' -or $manifest.runtime_requirement -ne '.NET 8 Desktop Runtime') { Fail 'manifest runtime contract is invalid.' }
+        $manifest.target_framework -ne 'net8.0-windows10.0.17763.0' -or $manifest.runtime_requirement -ne '.NET 8 Desktop Runtime') { Fail 'manifest runtime contract is invalid.' }
     if (@($manifest.files).Count -eq 0) { Fail 'manifest file list is empty.' }
     $archiveMatches = @(Get-ChildItem -LiteralPath (Join-Path $root 'app') -Filter 'FgoPet-win-x64-*.zip' -File)
     if ($archiveMatches.Count -ne 1) { Fail 'exactly one application archive is required.' }

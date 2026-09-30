@@ -19,6 +19,8 @@ using FgoPet.Extensibility;
 using FgoPet.Kernel.Conversation;
 using FgoPet.App.Lifetime;
 using FgoPet.UiSdk;
+using FgoPet.App.Portraits.Live2D;
+using FgoPet.Kernel.Presentation;
 using Xunit;
 
 namespace FgoPet.App.Tests.Bootstrap;
@@ -35,15 +37,24 @@ public sealed class ServiceRegistrationTests
         await using var provider = services.BuildServiceProvider();
         Assert.Equal(new[] { "firstparty.content", "firstparty.portrait-static" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
+        var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
+        Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
         Assert.Empty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
+        Assert.Empty(provider.GetRequiredService<ITransientSurfaceCatalog>().TransientSurfaces);
         var settings = provider.GetRequiredService<SettingsPageCatalog>();
         Assert.True(settings.Contains("Privacy"));
         Assert.True(settings.Contains("ModelConnection"));
         Assert.False(settings.Contains("Speech"));
         Assert.False(settings.Contains("ConversationMemory"));
         Assert.False(settings.Contains("AgentConnection"));
+        Assert.Empty(settings.Search("语音"));
+        Assert.Empty(settings.Search("Agent"));
+        Assert.Empty(settings.Search("记忆"));
+        Assert.Equal("ModelConnection", Assert.Single(settings.Search("聊天")).Id);
+        Assert.Equal(["开始使用", "能力", "管理"], settings.Search(null)
+            .Select(page => page.Group).Distinct());
         Assert.Null(provider.GetService<FgoPet.App.Settings.SpeechConnectionPage>());
         Assert.Null(provider.GetService<FgoPet.App.Settings.ConversationMemoryPage>());
         Assert.Null(provider.GetService<FgoPet.App.Views.Settings.AgentConnectionSettingsView>());
@@ -64,6 +75,8 @@ public sealed class ServiceRegistrationTests
         Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
         Assert.NotEmpty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
         Assert.Single(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
+        Assert.Contains(provider.GetRequiredService<ITransientSurfaceCatalog>().TransientSurfaces,
+            surface => surface.Id == "todo.peek");
     }
 
     [Fact]

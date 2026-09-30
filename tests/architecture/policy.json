@@ -302,6 +302,12 @@
       "role": "production"
     },
     {
+      "path": "plugins/providers/FgoPet.Portrait.Live2D/FgoPet.Portrait.Live2D.csproj",
+      "module": "rendering",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
       "path": "src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj",
       "module": "platform",
       "layer": "implementation",
@@ -825,6 +831,24 @@
       ],
       "toLayers": [
         "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "live2d-renderer-to-static-fallback",
+      "fromModules": [
+        "rendering"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "rendering"
+      ],
+      "toLayers": [
+        "desktop"
       ],
       "kinds": [
         "compile"

@@ -147,6 +147,22 @@ public sealed class AttachedPanelViewModelTests
         Assert.Equal(string.Empty, vm.DialogueUnreadPillText);
     }
 
+    [Fact]
+    public void Task_entry_toggles_the_transient_surface_without_opening_dialogue()
+    {
+        var dialogue = CreateDialogueViewModel();
+        var toggled = new List<string>();
+        var dialogueOpens = 0;
+        dialogue.OpenRequested += () => dialogueOpens++;
+        using var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compactSurface: null,
+            dialogueWindow: dialogue, toggleTransient: id => { toggled.Add(id); return true; });
+
+        vm.OpenTasks();
+
+        Assert.Equal(["todo.peek"], toggled);
+        Assert.Equal(0, dialogueOpens);
+    }
+
     private static DialogueWindowViewModel CreateDialogueViewModel()
     {
         var settingsStore = new DialogueSettingsStore(DialogueSettings.Defaults with

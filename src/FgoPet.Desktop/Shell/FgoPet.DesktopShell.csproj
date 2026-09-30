@@ -85,6 +85,10 @@
     <Compile Include="Desktop\AttachedPanelVisualMetrics.cs">
       <Link>host\DesktopShell\Desktop\AttachedPanelVisualMetrics.cs</Link>
     </Compile>
+    <Compile Include="Desktop\TransientSurfacePlacement.cs" />
+    <Compile Include="Desktop\TransientSurfaceWindow.cs" />
+    <Compile Include="Desktop\TransientSurfaceCoordinator.cs" />
+    <Compile Include="Desktop\WorkspaceWindowCoordinator.cs" />
     <Page Include="Desktop\PortraitWindow.xaml">
       <Link>Main\PortraitWindow.xaml</Link>
     </Page>
@@ -130,6 +134,8 @@
     <Compile Include="Desktop\UserProfileViewModel.cs">
       <Link>host\DesktopShell\Desktop\UserProfileViewModel.cs</Link>
     </Compile>
+    <Compile Include="Desktop\UserProfileWebFactory.cs" />
+    <Content Include="Desktop\ui\settings\user-profile\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="Infrastructure\DialogueWindowPlacementCoordinator.cs">
       <Link>host\DesktopShell\Infrastructure\DialogueWindowPlacementCoordinator.cs</Link>
     </Compile>

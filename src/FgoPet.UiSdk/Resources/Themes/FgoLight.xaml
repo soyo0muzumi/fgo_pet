@@ -22,7 +22,6 @@
     <Color x:Key="Semantic.FocusColor">#FF5B3F9A</Color>
     <Color x:Key="Semantic.RelationColor">#FFA58B57</Color>
     <Color x:Key="Semantic.OverlayColor">#660D0A14</Color>
-
     <Color x:Key="WindowBackgroundColor">#FFF1F0F3</Color>
     <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
     <Color x:Key="SurfaceRaisedColor">#FFF6F5F8</Color>
@@ -111,20 +110,4 @@
     <SolidColorBrush x:Key="DisabledTextBrush" Color="{StaticResource DisabledTextColor}" />
     <SolidColorBrush x:Key="DisabledBorderBrush" Color="{StaticResource DisabledBorderColor}" />
     <SolidColorBrush x:Key="OverlayBrush" Color="{StaticResource Semantic.OverlayColor}" />
-    <SolidColorBrush x:Key="Surface.App" Color="{StaticResource Semantic.AppColor}" />
-    <SolidColorBrush x:Key="Surface.Content" Color="{StaticResource Semantic.ContentColor}" />
-    <SolidColorBrush x:Key="Surface.Subtle" Color="{StaticResource Semantic.SubtleColor}" />
-    <SolidColorBrush x:Key="Surface.Hover" Color="{StaticResource Semantic.HoverColor}" />
-    <SolidColorBrush x:Key="Surface.Pressed" Color="{StaticResource Semantic.PressedColor}" />
-    <SolidColorBrush x:Key="Text.Primary" Color="{StaticResource Semantic.PrimaryTextColor}" />
-    <SolidColorBrush x:Key="Text.Secondary" Color="{StaticResource Semantic.SecondaryTextColor}" />
-    <SolidColorBrush x:Key="Action.Primary" Color="{StaticResource Semantic.PrimaryActionColor}" />
-    <SolidColorBrush x:Key="Action.OnPrimary" Color="{StaticResource Semantic.OnPrimaryActionColor}" />
-    <SolidColorBrush x:Key="Accent.Relation" Color="{StaticResource Semantic.RelationColor}" />
-    <SolidColorBrush x:Key="State.Success" Color="{StaticResource SuccessColor}" />
-    <SolidColorBrush x:Key="State.Pending" Color="{StaticResource WarningColor}" />
-    <SolidColorBrush x:Key="State.Danger" Color="{StaticResource DangerColor}" />
-    <SolidColorBrush x:Key="Border.Decorative" Color="{StaticResource Semantic.BorderDecorativeColor}" />
-    <SolidColorBrush x:Key="Border.Control" Color="{StaticResource Semantic.BorderControlColor}" />
-    <SolidColorBrush x:Key="Focus.Ring" Color="{StaticResource Semantic.FocusColor}" />
 </ResourceDictionary>

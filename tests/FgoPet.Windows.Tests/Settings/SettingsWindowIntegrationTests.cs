@@ -68,15 +68,21 @@ public sealed class SettingsWindowIntegrationTests
             {
                 window.Show();
                 window.UpdateLayout();
-                var tabs = Descendants<ListBox>(window).Single(item =>
-                    System.Windows.Automation.AutomationProperties.GetName(item) == "能力页面");
-                var sample = Assert.Single(tabs.Items.Cast<SettingsNavigationItem>(), item => item.Label == "sample.settings");
-                tabs.SelectedItem = sample;
+                var pages = Descendants<ListBox>(window).Single(item =>
+                    System.Windows.Automation.AutomationProperties.GetName(item) == "设置页面");
+                var search = Descendants<TextBox>(window).Single(item =>
+                    System.Windows.Automation.AutomationProperties.GetName(item) == "搜索设置");
+                search.Text = "sample";
+                Assert.Single(pages.Items);
+                var sample = Assert.Single(pages.Items.Cast<FgoPet.Extensibility.SettingsPageDescriptor>(),
+                    item => item.Id == "sample.settings");
+                search.Text = string.Empty;
+                pages.SelectedItem = sample;
                 Assert.Same(draft, window.SettingsContent.Content);
                 draft.Text = "edited sample draft";
                 var vm = provider.GetRequiredService<SettingsViewModel>();
                 vm.Select(SettingsSection.Privacy);
-                window.SettingsNavigation.SelectedValue = SettingsSection.ModelConnection;
+                pages.SelectedItem = sample;
                 Assert.Same(draft, window.SettingsContent.Content);
                 Assert.Equal("edited sample draft", draft.Text);
             }
@@ -827,23 +833,72 @@ public sealed class SettingsWindowIntegrationTests
             var viewModel = provider.GetRequiredService<SettingsViewModel>();
             try
             {
-                // UserProfile resolves into the "通用与数据" category.
-                Assert.IsType<PrivacyPage>(window.SettingsContent.Content);
+                Assert.IsType<WebView2SurfaceHost>(window.SettingsContent.Content);
+                Assert.DoesNotContain(provider.GetRequiredService<SettingsPageCatalog>().Pages,
+                    page => page.Id == "user-profile.web-pilot");
 
                 viewModel.Select(SettingsSection.Personalization);
                 Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
 
-                // Theme has no category of its own: its control is embedded in the
-                // personalization page, which keeps the reachable-entry contract.
                 viewModel.Select(SettingsSection.Theme);
-                var personalization = Assert.IsType<PersonalizationPage>(window.SettingsContent.Content);
-                Assert.IsType<ThemePage>(personalization.ThemeHost.Content);
+                Assert.IsType<ThemePage>(window.SettingsContent.Content);
             }
             finally
             {
                 window.Close();
             }
         });
+    }
+
+    [Fact]
+    public async Task Registered_user_profile_web_page_recreates_after_navigation_and_window_hide()
+    {
+        await StaRunner.RunAsync(async () =>
+        {
+            var store = new FakeCharacterSettingsStore(CharacterSettings.Defaults with
+            { UserProfile = new UserProfile("合成夹具") });
+            var factory = new UserProfileWebFactory(store, new UserProfileViewModel(store),
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                    "fgopet-profile-route-" + Guid.NewGuid().ToString("N")));
+            var catalog = new SettingsPageCatalog([
+                new SettingsPageViewFactory(nameof(SettingsSection.UserProfile), _ => factory.CreateView(),
+                    "用户资料", group: "开始使用"),
+                new SettingsPageViewFactory(nameof(SettingsSection.Theme), _ => new Border(),
+                    "主题", group: "外观"),
+            ]);
+            var viewModel = new SettingsViewModel();
+            var window = new SettingsWindow(viewModel, catalog);
+            window.Left = -10000;
+            window.Top = -10000;
+            try
+            {
+                window.Show();
+                var first = Assert.IsType<WebView2SurfaceHost>(window.SettingsContent.Content);
+                await WaitForState(first, WebSurfaceState.Ready);
+
+                viewModel.Select(SettingsSection.Theme);
+                await WaitForState(first, WebSurfaceState.Closed);
+                viewModel.Select(SettingsSection.UserProfile);
+                var second = Assert.IsType<WebView2SurfaceHost>(window.SettingsContent.Content);
+                Assert.NotSame(first, second);
+                await WaitForState(second, WebSurfaceState.Ready);
+
+                window.Close(); // Settings hides instead of closing the shared window.
+                await WaitForState(second, WebSurfaceState.Closed);
+                window.Show();
+                var reopened = Assert.IsType<WebView2SurfaceHost>(window.SettingsContent.Content);
+                Assert.NotSame(second, reopened);
+                await WaitForState(reopened, WebSurfaceState.Ready);
+            }
+            finally { window.Close(); }
+        });
+
+        static async Task WaitForState(WebView2SurfaceHost host, WebSurfaceState state)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (host.State != state && DateTime.UtcNow < deadline) await Task.Delay(25);
+            Assert.Equal(state, host.State);
+        }
     }
 
     [Fact]
@@ -868,6 +923,9 @@ public sealed class SettingsWindowIntegrationTests
             Assert.False(page.ModernGrayChoice.IsChecked);
             Assert.True(page.FgoLightChoice.IsChecked);
             Assert.Equal(AppTheme.FgoLight, store.Load().Theme);
+            page.SelectTheme(AppTheme.System);
+            Assert.True(page.SystemChoice.IsChecked);
+            Assert.Equal(AppTheme.System, store.Load().Theme);
         });
     }
 
@@ -998,6 +1056,10 @@ public sealed class SettingsWindowIntegrationTests
                 page.Resources["TextBrush"] = new SolidColorBrush(Colors.Red);
                 page.Resources["SurfaceBrush"] = new SolidColorBrush(Colors.Red);
                 page.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
+                {
+                    Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative),
+                });
+                page.Resources.MergedDictionaries.Insert(1, new ResourceDictionary
                 {
                     Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
                 });
@@ -1220,9 +1282,13 @@ public sealed class SettingsWindowIntegrationTests
             // so both dictionaries are needed for the palette to resolve.
             shell.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
             {
-                Source = new Uri("/FgoPet.UiSdk;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
+                Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative),
             });
             shell.Resources.MergedDictionaries.Insert(1, new ResourceDictionary
+            {
+                Source = new Uri("/FgoPet.UiSdk;component/Ui/Shell/ShellTokens.xaml", UriKind.Relative),
+            });
+            shell.Resources.MergedDictionaries.Insert(2, new ResourceDictionary
             {
                 Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative),
             });
