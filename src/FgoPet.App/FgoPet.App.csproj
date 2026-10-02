@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <Version>0.1.2</Version>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWPF>true</UseWPF>
@@ -11,6 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <RootNamespace>FgoPet.App</RootNamespace>
+    <CompanionTargetFramework>net8.0-windows</CompanionTargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
@@ -20,21 +21,23 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FgoPet.Core\FgoPet.Core.csproj" />
-    <ProjectReference Include="..\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Desktop\FgoPet.Speech.Desktop.csproj" />
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj" />
+
+    <ProjectReference Include="../FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\plugins\FgoPet.Plugin.Speech\Desktop\FgoPet.Speech.Desktop.csproj" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Drawing" />
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="..\..\ui-foundation\ThemeTokens.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\ThemeTokens.xaml">
       <Link>UiFoundation\ThemeTokens.xaml</Link>
     </Page>
-    <Page Include="..\..\ui-foundation\Controls.xaml">
+    <Page Include="..\FgoPet.UiSdk\Resources\Controls.xaml">
       <Link>UiFoundation\Controls.xaml</Link>
     </Page>
   </ItemGroup>
@@ -44,10 +47,9 @@
   </ItemGroup>
   <Target Name="CopySiblingRelay" AfterTargets="Build">
     <ItemGroup>
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.AgentRelay\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
-      <!-- WPF gets this assembly from WindowsDesktop; standalone companions need their own copy. -->
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\modules\agent-integration\src\FgoPet.CodexAdapter\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
+      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(SiblingRelay)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
@@ -57,4 +59,46 @@
     </ItemGroup>
     <Copy SourceFiles="@(PublishedCompanion)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
+  <ItemGroup>
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\FgoLight.xaml">
+      <Link>Themes\FgoLight.xaml</Link>
+    </Page>
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\ModernGray.xaml">
+      <Link>Themes\ModernGray.xaml</Link>
+    </Page>
+    <Page Include="..\FgoPet.UiSdk\Resources\Themes\SettingsIcons.xaml">
+      <Link>Themes\SettingsIcons.xaml</Link>
+    </Page>
+    <Page Include="..\FgoPet.UiSdk\Resources\Shell\ShellControls.xaml">
+      <Link>Ui\Shell\ShellControls.xaml</Link>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Desktop/FgoPet.Plugin.Focus.Desktop.csproj" />
+    <ProjectReference Include="../FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Desktop/FgoPet.AgentBackend.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Desktop/FgoPet.Plugin.Todo.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.IndexTts/FgoPet.Provider.IndexTts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Speech/Infrastructure/FgoPet.Speech.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/providers/FgoPet.Portrait.Static/FgoPet.Portrait.Static.csproj" />
+    <ProjectReference Include="../../plugins/providers/FgoPet.Portrait.Live2D/FgoPet.Portrait.Live2D.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FgoPetLive2DRuntime)' != '' and Exists('$(FgoPetLive2DRuntime)')">
+    <Content Include="$(FgoPetLive2DRuntime)\**\*">
+      <Link>Live2D\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

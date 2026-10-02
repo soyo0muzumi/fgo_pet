@@ -6,10 +6,9 @@ using System.Windows.Media;
 using FgoPet.App.Bootstrap;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Views;
-using FgoPet.App.Views.Settings;
 using FgoPet.Core.Agents;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Work.Execution.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -19,7 +18,7 @@ namespace FgoPet.Windows.Tests.Settings;
 public sealed class AgentConnectionPageTests
 {
     [Fact]
-    public void Production_services_resolve_and_existing_page_renders_without_starting_runtime()
+    public void Production_settings_owner_resolves_without_starting_runtime()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -27,7 +26,7 @@ public sealed class AgentConnectionPageTests
             try
             {
                 var services = ServiceRegistration.AddFgoPet(new ServiceCollection(), []);
-                services.AddSingleton<IAppSettingsStore>(new MemorySettings());
+                services.AddSingleton<IWorkExecutionSettingsStore>(new MemorySettings());
                 services.AddSingleton<IAgentRepository>(new EmptyAgents());
                 services.AddSingleton<IAgentTargetCatalog>(new FakeTargetCatalog(new AgentTargetCatalogResult(
                     AgentTargetCatalogStatus.Available,
@@ -39,44 +38,14 @@ public sealed class AgentConnectionPageTests
                 viewModel.ApprovedSources.Add(new AgentApprovedSourceViewModel(new AgentApprovedSource("codex", "instance-approved",
                     "Approved Codex", "1", false, ["project-1", "unresolved-secret"], false)));
                 WaitForCompletion(viewModel.RefreshTargetsAsync());
-                var page = provider.GetRequiredService<AgentConnectionSettingsView>();
-                Assert.Same(viewModel, page.DataContext);
                 Assert.True(viewModel.IsAdministrationAvailable);
                 Assert.False(viewModel.Enabled);
                 Assert.Equal(AgentRelayConnectionState.Disabled, provider.GetRequiredService<IAgentRelayRuntime>().Current.State);
-                page.Resources.MergedDictionaries.Add(new ResourceDictionary
-                { Source = new Uri("/FgoPet.App;component/Themes/ModernGray.xaml", UriKind.Relative) });
-                page.Measure(new Size(620, 800));
-                page.Arrange(new Rect(0, 0, 620, 800));
-                page.UpdateLayout();
-                var buttons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
-                Assert.Contains("开始检测", buttons);
-                Assert.Contains("测试连接", buttons);
-                Assert.Contains("批准", buttons);
-                Assert.Contains("保存权限", buttons);
-                Assert.Contains("撤销授权", buttons);
-                Assert.Contains("重新配对", buttons);
-                Assert.Contains(Descendants(page).OfType<CheckBox>(), item => item.Content?.ToString() == "我确认仅允许所选项目访问此来源");
-
-                var advanced = Descendants(page).OfType<Expander>().Single(item => item.Header?.ToString() == "高级诊断与维护");
-                Assert.False(advanced.IsExpanded);
-                advanced.IsExpanded = true;
-                page.UpdateLayout();
-                var advancedButtons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
-                Assert.Contains("保存总开关", advancedButtons);
-                Assert.Contains("刷新项目", advancedButtons);
-                Assert.Contains("复制诊断信息", advancedButtons);
-                var textBlocks = Descendants(page).OfType<TextBlock>().Select(item => item.Text).ToArray();
-                Assert.Contains("Project A", textBlocks);
-                Assert.Contains("（只读）", textBlocks);
-                Assert.Contains("已有项目授权暂无法匹配，仍会保留；如需删除请使用下方明确操作。", textBlocks);
-                Assert.DoesNotContain("允许的项目 ID", textBlocks);
-                Assert.DoesNotContain("unresolved-secret", textBlocks);
-                Assert.Empty(Descendants(page).OfType<TextBox>());
-                var archiveButton = Descendants(page).OfType<Button>().Single(button => button.Content?.ToString() == "归档安全候选");
-                Assert.False(archiveButton.IsEnabled);
-                Assert.Equal("执行 Agent 安全归档", AutomationProperties.GetName(archiveButton));
-                Assert.False(double.IsNaN(page.DesiredSize.Height));
+                var source = Assert.Single(viewModel.ApprovedSources);
+                Assert.True(source.HasUnresolvedTargets);
+                Assert.DoesNotContain("unresolved-secret", viewModel.BuildDiagnosticText());
+                Assert.DoesNotContain(provider.GetServices<FgoPet.UiSdk.ISettingsWebPage>(),
+                    owner => owner.SettingsPageId == "AgentConnection");
             }
             catch (Exception error) { failure = error; }
             finally
@@ -94,44 +63,6 @@ public sealed class AgentConnectionPageTests
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
-    [Fact]
-    public void Unknown_outcome_strip_exposes_open_and_manual_reconciliation_controls()
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                var execution = new AgentExecution(
-                    "execution-1", "todo-1", "codex", "instance-1", "task-1", "dispatch-1",
-                    DateTimeOffset.UtcNow, AgentExecutionStatus.DispatchOutcomeUnknown);
-                var projector = new AgentEventProjector();
-                projector.Restore(execution);
-                var view = new AgentCurrentTaskStrip
-                {
-                    DataContext = new AgentCurrentTaskViewModel(projector, TimeProvider.System),
-                };
-                view.Measure(new Size(620, 180));
-                view.Arrange(new Rect(0, 0, 620, 180));
-                view.UpdateLayout();
-
-                var manual = Descendants(view).OfType<Button>().Single(button => button.Content?.ToString() == "人工核对结果");
-                Assert.Equal(Visibility.Visible, manual.Visibility);
-                Assert.Equal("人工核对 Agent 执行结果", AutomationProperties.GetName(manual));
-            }
-            catch (Exception error) { failure = error; }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "Unknown outcome strip render exceeded its deadline.");
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
-
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
@@ -144,11 +75,10 @@ public sealed class AgentConnectionPageTests
 
     private static void WaitForCompletion(Task operation) => operation.GetAwaiter().GetResult();
 
-    private sealed class MemorySettings : IAppSettingsStore
+    private sealed class MemorySettings : IWorkExecutionSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => AppSettings.Defaults;
-        public void Save(AppSettings settings) { }
+        public WorkExecutionSettings Load() => WorkExecutionSettings.Defaults;
+        public void Save(WorkExecutionSettings settings) { }
     }
 
     private sealed class EmptyAgents : IAgentRepository

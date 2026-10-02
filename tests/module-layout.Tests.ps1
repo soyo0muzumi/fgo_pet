@@ -1,5 +1,5 @@
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$agentIntegrationRoot = Join-Path $repositoryRoot 'modules\agent-integration'
+$agentIntegrationRoot = Join-Path $repositoryRoot 'plugins\providers\FgoPet.Provider.Codex'
 
 $productionProjects = @(
     'FgoPet.AgentProtocol'
@@ -16,17 +16,17 @@ $unitTestProjects = @(
 )
 
 $approvedRoots = @(
-    'modules\agent-integration'
-    'modules\desktop-shell'
-    'modules\dialogue'
-    'modules\focus'
-    'modules\memory'
-    'modules\servant-packs'
-    'modules\settings-privacy'
-    'modules\todo'
-    'foundation'
-    'ui-foundation'
-    'integration-tests'
+    'plugins\providers\FgoPet.Provider.Codex'
+    'plugins\FgoPet.Plugin.Content\Desktop'
+    'plugins\FgoPet.Plugin.Dialogue'
+    'plugins\FgoPet.Plugin.Focus'
+    'plugins\FgoPet.Plugin.Memory'
+    'plugins\FgoPet.Plugin.Speech'
+    'plugins\FgoPet.Plugin.Todo'
+    'src\FgoPet.Desktop'
+    'src\FgoPet.Platform'
+    'src\FgoPet.UiSdk\Resources'
+    'tests\FgoPet.EndToEnd.Tests'
 )
 
 $legacyProjectNames = $productionProjects + ($unitTestProjects | ForEach-Object { $_ -replace '\.Tests$' })
@@ -36,14 +36,14 @@ $normalizedSolutionText = $solutionText -replace '\\', '/'
 Describe 'Agent integration module layout' {
     It 'contains all four Agent production projects under the module source root' {
         foreach ($projectName in $productionProjects) {
-            $projectPath = Join-Path $agentIntegrationRoot "src\$projectName\$projectName.csproj"
+            $projectPath = Join-Path $agentIntegrationRoot "$projectName\$projectName.csproj"
             Test-Path -LiteralPath $projectPath -PathType Leaf | Should Be $true
         }
     }
 
     It 'contains all four Agent unit-test projects under the module test root' {
         foreach ($projectName in $unitTestProjects) {
-            $projectPath = Join-Path $agentIntegrationRoot "tests\$projectName\$projectName.csproj"
+            $projectPath = Join-Path $repositoryRoot "tests\$projectName\$projectName.csproj"
             Test-Path -LiteralPath $projectPath -PathType Leaf | Should Be $true
         }
     }
@@ -73,15 +73,16 @@ Describe 'Agent integration module layout' {
 
     It 'contains only new Agent project paths in the solution' {
         foreach ($projectName in $productionProjects) {
-            $newPath = "modules/agent-integration/src/$projectName/$projectName.csproj"
+            $newPath = "plugins/providers/FgoPet.Provider.Codex/$projectName/$projectName.csproj"
             $oldPath = "src/$projectName/$projectName.csproj"
             $normalizedSolutionText | Should Match ([regex]::Escape('"' + $newPath + '"'))
             $normalizedSolutionText | Should Not Match ([regex]::Escape('"' + $oldPath + '"'))
         }
 
         foreach ($projectName in $unitTestProjects) {
-            $newPath = "modules/agent-integration/tests/$projectName/$projectName.csproj"
-            $oldPath = "tests/$projectName/$projectName.csproj"
+            $newPath = "tests/$projectName/$projectName.csproj"
+            $legacyProjectName = $projectName -replace '\.Tests$', ''
+            $oldPath = "tests/$legacyProjectName/$legacyProjectName.csproj"
             $normalizedSolutionText | Should Match ([regex]::Escape('"' + $newPath + '"'))
             $normalizedSolutionText | Should Not Match ([regex]::Escape('"' + $oldPath + '"'))
         }

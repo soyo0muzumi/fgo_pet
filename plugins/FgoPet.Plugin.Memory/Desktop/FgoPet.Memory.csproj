@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MemoryViewModel.cs">
+      <Link>modules\memory\Desktop\MemoryViewModel.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/FgoPet.Plugin.Memory.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MemoryRegistration.cs" />
+    <Compile Include="ProviderMemoryCandidateExtractor.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="MemoryContextConnector.cs" />
+    <Compile Include="MemoryWebPage.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Link 必须带 Desktop\ 前缀：宿主解析资源根目录是 AppContext.BaseDirectory + Desktop\ui\settings\root -->
+    <Content Include="ui\settings\conversation-memory\conversation-memory.js">
+      <Link>Desktop\ui\settings\root\pages\conversation-memory.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ui\settings\conversation-memory\conversation-memory.css">
+      <Link>Desktop\ui\settings\root\pages\conversation-memory.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

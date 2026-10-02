@@ -1,0 +1,865 @@
+{
+  "schemaVersion": 1,
+  "legacyCompileItems": [
+    {
+      "project": "src/FgoPet.App/FgoPet.App.csproj",
+      "source": "host/DesktopShell/Application/App.xaml.cs"
+    },
+    {
+      "project": "src/FgoPet.App/FgoPet.App.csproj",
+      "source": "host/DesktopShell/Application/MemoryContextConnector.cs"
+    },
+    {
+      "project": "src/FgoPet.App/FgoPet.App.csproj",
+      "source": "host/DesktopShell/Application/ServiceRegistration.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "host/DataManagement/Contracts/BackupContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Contracts/IArtPackageRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Contracts/IPackInstaller.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Contracts/IPortraitController.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Contracts/ServantPreference.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Contracts/UserProfile.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/AppearanceLocation.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/DialogueContract.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/ExpressionResolver.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/ExpressionSemantic.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/KnowledgeContract.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PackCatalog.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PackContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PackFailureException.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PackJson.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PersonaContract.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/PortraitSelection.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/character/Domain/SemVersion.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ChatProviderContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ChatToolContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ConversationContextContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ConversationContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ConversationRecallContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/DialogueContextLifetimeContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/MemoryExtractionContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ModelConnectionSettings.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/ModelContextContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/PromptBudget.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/PromptContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/dialogue/Contracts/RequestTokenContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Contracts/IAttachedPanelLauncher.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Contracts/IBondProgressionPolicy.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/BondProgress.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/DefaultBondProgressionPolicy.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusCommand.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusPreset.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusSession.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusStateMachine.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusStatus.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/FocusTransition.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/RuntimeEventType.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/focus/Domain/TimelineEntry.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/memory/Contracts/MemoryCandidateWriteContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/memory/Contracts/MemoryContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/memory/Contracts/MemoryRecallContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/memory/Domain/MemoryTextIdentity.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Archives/Contracts/ArchiveDraftContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Archives/Contracts/IWorkArchiveRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Archives/Domain/WorkArchive.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Contracts/AgentArchiveContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Contracts/AgentRelayAdministration.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Contracts/IAgentGateway.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Contracts/IAgentRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentCapabilities.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentConnectionSettings.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentDiagnosticSummary.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentEvent.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentEventType.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentExecution.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentProjectSnapshot.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Execution/Domain/AgentTargetCatalog.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Contracts/ITodoRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Contracts/LegacyTodoProposalContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Contracts/TodoConversationContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Contracts/TodoDraftContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Contracts/TodoProposal.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Domain/TodoItem.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Domain/TodoPriority.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Domain/TodoStatus.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "modules/work/Todo/Domain/TodoStep.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Diagnostics/IResourceDiagnostics.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Dialogue/ContentContextKey.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Focus/FocusPhase.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Geometry/AttachedPanelLayout.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Geometry/GeometryTypes.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Geometry/PortraitLayout.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Packs/PackError.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Panels/AttachedPanelState.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Panels/AttachedPanelStateMachine.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Runtime/AppStateChangedEventArgs.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Runtime/RuntimeEvent.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Runtime/RuntimeEventSource.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Secrets/ICredentialContracts.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Settings.Foundation/ISettingsDocumentStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Validation/Phase3Validation.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Windowing/IAlphaMaskSource.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Windowing/IScreenLayoutService.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Windowing/IWindowPlacementStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Windowing/ScreenLayout.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "platform/Windowing/WindowPlacement.cs"
+    },
+    {
+      "project": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "source": "ui-foundation/Theming/AppTheme.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "host/DataManagement/Infrastructure/BackupArchivePolicy.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "host/DataManagement/Infrastructure/BackupDatabaseNormalizer.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "host/DataManagement/Infrastructure/BackupPackageReferencesCodec.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "host/DataManagement/Infrastructure/PrivateBackupReader.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "host/DataManagement/Infrastructure/RuntimeDatabaseSnapshotService.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/AppearanceManifestReader.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/AppearanceValidator.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/ContentBindingResolver.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/DialogueManifestReader.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/FgoPetPackInstaller.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/FileArtPackageRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/KnowledgeManifestReader.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/PackArchivePolicy.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/PackIndexStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/character/Infrastructure/PersonaManifestReader.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/ChatRequestPayloadWriter.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/KnownModelContextCatalog.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/OpenAiCompatibleChatProvider.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/ProviderCatalog.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/ProviderConversationSummarizer.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/ProviderMemoryCandidateExtractor.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/RequestTokenMeter.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/SqliteContentBindingRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/SqliteConversationContextStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/SqliteConversationRecallRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/dialogue/Infrastructure/SqliteConversationRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/focus/Infrastructure/SqliteBondRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/focus/Infrastructure/SqliteFocusCompletionUnit.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/focus/Infrastructure/SqliteFocusRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/focus/Infrastructure/SqliteTimelineRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/memory/Infrastructure/SqliteMemoryRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Archives/Infrastructure/SqliteWorkArchiveRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentControlClient.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentEventProjector.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentReconnectService.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentRelayAdministration.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentRelayClient.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/AgentRelayRuntime.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/CodexTargetCatalogClient.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/CodexWorkerProcess.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Execution/Infrastructure/SqliteAgentRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "modules/work/Todo/Infrastructure/SqliteTodoRepository.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Diagnostics/ResourceDiagnostics.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/FileSystem/AtomicDirectoryMover.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Json/AtomicJson.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Persistence/RuntimeDatabase.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Persistence/RuntimeDatabaseMigrator.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Runtime/SqliteEventStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Secrets/ICredentialStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Secrets/WindowsCredentialStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Settings.Foundation/JsonSettingsDocumentStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Windowing/JsonWindowPlacementStore.cs"
+    },
+    {
+      "project": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "source": "platform/Windowing/WindowsScreenLayoutService.cs"
+    }
+  ],
+  "dependencyExceptions": [
+    {
+      "from": "host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj",
+      "to": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj",
+      "to": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj",
+      "to": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DataManagement/src/FgoPet.DataManagement/FgoPet.DataManagement.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/DesktopShell/src/FgoPet.DesktopShell/FgoPet.DesktopShell.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "modules/speech/src/FgoPet.Speech.Core/FgoPet.Speech.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "host/Settings/src/FgoPet.SettingsHost/FgoPet.SettingsHost.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/agent-integration/src/FgoPet.AgentRelay/FgoPet.AgentRelay.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/agent-integration/src/FgoPet.CodexAdapter/FgoPet.CodexAdapter.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "to": "host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "modules/character/src/FgoPet.Character/FgoPet.Character.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "modules/speech/src/FgoPet.Speech.Core/FgoPet.Speech.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj",
+      "to": "host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/focus/src/FgoPet.Focus/FgoPet.Focus.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "to": "host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/memory/src/FgoPet.Memory/FgoPet.Memory.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/speech/src/FgoPet.Speech.Desktop/FgoPet.Speech.Desktop.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/speech/src/FgoPet.Speech.Infrastructure/FgoPet.Speech.Infrastructure.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "to": "host/DesktopShell/src/FgoPet.HostContracts/FgoPet.HostContracts.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj",
+      "to": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "modules/work/Todo/src/FgoPet.Work.Todo/FgoPet.Work.Todo.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.App/FgoPet.App.csproj",
+      "to": "modules/dialogue/src/FgoPet.Dialogue/FgoPet.Dialogue.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.App/FgoPet.App.csproj",
+      "to": "modules/work/Archives/src/FgoPet.Work.Archives/FgoPet.Work.Archives.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.App/FgoPet.App.csproj",
+      "to": "modules/work/Execution/src/FgoPet.Work.Execution/FgoPet.Work.Execution.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.App/FgoPet.App.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.App/FgoPet.App.csproj",
+      "to": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "to": "modules/agent-integration/src/FgoPet.AgentProtocol/FgoPet.AgentProtocol.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "to": "modules/agent-integration/src/FgoPet.AgentRuntime/FgoPet.AgentRuntime.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "src/FgoPet.Infrastructure/FgoPet.Infrastructure.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    },
+    {
+      "from": "ui-foundation/src/FgoPet.UiFoundation/FgoPet.UiFoundation.csproj",
+      "to": "src/FgoPet.Core/FgoPet.Core.csproj",
+      "kind": "compile"
+    }
+  ]
+}

@@ -9,6 +9,57 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"fgo-phase3-conversation-{Guid.NewGuid():N}.db");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void History_pages_are_bounded_stable_and_do_not_hydrate_large_message_bodies(bool compactTimestamp)
+    {
+        var repository = CreateRepository();
+        using (var connection = new RuntimeDatabase(_path, pooling: false).Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<2000)
+                INSERT INTO conversations(conversation_id, servant_id, created_at_utc, updated_at_utc, status)
+                SELECT printf('c-%04d', i), '800100', $time, $time, 'active' FROM n;
+                INSERT INTO chat_messages(message_id, conversation_id, servant_id, sequence, role, text, status, created_at_utc)
+                SELECT 'm-' || conversation_id, conversation_id, servant_id, 1, 'user', $body, 'completed', $time FROM conversations;
+                """;
+            command.Parameters.AddWithValue("$time", compactTimestamp ? "2026-08-29T00:00:00Z" : Now().ToString("O"));
+            command.Parameters.AddWithValue("$body", "Title\n" + new string('x', 11_900));
+            command.ExecuteNonQuery();
+        }
+        repository.CreateConversation("other-role", "100001", Context("casual", "100001"), Now());
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var first = repository.ReadPage("800100");
+        clock.Stop();
+        Assert.Equal(50, first.Items.Count);
+        Assert.Equal("c-2000", first.Items[0].ConversationId);
+        Assert.All(first.Items, item => { Assert.Equal(50, item.Title.Length); Assert.DoesNotContain('\n', item.Title); });
+        Assert.NotNull(first.Next);
+        // Missing bindings make full message hydration fail; title projection
+        // must still succeed. Deleting the cursor row must not skip another row.
+        Assert.Throws<InvalidDataException>(() => repository.LoadMessages("c-2000", "800100"));
+        repository.DeleteConversation(first.Next!.ConversationId, "800100");
+        var second = repository.ReadPage("800100", before: first.Next);
+        Assert.Equal("c-1950", second.Items[0].ConversationId);
+        Assert.Empty(first.Items.Select(item => item.ConversationId).Intersect(second.Items.Select(item => item.ConversationId)));
+        Assert.Throws<ArgumentException>(() => repository.ReadPage("100001", before: first.Next));
+        Assert.Throws<ArgumentOutOfRangeException>(() => repository.ReadPage("800100", 51));
+        Console.WriteLine($"History metadata projection: 2000 conversations / 24 MB bodies, first page {clock.Elapsed.TotalMilliseconds:F2} ms.");
+    }
+
+    [Fact]
+    public void History_without_user_messages_has_a_readable_fallback_and_exhausted_cursor()
+    {
+        var repository = CreateRepository();
+        repository.CreateConversation("empty", "800100", Context("casual"), Now());
+        var page = repository.ReadPage("800100");
+        Assert.Equal("新会话", Assert.Single(page.Items).Title);
+        Assert.Null(page.Next);
+        Assert.Empty(repository.ReadPage("another").Items);
+    }
+
     [Fact]
     public void Append_and_load_are_isolated_by_servant_id()
     {
@@ -65,7 +116,7 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
     [Fact]
     public void Invalid_conversation_id_does_not_leave_a_database_row()
     {
-        var database = new RuntimeDatabase(_path);
+        var database = new RuntimeDatabase(_path, pooling: false);
         new RuntimeDatabaseMigrator(database).Migrate();
         var repository = new SqliteConversationRepository(database);
 

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <ProjectReference Include="../../FgoPet.Plugin.Content/Core/FgoPet.Plugin.Content.Core.csproj" />
+    <ProjectReference Include="../FgoPet.Portrait.Static/FgoPet.Portrait.Static.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+</Project>

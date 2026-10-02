@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -8,17 +8,37 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/ActivatedCapabilities.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3">
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.0.0" PrivateAssets="all" />
+    <PackageReference Include="xunit" Version="2.8.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <None Include="../xunit.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\FgoPet.App\FgoPet.App.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Core\FgoPet.Core.csproj" />
-    <ProjectReference Include="..\..\src\FgoPet.Infrastructure\FgoPet.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\modules\speech\src\FgoPet.Speech.Desktop\FgoPet.Speech.Desktop.csproj" />
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
+    <ProjectReference Include="..\..\plugins\FgoPet.Plugin.Speech\Desktop\FgoPet.Speech.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/DataManagement/FgoPet.DataManagement.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Core/FgoPet.Plugin.Focus.Core.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj" />
+    <ProjectReference Include="../../plugins/providers/FgoPet.Provider.Codex/FgoPet.AgentBackend.Desktop/FgoPet.AgentBackend.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Desktop/FgoPet.Plugin.Todo.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj" />
   </ItemGroup>
 </Project>

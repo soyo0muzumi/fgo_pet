@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+
+    <ProjectReference Include="../../src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Contracts\DialogueProjectCatalog.cs">
+      <Link>modules\dialogue\Contracts\DialogueProjectCatalog.cs</Link>
+    </Compile>
+    <Compile Include="Contracts\ChatWebHostContracts.cs">
+      <Link>modules\dialogue\Contracts\ChatWebHostContracts.cs</Link>
+    </Compile>
+    <Compile Include="Contracts\ChatWebSnapshot.cs">
+      <Link>modules\dialogue\Contracts\ChatWebSnapshot.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ChatWebSession.cs">
+      <Link>modules\dialogue\Desktop\ChatWebSession.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ChatWebSessionFactory.cs">
+      <Link>modules\dialogue\Desktop\ChatWebSessionFactory.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ChatWebCommandReader.cs">
+      <Link>modules\dialogue\Desktop\ChatWebCommandReader.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ConversationTurnViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationTurnViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ConversationViewModel.cs">
+      <Link>modules\dialogue\Desktop\ConversationViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialogueItemViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueItemViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialoguePresentationViewModels.cs">
+      <Link>modules\dialogue\Desktop\DialoguePresentationViewModels.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\DialogueProjectSelectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\DialogueProjectSelectionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ModelConnectionViewModel.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ModelConnectionWebPage.cs">
+      <Link>modules\dialogue\Desktop\ModelConnectionWebPage.cs</Link>
+    </Compile>
+    <Compile Include="Infrastructure\ChatProviderFactory.cs">
+      <Link>modules\dialogue\Infrastructure\ChatProviderFactory.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Application/ModelConnectionRegistration.cs" />
+    <Compile Include="Application/ChatWebRegistration.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 前端资源由并行前端 agent 持有；此处仅按既定路径挂载到受控 root/pages。 -->
+    <Content Include="Desktop\ui\settings\model-connection\model-connection.js">
+      <Link>Desktop\ui\settings\root\pages\model-connection.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\model-connection\model-connection.css">
+      <Link>Desktop\ui\settings\root\pages\model-connection.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\chat\index.html" Condition="Exists('Desktop\ui\chat\index.html')">
+      <Link>Desktop\ui\chat\index.html</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\chat\chat.js" Condition="Exists('Desktop\ui\chat\chat.js')">
+      <Link>Desktop\ui\chat\chat.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\chat\chat.css" Condition="Exists('Desktop\ui\chat\chat.css')">
+      <Link>Desktop\ui\chat\chat.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Infrastructure/OpenAiCompatibleChatProvider.cs" />
+    <Compile Include="Infrastructure/ProviderCatalog.cs" />
+    <Compile Include="Infrastructure/SqliteContentBindingRepository.cs" />
+    <Compile Include="Infrastructure/SqliteConversationRepository.cs" />
+    <Compile Include="Infrastructure/ChatRequestPayloadWriter.cs" />
+    <Compile Include="Infrastructure/SqliteConversationRecallRepository.cs" />
+    <Compile Include="Infrastructure/SqliteConversationContextStore.cs" />
+    <Compile Include="Infrastructure/ProviderConversationSummarizer.cs" />
+  </ItemGroup>
+</Project>

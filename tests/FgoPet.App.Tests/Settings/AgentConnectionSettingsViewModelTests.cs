@@ -1,8 +1,8 @@
 using FgoPet.App.Settings;
 using FgoPet.App.ViewModels;
 using FgoPet.Core.Agents;
-using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Work.Execution.Settings;
 using Xunit;
 
 namespace FgoPet.App.Tests.Settings;
@@ -133,10 +133,8 @@ public sealed class AgentConnectionSettingsViewModelTests
         };
         var settings = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
-            {
-                AgentConnection = new AgentConnectionSettings(false, sourceEnabled, allowlist),
-            },
+            Current = new WorkExecutionSettings(
+                new AgentConnectionSettings(false, sourceEnabled, allowlist)),
         };
         var runtime = new FakeRuntime(AgentRelaySnapshot.Disabled);
         using var viewModel = new AgentConnectionSettingsViewModel(
@@ -349,12 +347,11 @@ public sealed class AgentConnectionSettingsViewModelTests
             approved is null ? Array.Empty<AgentApprovedSource>() : new[] { approved });
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class FakeSettingsStore : IWorkExecutionSettingsStore
     {
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
-        public string Location => "test";
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public WorkExecutionSettings Current { get; set; } = WorkExecutionSettings.Defaults;
+        public WorkExecutionSettings Load() => Current;
+        public void Save(WorkExecutionSettings settings) => Current = settings;
     }
 
     private sealed class FakeAgentRepository : IAgentRepository

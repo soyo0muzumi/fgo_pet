@@ -12,7 +12,7 @@ Codex configuration, command arguments, prompts, or environment variables.
 
 ## Package layout
 
-The repository package is `integrations/codex/fgo-pet-agent`:
+The repository package is `tools/integrations/codex/fgo-pet-agent`:
 
 - `.codex-plugin/plugin.json` declares the plugin and versioned MCP server.
 - `.mcp.json` starts `fgo-pet-codex-adapter mcp`.
@@ -31,12 +31,12 @@ directory can be supplied to make the operation reproducible and avoid a
 second build:
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-codex-adapter.ps1 `
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools/scripts\install-codex-adapter.ps1 `
   -InstallRoot "$env:LOCALAPPDATA\FgoPet\bin"
 
 # A directory containing adapter/ and relay/ publish output, or one directory
 # containing both executables:
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-codex-adapter.ps1 `
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools/scripts\install-codex-adapter.ps1 `
   -InstallRoot "$env:LOCALAPPDATA\FgoPet\bin" `
   -SkipBuild -PublishedSource "C:\path\to\fgo-pet-publish"
 ```
@@ -147,7 +147,7 @@ dispatches, and remains effective after restart. Pairing state is preserved by
 the uninstaller:
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall-codex-adapter.ps1 `
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools/scripts\uninstall-codex-adapter.ps1 `
   -InstallRoot "$env:LOCALAPPDATA\FgoPet\bin"
 ```
 
@@ -157,7 +157,7 @@ the owned marketplace source. It does not remove Relay pairing or adapter
 identity state unless explicitly requested:
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall-codex-adapter.ps1 `
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools/scripts\uninstall-codex-adapter.ps1 `
   -InstallRoot "$env:LOCALAPPDATA\FgoPet\bin" -RemoveState
 ```
 
@@ -172,7 +172,7 @@ validator:
 
 ```powershell
 python C:\Users\<user>\.codex\skills\.system\plugin-creator\scripts\validate_plugin.py `
-  integrations\codex\fgo-pet-agent
+  tools/integrations\codex\fgo-pet-agent
 ```
 
 The final Phase 4 script performs this validation, an isolated install, and the

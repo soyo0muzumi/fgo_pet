@@ -1,0 +1,138 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>FgoPet.App</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <ProjectReference Include="..\..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../plugins/FgoPet.Plugin.Content/Desktop/FgoPet.Character.csproj" />
+    <ProjectReference Include="../../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../Settings/FgoPet.SettingsHost.csproj" />
+    <ProjectReference Include="../Contracts/FgoPet.HostContracts.csproj" />
+
+    <ProjectReference Include="../../FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Application\AgentDialogueProjectCatalog.cs">
+      <Link>host\DesktopShell\Application\AgentDialogueProjectCatalog.cs</Link>
+    </Compile>
+    <Compile Include="Application\AppLifetimeService.cs">
+      <Link>host\DesktopShell\Application\AppLifetimeService.cs</Link>
+    </Compile>
+    <Compile Include="Application\AppPaths.cs">
+      <Link>host\DesktopShell\Application\AppPaths.cs</Link>
+    </Compile>
+    <Compile Include="Application\AppStartup.cs">
+      <Link>host\DesktopShell\Application\AppStartup.cs</Link>
+    </Compile>
+    <Compile Include="Application\DesktopAppShell.cs">
+      <Link>host\DesktopShell\Application\DesktopAppShell.cs</Link>
+    </Compile>
+    <Compile Include="Application\DesktopAppUi.cs">
+      <Link>host\DesktopShell\Application\DesktopAppUi.cs</Link>
+    </Compile>
+    <Compile Include="Application\IAppLifetime.cs">
+      <Link>host\DesktopShell\Application\IAppLifetime.cs</Link>
+    </Compile>
+    <Compile Include="Application\IAppShell.cs">
+      <Link>host\DesktopShell\Application\IAppShell.cs</Link>
+    </Compile>
+    <Compile Include="Application\Phase2RuntimeAdapters.cs">
+      <Link>host\DesktopShell\Application\Phase2RuntimeAdapters.cs</Link>
+    </Compile>
+    <Compile Include="Application\SingleInstanceCoordinator.cs">
+      <Link>host\DesktopShell\Application\SingleInstanceCoordinator.cs</Link>
+    </Compile>
+    <Compile Include="Application\TrayService.cs">
+      <Link>host\DesktopShell\Application\TrayService.cs</Link>
+    </Compile>
+    <Page Include="Desktop\DialogueWindow.xaml">
+      <Link>Dialogue\DialogueWindow.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\ChatWebSurfaceFactory.cs" />
+    <Compile Include="Desktop\ChatWebHostActions.cs" />
+    <Compile Include="Desktop\DialogueWindow.xaml.cs">
+      <Link>host\DesktopShell\Desktop\DialogueWindow.xaml.cs</Link>
+    </Compile>
+    <Page Include="Desktop\AttachedPanelView.xaml">
+      <Link>Panels\AttachedPanelView.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\AttachedPanelView.xaml.cs">
+      <Link>host\DesktopShell\Desktop\AttachedPanelView.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\AttachedPanelViewModel.cs">
+      <Link>host\DesktopShell\Desktop\AttachedPanelViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\AttachedPanelVisualMetrics.cs">
+      <Link>host\DesktopShell\Desktop\AttachedPanelVisualMetrics.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\TransientSurfacePlacement.cs" />
+    <Compile Include="Desktop\TransientSurfaceWindow.cs" />
+    <Compile Include="Desktop\TransientSurfaceCoordinator.cs" />
+    <Compile Include="Desktop\WorkspaceWindowCoordinator.cs" />
+    <Page Include="Desktop\PortraitWindow.xaml">
+      <Link>Main\PortraitWindow.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\PortraitWindow.xaml.cs">
+      <Link>host\DesktopShell\Desktop\PortraitWindow.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\PortraitWindowCoordinator.cs">
+      <Link>host\DesktopShell\Desktop\PortraitWindowCoordinator.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\SettingsNavigationGroup.cs">
+      <Link>host\DesktopShell\Desktop\SettingsNavigationGroup.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\SettingsNavigationItem.cs">
+      <Link>host\DesktopShell\Desktop\SettingsNavigationItem.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\SettingsViewModel.cs">
+      <Link>host\DesktopShell\Desktop\SettingsViewModel.cs</Link>
+    </Compile>
+    <Page Include="Desktop\SettingsWindow.xaml">
+      <Link>Settings\SettingsWindow.xaml</Link>
+    </Page>
+    <Compile Include="Desktop\SettingsWindow.xaml.cs">
+      <Link>host\DesktopShell\Desktop\SettingsWindow.xaml.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\UserProfileViewModel.cs">
+      <Link>host\DesktopShell\Desktop\UserProfileViewModel.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\UserProfileWebFactory.cs" />
+    <Compile Include="Desktop\SettingsWebRootFactory.cs" />
+    <Content Include="Desktop\ui\settings\root\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Desktop\ui\settings\user-profile\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="Infrastructure\DialogueWindowPlacementCoordinator.cs">
+      <Link>host\DesktopShell\Infrastructure\DialogueWindowPlacementCoordinator.cs</Link>
+    </Compile>
+    <Compile Include="Infrastructure\InteractiveSurface.cs">
+      <Link>host\DesktopShell\Infrastructure\InteractiveSurface.cs</Link>
+    </Compile>
+    <Compile Include="Infrastructure\PointerGestureRecognizer.cs">
+      <Link>host\DesktopShell\Infrastructure\PointerGestureRecognizer.cs</Link>
+    </Compile>
+    <Compile Include="Desktop/DialogueWindowViewModel.cs" />
+    <Compile Include="Desktop/DialogueWindowViewModel.SpeechLifetime.cs" />
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../plugins/FgoPet.Plugin.Speech/Contracts/FgoPet.Speech.Core.csproj" /></ItemGroup>
+</Project>

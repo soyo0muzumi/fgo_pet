@@ -16,7 +16,7 @@ public sealed class DataExportServiceTests : IDisposable
     [Fact]
     public async Task Export_includes_todos_and_work_archive_summaries_only()
     {
-        var database = new RuntimeDatabase(_databasePath);
+        var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
         using (var connection = database.Open())
         using (var command = connection.CreateCommand())

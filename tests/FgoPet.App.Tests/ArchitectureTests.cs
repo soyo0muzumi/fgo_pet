@@ -13,6 +13,15 @@ namespace FgoPet.App.Tests.Framework;
 public sealed class ArchitectureTests
 {
     [Fact]
+    public void Conversation_loop_prompting_and_budgeting_compile_in_the_pure_kernel()
+    {
+        var kernel = typeof(AppRuntime).Assembly;
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.ConversationOrchestrator).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.PromptComposer).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.App.Dialogue.ConversationSummaryService).Assembly);
+        Assert.Same(kernel, typeof(FgoPet.Infrastructure.Providers.RequestTokenMeter).Assembly);
+    }
+    [Fact]
     public void Production_projects_do_not_reference_SkiaSharp()
     {
         var files = ProjectFiles().Where(IsOnThisCheckout);
@@ -28,19 +37,19 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Core_has_no_renderer_or_transparency_selectors()
+    public void Kernel_has_no_renderer_or_transparency_selectors()
     {
-        var core = ReadProject("FgoPet.Core");
+        var core = ReadProject("FgoPet.Kernel");
         Assert.DoesNotContain(core, "RenderBackend", StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(core, "TransparencyMode", StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(core, "SkiaSharp", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Core_and_Infrastructure_do_not_use_WPF()
+    public void Kernel_and_platform_implementations_do_not_use_WPF()
     {
         var expected =
-            from name in new[] { "FgoPet.Core", "FgoPet.Infrastructure" }
+            from name in new[] { "FgoPet.Kernel", "FgoPet.Platform.Contracts", "FgoPet.Platform.Storage", "FgoPet.Platform.Windows" }
             let text = ReadProject(name)
             select new { name, hasUseWpf = text.Contains("<UseWPF>true</UseWPF>", StringComparison.OrdinalIgnoreCase) };
 
@@ -48,25 +57,43 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Dependency_direction_keeps_feature_modules_on_foundational_contracts()
+    public void Only_tests_reference_the_composition_root()
     {
-        var core = ReferencedProjects("FgoPet.Core");
-        var infra = ReferencedProjects("FgoPet.Infrastructure");
-        var app = ReferencedProjects("FgoPet.App");
+        // 拆分后 FgoPet.App 是唯一的组合根。任何库工程反向引用它都会把
+        // 「模块 → 组合根」变成编译期环，模块也就无法脱离应用单独编译。
+        var offenders = ProjectFiles()
+            .Where(IsOnThisCheckout)
+            .Where(path => !Path.GetFileName(path).EndsWith(".Tests.csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !IsTestProject(path))
+            .Where(path => !Path.GetFileName(path).Equals("FgoPet.App.csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => XDocument.Parse(File.ReadAllText(path)).Descendants("ProjectReference")
+                .Any(reference => string.Equals(
+                    Path.GetFileNameWithoutExtension((string)reference.Attribute("Include")!),
+                    "FgoPet.App",
+                    StringComparison.OrdinalIgnoreCase)))
+            .Select(path => Path.GetFileName(path)!)
+            .ToArray();
 
-        // Speech.Core is a dependency-free contract leaf. Core may use it for
-        // the shared AppSettings speech value without depending on a feature
-        // implementation; the rest of the application direction is unchanged.
-        Assert.Equal(
-            new[] { "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
-            core.OrderBy(name => name, StringComparer.Ordinal));
-        Assert.Equal(
-            new[] { "FgoPet.AgentProtocol", "FgoPet.AgentRuntime", "FgoPet.Core", "FgoPet.Speech.Core" }.OrderBy(name => name, StringComparer.Ordinal),
-            infra.OrderBy(name => name, StringComparer.Ordinal));
-        Assert.Equal(
-            new[] { "FgoPet.Core", "FgoPet.Infrastructure", "FgoPet.Speech.Desktop" }.OrderBy(name => name, StringComparer.Ordinal),
-            app.OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Empty(offenders);
     }
+
+    private static bool IsTestProject(string path) => XDocument.Load(path).Descendants("IsTestProject")
+        .Any(element => string.Equals(element.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+
+    [Fact]
+    public void Explicit_test_project_metadata_is_recognized_even_without_a_tests_filename()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "fgopet-project-" + Guid.NewGuid().ToString("N") + ".csproj");
+        try
+        {
+            File.WriteAllText(path, "<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>");
+            Assert.True(IsTestProject(path));
+            File.WriteAllText(path, "<Project><PropertyGroup><IsTestProject>false</IsTestProject></PropertyGroup></Project>");
+            Assert.False(IsTestProject(path));
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void Production_container_resolves_the_application_shell()
     {
@@ -96,7 +123,7 @@ public sealed class ArchitectureTests
             runtime.SetActiveRole(new ActiveRoleState("pack", "casual", "1.0.0", "servant-mash"));
 
             Assert.Equal("servant-mash", panel.ActiveServantId);
-            Assert.True(panel.CanStartFocus);
+            Assert.True(provider.GetRequiredService<FgoPet.Plugin.Focus.Desktop.FocusCompactViewModel>().CanStartFocus);
         });
     }
 
@@ -104,8 +131,9 @@ public sealed class ArchitectureTests
     public void Attached_panel_shell_brush_references_are_defined()
     {
         var root = RepoRoot();
-        var panel = File.ReadAllText(Path.Combine(root, "src", "FgoPet.App", "Panels", "AttachedPanelView.xaml"));
-        var tokens = XDocument.Load(Path.Combine(root, "src", "FgoPet.App", "Ui", "Shell", "ShellTokens.xaml"));
+        // ④ 迁移后这两个文件物理搬到了根级模块树，不再位于 src/FgoPet.App 下。
+        var panel = File.ReadAllText(Path.Combine(root, "src", "FgoPet.Desktop", "Shell", "Desktop", "AttachedPanelView.xaml"));
+        var tokens = XDocument.Load(Path.Combine(root, "src", "FgoPet.UiSdk", "Resources", "Shell", "ShellTokens.xaml"));
         var definedKeys = tokens.Descendants()
             .Select(element => element.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value)
             .Where(key => key is not null)

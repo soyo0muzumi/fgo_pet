@@ -13,11 +13,15 @@ using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Speech.Settings;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
 
 namespace FgoPet.Windows.Tests.Panels;
 
@@ -66,6 +70,32 @@ public sealed class DialoguePanelIntegrationTests
             Assert.NotNull(view.FindName("MoreEntryButton"));
         });
     }
+
+    [Fact]
+    public void Speech_entry_toggles_the_owned_speech_setting()
+    {
+        StaRun(() =>
+        {
+            var settings = new SpeechSettingsStore(SpeechSettings.Defaults with
+            {
+                Connection = SpeechConnectionSettings.Defaults with
+                {
+                    Provider = SpeechProviderKind.IndexTts,
+                    IndexTtsVoiceId = "reference-voice",
+                    IndexTtsVoices = new[] { new ReferenceVoice("reference-voice", "Reference", "D:\\voices\\reference.wav") },
+                },
+            });
+            var viewModel = new AttachedPanelViewModel(TimeProvider.System, compactSurface: null, settings: settings);
+            var view = new AttachedPanelView { DataContext = viewModel };
+
+            Assert.IsType<Button>(view.FindName("SpeechEntryButton"))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.True(settings.Current.Connection.AutoReadEnabled);
+            Assert.Equal(SpeechProviderKind.IndexTts, settings.Current.Connection.Provider);
+            Assert.Equal("D:\\voices\\reference.wav", settings.Current.Connection.IndexTtsVoices[0].AudioPath);
+        });
+    }
     [Fact]
     public void Attached_panel_presents_no_dialogue_state()
     {
@@ -82,8 +112,7 @@ public sealed class DialoguePanelIntegrationTests
             Assert.Null(view.FindName("DialogueSettingsButton"));
             var shell = Assert.IsType<StackPanel>(view.FindName("CompanionControlIsland"));
             Assert.Equal(Visibility.Visible, shell.Visibility);
-            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("FocusSetupCard")).Visibility);
-            Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(view.FindName("CompactTimer")).Visibility);
+            Assert.Null(Assert.IsType<ContentControl>(view.FindName("CompactContentHost")).Content);
         });
     }
 
@@ -92,23 +121,24 @@ public sealed class DialoguePanelIntegrationTests
     {
         StaRun(() =>
         {
-            var viewModel = new AttachedPanelViewModel(TimeProvider.System);
+            var viewModel = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(null));
             var view = new AttachedPanelView { DataContext = viewModel };
             viewModel.PortraitClick();
-            var setup = Assert.IsType<Grid>(view.FindName("FocusSetupCard"));
+            var content = Assert.IsType<FocusCompactView>(Assert.IsType<ContentControl>(view.FindName("CompactContentHost")).Content);
+            var setup = Assert.IsType<Grid>(content.FindName("FocusSetupCard"));
             Assert.Equal(Visibility.Collapsed, setup.Visibility);
 
             Assert.IsType<Button>(view.FindName("FocusEntryButton"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Assert.Equal(Visibility.Visible, setup.Visibility);
-            Assert.NotNull(view.FindName("StartFocusButton"));
+            Assert.NotNull(content.FindName("StartFocusButton"));
         });
     }
 
     private static ConversationViewModel CreateConversationViewModel()
     {
-        var settingsStore = new FakeSettingsStore(AppSettings.Defaults with
+        var settingsStore = new FakeSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
@@ -116,7 +146,6 @@ public sealed class DialoguePanelIntegrationTests
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
             NoopDatabase.CreateConversationRepository(),
-            NoopDatabase.CreateMemoryRepository(),
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);
@@ -151,41 +180,18 @@ public sealed class DialoguePanelIntegrationTests
             new(new RuntimeDatabase(":memory:"));
     }
 
-    private sealed class FakeSettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class FakeSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Load() => initial;
-        public void Save(AppSettings settings) { }
+        public DialogueSettings Load() => initial;
+        public void Save(DialogueSettings settings) { }
     }
 
-    private static void StaRun(Action action)
+    private sealed class SpeechSettingsStore(SpeechSettings initial) : ISpeechSettingsStore
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception error)
-            {
-                failure = error;
-            }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
+        public SpeechSettings Current { get; private set; } = initial;
+        public SpeechSettings Load() => Current;
+        public void Save(SpeechSettings settings) => Current = settings;
     }
+
+    private static void StaRun(Action action) => StaRunner.Run(action);
 }

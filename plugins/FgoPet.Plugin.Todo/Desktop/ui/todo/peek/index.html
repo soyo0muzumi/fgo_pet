@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>今日待办</title>
+  <link rel="stylesheet" href="../shared/todo.css">
+  <script src="../shared/bridge.js" defer></script>
+  <script src="../shared/todo.js" defer></script>
+</head>
+<body data-surface="peek">
+  <main class="peek" aria-labelledby="heading">
+    <header class="heading">
+      <div><p class="eyebrow">TODO</p><h1 id="heading">今日待办</h1></div>
+      <span id="progress" class="progress" aria-live="polite">读取中…</span>
+    </header>
+    <p id="notice" class="notice" role="status" aria-live="polite">正在读取待办…</p>
+    <ul id="tasks" class="tasks" aria-label="今日与进行中的待办"></ul>
+    <form id="quick-add" class="quick-add">
+      <label for="title">快速新增</label>
+      <div class="input-row"><input id="title" name="title" maxlength="500" autocomplete="off" placeholder="写下要做的事"><button type="submit">添加</button></div>
+    </form>
+    <button id="manage-all" class="manage-all" type="button">管理全部待办 <span aria-hidden="true">↗</span></button>
+  </main>
+</body>
+</html>

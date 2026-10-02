@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>待办工作区</title>
+  <link rel="stylesheet" href="../shared/todo.css">
+  <link rel="stylesheet" href="workspace.css">
+  <script src="../shared/bridge.js" defer></script>
+  <script src="workspace.js" defer></script>
+</head>
+<body data-surface="workspace">
+  <main class="workspace" aria-labelledby="workspace-heading">
+    <header class="workspace-heading">
+      <div><p class="eyebrow">TODO WORKSPACE</p><h1 id="workspace-heading">待办工作区</h1></div>
+      <span id="summary" class="task-meta" aria-live="polite">读取中…</span>
+    </header>
+    <p id="notice" class="notice" role="status" aria-live="polite">正在读取待办…</p>
+    <div id="undo-zone" role="status" aria-live="polite"></div>
+    <nav class="workspace-tabs" aria-label="待办视图">
+      <button id="active-tab" type="button" aria-pressed="true">进行中</button>
+      <button id="today-tab" type="button" aria-pressed="false">今天</button>
+      <button id="inbox-tab" type="button" aria-pressed="false">收件箱</button>
+      <button id="upcoming-tab" type="button" aria-pressed="false">即将到来</button>
+      <button id="all-tab" type="button" aria-pressed="false">全部</button>
+      <button id="completed-tab" type="button" aria-pressed="false">已完成</button>
+    </nav>
+    <div class="mobile-list-bar"><button id="back-to-navigation" type="button">切换视图</button><span id="current-view">进行中</span></div>
+    <div class="mobile-detail-bar"><button id="back-to-list" type="button">返回列表</button></div>
+    <label class="workspace-search" for="task-search">搜索待办 <input id="task-search" type="search" placeholder="标题、备注或步骤"></label>
+    <form id="new-task" class="workspace-new">
+      <label for="new-title">新增待办</label>
+      <div class="input-row"><input id="new-title" maxlength="500" autocomplete="off" placeholder="写下要做的事"><button type="submit">新增</button></div>
+      <label for="new-description">备注（可选）</label>
+      <textarea id="new-description" maxlength="4000" rows="2" placeholder="补充说明"></textarea>
+    </form>
+    <ul id="workspace-tasks" class="workspace-tasks" aria-label="待办列表"></ul>
+  </main>
+</body>
+</html>

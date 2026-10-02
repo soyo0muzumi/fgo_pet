@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>设置</title>
+  <link rel="stylesheet" href="root.css">
+  <script type="module" src="root.js"></script>
+</head>
+<body>
+  <div class="settings-layout">
+    <aside class="settings-sidebar" aria-label="设置导航">
+      <div class="sidebar-heading">设置</div>
+      <label class="search-label" for="settings-search">搜索设置</label>
+      <input id="settings-search" class="settings-search" type="search" placeholder="搜索设置和关键词" autocomplete="off" aria-label="搜索设置">
+      <nav id="settings-navigation" class="settings-navigation" aria-label="设置分组">
+        <p class="navigation-loading" role="status">正在读取设置目录…</p>
+      </nav>
+    </aside>
+
+    <main class="settings-main">
+      <header class="page-heading">
+        <h1 id="page-title" tabindex="-1">设置</h1>
+        <p id="page-description" class="page-description"></p>
+      </header>
+      <p id="root-status" class="root-status" role="status" aria-live="polite"></p>
+      <section id="page-content" class="page-content" aria-label="设置页面"></section>
+    </main>
+  </div>
+</body>
+</html>

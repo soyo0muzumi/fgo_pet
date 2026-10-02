@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+    <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
+    <ProjectReference Include="../FgoPet.AgentBackend.Contracts/FgoPet.AgentBackend.Contracts.csproj" />
+    <ProjectReference Include="../FgoPet.AgentBackend.Windows/FgoPet.AgentBackend.Windows.csproj" />
+    <ProjectReference Include="../../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+  </ItemGroup>
+</Project>

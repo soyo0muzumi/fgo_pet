@@ -9,13 +9,17 @@ using FgoPet.Core.Focus;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Panels;
 using FgoPet.Core.Settings;
+using FgoPet.Core.Speech;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Agents;
+using FgoPet.Speech.Settings;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
 
 namespace FgoPet.App.Tests.Panels;
 
@@ -45,7 +49,7 @@ public sealed class AttachedPanelViewModelTests
     [Fact]
     public void Dialogue_click_requests_the_standalone_window_without_changing_panel_state()
     {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, dialogueWindow: CreateDialogueViewModel());
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compactSurface: null, dialogueWindow: CreateDialogueViewModel());
         vm.PortraitClick();
         Assert.Equal(AttachedPanelState.Compact, vm.State);
 
@@ -58,32 +62,11 @@ public sealed class AttachedPanelViewModelTests
     }
 
     [Fact]
-    public void Attention_click_opens_the_existing_current_task_when_agent_attention_is_present()
-    {
-        var currentTask = new AgentCurrentTaskViewModel(new AgentEventProjector(), TimeProvider.System);
-        currentTask.Apply(new AgentEvent(
-            "codex", "source-1", "task-1", 1, AgentEventType.AttentionRequired,
-            DateTimeOffset.UtcNow, summary: "需要确认的任务"));
-        var opened = 0;
-        currentTask.OpenTaskRequested += _ => opened++;
-        var dialogue = CreateDialogueViewModel();
-        var dialogueOpened = 0;
-        dialogue.OpenRequested += () => dialogueOpened++;
-        var vm = new AttachedPanelViewModel(
-            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue, currentAgentTask: currentTask);
-
-        vm.AttentionClick();
-
-        Assert.Equal(1, opened);
-        Assert.Equal(0, dialogueOpened);
-    }
-
-    [Fact]
     public void Attention_click_opens_shared_dialogue_when_unread_dialogue_exists()
     {
         var dialogue = CreateDialogueViewModel();
         var vm = new AttachedPanelViewModel(
-            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+            new MutableTimeProvider(Epoch), compactSurface: null, dialogueWindow: dialogue);
         var opened = 0;
         dialogue.OpenRequested += () => opened++;
         dialogue.NotifyWindowHidden();
@@ -100,7 +83,7 @@ public sealed class AttachedPanelViewModelTests
     {
         var dialogue = CreateDialogueViewModel();
         var vm = new AttachedPanelViewModel(
-            new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+            new MutableTimeProvider(Epoch), compactSurface: null, dialogueWindow: dialogue);
         var opened = 0;
         dialogue.OpenRequested += () => opened++;
 
@@ -123,20 +106,33 @@ public sealed class AttachedPanelViewModelTests
     [Fact]
     public void Desktop_pet_read_aloud_entry_toggles_the_existing_auto_read_setting()
     {
-        var settings = new MemorySettingsStore(AppSettings.Defaults);
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, settings: settings);
+        var voice = new ReferenceVoice("voice-1", "玛修", "D:\\voices\\mash.wav");
+        var connection = SpeechConnectionSettings.Defaults with
+        {
+            Provider = SpeechProviderKind.IndexTts,
+            OpenAiModel = "preserved-model",
+            OpenAiVoice = "preserved-voice",
+            IndexTtsVoiceId = voice.Id,
+            IndexTtsVoices = new[] { voice },
+        };
+        var settings = new MemorySettingsStore(new SpeechSettings(connection));
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compactSurface: null, settings: settings);
 
         Assert.False(vm.IsAutoReadEnabled);
         vm.ToggleAutoRead();
 
         Assert.True(vm.IsAutoReadEnabled);
-        Assert.True(settings.Current.SpeechConnection.AutoReadEnabled);
+        Assert.True(settings.Current.Connection.AutoReadEnabled);
+        Assert.Equal(SpeechProviderKind.IndexTts, settings.Current.Connection.Provider);
+        Assert.Equal("preserved-model", settings.Current.Connection.OpenAiModel);
+        Assert.Equal("preserved-voice", settings.Current.Connection.OpenAiVoice);
+        Assert.Equal(voice, Assert.Single(settings.Current.Connection.IndexTtsVoices));
     }
     [Fact]
     public void Unread_replies_surface_on_the_compact_panel_and_clear_when_activated()
     {
         var dialogue = CreateDialogueViewModel();
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), focus: null, dialogueWindow: dialogue);
+        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compactSurface: null, dialogueWindow: dialogue);
 
         dialogue.NotifyWindowHidden();
         dialogue.Conversation.Turns.Add(new FgoPet.App.Dialogue.ConversationTurnViewModel(
@@ -151,18 +147,33 @@ public sealed class AttachedPanelViewModelTests
         Assert.Equal(string.Empty, vm.DialogueUnreadPillText);
     }
 
+    [Fact]
+    public void Task_entry_toggles_the_transient_surface_without_opening_dialogue()
+    {
+        var dialogue = CreateDialogueViewModel();
+        var toggled = new List<string>();
+        var dialogueOpens = 0;
+        dialogue.OpenRequested += () => dialogueOpens++;
+        using var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), compactSurface: null,
+            dialogueWindow: dialogue, toggleTransient: id => { toggled.Add(id); return true; });
+
+        vm.OpenTasks();
+
+        Assert.Equal(["todo.peek"], toggled);
+        Assert.Equal(0, dialogueOpens);
+    }
+
     private static DialogueWindowViewModel CreateDialogueViewModel()
     {
-        var settingsStore = new MemorySettingsStore(AppSettings.Defaults with
+        var settingsStore = new DialogueSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
         });
-        var database = new RuntimeDatabase(":memory:");
+        var database = TestRuntimeDatabase.Create(":memory:");
         var orchestrator = new ConversationOrchestrator(
             new ThrowingProviderResolver(),
             new ThrowingContentResolver(),
             new SqliteConversationRepository(database),
-            new SqliteMemoryRepository(database),
             new PromptComposer(),
             TimeProvider.System,
             settingsStore);
@@ -305,32 +316,16 @@ public sealed class AttachedPanelViewModelTests
     }
 
     [Fact]
-    public void Todo_overflows_after_eight_rows_and_still_scrolls()
-    {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch));
-        for (var index = 1; index <= 10; index++)
-        {
-            vm.AddTodo($"待办 {index}");
-        }
-
-        Assert.True(vm.TodoOverflows);
-        Assert.Equal(8, vm.VisibleTodoCount);
-        Assert.Equal(10, vm.Todo.Count);
-    }
-
-    [Fact]
     public void Empty_lists_report_zero_visible_items()
     {
         var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch));
         Assert.Equal(0, vm.VisibleDialogueCount);
-        Assert.Equal(0, vm.VisibleTodoCount);
-        Assert.False(vm.TodoOverflows);
     }
 
     [Fact]
     public void Start_focus_is_disabled_without_an_active_servant_and_names_the_reason()
     {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+        var vm = new FocusCompactViewModel(new FakeFocusService(FocusSession.Idle));
 
         Assert.False(vm.CanStartFocus);
         Assert.Equal("请先在角色库导入并激活一个角色。", vm.StartFocusDisabledReason);
@@ -340,7 +335,7 @@ public sealed class AttachedPanelViewModelTests
     public void Start_focus_is_disabled_by_an_active_session_and_names_the_status()
     {
         var session = FocusSession.Idle with { Status = FocusStatus.PausedFocus };
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(session));
+        var vm = new FocusCompactViewModel(new FakeFocusService(session));
         vm.SetActiveServant("800100");
 
         Assert.False(vm.CanStartFocus);
@@ -350,7 +345,7 @@ public sealed class AttachedPanelViewModelTests
     [Fact]
     public void Start_focus_is_disabled_by_invalid_custom_fields_and_names_the_correction()
     {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+        var vm = new FocusCompactViewModel(new FakeFocusService(FocusSession.Idle));
         vm.SetActiveServant("800100");
         vm.SelectCustomPreset();
         vm.CustomFocusMinutesText = "999";
@@ -363,7 +358,7 @@ public sealed class AttachedPanelViewModelTests
     [Fact]
     public void Start_focus_enabled_state_has_no_disabled_reason()
     {
-        var vm = new AttachedPanelViewModel(new MutableTimeProvider(Epoch), new FakeFocusService(FocusSession.Idle));
+        var vm = new FocusCompactViewModel(new FakeFocusService(FocusSession.Idle));
         vm.SetActiveServant("800100");
 
         Assert.True(vm.CanStartFocus);
@@ -396,12 +391,18 @@ public sealed class AttachedPanelViewModelTests
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
-    private sealed class MemorySettingsStore(AppSettings initial) : IAppSettingsStore
+    private sealed class MemorySettingsStore(SpeechSettings initial) : ISpeechSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; private set; } = initial;
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) => Current = settings;
+        public SpeechSettings Current { get; private set; } = initial;
+        public SpeechSettings Load() => Current;
+        public void Save(SpeechSettings settings) => Current = settings;
+    }
+
+    private sealed class DialogueSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
+    {
+        public DialogueSettings Current { get; private set; } = initial;
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) => Current = settings;
     }
 
     private sealed class ThrowingProviderResolver : IChatProviderResolver

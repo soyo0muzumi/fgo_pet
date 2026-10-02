@@ -28,7 +28,8 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
         Assert.Equal(AgentEventApplyResult.Applied, agents.ApplyEvent(completed));
         Assert.Equal(AgentEventApplyResult.AlreadyApplied, agents.ApplyEvent(completed));
         var completedTodo = Assert.IsType<TodoItem>(todos.Get("todo-1"));
-        Assert.Equal(TodoStatus.Completed, completedTodo.Status);
+        Assert.Equal(TodoStatus.Planned, completedTodo.Status);
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(todo), System.Text.Json.JsonSerializer.Serialize(completedTodo));
         Assert.Single(completedTodo.Steps);
         Assert.Equal("Prepare", completedTodo.Steps[0].Title);
         Assert.Equal(AgentExecutionStatus.Completed, Assert.IsType<AgentExecution>(agents.GetExecution("execution-1")).Status);

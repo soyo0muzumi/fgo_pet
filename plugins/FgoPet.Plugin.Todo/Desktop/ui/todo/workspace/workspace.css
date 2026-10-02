@@ -1,0 +1,53 @@
+.workspace { max-width: 1000px; margin: auto; min-height: 100vh; padding: 28px 32px; }
+.workspace-heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+.workspace-heading h1 { margin: 3px 0 0; font-size: 28px; }
+.workspace-tabs { display: flex; gap: 8px; margin: 12px 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.workspace-tabs button { white-space: nowrap; }
+.workspace-search { display: grid; gap: 5px; margin-bottom: 12px; }
+.workspace-search input { padding: 8px 10px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.mobile-list-bar, .mobile-detail-bar { display: none; }
+.workspace-tabs button { padding: 9px 12px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+.workspace-tabs button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.workspace-new { display: grid; gap: 7px; padding: 16px; background: var(--page); border: 1px solid var(--line); border-radius: 12px; }
+.workspace-new label { font-weight: 600; }
+.workspace-new textarea, .workspace-new input, .task-editor input, .task-editor textarea,
+.step-editor input { width: 100%; padding: 8px 10px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.workspace-new .input-row button, .primary-action { color: var(--on-accent); background: var(--accent); border: 0; border-radius: 8px; padding: 8px 13px; }
+.workspace-tasks { margin: 18px 0 0; padding: 0; list-style: none; }
+.workspace-tasks > li { margin-bottom: 10px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.workspace-tasks > li.is-highlighted { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+#undo-zone:not(:empty) { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: var(--page); }
+.task-heading { display: flex; gap: 10px; align-items: flex-start; }
+.task-heading > button { margin-left: auto; }
+.task-heading h2 { margin: 0; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.task-description { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-actions, .step-actions, .inline-confirmation { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.task-actions button, .step-actions button, .inline-confirmation button, .task-heading button,
+.task-editor button, .step-editor button { padding: 5px 9px; color: var(--text); background: var(--page); border: 1px solid var(--line); border-radius: 7px; }
+.task-actions button:hover, .step-actions button:hover, .inline-confirmation button:hover { border-color: var(--accent); }
+.task-editor, .step-editor { display: grid; gap: 7px; margin-top: 10px; }
+.task-editor label, .step-editor label { font-weight: 600; }
+.step-list { margin: 10px 0; padding-left: 20px; }
+.step-list li { margin: 8px 0; }
+.step-list label { display: inline-flex; align-items: center; gap: 6px; }
+.step-list input[type="checkbox"] { accent-color: var(--accent); }
+.step-actions { display: inline-flex; margin-left: 8px; }
+.inline-confirmation { align-items: center; padding: 10px; background: var(--page); border-radius: 8px; }
+.empty-state { color: var(--muted); text-align: center; padding: 30px; }
+@media (max-width: 600px) {
+  .workspace { padding: 18px 14px; }
+  .workspace-heading { align-items: start; flex-direction: column; }
+  .workspace-new .input-row { flex-wrap: wrap; }
+  .mobile-list-bar, .mobile-detail-bar { gap: 10px; align-items: center; margin: 10px 0; }
+  body[data-mobile-stage="navigation"] .workspace-search,
+  body[data-mobile-stage="navigation"] .workspace-new,
+  body[data-mobile-stage="navigation"] .workspace-tasks { display: none; }
+  body[data-mobile-stage="navigation"] .workspace-tabs { flex-direction: column; border: 0; }
+  body[data-mobile-stage="list"] .workspace-tabs,
+  body[data-mobile-stage="detail"] .workspace-tabs { display: none; }
+  body[data-mobile-stage="list"] .mobile-list-bar,
+  body[data-mobile-stage="detail"] .mobile-detail-bar { display: flex; }
+  body[data-mobile-stage="detail"] .workspace-search,
+  body[data-mobile-stage="detail"] .workspace-new,
+  body[data-mobile-stage="detail"] .workspace-tasks > li:not(.is-expanded) { display: none; }
+}

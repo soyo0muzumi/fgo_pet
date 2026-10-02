@@ -1,0 +1,232 @@
+.sc-page {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.sc-page *,
+.sc-page *::before,
+.sc-page *::after { box-sizing: border-box; }
+
+.sc-page :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sc-page h2,
+.sc-page p { margin: 0; }
+
+.sc-dirty {
+  min-height: 1.35em;
+  padding: 9px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+/* 卡片/面板自身声明了 display，会覆盖 [hidden] 的默认 display:none；必须兜底，否则 provider 切换后两张卡片同时可见。 */
+[hidden] { display: none !important; }
+.sc-dirty[hidden] { display: none; }
+
+.sc-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.sc-card-heading h2 {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sc-card-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sc-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  align-content: start;
+}
+
+.sc-label {
+  font-weight: 650;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sc-input {
+  width: 100%;
+  min-height: 38px;
+  /* select 的原生主题高度与同类 input 不一致（会超出 min-height），
+     显式定高保证同行控件等高。 */
+  height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--page);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.sc-input::placeholder { color: var(--muted); opacity: .9; }
+.sc-input--narrow { max-width: 140px; }
+
+.sc-field-hint {
+  min-height: 1.3em;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sc-key,
+.sc-voice-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  /* 与输入框同行时必须等高，故按行拉伸而不是顶对齐。 */
+  align-items: stretch;
+}
+
+.sc-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.sc-switch-copy { display: grid; min-width: 0; gap: 3px; }
+.sc-switch-title { font-size: 13px; font-weight: 650; line-height: 1.4; }
+.sc-switch-description { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.sc-switch-row input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sc-switch-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--page);
+  transition: background-color 120ms ease;
+}
+.sc-switch-control i { width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: transform 120ms ease, background-color 120ms ease; }
+.sc-switch-row input:checked + .sc-switch-control { border-color: var(--accent); background: var(--accent); }
+.sc-switch-row input:checked + .sc-switch-control i { transform: translateX(16px); background: var(--on-accent); }
+.sc-switch-row input:focus-visible + .sc-switch-control { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sc-slider-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.sc-slider-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 22px;
+}
+.sc-slider-value {
+  min-width: 78px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-delete-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.sc-delete-confirm[hidden] { display: none; }
+.sc-delete-text { color: var(--text); font-size: 12px; line-height: 1.5; }
+.sc-delete-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.sc-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  align-items: stretch;
+}
+.sc-test-note { color: var(--muted); font-size: 11px; }
+
+.sc-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+}
+.sc-button:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.sc-button:disabled { opacity: .55; cursor: default; }
+.sc-button--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+
+/* 四类立即副作用（试听 / 清除密钥 / 导入 WAV / 删除）与普通草稿字段视觉区分：
+   左侧强调条 + 强调色边框，与只写草稿的输入框、填充主色的保存按钮明显不同。 */
+.sc-immediate {
+  /* 四边等宽的强调色描边：与普通草稿按钮的 --line 灰边区分（左侧不再有粗条）。 */
+  border-color: var(--accent);
+}
+.sc-immediate:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+
+.sc-retry[hidden] { display: none; }
+
+.sc-feedback {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 5px 12px;
+  min-width: 0;
+}
+.sc-status, .sc-error { min-height: 1.35em; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.sc-status { color: var(--muted); }
+.sc-error { grid-column: 1 / -1; color: var(--danger); }
+.sc-retry { grid-column: 2; grid-row: 1; }
+
+.sc-page[data-state="loading"] .sc-card,
+.sc-page[data-state="busy"] .sc-card,
+.sc-page[data-state="read-error"] .sc-card { opacity: .84; }
+
+@media (max-width: 560px) {
+  .sc-page { gap: 10px; }
+  .sc-card { gap: 11px; padding: 13px; }
+  .sc-input { min-height: 36px; height: 36px; }
+  .sc-key, .sc-voice-row { grid-template-columns: minmax(0, 1fr); }
+  .sc-key .sc-button, .sc-voice-row .sc-button { justify-self: start; }
+  .sc-actions { justify-content: flex-start; }
+  .sc-button { padding-right: 9px; padding-left: 9px; font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-page *, .sc-page *::before, .sc-page *::after { transition-duration: 0.01ms !important; }
+}

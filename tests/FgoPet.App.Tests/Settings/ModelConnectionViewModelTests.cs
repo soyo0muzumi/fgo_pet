@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using FgoPet.App.Settings;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Infrastructure.Secrets;
 using Xunit;
@@ -13,6 +14,47 @@ namespace FgoPet.App.Tests.Settings;
 
 public sealed class ModelConnectionViewModelTests
 {
+    [Fact]
+    public async Task Context_override_and_output_are_validated_and_saved()
+    {
+        var settings = new FakeSettings();
+        var model = CreateViewModel(settings, new FakeCredentials());
+        model.SetApiKey("fixture");
+        model.ContextWindowOverrideText = "32768";
+        model.MaxOutputTokensText = "4096";
+        Assert.Contains("手工设置", model.ContextLimitText);
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(32768, settings.Saved!.ModelConnection!.ContextWindowOverride);
+        Assert.Equal(4096, settings.Saved.ModelConnection.MaxOutputTokens);
+        model.MaxOutputTokensText = "40000";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.NotEmpty(model.ErrorText);
+        Assert.Equal(4096, settings.Saved.ModelConnection.MaxOutputTokens);
+        model.ContextWindowOverrideText = "";
+        model.MaxOutputTokensText = "2048";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Null(settings.Saved.ModelConnection.ContextWindowOverride);
+    }
+
+    [Fact]
+    public async Task Stale_model_refresh_cannot_apply_capacity_to_another_endpoint()
+    {
+        var handler = new DelayedRespondingHandler();
+        var credentials = new FakeCredentials();
+        var catalog = new ProviderCatalog();
+        var model = new ModelConnectionViewModel(new FakeSettings(), credentials, catalog,
+            new ChatProviderFactory(catalog, credentials, new HttpClient(handler)));
+        model.SetApiKey("fixture");
+        var refresh = model.RefreshModelsCommand.ExecuteAsync(null);
+        await handler.RequestStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        model.BaseUrl = "https://other.test/v1";
+        handler.Complete();
+        await refresh;
+        Assert.Empty(model.AvailableModels);
+        Assert.Contains("未获取到上限", model.ContextLimitText);
+        Assert.Contains("估算", model.ContextLimitText);
+    }
+
     [Fact]
     public async Task Save_persists_provider_and_model_metadata_but_sends_key_to_credential_store()
     {
@@ -99,7 +141,7 @@ public sealed class ModelConnectionViewModelTests
     [Fact]
     public async Task Successful_test_does_not_persist_or_activate_until_explicit_save()
     {
-        var settings = new FakeSettings { Current = AppSettings.Defaults with { ModelConnection = null } };
+        var settings = new FakeSettings { Current = DialogueSettings.Defaults with { ModelConnection = null } };
         var credentials = new FakeCredentials();
         var handler = new RespondingHandler();
         var catalog = new ProviderCatalog();
@@ -176,16 +218,15 @@ public sealed class ModelConnectionViewModelTests
         return new ModelConnectionViewModel(settings, credentials, catalog, factory);
     }
 
-    private sealed class FakeSettings : IAppSettingsStore
+    private sealed class FakeSettings : IDialogueSettingsStore
     {
-        public string Location => "memory";
-        public AppSettings Current { get; set; } = AppSettings.Defaults with
+        public DialogueSettings Current { get; set; } = DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
         };
-        public AppSettings? Saved { get; private set; }
-        public AppSettings Load() => Current;
-        public void Save(AppSettings settings) { Current = settings; Saved = settings; }
+        public DialogueSettings? Saved { get; private set; }
+        public DialogueSettings Load() => Current;
+        public void Save(DialogueSettings settings) { Current = settings; Saved = settings; }
     }
 
     private sealed class FakeCredentials : ICredentialStore, ICredentialReader

@@ -1,0 +1,275 @@
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using FgoPet.App.Panels;
+using FgoPet.Core.Geometry;
+using FgoPet.Core.Panels;
+
+namespace FgoPet.App.Main;
+
+/// <summary>
+/// Transparent, borderless, always-on-top portrait host window. The exact DPI,
+/// placement, hit-testing, and lifecycle behavior is completed in Tasks 8-10.
+/// </summary>
+public partial class PortraitWindow : Window
+{
+    private readonly AttachedPanelViewModel _panel;
+    private readonly AttachedPanelView _panelView;
+    private readonly DispatcherTimer _idleTimer;
+    private PortraitGeometry? _geometry;
+    private double _portraitOffsetX;
+    private double _portraitOffsetY;
+    private bool _stablePanelLayoutPrepared;
+    private DeviceRect? _panelWorkArea;
+    private Dpi2 _panelDpi = new(1, 1);
+
+    public PortraitWindow() : this(new AttachedPanelViewModel(TimeProvider.System))
+    {
+    }
+
+    public PortraitWindow(AttachedPanelViewModel panel)
+    {
+        _panel = panel ?? throw new ArgumentNullException(nameof(panel));
+        InitializeComponent();
+        _idleTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _idleTimer.Tick += (_, _) => HandlePanelIdleTick();
+        _panelView = new AttachedPanelView { DataContext = panel };
+        PanelHost.Content = _panelView;
+        _panelView.CompactSizeChanged += () =>
+        {
+            if (_geometry is not null && _panelWorkArea is { } area)
+                ArrangeStablePanelLayout(_geometry, area, _panelDpi);
+        };
+        panel.PropertyChanged += OnPanelPropertyChanged;
+        Loaded += (_, _) => _idleTimer.Start();
+        Closed += (_, _) =>
+        {
+            _idleTimer.Stop();
+            panel.PropertyChanged -= OnPanelPropertyChanged;
+            _panelView.Dispose();
+        };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                HandleEscape();
+                e.Handled = true;
+            }
+        };
+        ApplyPanelState();
+    }
+
+    public FrameworkElement? PortraitContent => Portrait.Content as FrameworkElement;
+
+    internal AttachedPanelViewModel AttachedPanel => _panel;
+
+    internal bool IsAttachedPanelVisible => PanelHost.Visibility == Visibility.Visible;
+
+    internal LogicalRect PortraitScreenBounds => new(
+        Left + _portraitOffsetX,
+        Top + _portraitOffsetY,
+        _geometry?.LogicalSize.Width ?? Width,
+        _geometry?.LogicalSize.Height ?? Height);
+
+    internal LogicalPoint PortraitHostOffset => new(_portraitOffsetX, _portraitOffsetY);
+
+    internal void HandlePortraitClick() => _panel.PortraitClick();
+
+    internal void HandleEscape()
+    {
+        if (!_panelView.CollapseQuickActions()) _panel.Escape();
+    }
+
+    internal void HandlePanelIdleTick()
+    {
+        _panel.Tick();
+    }
+
+    internal bool IsAttachedPanelHit(Point logicalPoint)
+    {
+        if (!IsAttachedPanelVisible)
+        {
+            return false;
+        }
+
+        var left = Canvas.GetLeft(PanelHost);
+        var top = Canvas.GetTop(PanelHost);
+        var width = PanelHost.ActualWidth > 0 ? PanelHost.ActualWidth : PanelHost.DesiredSize.Width;
+        var height = PanelHost.ActualHeight > 0 ? PanelHost.ActualHeight : Math.Min(PanelHost.DesiredSize.Height, PanelHost.MaxHeight);
+        return logicalPoint.X >= left && logicalPoint.X < left + width
+            && logicalPoint.Y >= top && logicalPoint.Y < top + height;
+    }
+
+    internal Point ToPortraitLocal(Point windowPoint) => new(
+        windowPoint.X - _portraitOffsetX,
+        windowPoint.Y - _portraitOffsetY);
+
+    internal void MovePortraitToDevice(DevicePoint location, Dpi2 dpi)
+    {
+        Left = (location.X / dpi.X) - _portraitOffsetX;
+        Top = (location.Y / dpi.Y) - _portraitOffsetY;
+    }
+
+    /// <summary>Loads a validated snapshot at the given window/portrait geometry.</summary>
+    public void Present(FrameworkElement content, PortraitGeometry geometry)
+    {
+        _stablePanelLayoutPrepared = false;
+        _geometry = geometry;
+        if (!ReferenceEquals(Portrait.Content, content)) Portrait.Content = content;
+        Portrait.Width = geometry.LogicalSize.Width;
+        Portrait.Height = geometry.LogicalSize.Height;
+        if (_panel.State == AttachedPanelState.Collapsed)
+        {
+            CollapsePanelLayout();
+        }
+    }
+
+    internal DeviceRect ArrangeOverlayPanel(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
+    {
+        return ArrangeStablePanelLayout(geometry, workArea, dpi);
+    }
+
+    internal void PrepareStablePanelLayout(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
+    {
+        ArrangeStablePanelLayout(geometry, workArea, dpi);
+    }
+
+    private DeviceRect ArrangeStablePanelLayout(PortraitGeometry geometry, DeviceRect workArea, Dpi2 dpi)
+    {
+        _panelWorkArea = workArea;
+        _panelDpi = dpi;
+        _geometry = geometry;
+        var windowLeft = double.IsFinite(Left) ? Left : 0;
+        var windowTop = double.IsFinite(Top) ? Top : 0;
+        var portraitLeft = (int)Math.Round((windowLeft + _portraitOffsetX) * dpi.X);
+        var portraitTop = (int)Math.Round((windowTop + _portraitOffsetY) * dpi.Y);
+        var portraitBounds = new DeviceRect(
+            portraitLeft,
+            portraitTop,
+            geometry.DeviceSize.Width,
+            geometry.DeviceSize.Height);
+        var anchor = new DevicePoint(
+            portraitLeft + geometry.PanelAnchorDevice.X,
+            portraitTop + geometry.PanelAnchorDevice.Y);
+
+        var workAreaHeightDip = workArea.Height / dpi.Y;
+        var focusSurfaceVisible = _panel.State == AttachedPanelState.ExpandedFocus || _panel.IsCompactSurfaceActive;
+        var panelWidthDip = AttachedPanelVisualMetrics.CalculateWidth(geometry.LogicalSize.Width, focusSurfaceVisible);
+        var panelHeightDip = AttachedPanelVisualMetrics.CalculateHeight(
+            _panel.State,
+            _panel.IsCompactSurfaceActive,
+            _panel.BlocksAutoCollapse,
+            workAreaHeightDip, _panelView.QuickActionsExpanded, focusSurfaceVisible);
+        // Reserve the largest expanded footprint so switching sections never moves the portrait.
+        var reservedHeightDip = AttachedPanelVisualMetrics.CalculateReservedHeight(workAreaHeightDip);
+        PanelHost.Width = panelWidthDip;
+        PanelHost.Height = panelHeightDip;
+        PanelHost.MaxHeight = panelHeightDip;
+        _panelView.ApplyPhase0Clip(panelWidthDip, panelHeightDip, panelWidthDip / 22.0);
+        PanelHost.Measure(new Size(panelWidthDip, panelHeightDip));
+        var desired = new DeviceSize(
+            Math.Max(1, (int)Math.Ceiling(panelWidthDip * dpi.X)),
+            Math.Max(1, (int)Math.Ceiling(panelHeightDip * dpi.Y)));
+        var panelWidth = Math.Min(desired.Width, workArea.Width);
+        var panelHeight = Math.Min(desired.Height, (int)Math.Floor(workArea.Height * AttachedPanelVisualMetrics.WorkAreaRatio));
+        var reservedHeight = Math.Min(
+            Math.Max(1, (int)Math.Ceiling(reservedHeightDip * dpi.Y)),
+            (int)Math.Floor(workArea.Height * AttachedPanelVisualMetrics.WorkAreaRatio));
+        var marginX = Math.Min((int)Math.Round(16 * dpi.X), Math.Max(0, (workArea.Width - panelWidth) / 2));
+        var marginY = Math.Min((int)Math.Round(16 * dpi.Y), Math.Max(0, (workArea.Height - panelHeight) / 2));
+        var gap = Math.Max(1, (int)Math.Round(12 * dpi.X));
+        var rightLeft = portraitBounds.Right + gap;
+        var leftLeft = portraitBounds.Left - panelWidth - gap;
+        var rightFits = rightLeft + panelWidth <= workArea.Right - marginX;
+        var leftFits = leftLeft >= workArea.Left + marginX;
+        int preferredLeft;
+        int preferredTop;
+        if (rightFits || leftFits)
+        {
+            preferredLeft = rightFits ? rightLeft : leftLeft;
+            preferredTop = anchor.Y - panelHeight / 2;
+        }
+        else
+        {
+            preferredLeft = anchor.X - panelWidth / 2;
+            var verticalGap = Math.Max(1, (int)Math.Round(12 * dpi.Y));
+            var belowTop = portraitBounds.Bottom + verticalGap;
+            var aboveTop = portraitBounds.Top - panelHeight - verticalGap;
+            preferredTop = belowTop + panelHeight <= workArea.Bottom - marginY
+                ? belowTop
+                : aboveTop >= workArea.Top + marginY
+                    ? aboveTop
+                    : anchor.Y - panelHeight / 2;
+        }
+
+        var panelBounds = new DeviceRect(
+            Math.Clamp(preferredLeft, workArea.Left + marginX, workArea.Right - panelWidth - marginX),
+            Math.Clamp(preferredTop, workArea.Top + marginY, workArea.Bottom - panelHeight - marginY),
+            panelWidth,
+            panelHeight);
+        var reservedPanelBounds = new DeviceRect(
+            panelBounds.Left,
+            Math.Clamp(panelBounds.Top, workArea.Top, workArea.Bottom - reservedHeight),
+            panelWidth,
+            reservedHeight);
+        PanelHost.MaxHeight = panelBounds.Height / dpi.Y;
+
+        var hostLeft = Math.Min(portraitBounds.Left, reservedPanelBounds.Left);
+        var hostTop = Math.Min(portraitBounds.Top, reservedPanelBounds.Top);
+        var hostRight = Math.Max(portraitBounds.Right, reservedPanelBounds.Right);
+        var hostBottom = Math.Max(portraitBounds.Bottom, reservedPanelBounds.Bottom);
+        _portraitOffsetX = (portraitBounds.Left - hostLeft) / dpi.X;
+        _portraitOffsetY = (portraitBounds.Top - hostTop) / dpi.Y;
+        Canvas.SetLeft(Portrait, _portraitOffsetX);
+        Canvas.SetTop(Portrait, _portraitOffsetY);
+        Canvas.SetLeft(PanelHost, (panelBounds.Left - hostLeft) / dpi.X);
+        Canvas.SetTop(PanelHost, (panelBounds.Top - hostTop) / dpi.Y);
+        Left = hostLeft / dpi.X;
+        Top = hostTop / dpi.Y;
+        Width = HostCanvas.Width = (hostRight - hostLeft) / dpi.X;
+        Height = HostCanvas.Height = (hostBottom - hostTop) / dpi.Y;
+        _stablePanelLayoutPrepared = true;
+        return panelBounds;
+    }
+
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(AttachedPanelViewModel.State)
+            or nameof(AttachedPanelViewModel.IsCompactSurfaceActive)
+            or nameof(AttachedPanelViewModel.BlocksAutoCollapse))
+        {
+            ApplyPanelState();
+        }
+    }
+
+    private void ApplyPanelState()
+    {
+        PanelHost.Visibility = _panel.State == AttachedPanelState.Collapsed
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        if (_panel.State == AttachedPanelState.Collapsed && _geometry is not null && !_stablePanelLayoutPrepared)
+        {
+            CollapsePanelLayout();
+        }
+    }
+
+    private void CollapsePanelLayout()
+    {
+        var geometry = _geometry!;
+        var portraitLeft = Left + _portraitOffsetX;
+        var portraitTop = Top + _portraitOffsetY;
+        _portraitOffsetX = 0;
+        _portraitOffsetY = 0;
+        Canvas.SetLeft(Portrait, 0);
+        Canvas.SetTop(Portrait, 0);
+        Left = portraitLeft;
+        Top = portraitTop;
+        Width = HostCanvas.Width = geometry.LogicalSize.Width;
+        Height = HostCanvas.Height = geometry.LogicalSize.Height;
+    }
+}

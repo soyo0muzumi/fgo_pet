@@ -1,4 +1,5 @@
 using FgoPet.App.Settings;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Settings;
 using Xunit;
 
@@ -20,9 +21,8 @@ public sealed class UserProfileViewModelTests
         var preference = new ServantPreference(AddressMode.UserDefined, "御主");
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
-                Theme = AppTheme.FgoLight,
                 UserProfile = new UserProfile("旧名称"),
                 ServantPreferences = new Dictionary<string, ServantPreference>
                 {
@@ -40,7 +40,6 @@ public sealed class UserProfileViewModelTests
         Assert.NotNull(store.Saved);
         Assert.Equal("新名称", store.Saved!.UserProfile!.DisplayName);
         Assert.Same(preference, store.Saved.ServantPreferences["mash_kyrielight"]);
-        Assert.Equal(AppTheme.FgoLight, store.Saved.Theme);
         Assert.Contains("保存", viewModel.StatusText, StringComparison.Ordinal);
         Assert.Empty(viewModel.ErrorText);
     }
@@ -51,7 +50,7 @@ public sealed class UserProfileViewModelTests
         var preference = new ServantPreference(AddressMode.UserDefined, "御主");
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
                 UserProfile = new UserProfile("xqj"),
                 ServantPreferences = new Dictionary<string, ServantPreference>
@@ -74,7 +73,7 @@ public sealed class UserProfileViewModelTests
         var preference = new ServantPreference(AddressMode.UserDefined, "御主");
         var store = new FakeSettingsStore
         {
-            Current = AppSettings.Defaults with
+            Current = CharacterSettings.Defaults with
             {
                 UserProfile = new UserProfile("xqj"),
                 ServantPreferences = new Dictionary<string, ServantPreference>
@@ -106,17 +105,15 @@ public sealed class UserProfileViewModelTests
         Assert.Contains("换行", viewModel.ErrorText, StringComparison.Ordinal);
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class FakeSettingsStore : ICharacterSettingsStore
     {
-        public string Location => "memory";
+        public CharacterSettings Current { get; set; } = CharacterSettings.Defaults;
 
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
+        public CharacterSettings? Saved { get; private set; }
 
-        public AppSettings? Saved { get; private set; }
+        public CharacterSettings Load() => Current;
 
-        public AppSettings Load() => Current;
-
-        public void Save(AppSettings settings)
+        public void Save(CharacterSettings settings)
         {
             Current = settings;
             Saved = settings;

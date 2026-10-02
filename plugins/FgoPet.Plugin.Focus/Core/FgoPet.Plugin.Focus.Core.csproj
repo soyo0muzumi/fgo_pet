@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" />
+    <InternalsVisibleTo Include="FgoPet.Plugin.Focus.Desktop" />
+  </ItemGroup>
+</Project>

@@ -40,8 +40,8 @@ assets/raw/
 assets/workspace/
 
 # Rendering-spike output
-spikes/rendering/artifacts/*
-!spikes/rendering/artifacts/.gitkeep
+tools/spikes/rendering/artifacts/*
+!tools/spikes/rendering/artifacts/.gitkeep
 
 # Local packages, captures, exports, and backups
 packages/local/

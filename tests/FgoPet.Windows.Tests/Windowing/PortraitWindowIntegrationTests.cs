@@ -20,12 +20,64 @@ using FgoPet.Core.Windowing;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Windowing;
 using Xunit;
+using FgoPet.Plugin.Focus.Desktop;
+using FgoPet.UiSdk;
+using FgoPet.App.Bootstrap;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FgoPet.Windows.Tests.Windowing;
 
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [Fact]
+    public void Portrait_host_consumes_registered_renderer_content_and_disposal_discards_queued_updates()
+    {
+        StaRun(() =>
+        {
+            var surface = new SamplePortraitSurface();
+            var services = new ServiceCollection().AddFgoPet([], includeFocus: false);
+            services.AddSingleton<IPortraitSurface>(surface);
+            using var provider = services.BuildServiceProvider();
+            var coordinator = provider.GetRequiredService<PortraitWindowCoordinator>();
+            var window = provider.GetRequiredService<PortraitWindow>();
+            try
+            {
+                surface.RaiseChanged();
+                StaRunner.Pump();
+                Assert.Equal(1, surface.ViewsCreated);
+                Assert.Same(surface.Content, Assert.IsType<ContentControl>(window.FindName("Portrait")).Content);
+                Assert.Equal(surface.Geometry.LogicalSize.Width, window.PortraitScreenBounds.Width);
+                var presents = surface.Presents;
+                surface.RaiseChanged();
+                coordinator.Dispose();
+                Assert.Equal(0, surface.Subscribers);
+                StaRunner.Pump();
+                Assert.Equal(presents, surface.Presents);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    private sealed class SamplePortraitSurface : IPortraitSurface, IPortraitFrame
+    {
+        public TextBlock Content { get; } = new() { Text = "sample renderer" };
+        public PortraitGeometry Geometry { get; } = PortraitLayout.Calculate(
+            new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 50, 300), 0.5, new Dpi2(1, 1));
+        public IPortraitFrame CurrentFrame => this;
+        public Task ActivateAsync(PortraitSelection selection, CancellationToken cancellationToken) => Task.CompletedTask;
+        public void SetExpression(ExpressionSemantic semantic) { }
+        public void SetScale(double scale) { }
+        public int ViewsCreated { get; private set; }
+        public int Presents { get; private set; }
+        public event EventHandler? StateChanged;
+        public int Subscribers => StateChanged?.GetInvocationList().Length ?? 0;
+        public void RaiseChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
+        public FrameworkElement CreateView() { ViewsCreated++; return Content; }
+        public void Present(FrameworkElement view) { Assert.Same(Content, view); Presents++; }
+        public bool IsHit(Point portraitLocalPoint) => true;
+        public void ApplyDpi(Dpi2 dpi) { }
+    }
     [Fact]
     public void PortraitWindow_mounts_panel_and_removes_it_from_layout_when_collapsed()
     {
@@ -198,7 +250,7 @@ public sealed class PortraitWindowIntegrationTests
         StaRun(() =>
         {
             var focus = new FakeFocusService();
-            var panel = new AttachedPanelViewModel(TimeProvider.System, focus);
+            var panel = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(focus));
             var window = new PortraitWindow(panel) { Left = 0, Top = 0 };
             try
             {
@@ -221,7 +273,7 @@ public sealed class PortraitWindowIntegrationTests
                     geometry, new DeviceRect(0, 0, 1000, 800), new Dpi2(1, 1));
 
                 Assert.Equal(AttachedPanelState.Compact, panel.State);
-                Assert.True(panel.IsCompactTimerVisible);
+                Assert.True(panel.IsCompactSurfaceActive);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
                 // The timer ring is 196 DIP, so the focus surface budget is 220 DIP.
@@ -504,8 +556,10 @@ public sealed class PortraitWindowIntegrationTests
                 var window = new PortraitWindow();
                 try
                 {
-                    window.Present(snapshot, geometry);
-                    Assert.Same(snapshot.Body, window.PortraitView.BodySourceForTest);
+                    var content = new PortraitView();
+                    content.Load(snapshot, geometry);
+                    window.Present(content, geometry);
+                    Assert.Same(snapshot.Body, Assert.IsType<PortraitView>(window.PortraitContent).BodySourceForTest);
                     Assert.Equal(geometry.LogicalSize.Width, window.Width, precision: 4);
                     Assert.Equal(geometry.LogicalSize.Height, window.Height, precision: 4);
                 }
@@ -678,36 +732,7 @@ public sealed class PortraitWindowIntegrationTests
         return stream.ToArray();
     }
 
-    private static void StaRun(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception error)
-            {
-                failure = error;
-            }
-            finally
-            {
-                var dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread);
-                if (dispatcher is not null && !dispatcher.HasShutdownStarted)
-                {
-                    dispatcher.InvokeShutdown();
-                }
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-    }
+    private static void StaRun(Action action) => StaRunner.Run(action);
 
     private sealed class MemoryPlacementStore : IWindowPlacementStore
     {

@@ -1,6 +1,5 @@
 using System.IO;
 using FgoPet.App.Portraits;
-using FgoPet.App.Runtime;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
@@ -52,16 +51,18 @@ public sealed class PortraitControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task ActivateAsync_projects_the_published_state_to_app_runtime()
+    public async Task Cancellation_of_best_effort_persistence_does_not_fail_an_already_published_activation()
     {
-        var bundle = WriteBundle("runtime-state");
-        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "runtime-state", bundle.Root));
-        var runtime = new AppRuntime();
-        var controller = new PortraitController(_repository, new ExpressionResolver(), _cache, new Dpi2(2.0, 2.0), runtime);
-
-        await controller.ActivateAsync(new PortraitSelection("pkg", "runtime-state"), CancellationToken.None);
-
-        Assert.Same(controller.CurrentState, runtime.Portrait);
+        var bundle = WriteBundle("cancel-persistence");
+        _repository.Get = _ => Task.FromResult<AppearanceLocation?>(Location("pkg", "a", bundle.Root));
+        using var stopping = new CancellationTokenSource();
+        _repository.OnMarkLastKnownGood = () =>
+        {
+            stopping.Cancel();
+            stopping.Token.ThrowIfCancellationRequested();
+        };
+        await _controller.ActivateAsync(new("pkg", "a"), stopping.Token);
+        Assert.NotNull(_controller.CurrentState);
     }
 
     [Fact]
@@ -233,6 +234,7 @@ public sealed class PortraitControllerTests : IDisposable
         public List<PortraitSelection> LastKnownGoods { get; } = new();
 
         public bool ThrowOnLastKnownGood { get; set; }
+        public Action? OnMarkLastKnownGood { get; set; }
 
         public Task<PackCatalog> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new PackCatalog(Array.Empty<InstalledPack>()));
@@ -251,6 +253,7 @@ public sealed class PortraitControllerTests : IDisposable
 
         public Task MarkLastKnownGoodAsync(PortraitSelection selection, CancellationToken cancellationToken)
         {
+            OnMarkLastKnownGood?.Invoke();
             if (ThrowOnLastKnownGood)
             {
                 throw new UnauthorizedAccessException("test persistence failure");

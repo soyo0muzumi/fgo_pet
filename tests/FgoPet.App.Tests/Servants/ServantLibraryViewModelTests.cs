@@ -1,6 +1,7 @@
 using System.IO;
 using FgoPet.App.Runtime;
 using FgoPet.App.Servants;
+using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
@@ -82,15 +83,12 @@ public sealed class ServantLibraryViewModelTests
     }
 
     [Fact]
-    public async Task Activating_a_selected_appearance_preserves_every_other_settings_field()
+    public async Task Activating_a_selected_appearance_preserves_other_character_settings()
     {
         var (vm, _, _, _, settings) = CreateViewModel();
-        settings.Current = AppSettings.Defaults with
+        settings.Current = CharacterSettings.Defaults with
         {
-            Theme = AppTheme.FgoLight,
             UserProfile = new UserProfile("xqj"),
-            ModelConnection = new ModelConnectionSettings("openai", "https://api.openai.com/v1", "gpt-4o-mini"),
-            MemoryEnabled = false,
             ServantPreferences = new Dictionary<string, ServantPreference>
             {
                 ["mash_kyrielight"] = new ServantPreference(AddressMode.UserDefined, "御主"),
@@ -105,10 +103,7 @@ public sealed class ServantLibraryViewModelTests
         await vm.ActivateAsync();
 
         var saved = Assert.Single(settings.Saved);
-        Assert.Equal(AppTheme.FgoLight, saved.Theme);
         Assert.Equal("xqj", saved.UserProfile!.DisplayName);
-        Assert.Equal("gpt-4o-mini", saved.ModelConnection!.ModelId);
-        Assert.False(saved.MemoryEnabled);
         Assert.Equal("御主", saved.ServantPreferences["mash_kyrielight"].AddressText);
         Assert.Equal("true", saved.PackageSettings["mash_kyrielight"]["show_status"]);
     }
@@ -324,17 +319,15 @@ public sealed class ServantLibraryViewModelTests
         }
     }
 
-    private sealed class FakeSettingsStore : IAppSettingsStore
+    private sealed class FakeSettingsStore : ICharacterSettingsStore
     {
-        public string Location => "memory";
+        public List<CharacterSettings> Saved { get; } = new();
 
-        public List<AppSettings> Saved { get; } = new();
+        public CharacterSettings Current { get; set; } = CharacterSettings.Defaults;
 
-        public AppSettings Current { get; set; } = AppSettings.Defaults;
+        public CharacterSettings Load() => Current;
 
-        public AppSettings Load() => Current;
-
-        public void Save(AppSettings settings)
+        public void Save(CharacterSettings settings)
         {
             Current = settings;
             Saved.Add(settings);

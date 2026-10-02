@@ -40,22 +40,33 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 ## Everyday use
 
 - Select the pet controls to open chat and common actions.
-- The chat window provides dialogue, history, Todo, focus, and current Agent-task entry points.
-- The settings window manages models, Agent access, speech, roles and appearances, personalization, themes, and data/privacy.
+- The workspace sidebar provides chat, Todo, focus, and settings; chat history and new conversations are available in the chat header.
+- History shows conversation titles and local times, 50 conversations per page; use Load more for older conversations. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
+- Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. User Profile uses a WebView2 page backed by the existing settings service; other settings pages remain WPF. Returning to a page restores its own scroll position.
 - The system tray can show the pet, open settings, or exit the application.
 - `Esc` closes the current overlay or returns one level; primary controls expose keyboard focus and visible state feedback.
 
 ### AI model
 
-Under **Settings → AI Model and Connection**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
+Under **Settings → Capabilities → Model Services**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
+
+The following context and memory changes are on the development branch, with real-provider and native Windows acceptance still pending.
+
+Context capacity comes from a manual override, provider metadata, or known model information, in that order. An unknown model uses a clearly labelled conservative estimate. Requests reserve space for the selected output limit and count the complete prompt and tool definitions; estimates are not exact tokenizer counts.
+
+New conversations can retrieve earlier messages from the same servant and project, with links to their source conversations. History defaults to the current project; turn off that filter to open older conversations from other projects. Unassigned history is separate from project history. Ambiguous references prompt a clarification.
+
+Long conversations compact older complete exchanges while retaining recent raw messages and the current Todo draft. Compaction preserves the original history and survives restart and private backup restore. It also works when long-term memory is disabled. If compaction cannot safely fit the request, the input is retained and the app reports the problem.
+
+Long-term memory candidates show their evidence and scope and require approval. General servant preferences can be recalled across projects; project memories stay within that project. Corrections select an exact memory and version, and edits, disabling and deletion take effect on subsequent requests. Deleting a source conversation preserves approved memories and marks their source unavailable. Storage permits 200 approved items / 40,000 characters per servant, including disabled items; existing data is never evicted to make room. Budgeting, compaction and memory mechanisms draw on the pinned MIT sources in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
 ### Agent
 
-Under **Settings → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
+Under **Settings → Capabilities → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 
 ### Speech
 
-Under **Settings → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
+Under **Settings → Capabilities → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
 
 ## Security and privacy boundaries
 
@@ -64,21 +75,27 @@ Under **Settings → Speech**, select and test a speech provider. Playback suppo
 - The Agent protocol excludes full prompts, reasoning, tool arguments, terminal output, credentials, and unnecessary local paths.
 - Todo dispatch, memory approval, project authorization, and irreversible data operations require explicit user actions.
 - A safe sharing export is not a complete backup; private backups exclude credentials, role-package assets, and Agent pairing state.
+- Private restore validates and stages a copy, then closes the app. Reopen it to restore before normal services start. A failed restore rolls back; an uncertain rollback stops startup and preserves recovery materials.
 - FGO artwork, Atlas files, audio, and extracted assets are not stored in this repository.
 
 ## Developer entry points
 
 Requirements: Windows, .NET SDK 8.0.x, and PowerShell 7.
 
+Repository layout: `src/` contains the app bootstrap, kernel, desktop host, platform, and shared UI SDK; `plugins/` contains capability plugins and providers; `tests/` contains unit, integration, and architecture checks; `tools/` contains scripts, installers, integrations, probes, and auxiliary Python tools.
+
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release
+pwsh -File tools/scripts/test-architecture.ps1
+pwsh -File tools/scripts/test-phase4.ps1
 ```
 
 Further documentation:
 
 - [Developer guide](docs/guides/development.md) — complete build, test, repository, and ZIP candidate workflow;
-- [Module map](modules/README.md) — ownership, dependency direction, and migration status;
+- [Architecture policy](tests/architecture/README.md) — project ownership, dependency policy, and verification entry points;
+- [Current project policy](tests/architecture/policy.json) and [shrinking-only dependency baseline](tests/architecture/baseline.json);
 - [Agent integration guide](docs/guides/agent-integration.md);
 - [Codex Adapter guide](docs/guides/codex-adapter.md);
 - [Release candidate workflow](docs/release/README.md);

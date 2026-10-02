@@ -1,8 +1,8 @@
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
 $projectPaths = [ordered]@{
-    Adapter = 'modules\agent-integration\src\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
-    Relay = 'modules\agent-integration\src\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
+    Adapter = 'plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\FgoPet.CodexAdapter.csproj'
+    Relay = 'plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\FgoPet.AgentRelay.csproj'
 }
 
 Describe 'Agent integration script project paths' {
@@ -16,8 +16,8 @@ Describe 'Agent integration script project paths' {
 
     It 'uses the module-owned project paths in the installer and Phase 4 scripts' {
         $scriptPaths = @(
-            'scripts\install-codex-adapter.ps1'
-            'scripts\test-phase4.ps1'
+            'tools/scripts\install-codex-adapter.ps1'
+            'tools/scripts\test-phase4.ps1'
         )
 
         foreach ($scriptPath in $scriptPaths) {
@@ -25,7 +25,7 @@ Describe 'Agent integration script project paths' {
 
             foreach ($relativePath in $projectPaths.Values) {
                 $expectedLiteral = "Join-Path `$repositoryRoot '$relativePath'"
-                $legacyPath = $relativePath -replace '^modules\\agent-integration\\', ''
+                $legacyPath = $relativePath -replace '^plugins\\providers\\FgoPet.Provider.Codex\\', ''
                 $legacyLiteral = "Join-Path `$repositoryRoot '$legacyPath'"
 
                 $scriptContent | Should Match ([regex]::Escape($expectedLiteral))

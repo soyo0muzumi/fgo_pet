@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).parents[2] / "scripts" / "test-release-candidate.ps1"
+SCRIPT = Path(__file__).parents[2] / "tools" / "scripts" / "test-release-candidate.ps1"
 
 
 def test_uninstall_sentinel_is_outside_installer_owned_state_directory():

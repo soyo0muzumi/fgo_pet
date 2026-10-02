@@ -12,7 +12,7 @@ public sealed class AgentRelayAdministrationTests : IDisposable
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"fgo-agent-revoke-{Guid.NewGuid():N}.db");
 
     [Fact]
-    public async Task Successful_revoke_cancels_matching_source_instance_and_restores_its_todo()
+    public async Task Successful_revoke_cancels_only_matching_source_instance_and_leaves_todos_unchanged()
     {
         var database = new RuntimeDatabase(_path);
         new RuntimeDatabaseMigrator(database).Migrate();
@@ -44,8 +44,8 @@ public sealed class AgentRelayAdministrationTests : IDisposable
         await administration.RevokeSourceAsync("codex", "instance-1");
 
         Assert.Equal(TodoStatus.Planned, todos.Get("todo-match")!.Status);
-        Assert.Equal(TodoStatus.Active, todos.Get("todo-other-instance")!.Status);
-        Assert.Equal(TodoStatus.Active, todos.Get("todo-other-source")!.Status);
+        Assert.Equal(TodoStatus.Planned, todos.Get("todo-other-instance")!.Status);
+        Assert.Equal(TodoStatus.Planned, todos.Get("todo-other-source")!.Status);
         Assert.Equal(AgentExecutionStatus.Cancelled, agents.GetExecution("codex", "instance-1", "task-1")!.Status);
         Assert.Equal(AgentExecutionStatus.Active, agents.GetExecution("codex", "instance-2", "task-2")!.Status);
         Assert.Equal(AgentExecutionStatus.Active, agents.GetExecution("cursor", "instance-1", "task-3")!.Status);

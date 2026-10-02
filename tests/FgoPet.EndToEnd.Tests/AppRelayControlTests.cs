@@ -48,7 +48,7 @@ public sealed class AppRelayControlTests
             // Establish the actual App-handler lease before dispatch.
             await gateway.PollPendingEventsAsync(token);
             var accepted = await gateway.DispatchAsync(new AgentDispatchRequest("dispatch-1", "todo-1", "Wire", null,
-                TodoPriority.Normal, null, "codex", "project-1") { SourceInstanceId = "instance-1" }, token);
+                AgentTaskPriority.Normal, null, "codex", "project-1") { SourceInstanceId = "instance-1" }, token);
             Assert.Equal(AgentDispatchStatus.Accepted, accepted.Status);
             var permission = await session.SendAsync(ProtocolEnvelope.Create("permission-check", "status_check", new { target_id = "project-1" }), auth, token);
             Assert.True(permission.Payload.GetProperty("dispatch_allowed").GetBoolean());

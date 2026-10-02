@@ -61,7 +61,7 @@ public sealed class AgentRelayRuntimeTests
             return Task.FromResult(ProtocolEnvelope.Create(request.MessageId, request.MessageType,
                 new { result = "already_applied", task_id = "task-1", source_instance = "instance-1" }).ToJson());
         }));
-        var request = new AgentDispatchRequest("dispatch-1", "todo-1", "Work", null, TodoPriority.Normal, null, "codex", "target-1");
+        var request = new AgentDispatchRequest("dispatch-1", "todo-1", "Work", null, AgentTaskPriority.Normal, null, "codex", "target-1");
         Assert.Equal("source_instance_required", (await gateway.DispatchAsync(request)).SafeError);
         Assert.Null(sent);
         var result = await gateway.DispatchAsync(request with { SourceInstanceId = "instance-1" });
