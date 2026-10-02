@@ -63,6 +63,29 @@ function Invoke-PluginValidation {
     Invoke-Checked -Command 'python' -Arguments @($validator, $pluginRoot)
 }
 
+function Wait-Phase4WebViewExit {
+    param([Parameter(Mandatory = $true)][string]$Root, [int]$TimeoutSeconds = 30)
+    # Disposing a WebView controller does not synchronously stop its browser.
+    # Wait only for browsers whose profile belongs to this exact generated child.
+    # Do not kill processes, retry deletion, or ignore a cleanup failure.
+    $profilePrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + '\'
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $browsers = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" |
+        Where-Object { $null -ne $_.CommandLine -and
+            $_.CommandLine.IndexOf($profilePrefix, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    foreach ($browser in $browsers) {
+        try { $process = [Diagnostics.Process]::GetProcessById([int]$browser.ProcessId) }
+        catch [ArgumentException] { continue } # Already exited since the snapshot.
+        try {
+            $remaining = [Math]::Max(0, [int](($TimeoutSeconds - $timer.Elapsed.TotalSeconds) * 1000))
+            if (-not $process.WaitForExit($remaining)) {
+                throw 'WebView2 process did not exit before Phase 4 cleanup deadline.'
+            }
+        }
+        finally { $process.Dispose() }
+    }
+}
+
 function Assert-RetainedAcceptanceFiles {
     foreach ($path in $retainedFiles.Keys) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
@@ -111,6 +134,7 @@ try {
                     $env:TMP = $temporaryRoot
                     # Only this invocation's exact generated child is removed.
                     # A locked file is a gate failure, not a swallowed IO error.
+                    Wait-Phase4WebViewExit -Root $projectTemp
                     Remove-Item -LiteralPath $projectTemp -Recurse -Force -ErrorAction Stop
                 }
             }
@@ -197,6 +221,7 @@ finally {
             [IO.Path]::GetFileName($resolvedTemporaryRoot) -notmatch '^fgo-pet-phase4-[a-f0-9]{32}$') {
             throw 'Refusing to clean an unexpected Phase 4 temporary path.'
         }
+        Wait-Phase4WebViewExit -Root $resolvedTemporaryRoot
         Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force -ErrorAction Stop
     }
 }
