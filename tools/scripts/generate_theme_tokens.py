@@ -25,6 +25,9 @@ CSS = {
     ROOT / "src/FgoPet.Desktop/Shell/Desktop/ui/settings/user-profile/profile.css": {
         "font": None,
     },
+    ROOT / "src/FgoPet.Desktop/Shell/Desktop/ui/settings/root/root.css": {
+        "font": None,
+    },
 }
 CSS_KEYS = {
     "--surface": "Semantic.ContentColor",
@@ -99,6 +102,11 @@ def outputs(source: dict) -> dict[Path, str]:
         lines += [f"  {variable}: {css_color(palette[key])};" for variable, key in CSS_KEYS.items()]
         if config["font"]:
             lines += [f'  font-family: {config["font"]};', "  font-size: 14px;"]
+        managed = set(CSS_KEYS) | {"color-scheme", "font-family", "font-size"}
+        for declaration in root.group().splitlines()[1:-1]:
+            name = declaration.partition(":")[0].strip()
+            if name and name not in managed:
+                lines.append(declaration)
         lines.append("}")
         generated[path] = "\n".join(lines) + current[root.end():]
     return generated

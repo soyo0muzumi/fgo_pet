@@ -7,7 +7,7 @@ namespace FgoPet.App.Settings;
 
 /// <summary>
 /// Owns persisted portrait scale and attached-panel preferences. Theme selection
-/// belongs exclusively to <see cref="ThemePage"/>.
+/// belongs exclusively to the theme service.
 /// </summary>
 public sealed class PersonalizationViewModel : ObservableObject
 {

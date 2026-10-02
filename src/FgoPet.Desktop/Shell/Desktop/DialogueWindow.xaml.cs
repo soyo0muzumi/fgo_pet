@@ -1,409 +1,167 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 using FgoPet.App.Settings;
 using FgoPet.Core.Panels;
+using FgoPet.Core.Portraits;
+using FgoPet.Kernel.Companion;
 using FgoPet.UiSdk;
 
 namespace FgoPet.App.Dialogue;
-
-public interface IClipboardWriter
-{
-    void SetText(string text);
-}
-
+public interface IClipboardWriter { void SetText(string text); }
 internal sealed class SystemClipboardWriter : IClipboardWriter
-{
-    public void SetText(string text) => Clipboard.SetText(text);
-}
+{ public void SetText(string text) => Clipboard.SetText(text); }
 
-/// <summary>Chat presentation shell. Conversation and task state remain owned by their view models.</summary>
-public partial class DialogueWindow : Window
+/// <summary>One Web chat surface over the original shared conversation.</summary>
+public partial class DialogueWindow : Window, IDisposable
 {
     private readonly DialogueWindowViewModel _viewModel;
-    private readonly IAttachedPanelLauncher? _panel;
-    private readonly IWorkspaceCatalog? _workspaces;
-    private IWorkspaceSurface? _workspace;
-    private string? _workspaceId;
-    private readonly Dictionary<string, FrameworkElement> _workspaceViews = new(StringComparer.Ordinal);
-    private bool _showingTasks;
-    private bool _composing;
-    private bool _following = true;
-    private Button? _drawerOrigin;
-    private Button? _historyDeleteOrigin;
-    private readonly IClipboardWriter _clipboard;
-    private readonly Dictionary<Button, System.Windows.Threading.DispatcherTimer> _copyFeedback = new();
-    internal ContextMenu? LastMoreMenu { get; private set; }
+    private readonly ChatWebSurfaceFactory? _factory;
+    private readonly ChatWebHostActions _actions;
+    private readonly Func<string, WorkspaceNavigation, bool>? _workspace;
+    private readonly string? _defaultWorkspace;
+    private readonly CompanionPresentation? _presentation;
+    private WebView2SurfaceHost? _surface;
+    private bool _disposed;
+    internal Action? PresentationRequestedHandler { get; set; }
     public event Action? Hidden;
 
     public DialogueWindow(DialogueWindowViewModel viewModel,
         IAttachedPanelLauncher? panel = null, ISettingsNavigator? settingsNavigation = null,
-        IWorkspaceCatalog? workspaces = null,
-        FgoPet.Kernel.Companion.CompanionPresentation? presentation = null,
-        IClipboardWriter? clipboard = null)
+        IWorkspaceCatalog? workspaces = null, CompanionPresentation? presentation = null,
+        IClipboardWriter? clipboard = null, ChatWebSurfaceFactory? webFactory = null,
+        Func<string, WorkspaceNavigation, bool>? workspaceNavigation = null)
     {
-        _viewModel = viewModel;
-        _workspaces = workspaces;
-        _panel = panel;
-        _clipboard = clipboard ?? new SystemClipboardWriter();
-        InitializeComponent();
-        DataContext = viewModel;
-        FocusShortcutButton.IsEnabled = panel is not null;
-        FocusShortcutButton.ToolTip = panel is null ? "专注入口当前不可用" : "打开现有专注设置";
-        FocusNavigationButton.IsEnabled = panel is not null;
-        FocusNavigationButton.ToolTip = FocusShortcutButton.ToolTip;
-        SizeChanged += (_, _) => UpdateResponsiveLayout();
-        Loaded += async (_, _) => await viewModel.EnsureRoleInfoAsync();
-        if (workspaces?.Workspaces.FirstOrDefault() is { } initialWorkspace)
-            SelectWorkspace(initialWorkspace.Id);
-        TasksButton.IsEnabled = TasksPage.Content is not null;
-        TodoShortcutButton.IsEnabled = TasksButton.IsEnabled;
-        viewModel.Conversation.NewWorkspaceItemRequested += () => { ShowTasks(true); _workspace?.Navigate(new(WorkspaceNavigationKind.NewItem)); };
-        TextCompositionManager.AddPreviewTextInputStartHandler(InputBox, (_, _) => _composing = true);
-        TextCompositionManager.AddPreviewTextInputHandler(InputBox, (_, _) => _composing = false);
-        viewModel.Conversation.ExpressionRequested += semantic =>
-        {
-            var role = presentation?.ActiveRole;
-            var conversationId = viewModel.Conversation.CurrentConversationId;
-            var servant = viewModel.Conversation.ActiveServantId;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                if (role is null || presentation is null || !ReferenceEquals(presentation.ActiveRole, role) ||
-                    viewModel.Conversation.CurrentConversationId != conversationId ||
-                    viewModel.Conversation.ActiveServantId != servant) return;
-                presentation.Apply(role, semantic);
-            }));
-        };
+        _viewModel = viewModel; _factory = webFactory; _workspace = workspaceNavigation;
+        _defaultWorkspace = workspaces?.Workspaces.FirstOrDefault()?.Id; _presentation = presentation;
+        InitializeComponent(); DataContext = viewModel;
+        _actions = new(viewModel, this, clipboard ?? new SystemClipboardWriter(), panel, workspaces, workspaceNavigation);
         viewModel.OpenRequested += OnOpenRequested;
         viewModel.NavigationRequested += OnNavigationRequested;
+        viewModel.Conversation.NewWorkspaceItemRequested += OnNewWorkspaceItem;
+        viewModel.Conversation.ExpressionRequested += OnExpressionRequested;
         viewModel.Conversation.PropertyChanged += OnConversationChanged;
-        viewModel.Conversation.Turns.CollectionChanged += (_, _) => RefreshConversation();
-        MessageScroller.ScrollChanged += (_, e) =>
-        {
-            if (e.VerticalChange < 0 && e.ExtentHeightChange == 0) _following = false;
-            if (MessageScroller.ScrollableHeight - MessageScroller.VerticalOffset < 2) _following = true;
-            JumpButton.Visibility = _following ? Visibility.Collapsed : Visibility.Visible;
-            if (e.ExtentHeightChange > 0 && _following) MessageScroller.ScrollToEnd();
-        };
-        Closing += (_, e) =>
-        {
-            if (Dispatcher.HasShutdownStarted) return;
-            e.Cancel = true;
-            Hide();
-        };
-        IsVisibleChanged += (_, _) =>
-        {
-            if (IsVisible)
-            {
-                viewModel.NotifyActivated();
-                if (_showingTasks) _workspace?.Navigate(new(WorkspaceNavigationKind.Activate));
-            }
-            else { ClearCopyFeedback(); CloseDrawers(); viewModel.NotifyWindowHidden(); viewModel.StopSpeech(); Hidden?.Invoke(); }
-        };
-        viewModel.Conversation.SessionChanged += ClearCopyFeedback;
-        Dispatcher.ShutdownStarted += OnCopyDispatcherShutdown;
-        Closed += (_, _) =>
-        {
-            ClearCopyFeedback();
-            viewModel.Conversation.SessionChanged -= ClearCopyFeedback;
-            Dispatcher.ShutdownStarted -= OnCopyDispatcherShutdown;
-        };
-        Activated += (_, _) => viewModel.NotifyActivated();
-        Deactivated += (_, _) => viewModel.NotifyDeactivated();
-        PreviewKeyDown += OnKeyDown;
-        RefreshConversation();
-        UpdateResponsiveLayout();
+        Loaded += OnLoaded;
+        Closing += OnClosing;
+        IsVisibleChanged += OnVisibleChanged;
+        Activated += OnActivated; Deactivated += OnDeactivated;
+        Closed += OnClosed;
+        Dispatcher.ShutdownStarted += OnShutdown;
+        CreateSurface();
     }
-
-    private async void OnProjectClick(object sender, RoutedEventArgs e)
+    private void CreateSurface()
     {
-        if (_viewModel.Conversation.IsStreaming) return;
-        var menu = new ContextMenu { PlacementTarget = ProjectButton };
-        ProjectButton.ContextMenu = menu;
-        var clear = new MenuItem { Header = "不关联项目", IsCheckable = true,
-            IsChecked = string.IsNullOrEmpty(_viewModel.Conversation.SessionContext.ProjectId) };
-        clear.Click += (_, _) => { if (!_viewModel.Conversation.IsStreaming) _viewModel.RemoveContextChip("project"); };
-        menu.Items.Add(clear);
-        var status = new MenuItem { Header = "正在读取项目…", IsEnabled = false };
-        menu.Items.Add(status);
-        menu.IsOpen = true;
-        await _viewModel.ProjectSelection.RefreshAsync();
-        if (!menu.IsOpen || !IsVisible) return;
-        menu.Items.Remove(status);
-        foreach (var option in _viewModel.ProjectSelection.Projects)
-        {
-            var item = new MenuItem { Header = option.Label, IsCheckable = true,
-                IsChecked = option.Id == _viewModel.Conversation.SessionContext.ProjectId };
-            item.Click += (_, _) => { if (!_viewModel.Conversation.IsStreaming) _viewModel.SelectProject(option); };
-            menu.Items.Add(item);
-        }
-        menu.Items.Add(new MenuItem { Header = _viewModel.ProjectSelection.StatusText, IsEnabled = false });
+        _surface?.Dispose(); _surface = null;
+        if (_factory is null) { ShowFailure(); return; }
+        try { _surface = _factory.CreateView(_actions); ChatSurface.Content = _surface; }
+        catch (Exception) { ShowFailure(); }
     }
-
-    private void OnOpenRequested() { Show(); Activate(); if (!_showingTasks) InputBox.Focus(); }
+    private void ShowFailure()
+    {
+        var stack = new StackPanel { Margin = new Thickness(24), VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(new TextBlock { Text = "聊天页面暂时无法打开。", TextWrapping = TextWrapping.Wrap });
+        var retry = new Button { Content = "重试", Margin = new Thickness(0, 16, 0, 0), IsEnabled = _factory is not null };
+        retry.Click += async (_, _) => { CreateSurface(); await InitializeSurfaceAsync(); };
+        stack.Children.Add(retry); ChatSurface.Content = stack;
+    }
+    private async void OnLoaded(object sender, RoutedEventArgs args)
+    { await _viewModel.EnsureRoleInfoAsync(); if (!_disposed) await InitializeSurfaceAsync(); }
+    private async Task InitializeSurfaceAsync()
+    {
+        var surface = _surface;
+        if (surface is null) return;
+        await surface.InitializeAsync();
+        if (!_disposed && ReferenceEquals(_surface, surface) && surface.State == WebSurfaceState.Failed)
+            ShowFailure();
+    }
+    private void OnOpenRequested()
+    {
+        if (_disposed) return;
+        if (PresentationRequestedHandler is { } present) present();
+        else { Show(); Activate(); }
+    }
     private void OnNavigationRequested(object? sender, MainNavigationTarget target)
     {
-        if (target is MainNavigationTarget.Schedule or MainNavigationTarget.CapabilityDetail) { ShowTasks(true); _workspace?.Navigate(new(WorkspaceNavigationKind.ExistingItem, _viewModel.CurrentContext.SelectedId)); }
-        else ShowTasks(false);
-    }
-    private void OnConversationChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        RefreshConversation();
-        if (e.PropertyName == nameof(ConversationViewModel.IsStreaming))
+        if (target is not (MainNavigationTarget.Schedule or MainNavigationTarget.CapabilityDetail) || _defaultWorkspace is null) return;
+        // NavigateTo fills the target context after notifying; read it once that call returns.
+        Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (_viewModel.Conversation.IsStreaming) _viewModel.ModelSelection.BeginGeneration();
-            else _viewModel.ModelSelection.EndGeneration();
+            if (_disposed || _viewModel.CurrentTarget != target) return;
+            var itemId = _viewModel.CurrentContext.SelectedId;
+            _workspace?.Invoke(_defaultWorkspace, new(string.IsNullOrEmpty(itemId)
+                ? WorkspaceNavigationKind.Overview : WorkspaceNavigationKind.ExistingItem, itemId));
+        }));
+    }
+    private void OnNewWorkspaceItem()
+    { if (_defaultWorkspace is not null) _workspace?.Invoke(_defaultWorkspace, new(WorkspaceNavigationKind.NewItem)); }
+    private void OnConversationChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName != nameof(ConversationViewModel.IsStreaming)) return;
+        if (_viewModel.Conversation.IsStreaming) _viewModel.ModelSelection.BeginGeneration();
+        else _viewModel.ModelSelection.EndGeneration();
+    }
+    private void OnExpressionRequested(ExpressionSemantic semantic)
+    {
+        var role = _presentation?.ActiveRole;
+        var conversation = _viewModel.Conversation.CurrentConversationId;
+        var servant = _viewModel.Conversation.ActiveServantId;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_disposed || role is null || _presentation is null || !ReferenceEquals(role, _presentation.ActiveRole)
+                || conversation != _viewModel.Conversation.CurrentConversationId || servant != _viewModel.Conversation.ActiveServantId) return;
+            _presentation.Apply(role, semantic);
+        }));
+    }
+    private void OnClosing(object? sender, CancelEventArgs args)
+    {
+        if (_disposed || Dispatcher.HasShutdownStarted) return;
+        args.Cancel = true; Hide();
+    }
+    private async void OnVisibleChanged(object sender, DependencyPropertyChangedEventArgs args)
+    {
+        if (_disposed) return;
+        if (IsVisible)
+        {
+            _viewModel.NotifyActivated();
+            if (_surface?.State == WebSurfaceState.Closed) { CreateSurface(); await InitializeSurfaceAsync(); }
+            _surface?.PostEvent(new { type = "chat.visibility", visible = true });
+        }
+        else
+        {
+            _surface?.PostEvent(new { type = "chat.visibility", visible = false });
+            _viewModel.NotifyWindowHidden(); _viewModel.StopSpeech(); Hidden?.Invoke();
         }
     }
-    private void RefreshConversation()
+    private void OnActivated(object? sender, EventArgs args) => _viewModel.NotifyActivated();
+    private void OnDeactivated(object? sender, EventArgs args) => _viewModel.NotifyDeactivated();
+    private void OnClosed(object? sender, EventArgs args) => DisposePresentation();
+    private void OnShutdown(object? sender, EventArgs args) => DisposePresentation();
+    internal void SetExpanded(bool expanded)
     {
-        var error = _viewModel.Conversation.ErrorText;
-        var stopped = error == "已取消。";
-        FailureNotice.Visibility = !string.IsNullOrWhiteSpace(error) && !stopped ? Visibility.Visible : Visibility.Collapsed;
-        StoppedNotice.Visibility = stopped ? Visibility.Visible : Visibility.Collapsed;
-        Welcome.Visibility = _viewModel.Conversation.Turns.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        Width = expanded ? 940 : 480; Height = expanded ? 720 : 620;
+        var area = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var width = Math.Min(Width, area.Width / dpi.DpiScaleX);
+        var height = Math.Min(Height, area.Height / dpi.DpiScaleY);
+        MinWidth = Math.Min(320, width); MinHeight = Math.Min(400, height);
+        Width = width; Height = height;
+        Left = Math.Clamp(Left, area.Left / dpi.DpiScaleX, area.Right / dpi.DpiScaleX - width);
+        Top = Math.Clamp(Top, area.Top / dpi.DpiScaleY, area.Bottom / dpi.DpiScaleY - height);
     }
-    private void UpdateResponsiveLayout()
+    private void DisposePresentation()
     {
-        var width = ActualWidth > 0 ? ActualWidth : Width;
-        var height = ActualHeight > 0 ? ActualHeight : Height;
-        var constrained = DialogueWindowViewModel.GetResponsiveLayoutState(width, height) == ResponsiveLayoutState.Constrained;
-        WelcomeSecondaryCopy.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
-        WelcomeShortcuts.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
-        HeaderSubtitle.Visibility = constrained ? Visibility.Collapsed : Visibility.Visible;
-        NavigationColumn.Width = new GridLength(constrained ? 56 : 64);
-        HeaderRow.Height = new GridLength(constrained ? 76 : 90);
-        RoleAvatar.Width = RoleAvatar.Height = constrained ? 44 : 54;
-        IdentityHeader.Margin = constrained ? new Thickness(16, 10, 12, 10) : new Thickness(24, 12, 24, 12);
-        ChatBody.Margin = constrained ? new Thickness(16, 12, 16, 14) : new Thickness(24, 16, 24, 18);
-    }
-    private void ShowTasks(bool tasks)
-    {
-        if (tasks) ClearCopyFeedback();
-        var enteringTasks = tasks && !_showingTasks;
-        CloseDrawers();
-        _showingTasks = tasks;
-        ChatBody.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
-        TasksPage.Visibility = tasks ? Visibility.Visible : Visibility.Collapsed;
-        NewConversationButton.Visibility = HistoryButton.Visibility = tasks ? Visibility.Collapsed : Visibility.Visible;
-        ChatTabButton.SetResourceReference(StyleProperty, tasks ? "ShellRailButton" : "ShellRailSelectedButton");
-        TasksButton.SetResourceReference(StyleProperty, tasks ? "ShellRailSelectedButton" : "ShellRailButton");
-        Title = tasks ? $"FGO Pet · {TasksButton.Content}" : "FGO Pet · 聊天";
-        if (tasks)
-        {
-            _workspace?.Navigate(new(enteringTasks ? WorkspaceNavigationKind.Activate : WorkspaceNavigationKind.Overview));
-        }
-    }
-    private void OpenDrawer(bool tasks)
-    {
-        if (tasks) { ShowTasks(true); return; }
-        ShowTasks(false);
-        _viewModel.Conversation.LoadHistory();
-        _drawerOrigin = HistoryButton;
-        HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Visible;
-        ChatBody.IsHitTestVisible = false;
-        KeyboardNavigation.SetTabNavigation(ChatBody, KeyboardNavigationMode.None);
-        HistoryDrawer.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
-    }
-    private void CloseDrawers()
-    {
-        _viewModel.Conversation.CancelHistoryDeletion();
-        _historyDeleteOrigin = null;
-        HistoryDrawer.Visibility = Backdrop.Visibility = Visibility.Collapsed;
-        ChatBody.IsHitTestVisible = true;
-        KeyboardNavigation.SetTabNavigation(ChatBody, KeyboardNavigationMode.Continue);
-    }
-    private void OnHistoryClick(object sender, RoutedEventArgs e) => OpenDrawer(false);
-    private void OnTasksClick(object sender, RoutedEventArgs e)
-    {
-        if (_workspaces?.Workspaces.Count > 1)
-        {
-            var menu = new ContextMenu { PlacementTarget = TasksButton };
-            foreach (var descriptor in _workspaces.Workspaces)
-            {
-                var item = new MenuItem { Header = descriptor.Title };
-                item.Click += (_, _) => { if (SelectWorkspace(descriptor.Id)) ShowTasks(true); };
-                menu.Items.Add(item);
-            }
-            menu.IsOpen = true;
-        }
-        else if (TasksPage.Content is not null) ShowTasks(true);
-    }
-
-    private bool SelectWorkspace(string workspaceId)
-    {
-        var descriptor = _workspaces?.Workspaces.SingleOrDefault(item => item.Id == workspaceId);
-        if (descriptor is null) return false;
-        if (!_workspaceViews.TryGetValue(workspaceId, out var content))
-        {
-            content = _workspaces!.CreateView(workspaceId);
-            _workspaceViews.Add(workspaceId, content);
-        }
-        _workspaceId = workspaceId;
-        _workspace = content as IWorkspaceSurface;
-        TasksPage.Content = content;
-        TasksButton.Content = descriptor.Title;
-        TasksButton.ToolTip = descriptor.Title;
-        return true;
-    }
-    private void OnFocusShortcutClick(object sender, RoutedEventArgs e)
-    {
-        if (_panel is null) return;
-        if (_panel.State == FgoPet.Core.Panels.AttachedPanelState.Collapsed)
-            _panel.PortraitClick();
-        if (_panel.State != FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus)
-            _panel.FocusClick();
-        Hide();
-    }
-    private void OnChatClick(object sender, RoutedEventArgs e) => ShowTasks(false);
-    private void OnSettingsClick(object sender, RoutedEventArgs e) => _viewModel.NavigateToSettings(SettingsSection.Personalization);
-    private void OnAvatarFailed(object sender, ExceptionRoutedEventArgs e) => RoleImage.SetCurrentValue(Image.SourceProperty, null);
-    private void OnCloseClick(object sender, RoutedEventArgs e) { CloseDrawers(); _drawerOrigin?.Focus(); }
-    private void OnHideClick(object sender, RoutedEventArgs e) => Hide();
-    private void OnNewClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.Conversation.NewConversationCommand.CanExecute(null))
-            _viewModel.Conversation.NewConversationCommand.Execute(null);
-        CloseDrawers();
-        ShowTasks(false);
-        _following = true;
-        MessageScroller.ScrollToEnd();
-        InputBox.Focus();
-    }
-    private void OnHistoryOpenClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: ConversationHistoryItem item }) OpenHistoryConversation(item);
-    }
-    private void OnHistoryKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && e.OriginalSource is ListBoxItem && HistoryList.SelectedItem is ConversationHistoryItem item)
-        { OpenHistoryConversation(item); e.Handled = true; }
-    }
-    private void OpenHistoryConversation(ConversationHistoryItem item)
-    {
+        if (_disposed) return; _disposed = true;
         _viewModel.StopSpeech();
-        _following = true;
-        _viewModel.Conversation.SetActiveConversation(item.ConversationId);
-        Dispatcher.BeginInvoke(new Action(() => MessageScroller.ScrollToEnd()));
-        CloseDrawers();
+        _viewModel.OpenRequested -= OnOpenRequested; _viewModel.NavigationRequested -= OnNavigationRequested;
+        _viewModel.Conversation.NewWorkspaceItemRequested -= OnNewWorkspaceItem;
+        _viewModel.Conversation.ExpressionRequested -= OnExpressionRequested;
+        _viewModel.Conversation.PropertyChanged -= OnConversationChanged;
+        Loaded -= OnLoaded; Closing -= OnClosing; IsVisibleChanged -= OnVisibleChanged;
+        Activated -= OnActivated; Deactivated -= OnDeactivated; Closed -= OnClosed;
+        Dispatcher.ShutdownStarted -= OnShutdown; PresentationRequestedHandler = null;
+        _surface?.Dispose(); _actions.Dispose();
     }
-    private void OnHistoryDeleteClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { Tag: ConversationHistoryItem item } button) return;
-        _viewModel.Conversation.RequestHistoryDeletion(item);
-        if (!_viewModel.Conversation.HasPendingHistoryDeletion) return;
-        _historyDeleteOrigin = button;
-        UpdateLayout();
-        CancelHistoryDeleteButton.Focus();
-    }
-    private void OnCancelHistoryDeleteClick(object sender, RoutedEventArgs e) => CancelHistoryDeletion();
-    private void CancelHistoryDeletion()
-    {
-        _viewModel.Conversation.CancelHistoryDeletion();
-        _historyDeleteOrigin?.Focus();
-        _historyDeleteOrigin = null;
-    }
-    private void OnConfirmHistoryDeleteClick(object sender, RoutedEventArgs e)
-    {
-        if (!_viewModel.Conversation.ConfirmHistoryDeletion()) return;
-        _historyDeleteOrigin = null;
-        HistoryList.Focus();
-    }
-    private void OnHistoryRefreshClick(object sender, RoutedEventArgs e)
-    {
-        CancelHistoryDeletion();
-        _viewModel.Conversation.LoadHistory();
-    }
-    private void OnJumpClick(object sender, RoutedEventArgs e)
-    {
-        ShowTasks(false);
-        _following = true;
-        MessageScroller.ScrollToEnd();
-        JumpButton.Visibility = Visibility.Collapsed;
-    }
-    private void OnCopyClick(object sender, RoutedEventArgs e)
-    {
-        if (!IsVisible || Dispatcher.HasShutdownStarted) return;
-        if (sender is Button { Tag: ConversationTurnViewModel turn } && turn.Actions.CanCopy)
-        {
-            var button = (Button)sender;
-            var feedbackIcon = FindResource("ChatCopied");
-            var feedbackText = "已复制";
-            try { _clipboard.SetText(turn.Text); }
-            catch (System.Runtime.InteropServices.ExternalException)
-            {
-                feedbackIcon = FindResource("ChatCopyFailed");
-                feedbackText = "复制失败，请重试";
-            }
-            button.Content = feedbackIcon;
-            // Keep ToolTip as plain content. Assigning a ToolTip instance to a
-            // Button that already has a XAML tooltip can make WPF attach the
-            // same logical ToolTip twice and terminate the dispatcher.
-            button.ToolTip = feedbackText;
-            System.Windows.Automation.AutomationProperties.SetName(button, feedbackText);
-            if (_copyFeedback.Remove(button, out var previous)) previous.Stop();
-            var timer = new System.Windows.Threading.DispatcherTimer(
-                System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
-                { Interval = TimeSpan.FromMilliseconds(1200) };
-            timer.Tick += (_, _) =>
-            {
-                timer.Stop();
-                if (!_copyFeedback.TryGetValue(button, out var current) || !ReferenceEquals(timer, current)) return;
-                _copyFeedback.Remove(button);
-                if (!Dispatcher.HasShutdownStarted) ResetCopyFeedback(button);
-            };
-            _copyFeedback[button] = timer;
-            timer.Start();
-        }
-    }
-
-    private void ResetCopyFeedback(Button button)
-    {
-        button.Content = FindResource("ChatCopy");
-        button.ToolTip = "复制";
-        System.Windows.Automation.AutomationProperties.SetName(button, "复制");
-    }
-
-    private void OnCopyDispatcherShutdown(object? sender, EventArgs e) => ClearCopyFeedback();
-
-    private void ClearCopyFeedback()
-    {
-        foreach (var (button, timer) in _copyFeedback)
-        {
-            timer.Stop();
-            if (!Dispatcher.HasShutdownStarted) ResetCopyFeedback(button);
-        }
-        _copyFeedback.Clear();
-    }
-    private async void OnSpeechClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { Tag: ConversationTurnViewModel turn } || !turn.CanReadAloud) return;
-        if (turn.SpeechNeedsConfiguration) _viewModel.NavigateToSettings(SettingsSection.Speech);
-        else await _viewModel.ReadAloudAsync(turn);
-    }
-    private void OnOpenWorkspaceClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { Tag: ConversationTurnViewModel turn }
-            || !turn.CanOpenWorkspace
-            || string.IsNullOrWhiteSpace(turn.CreatedItemId)
-            || !SelectWorkspace(turn.WorkspaceId!)) return;
-
-        ShowTasks(true);
-        _workspace?.Navigate(new(WorkspaceNavigationKind.ExistingItem, turn.CreatedItemId));
-    }
-    private void OnKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape && Backdrop.Visibility == Visibility.Visible)
-        {
-            if (_viewModel.Conversation.HasPendingHistoryDeletion) CancelHistoryDeletion();
-            else CloseDrawers();
-            e.Handled = true; return;
-        }
-        if (e.Key != Key.Enter || !InputBox.IsKeyboardFocusWithin || _composing || e.IsRepeat ||
-            Keyboard.Modifiers != ModifierKeys.None) return;
-        var command = _viewModel.Composer.SendOrStopCommand;
-        if (command.CanExecute(null)) command.Execute(null);
-        e.Handled = true;
-    }
+    public void Dispose() { DisposePresentation(); if (IsLoaded && !Dispatcher.HasShutdownStarted) Close(); }
 }

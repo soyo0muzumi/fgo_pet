@@ -16,12 +16,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="ConversationMemoryPage.xaml">
-      <Link>Settings\ConversationMemoryPage.xaml</Link>
-    </Page>
-    <Compile Include="ConversationMemoryPage.xaml.cs">
-      <Link>modules\memory\Desktop\ConversationMemoryPage.xaml.cs</Link>
-    </Compile>
     <Compile Include="MemoryViewModel.cs">
       <Link>modules\memory\Desktop\MemoryViewModel.cs</Link>
     </Compile>
@@ -41,5 +35,17 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="MemoryContextConnector.cs" />
+    <Compile Include="MemoryWebPage.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Link 必须带 Desktop\ 前缀：宿主解析资源根目录是 AppContext.BaseDirectory + Desktop\ui\settings\root -->
+    <Content Include="ui\settings\conversation-memory\conversation-memory.js">
+      <Link>Desktop\ui\settings\root\pages\conversation-memory.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ui\settings\conversation-memory\conversation-memory.css">
+      <Link>Desktop\ui\settings\root\pages\conversation-memory.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

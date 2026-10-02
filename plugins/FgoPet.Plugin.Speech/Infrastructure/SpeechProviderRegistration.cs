@@ -9,8 +9,6 @@ public static class SpeechProviderRegistration
     {
         services.AddSingleton<OpenAiCompatibleSpeechSynthesizer>();
         services.AddSingleton<ISpeechProvider>(p => p.GetRequiredService<OpenAiCompatibleSpeechSynthesizer>());
-        services.AddSingleton<GptSoVitsSpeechSynthesizer>();
-        services.AddSingleton<ISpeechProvider>(p => p.GetRequiredService<GptSoVitsSpeechSynthesizer>());
         return services;
     }
 }

@@ -80,8 +80,9 @@ public sealed class DialoguePanelIntegrationTests
             {
                 Connection = SpeechConnectionSettings.Defaults with
                 {
-                    Provider = SpeechProviderKind.GptSoVits,
-                    GptSoVitsReferenceAudioPath = "D:\\voices\\reference.wav",
+                    Provider = SpeechProviderKind.IndexTts,
+                    IndexTtsVoiceId = "reference-voice",
+                    IndexTtsVoices = new[] { new ReferenceVoice("reference-voice", "Reference", "D:\\voices\\reference.wav") },
                 },
             });
             var viewModel = new AttachedPanelViewModel(TimeProvider.System, compactSurface: null, settings: settings);
@@ -91,8 +92,8 @@ public sealed class DialoguePanelIntegrationTests
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Assert.True(settings.Current.Connection.AutoReadEnabled);
-            Assert.Equal(SpeechProviderKind.GptSoVits, settings.Current.Connection.Provider);
-            Assert.Equal("D:\\voices\\reference.wav", settings.Current.Connection.GptSoVitsReferenceAudioPath);
+            Assert.Equal(SpeechProviderKind.IndexTts, settings.Current.Connection.Provider);
+            Assert.Equal("D:\\voices\\reference.wav", settings.Current.Connection.IndexTtsVoices[0].AudioPath);
         });
     }
     [Fact]

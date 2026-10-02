@@ -61,9 +61,11 @@ public static class ModelConnectionRegistration
 
     public static IServiceCollection AddModelConnectionSettings(this IServiceCollection services)
     {
-        services.AddSingleton<ModelConnectionViewModel>().AddSingleton<ModelConnectionPage>();
+        services.AddSingleton<ModelConnectionViewModel>();
+        services.AddSingleton<ISettingsWebPage>(provider => new ModelConnectionWebPage(
+            provider.GetRequiredService<ModelConnectionViewModel>()));
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.ModelConnection), _ => provider.GetRequiredService<ModelConnectionPage>(), "模型服务", "连接聊天服务，选择默认使用的模型。",
+            nameof(SettingsSection.ModelConnection), _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"), "模型服务", "连接聊天服务，选择默认使用的模型。",
             "开始使用", ["模型", "连接", "聊天"], 30));
         return services;
     }

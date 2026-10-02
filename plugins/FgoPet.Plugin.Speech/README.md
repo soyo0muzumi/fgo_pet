@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-Own provider-neutral speech synthesis contracts, OpenAI-compatible and GPT-SoVITS adapters, text filtering/splitting, playback lifecycle, cancellation, temporary audio cleanup, DND-gated auto-read, and speech connection settings.
+Own provider-neutral speech synthesis contracts, the OpenAI-compatible adapter, text filtering/splitting, playback lifecycle, cancellation, temporary audio cleanup, DND-gated auto-read, and speech connection settings.
 
 ## Non-responsibilities
 
@@ -33,7 +33,7 @@ State notifications may be raised on a worker thread. Each desktop consumer must
 
 ## Dependencies and security
 
-The module owns `SpeechSettings` and `ISpeechSettingsStore`, and consumes the protected credential contract and implementation. It must not depend on Dialogue, Todo, Focus, Agent transport, or desktop-shell implementation. OpenAI-compatible keys remain in Windows Credential Manager; GPT-SoVITS accepts only loopback HTTP. Speech text, credentials, raw audio, reference-audio paths, and local paths are not sent through Agent or written to diagnostics.
+The module owns `SpeechSettings` and `ISpeechSettingsStore`, and consumes the protected credential contract and implementation. It must not depend on Dialogue, Todo, Focus, Agent transport, or desktop-shell implementation. OpenAI-compatible keys remain in Windows Credential Manager; local services (IndexTTS) connect only to a service the user already started. Speech text, credentials, raw audio, reference-audio paths, and local paths are not sent through Agent or written to diagnostics.
 
 ## Composition
 
@@ -48,3 +48,5 @@ Run all three speech test projects plus the affected solution tests and Release 
 Core-only tests protect contract availability and the absence of raw-synthesis/disposal methods. Desktop tests call the real coordinator through the port and retain auto-read/DND, manual playback and late-audio cancellation coverage. Dialogue tests exercise dispatcher delivery, stale notifications/results, context changes, disposal and continued text chat. The architecture gate checks both evaluated project references and the actual Dialogue AssemblyRef table.
 
 Real provider playback, sound quality/latency, DPI, IME, multi-monitor, Narrator, and high-contrast checks remain manual acceptance boundaries. Contract doubles are not device or provider acceptance.
+
+Settings presentation uses `SpeechWebPage` over the existing connection view model and native voice-file picker. The former SpeechConnectionPage XAML is removed; synthesis, credentials and playback ownership remain unchanged.

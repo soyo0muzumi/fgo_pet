@@ -33,7 +33,6 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
         [
             new(SpeechProviderKind.IndexTts, "IndexTTS 本地音色克隆"),
             new(SpeechProviderKind.OpenAiCompatible, "OpenAI 风格 HTTP"),
-            new(SpeechProviderKind.GptSoVits, "GPT-SoVITS 本地服务"),
         ];
 
         var saved = _settings.Load().Connection.Normalize();
@@ -42,11 +41,6 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
         OpenAiBaseUrl = saved.OpenAiBaseUrl;
         OpenAiModel = saved.OpenAiModel;
         OpenAiVoice = saved.OpenAiVoice;
-        GptSoVitsBaseUrl = saved.GptSoVitsBaseUrl;
-        GptSoVitsReferenceAudioPath = saved.GptSoVitsReferenceAudioPath;
-        GptSoVitsPromptText = saved.GptSoVitsPromptText;
-        GptSoVitsLanguage = saved.GptSoVitsLanguage;
-        GptSoVitsPromptLanguage = saved.GptSoVitsPromptLanguage;
         IndexTtsBaseUrl = saved.IndexTtsBaseUrl;
         foreach (var voice in saved.IndexTtsVoices) Voices.Add(voice);
         SelectedVoice = Voices.FirstOrDefault(v => v.Id == saved.IndexTtsVoiceId);
@@ -72,7 +66,6 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
     partial void OnProviderChanged(SpeechProviderKind value)
     {
         OnPropertyChanged(nameof(IsOpenAiCompatible));
-        OnPropertyChanged(nameof(IsGptSoVits));
         OnPropertyChanged(nameof(IsIndexTts));
     }
 
@@ -84,21 +77,6 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
 
     [ObservableProperty]
     private string _openAiVoice = string.Empty;
-
-    [ObservableProperty]
-    private string _gptSoVitsBaseUrl = string.Empty;
-
-    [ObservableProperty]
-    private string _gptSoVitsReferenceAudioPath = string.Empty;
-
-    [ObservableProperty]
-    private string _gptSoVitsPromptText = string.Empty;
-
-    [ObservableProperty]
-    private string _gptSoVitsLanguage = string.Empty;
-
-    [ObservableProperty]
-    private string _gptSoVitsPromptLanguage = string.Empty;
 
     [ObservableProperty]
     private bool _autoReadEnabled;
@@ -214,10 +192,9 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
     public void StopPreview() { _playback.Stop(); StatusText = "已停止播放；本地服务可能仍在生成，迟到音频不会播放。"; }
 
     public bool IsOpenAiCompatible => Provider == SpeechProviderKind.OpenAiCompatible;
-    public bool IsGptSoVits => Provider == SpeechProviderKind.GptSoVits;
     public string KeyStateText => IsKeySaved
         ? "已保存密钥（存储在 Windows Credential Manager）"
-        : "尚未保存密钥；本地 GPT-SoVITS 不使用云端密钥。";
+        : "尚未保存密钥；本地语音服务不使用云端密钥。";
 
     public IAsyncRelayCommand SaveCommand { get; }
     public IAsyncRelayCommand PreviewCommand { get; }
@@ -318,11 +295,6 @@ public sealed partial class SpeechConnectionViewModel : ObservableObject
         IndexTtsBaseUrl = IndexTtsBaseUrl,
         IndexTtsVoiceId = SelectedVoice?.Id ?? string.Empty,
         IndexTtsVoices = Voices.ToArray(),
-        GptSoVitsBaseUrl = GptSoVitsBaseUrl,
-        GptSoVitsReferenceAudioPath = GptSoVitsReferenceAudioPath,
-        GptSoVitsPromptText = GptSoVitsPromptText,
-        GptSoVitsLanguage = GptSoVitsLanguage,
-        GptSoVitsPromptLanguage = GptSoVitsPromptLanguage,
         AutoReadEnabled = AutoReadEnabled,
         DoNotDisturb = DoNotDisturb,
         AutoReadLimit = AutoReadLimit,

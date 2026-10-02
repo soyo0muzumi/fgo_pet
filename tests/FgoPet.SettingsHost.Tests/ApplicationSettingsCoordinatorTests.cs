@@ -239,7 +239,6 @@ public sealed class ApplicationSettingsCoordinatorTests
     [Fact]
     public void Document_facade_export_sanitizes_all_local_speech_paths_without_mutating_live_settings()
     {
-        const string gptSoVitsPath = "C:/Users/Task12/Private/gpt-sovits-reference-audio.wav";
         const string indexTtsPathOne = "C:/Users/Task12/Private/index-tts-reference-one.wav";
         const string indexTtsPathTwo = "D:/Task12/Private/index-tts-reference-two.wav";
         var document = new MemoryDocumentStore($$"""
@@ -247,9 +246,8 @@ public sealed class ApplicationSettingsCoordinatorTests
               "schema_version": 2,
               "speech_connection": {
                 "enabled": true,
-                "provider": "GptSoVits",
+                "provider": "IndexTts",
                 "openai_credential_target": "fgo-pet/speech/openai",
-                "gpt_sovits_reference_audio_path": "{{gptSoVitsPath}}",
                 "index_tts_voice_id": "voice-two",
                 "index_tts_voices": [
                   { "Id": "voice-one", "Name": "Voice One", "AudioPath": "{{indexTtsPathOne}}" },
@@ -270,14 +268,11 @@ public sealed class ApplicationSettingsCoordinatorTests
         var voices = speech.GetProperty("index_tts_voices").EnumerateArray().ToArray();
         var exportedJson = exported.RootElement.GetRawText();
 
-        Assert.Equal(gptSoVitsPath, live.GptSoVitsReferenceAudioPath);
         Assert.Equal([indexTtsPathOne, indexTtsPathTwo], live.IndexTtsVoices.Select(voice => voice.AudioPath));
-        Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
         Assert.Equal(2, voices.Length);
         Assert.Equal(["voice-one", "voice-two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Id)).GetString()));
         Assert.Equal(["Voice One", "Voice Two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Name)).GetString()));
         Assert.All(voices, voice => Assert.Equal(string.Empty, voice.GetProperty(nameof(ReferenceVoice.AudioPath)).GetString()));
-        Assert.DoesNotContain(gptSoVitsPath, exportedJson, StringComparison.Ordinal);
         Assert.DoesNotContain(indexTtsPathOne, exportedJson, StringComparison.Ordinal);
         Assert.DoesNotContain(indexTtsPathTwo, exportedJson, StringComparison.Ordinal);
         Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());

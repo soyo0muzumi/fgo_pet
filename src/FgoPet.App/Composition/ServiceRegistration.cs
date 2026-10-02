@@ -23,7 +23,6 @@ using FgoPet.App.Services;
 using FgoPet.App.Speech;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Archives;
-using FgoPet.App.Views.Settings;
 using FgoPet.App.Windowing;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Archives;
@@ -168,6 +167,7 @@ public static class ServiceRegistration
         .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddDialogueRuntime()
+        .AddChatWebPresentation()
         .AddModelConnectionSettings()
         .AddSpeechSettings(Path.Combine(paths.StorageRoot, "voices"), includeSpeech)
         .AddSingleton<SettingsViewModel>()
@@ -180,24 +180,25 @@ public static class ServiceRegistration
             provider.GetRequiredService<ICharacterSettingsStore>(),
             provider.GetRequiredService<UserProfileViewModel>(), paths.StorageRoot,
             provider.GetRequiredService<ThemeService>()))
+        .AddSingleton<ISettingsWebPage>(provider => provider.GetRequiredService<UserProfileWebFactory>())
         .AddCharacterSettings()
         .AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.UserProfile), _ => provider.GetRequiredService<UserProfileWebFactory>().CreateView(),
+            nameof(SettingsSection.UserProfile), _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"),
             "用户资料", "管理全局用户资料。", "开始使用", ["用户", "资料"], 10))
         .AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            nameof(SettingsSection.Privacy), _ => provider.GetRequiredService<PrivacyPage>(),
+            nameof(SettingsSection.Privacy), _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"),
             "数据与隐私", "导出或清理本地用户数据。", "管理", ["数据", "隐私", "导出"], 210))
         .AddSingleton(provider => new SettingsPageCatalog(provider.GetServices<ISettingsPageViewFactory>(),
             provider.GetRequiredService<IProcessLifetime>().StoppingToken))
-        .AddSingleton<SettingsPageContentResolver>(provider => (section, route) =>
-            provider.GetRequiredService<SettingsPageCatalog>().CreateView(section.ToString(),
-                new(route?.PackageId, route?.DisplayName)) ?? new Border())
+        .AddSingleton(provider => new SettingsWebRootFactory(
+            provider.GetRequiredService<SettingsPageCatalog>(), provider.GetServices<ISettingsWebPage>(),
+            paths.StorageRoot, provider.GetRequiredService<ThemeService>()))
         .AddSingleton<SettingsWindow>(provider =>
         {
             provider.InitializeMemoryContext();
             return new SettingsWindow(
                 provider.GetRequiredService<SettingsViewModel>(),
-                provider.GetRequiredService<SettingsPageCatalog>());
+                provider.GetRequiredService<SettingsWebRootFactory>());
         })
         .AddSingleton<UserDataExportService>()
         .AddSingleton<IUserDataExporter>(provider => provider.GetRequiredService<UserDataExportService>())
@@ -217,17 +218,30 @@ public static class ServiceRegistration
             packageRepository: provider.GetRequiredService<IArtPackageRepository>(),
             safeLog: eventName => provider.GetRequiredService<ILogger<PrivateBackupRestoreService>>()
                 .LogInformation("{BackupEvent}", eventName)))
-        .AddSingleton<PrivacyPage>(provider => new PrivacyPage(
+        .AddSingleton<IPrivacyFilePicker, WpfPrivacyFilePicker>()
+        .AddSingleton<ISettingsWebPage>(provider => new PrivacyWebPage(
             provider.GetRequiredService<MemoryViewModel>(),
-            provider.GetService<PrivateBackupService>(),
-            provider.GetService<PendingBackupRestoreService>(),
+            provider.GetRequiredService<IPrivacyFilePicker>(),
+            provider.GetService<IUserDataExporter>() is not null,
+            provider.GetService<PrivateBackupService>() is { } backup ? backup.CreateAsync : null,
+            provider.GetService<PendingBackupRestoreService>() is { } restore ? restore.PrepareAsync : null,
             provider.GetRequiredService<IAppLifetime>().RequestNormalExit))
         .AddSingleton<DialogueWindowViewModel>(provider => new DialogueWindowViewModel(
             provider.GetRequiredService<ConversationViewModel>(),
             provider.GetRequiredService<ServantLibraryViewModel>(),
             provider.GetRequiredService<SpeechPlaybackCoordinator>(),
             provider.GetRequiredService<IDialogueProjectCatalog>()))
-        .AddSingleton<DialogueWindow>()
+        .AddSingleton(provider => new ChatWebSurfaceFactory(
+            provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWebSessionFactory>(), paths.StorageRoot,
+            provider.GetRequiredService<ThemeService>()))
+        .AddSingleton(provider => new DialogueWindow(
+            provider.GetRequiredService<DialogueWindowViewModel>(),
+            provider.GetRequiredService<IAttachedPanelLauncher>(),
+            provider.GetRequiredService<ISettingsNavigator>(),
+            provider.GetRequiredService<IWorkspaceCatalog>(),
+            provider.GetRequiredService<FgoPet.Kernel.Companion.CompanionPresentation>(),
+            webFactory: provider.GetRequiredService<ChatWebSurfaceFactory>(),
+            workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open))
         .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
         {
@@ -251,9 +265,10 @@ public static class ServiceRegistration
             provider.GetRequiredService<IScreenLayoutService>(),
             () => provider.GetRequiredService<PortraitWindow>(),
             () => provider.GetRequiredService<PortraitWindowCoordinator>()))
-        .AddSingleton<IWorkspaceLauncher>(provider => new WorkspaceWindowCoordinator(
+        .AddSingleton(provider => new WorkspaceWindowCoordinator(
             provider.GetRequiredService<IWorkspaceCatalog>(),
             () => provider.GetRequiredService<PortraitWindow>()))
+        .AddSingleton<IWorkspaceLauncher>(provider => provider.GetRequiredService<WorkspaceWindowCoordinator>())
         .AddSingleton<TrayService>()
         .AddSingleton(provider => new DesktopAppUi(
             provider.GetRequiredService<TrayService>(),

@@ -27,3 +27,11 @@ Dialogue repositories own `conversations`, `chat_messages`, `conversation_summar
 Run relevant Core contract, App conversation/prompt, Infrastructure provider/SQLite and Windows dialogue/settings tests. Prompt/budget and context lifetime changes also require the affected EndToEnd checks and the evaluated architecture gate. These suites are regression checks, not real-provider or device acceptance.
 
 The concrete provider/WPF conversation presentation mix remains to be narrowed. Dialogue has no Character, Speech or HostContracts project reference; window integration belongs to Shell. Legacy Core/Infrastructure aggregation is retired; that does not by itself complete generic hosting or long-file decomposition.
+
+## Chat Web presentation
+
+`AddChatWebPresentation` publishes `IChatWebSessionFactory` through `FgoPet.Dialogue.Contracts`. Each lightweight session projects the existing shared `ConversationViewModel`; disposing the projection never disposes or cancels that owner. `IChatWebHostActions` supplies bounded role/selector metadata and finite native presentation actions. Draft revisions and live session/role/conversation identities reject stale commands; model and history strings render as plain text in `Desktop/ui/chat`.
+
+The adapter schedules generation without waiting for provider completion, so stop remains independently executable. The original provider, storage, history, capability and speech rules remain authoritative. App `ChatWebSessionTests` exercise these bridge boundaries; Shell Windows tests and actual-module browser fixtures exercise presentation separately.
+
+Model connection settings use `ModelConnectionWebPage` over the existing connection view model. The old ModelConnectionPage XAML is removed; catalog registration retains metadata only.

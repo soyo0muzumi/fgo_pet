@@ -37,7 +37,7 @@ public sealed class SpeechTextFilterTests
         using var coordinator = new SpeechSynthesisCoordinator(synthesizer);
         var request = new SpeechSynthesisRequest(
             "原始",
-            SpeechProviderKind.GptSoVits,
+            SpeechProviderKind.IndexTts,
             new Uri("http://127.0.0.1:9880"));
 
         var codeFence = new string((char)96, 3);
@@ -53,7 +53,7 @@ public sealed class SpeechTextFilterTests
 
     private sealed class RecordingSynthesizer : ISpeechSynthesizer
     {
-        public SpeechProviderKind Provider => SpeechProviderKind.GptSoVits;
+        public SpeechProviderKind Provider => SpeechProviderKind.IndexTts;
         public string? LastText { get; private set; }
 
         public Task<SpeechSynthesisResult> SynthesizeAsync(

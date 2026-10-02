@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Windows;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Windowing;
@@ -5,48 +6,26 @@ using FgoPet.Core.Windowing;
 namespace FgoPet.App.Windowing;
 
 /// <summary>
-/// Places the standalone dialogue window (spec §8.1 R5): restore the saved
-/// "dialogue" slot when its monitor still exists; otherwise default beside the
-/// portrait on the portrait's monitor without overlapping the pet column, then
-/// clamp fully visible. Saving happens whenever the window hides.
+/// Places the standalone dialogue window beside the portrait's current position,
+/// then constrains its size and bounds to the selected monitor's work area.
 /// </summary>
 public sealed class DialogueWindowPlacementCoordinator
 {
-    private readonly IWindowPlacementStore _placement;
     private readonly IScreenLayoutService _screen;
+    private readonly ConditionalWeakTable<Window, WindowPlacementSize> _windowSizes = new();
 
     public DialogueWindowPlacementCoordinator(IWindowPlacementStore placement, IScreenLayoutService screen)
     {
-        _placement = placement ?? throw new ArgumentNullException(nameof(placement));
+        ArgumentNullException.ThrowIfNull(placement);
         _screen = screen ?? throw new ArgumentNullException(nameof(screen));
     }
 
     /// <summary>Chooses and applies the window location before it is shown.</summary>
     public void ApplyOnOpen(Window window, DeviceRect portraitDeviceBounds)
     {
-        var monitors = _screen.GetMonitors();
-        var saved = _placement.Load(WindowPlacementSlots.Dialogue);
-        var savedMonitor = saved?.MonitorId is { } id
-            ? monitors.FirstOrDefault(candidate => candidate.Id == id)
-            : null;
-        if (saved is not null && savedMonitor is not null)
-        {
-            var dpi = _screen.GetDpi(savedMonitor.Id);
-            if (IsValidDpi(dpi))
-            {
-                var width = Math.Max(1, (int)Math.Round(saved.WindowWidthDip * dpi.X));
-                var height = Math.Max(1, (int)Math.Round(saved.WindowHeightDip * dpi.Y));
-                var x = savedMonitor.WorkArea.X + (int)Math.Round(saved.OffsetX * dpi.X);
-                var y = savedMonitor.WorkArea.Y + (int)Math.Round(saved.OffsetY * dpi.Y);
-                var clamped = ScreenLayout.ClampFullyVisible(new DeviceRect(x, y, width, height), savedMonitor.WorkArea);
-                window.Left = clamped.X / dpi.X;
-                window.Top = clamped.Y / dpi.Y;
-                window.Width = saved.WindowWidthDip;
-                window.Height = saved.WindowHeightDip;
-                return;
-            }
-        }
+        ArgumentNullException.ThrowIfNull(window);
 
+        var monitors = _screen.GetMonitors();
         var portraitMonitor = SelectMonitorContaining(portraitDeviceBounds, monitors)
             ?? monitors.FirstOrDefault(candidate => candidate.IsPrimary)
             ?? monitors.FirstOrDefault();
@@ -61,9 +40,25 @@ public sealed class DialogueWindowPlacementCoordinator
             return;
         }
 
+        var size = _windowSizes.GetValue(window, static current => new WindowPlacementSize(current));
+        size.ObserveCurrentSize(window);
         var workArea = portraitMonitor.WorkArea;
-        var windowWidth = Math.Min((int)Math.Round(window.Width * portraitDpi.X), workArea.Width);
-        var windowHeight = Math.Min((int)Math.Round(window.Height * portraitDpi.Y), workArea.Height);
+        if (workArea.Width <= 0 || workArea.Height <= 0
+            || !IsValidDipSize(size.RequestedWidth) || !IsValidDipSize(size.RequestedHeight))
+        {
+            return;
+        }
+
+        var widthDip = Math.Min(Math.Max(size.RequestedWidth, size.OriginalMinWidth), workArea.Width / portraitDpi.X);
+        var heightDip = Math.Min(Math.Max(size.RequestedHeight, size.OriginalMinHeight), workArea.Height / portraitDpi.Y);
+        var windowWidth = Math.Max(1, (int)Math.Round(widthDip * portraitDpi.X));
+        var windowHeight = Math.Max(1, (int)Math.Round(heightDip * portraitDpi.Y));
+        window.MinWidth = Math.Min(size.OriginalMinWidth, widthDip);
+        window.MinHeight = Math.Min(size.OriginalMinHeight, heightDip);
+        window.Width = widthDip;
+        window.Height = heightDip;
+        size.RecordAppliedSize(widthDip, heightDip, window.MinWidth, window.MinHeight);
+
         var portraitRight = portraitDeviceBounds.X + portraitDeviceBounds.Width;
         var gap = (int)Math.Round(12 * portraitDpi.X);
         var rightCandidate = portraitRight + gap;
@@ -86,39 +81,8 @@ public sealed class DialogueWindowPlacementCoordinator
         window.Top = visible.Y / portraitDpi.Y;
     }
 
-    /// <summary>Persists the current window bounds into the "dialogue" slot as work-area-relative DIP.</summary>
-    public void SaveOnClose(Window window)
-    {
-        var leftDip = double.IsFinite(window.Left) ? window.Left : 0;
-        var topDip = double.IsFinite(window.Top) ? window.Top : 0;
-        var widthDip = double.IsFinite(window.ActualWidth) && window.ActualWidth > 0 ? window.ActualWidth : window.Width;
-        var heightDip = double.IsFinite(window.ActualHeight) && window.ActualHeight > 0 ? window.ActualHeight : window.Height;
-
-        var monitor = _screen.GetMonitors().FirstOrDefault(candidate =>
-                leftDip >= candidate.WorkArea.X && leftDip < candidate.WorkArea.Right
-                && topDip >= candidate.WorkArea.Y && topDip < candidate.WorkArea.Bottom)
-            ?? _screen.GetMonitors().FirstOrDefault(candidate => candidate.IsPrimary)
-            ?? _screen.GetMonitors().FirstOrDefault();
-        if (monitor is null)
-        {
-            return;
-        }
-
-        var dpi = _screen.GetDpi(monitor.Id);
-        if (!IsValidDpi(dpi))
-        {
-            dpi = new Dpi2(1.0, 1.0);
-        }
-
-        _placement.Save(WindowPlacementSlots.Dialogue, new WindowPlacement(
-            monitor.Id,
-            leftDip - (monitor.WorkArea.X / dpi.X),
-            topDip - (monitor.WorkArea.Y / dpi.Y),
-            dpi.X,
-            dpi.Y,
-            widthDip,
-            heightDip));
-    }
+    /// <summary>Compatibility entry point; dialogue placement is intentionally not persisted.</summary>
+    public void SaveOnClose(Window window) => ArgumentNullException.ThrowIfNull(window);
 
     private static MonitorInfo? SelectMonitorContaining(DeviceRect bounds, IReadOnlyList<MonitorInfo> monitors) =>
         monitors.FirstOrDefault(candidate =>
@@ -128,4 +92,57 @@ public sealed class DialogueWindowPlacementCoordinator
     private static bool IsValidDpi(Dpi2 dpi) =>
         double.IsFinite(dpi.X) && dpi.X > 0
         && double.IsFinite(dpi.Y) && dpi.Y > 0;
+
+    private static bool IsValidDipSize(double size) => double.IsFinite(size) && size > 0;
+
+    private sealed class WindowPlacementSize(Window window)
+    {
+        private double _lastAppliedWidth = double.NaN;
+        private double _lastAppliedHeight = double.NaN;
+        private double _lastAppliedMinWidth = double.NaN;
+        private double _lastAppliedMinHeight = double.NaN;
+        private bool _hasAppliedSize;
+
+        public double RequestedWidth { get; private set; } = window.Width;
+        public double RequestedHeight { get; private set; } = window.Height;
+        public double OriginalMinWidth { get; private set; } = window.MinWidth;
+        public double OriginalMinHeight { get; private set; } = window.MinHeight;
+
+        public void ObserveCurrentSize(Window current)
+        {
+            if (!_hasAppliedSize)
+            {
+                return;
+            }
+
+            if (IsValidDipSize(current.Width) && !current.Width.Equals(_lastAppliedWidth))
+            {
+                RequestedWidth = current.Width;
+            }
+
+            if (IsValidDipSize(current.Height) && !current.Height.Equals(_lastAppliedHeight))
+            {
+                RequestedHeight = current.Height;
+            }
+
+            if (!current.MinWidth.Equals(_lastAppliedMinWidth))
+            {
+                OriginalMinWidth = current.MinWidth;
+            }
+
+            if (!current.MinHeight.Equals(_lastAppliedMinHeight))
+            {
+                OriginalMinHeight = current.MinHeight;
+            }
+        }
+
+        public void RecordAppliedSize(double width, double height, double minWidth, double minHeight)
+        {
+            _lastAppliedWidth = width;
+            _lastAppliedHeight = height;
+            _lastAppliedMinWidth = minWidth;
+            _lastAppliedMinHeight = minHeight;
+            _hasAppliedSize = true;
+        }
+    }
 }

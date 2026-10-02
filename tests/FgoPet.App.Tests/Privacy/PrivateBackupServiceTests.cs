@@ -91,7 +91,6 @@ public sealed class PrivateBackupServiceTests : IDisposable
             Assert.True(document.RootElement.GetProperty("agent_connection").GetProperty("enabled").GetBoolean());
             var speech = document.RootElement.GetProperty("speech_connection");
             var voices = speech.GetProperty("index_tts_voices").EnumerateArray().ToArray();
-            Assert.Equal(string.Empty, speech.GetProperty("gpt_sovits_reference_audio_path").GetString());
             Assert.Equal(2, voices.Length);
             Assert.Equal(["voice-one", "voice-two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Id)).GetString()));
             Assert.Equal(["Voice One", "Voice Two"], voices.Select(voice => voice.GetProperty(nameof(ReferenceVoice.Name)).GetString()));
@@ -99,7 +98,7 @@ public sealed class PrivateBackupServiceTests : IDisposable
             Assert.Equal("fgo-pet/speech/openai", speech.GetProperty("openai_credential_target").GetString());
             Assert.Equal("voice-two", speech.GetProperty("index_tts_voice_id").GetString());
             Assert.True(speech.GetProperty("enabled").GetBoolean());
-            Assert.Equal("GptSoVits", speech.GetProperty("provider").GetString());
+            Assert.Equal("IndexTts", speech.GetProperty("provider").GetString());
             Assert.True(speech.GetProperty("auto_read_enabled").GetBoolean());
             Assert.Equal(240, speech.GetProperty("auto_read_limit").GetInt32());
             Assert.Equal(1.25, speech.GetProperty("rate").GetDouble());
@@ -114,9 +113,6 @@ public sealed class PrivateBackupServiceTests : IDisposable
         Assert.DoesNotContain(UnsafeIndexVoicePathTwo, settingsJson, StringComparison.Ordinal);
         Assert.DoesNotContain("api_key", settingsJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", settingsJson, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(
-            UnsafeReferenceAudioPath,
-            ((ISpeechSettingsStore)settings).Load().Connection.GptSoVitsReferenceAudioPath);
         Assert.Equal(
             [UnsafeIndexVoicePathOne, UnsafeIndexVoicePathTwo],
             ((ISpeechSettingsStore)settings).Load().Connection.IndexTtsVoices.Select(voice => voice.AudioPath));
@@ -216,8 +212,7 @@ public sealed class PrivateBackupServiceTests : IDisposable
             ((ISpeechSettingsStore)coordinator).Save(new SpeechSettings(SpeechConnectionSettings.Defaults with
             {
                 Enabled = true,
-                Provider = SpeechProviderKind.GptSoVits,
-                GptSoVitsReferenceAudioPath = UnsafeReferenceAudioPath,
+                Provider = SpeechProviderKind.IndexTts,
                 IndexTtsVoiceId = "voice-two",
                 IndexTtsVoices =
                 [

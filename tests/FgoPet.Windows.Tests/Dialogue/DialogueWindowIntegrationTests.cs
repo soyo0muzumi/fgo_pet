@@ -1,1295 +1,199 @@
-using System.Runtime.ExceptionServices;
-using System.Reflection;
-using System.Resources;
-using FgoPet.App.Views;
-using System.Threading;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using FgoPet.App.Dialogue;
+using FgoPet.App.Settings;
+using FgoPet.App.Windowing;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
+using FgoPet.Dialogue.Contracts;
 using FgoPet.Dialogue.Settings;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Packs;
-using Microsoft.Extensions.DependencyInjection;
+using FgoPet.UiSdk;
 using Xunit;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Media;
-using System.Windows.Input;
 
 namespace FgoPet.Windows.Tests.Dialogue;
 
+// Native owner/bridge coverage. Visual and keyboard DOM behavior is checked against
+// the real Chat module by the separate synthetic browser fixture, not WPF controls.
 [Trait("Category", "WindowsIntegration")]
 public sealed class DialogueWindowIntegrationTests
 {
-    [Theory]
-    [InlineData("FgoLight", 500, 540)]
-    [InlineData("ModernGray", 720, 640)]
-    public void History_delete_opens_a_readable_confirmation_without_switching_conversations(string theme, double width, double height)
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            vm.Conversation.ActiveServantId = "test";
-            vm.Conversation.InputText = "未发送的草稿";
-            vm.Conversation.Turns.Add(new ConversationTurnViewModel("visible", ChatMessageRole.User, "当前对话"));
-            var window = new DialogueWindow(vm) { Width = width, Height = height };
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
-            try
-            {
-                window.Show();
-                Assert.IsType<Button>(FindField(window, "HistoryButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                vm.Conversation.History.Add(new ConversationHistoryItem("internal-id", "周末出行安排", DateTimeOffset.UtcNow, "正常"));
-                window.UpdateLayout();
-                var history = Assert.IsType<ListBox>(FindField(window, "HistoryList"));
-                var delete = Assert.Single(FindVisualChildren<Button>(history).Where(button => button.Name == "HistoryDeleteButton"));
-                delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-
-                var confirmation = Assert.IsType<Border>(FindField(window, "HistoryDeleteConfirmation"));
-                Assert.True(confirmation.IsVisible);
-                Assert.Contains(FindVisualChildren<TextBlock>(confirmation), text => text.Text.Contains("周末出行安排", StringComparison.Ordinal));
-                Assert.Contains(FindVisualChildren<TextBlock>(confirmation), text => text.Text.Contains("已确认记忆会保留", StringComparison.Ordinal));
-                Assert.Equal("当前对话", Assert.Single(vm.Conversation.Turns).Text);
-                Assert.Equal("未发送的草稿", vm.Conversation.InputText);
-                Assert.Single(vm.Conversation.History);
-                foreach (var name in new[] { "CancelHistoryDeleteButton", "ConfirmHistoryDeleteButton" })
-                {
-                    var button = Assert.IsType<Button>(FindField(window, name));
-                    var bounds = button.TransformToAncestor(window).TransformBounds(new Rect(button.RenderSize));
-                    Assert.True(button.IsVisible && bounds.Height > 20 && bounds.Right <= window.ActualWidth && bounds.Bottom <= window.ActualHeight);
-                }
-                CaptureVisual(Assert.IsType<Grid>(window.Content), $"{theme}-{width}-history-confirmation");
-                Assert.IsType<Button>(FindField(window, "ConfirmHistoryDeleteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Contains("删除失败", vm.Conversation.HistoryStatus);
-                Assert.True(confirmation.IsVisible);
-                Assert.IsType<Button>(FindField(window, "CancelHistoryDeleteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.False(confirmation.IsVisible);
-                Assert.Single(vm.Conversation.History);
-                vm.Conversation.IsStreaming = true;
-                window.UpdateLayout();
-                Assert.False(delete.IsEnabled);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
     [Fact]
-    public void Persistent_navigation_keeps_focus_and_settings_available_with_messages_and_tasks()
+    public void Host_metadata_refreshes_real_project_choices_and_preserves_saved_unavailable_project() => StaRunner.Run(() =>
     {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            vm.Conversation.Turns.Add(new ConversationTurnViewModel("reply", ChatMessageRole.Assistant, "已有对话"));
-            vm.Conversation.InputText = "尚未发送";
-            var panel = new FgoPet.App.Panels.AttachedPanelViewModel(TimeProvider.System);
-            var window = new DialogueWindow(vm, panel: panel) { Width = 500, Height = 540 };
-            FgoPet.App.Settings.SettingsSection? requested = null;
-            vm.SettingsRequested += section => requested = section;
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-                var focus = Assert.IsType<Button>(FindField(window, "FocusNavigationButton"));
-                var settings = Assert.IsType<Button>(FindField(window, "SettingsButton"));
-                Assert.True(focus.IsVisible && focus.IsEnabled);
-                Assert.True(settings.IsVisible && settings.IsEnabled);
-                settings.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(FgoPet.App.Settings.SettingsSection.Personalization, requested);
-                Assert.Equal("尚未发送", vm.Conversation.InputText);
-
-                Assert.IsType<Button>(FindField(window, "TasksButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.True(focus.IsVisible);
-                var origin = focus.TransformToAncestor(window).Transform(new Point());
-                Assert.True(origin.X >= 0 && origin.Y >= 0 && origin.Y + focus.ActualHeight < window.ActualHeight);
-                focus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus, panel.State);
-                Assert.Equal("尚未发送", vm.Conversation.InputText);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Chat_header_names_the_two_content_views_instead_of_a_more_menu()
-    {
-        StaRun(() =>
-        {
-            var window = new DialogueWindow(CreateViewModel());
-            try
-            {
-                // The grouped "more" menu was replaced by an explicit chat/todo switch.
-                Assert.Null(FindField(window, "MoreButton"));
-                Assert.Equal("新对话", System.Windows.Automation.AutomationProperties.GetName(Assert.IsType<Button>(FindField(window, "NewConversationButton"))));
-                Assert.Equal("聊天", Assert.IsType<Button>(FindField(window, "ChatTabButton")).Content);
-                Assert.Equal("待办", Assert.IsType<Button>(FindField(window, "TasksButton")).Content);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
-    [Fact]
-    public void Close_hides_instead_of_closing_so_the_window_reuses_the_session()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            try
-            {
-                window.Show();
-                Assert.True(window.IsVisible);
-
-                window.Close();
-
-                Assert.False(window.IsVisible);
-
-                window.Show();
-                Assert.True(window.IsVisible);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Open_request_shows_and_activates_the_window()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var window = new DialogueWindow(viewModel);
-            try
-            {
-                viewModel.NotifyWindowHidden();
-                viewModel.RequestOpen();
-
-                Assert.True(window.IsVisible);
-                Assert.Equal(0, viewModel.UnreadCount);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Unread_counts_while_hidden_and_clears_on_open()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var window = new DialogueWindow(viewModel);
-            try
-            {
-                viewModel.RequestOpen();
-                window.Hide();
-
-                viewModel.Conversation.Turns.Add(new ConversationTurnViewModel("m1", Core.Dialogue.ChatMessageRole.Assistant, "回复"));
-
-                Assert.Equal(1, viewModel.UnreadCount);
-
-                viewModel.RequestOpen();
-
-                Assert.Equal(0, viewModel.UnreadCount);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Turns_added_while_following_scroll_kept_the_bottom()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var window = new DialogueWindow(viewModel);
-            try
-            {
-                window.Show();
-                for (var index = 1; index <= 12; index++)
-                {
-                    viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
-                        $"m{index}", Core.Dialogue.ChatMessageRole.Assistant, $"消息 {index}"));
-                }
-
-                StaRunner.Pump(window.Dispatcher);
-
-                var scroller = FindField(window, "MessageScroller") as System.Windows.Controls.ScrollViewer;
-                Assert.NotNull(scroller);
-                Assert.True(scroller!.ScrollableHeight <= 0.5 || scroller.VerticalOffset >= scroller.ScrollableHeight - 0.5);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Assistant_bubble_is_left_aligned_and_user_bubble_is_right_aligned()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var window = new DialogueWindow(viewModel);
-            try
-            {
-                window.Show();
-                viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
-                    "assistant", ChatMessageRole.Assistant, "从者消息"));
-                viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
-                    "user", ChatMessageRole.User, "用户消息"));
-
-                StaRunner.Pump(window.Dispatcher);
-
-                var scroller = Assert.IsType<ScrollViewer>(FindField(window, "MessageScroller"));
-                // Message text is rendered inside a read-only TextBox inside the bubble border.
-                var assistantText = FindVisualChildren<TextBox>(window).Single(text => text.Text == "从者消息");
-                var userText = FindVisualChildren<TextBox>(window).Single(text => text.Text == "用户消息");
-                var assistantBubble = Assert.IsType<Border>(VisualTreeHelper.GetParent(assistantText));
-                var userBubble = Assert.IsType<Border>(VisualTreeHelper.GetParent(userText));
-                var scrollerOrigin = scroller.TransformToAncestor(window).Transform(new Point(0, 0));
-                var assistantOrigin = assistantBubble.TransformToAncestor(window).Transform(new Point(0, 0));
-                var userOrigin = userBubble.TransformToAncestor(window).Transform(new Point(0, 0));
-
-                Assert.InRange(assistantOrigin.X - scrollerOrigin.X, 0, 48);
-                Assert.InRange(
-                    scrollerOrigin.X + scroller.ActualWidth - (userOrigin.X + userBubble.ActualWidth),
-                    0,
-                    48);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Confirmed_assistant_turn_exposes_only_a_small_view_todo_action()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var repository = new FeedbackTodoRepository();
-            var created = new FgoPet.Core.Todo.TodoItem(
-                "todo-confirmed", "确认后的待办", null,
-                FgoPet.Core.Todo.TodoPriority.Normal, null,
-                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-            repository.Save(created);
-            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var turn = new ConversationTurnViewModel("assistant-confirmed", ChatMessageRole.Assistant, "已创建待办“确认后的待办”。");
-            turn.WorkspaceId = "todo.workspace";
-            turn.CreatedItemId = created.Id;
-            viewModel.Conversation.Turns.Add(turn);
-            var window = new DialogueWindow(viewModel, workspaces: Workspaces(service));
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-
-                var viewButton = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
-                    button.Tag is ConversationTurnViewModel
-                    && System.Windows.Automation.AutomationProperties.GetName(button) == "打开工作区"));
-                Assert.Equal(Visibility.Visible, viewButton.Visibility);
-                Assert.Equal("打开工作区", viewButton.ToolTip);
-
-                viewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
-                Assert.Equal(Visibility.Visible, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Copying_an_assistant_reply_keeps_the_chat_window_alive()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var turn = new ConversationTurnViewModel("assistant-copy", ChatMessageRole.Assistant, "可复制的回复");
-            viewModel.Conversation.Turns.Add(turn);
-            var window = new DialogueWindow(viewModel, clipboard: new RecordingClipboard());
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-                var copy = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
-                    button.Tag is ConversationTurnViewModel tagged
-                    && ReferenceEquals(tagged, turn)
-                    && System.Windows.Automation.AutomationProperties.GetName(button) == "复制"));
-
-                copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-                Assert.True(window.IsVisible);
-                Assert.Equal("已复制", System.Windows.Automation.AutomationProperties.GetName(copy));
-                Assert.Equal("已复制", copy.ToolTip);
-
-                window.Hide();
-                Assert.Equal("复制", copy.ToolTip);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public Task Repeated_copy_replaces_feedback_timer_and_clipboard_failure_can_retry(bool failFirst) => StaRunner.RunAsync(async () =>
-    {
-        var clipboard = new RecordingClipboard { Fail = failFirst };
-        var (window, copy, _) = CreateCopyWindow(clipboard);
-        try
-        {
-            copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Assert.Equal(failFirst ? "复制失败，请重试" : "已复制", copy.ToolTip);
-            await Task.Delay(750);
-            clipboard.Fail = false;
-            copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await Task.Delay(750);
-            Assert.Equal("已复制", copy.ToolTip);
-            await Task.Delay(600);
-            Assert.Equal("复制", copy.ToolTip);
-            Assert.Equal(2, clipboard.Calls);
-        }
-        finally { window.Hide(); }
-    });
-
-    [Theory]
-    [InlineData("hide")]
-    [InlineData("close")]
-    [InlineData("session")]
-    [InlineData("tasks")]
-    public Task Leaving_chat_clears_copy_feedback_before_any_delayed_callback(string transition) => StaRunner.RunAsync(async () =>
-    {
-        var (window, copy, model) = CreateCopyWindow(new RecordingClipboard());
-        copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        if (transition == "close") window.Close();
-        else if (transition == "hide") window.Hide();
-        else if (transition == "session") model.Conversation.SetActiveServant("another-role");
-        else ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.Equal("复制", copy.ToolTip);
-        await Task.Delay(1350);
-        Assert.Equal("复制", copy.ToolTip);
-        window.Hide();
+        var vm = CreateViewModel(projectCatalog: new SampleProjects());
+        vm.Conversation.SetActiveServant("800100");
+        using var window = new DialogueWindow(vm);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, null, null);
+        var changes = 0; host.Changed += (_, _) => changes++;
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.RefreshProjects), default)).Success);
+        var project = Assert.Single(host.ReadPresentation().Projects);
+        Assert.Equal("project-1", project.Id);
+        Assert.True(changes > 0);
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "project-1"), default)).Success);
+        Assert.Equal("project-1", vm.Conversation.SessionContext.ProjectId);
+        vm.Conversation.SessionContext.TrySetProject("saved-unavailable", "已保存的项目");
+        using var session = new ChatWebSession(vm.Conversation, host);
+        Assert.Equal("已保存的项目", session.ReadSnapshot().Conversation.Project.Label);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "arbitrary-id"), default)).Success);
+        vm.Conversation.IsStreaming = true;
+        Assert.False(host.ReadPresentation().Projects[0].CanSelect);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "project-1"), default)).Success);
+        vm.Conversation.Dispose();
     });
 
     [Fact]
-    public void Copy_feedback_can_be_discarded_during_dispatcher_shutdown() => StaRun(() =>
+    public void Clipboard_uses_real_turn_permissions_and_recovers_from_busy_clipboard() => StaRunner.Run(() =>
     {
-        var (window, copy, _) = CreateCopyWindow(new RecordingClipboard());
-        copy.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        window.Dispatcher.InvokeShutdown();
-        Assert.True(window.Dispatcher.HasShutdownFinished);
-    });
-
-    private static (DialogueWindow, Button, DialogueWindowViewModel) CreateCopyWindow(IClipboardWriter clipboard)
-    {
-        var model = CreateViewModel();
-        var turn = new ConversationTurnViewModel("copy", ChatMessageRole.Assistant, "synthetic reply");
-        model.Conversation.Turns.Add(turn);
-        var window = new DialogueWindow(model, clipboard: clipboard, workspaces: new SampleWorkspaces());
+        var vm = CreateViewModel(); var clipboard = new ClipboardStub();
+        using var window = new DialogueWindow(vm);
+        using var host = new ChatWebHostActions(vm, window, clipboard, null, null, null);
+        vm.Conversation.Turns.Add(new("reply", ChatMessageRole.Assistant, "纯文本消息"));
         window.Show();
-        window.UpdateLayout();
-        var copy = Assert.Single(FindVisualChildren<Button>(window).Where(button =>
-            ReferenceEquals(button.Tag, turn) && System.Windows.Automation.AutomationProperties.GetName(button) == "复制"));
-        return (window, copy, model);
-    }
-
-    private sealed class RecordingClipboard : IClipboardWriter
-    {
-        public bool Fail { get; set; }
-        public int Calls { get; private set; }
-        public void SetText(string text)
-        {
-            Calls++;
-            if (Fail) throw new System.Runtime.InteropServices.ExternalException("Clipboard is busy.");
-        }
-    }
-
-    [Fact]
-    public void Empty_chat_keeps_character_art_in_the_header_and_exposes_only_focus_and_todo_shortcuts()
-    {
-        StaRun(() =>
-        {
-            var panel = new FgoPet.App.Panels.AttachedPanelViewModel(TimeProvider.System);
-            var window = new DialogueWindow(CreateViewModel(), panel: panel, workspaces: Workspaces(new FgoPet.App.Services.TodoApplicationService(new FeedbackTodoRepository(), TimeProvider.System)));
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-
-                var welcome = Assert.IsType<StackPanel>(FindField(window, "Welcome"));
-                Assert.Empty(FindVisualChildren<Image>(welcome));
-                Assert.Single(FindVisualChildren<Image>(window));
-                var focus = Assert.IsType<Button>(FindField(window, "FocusShortcutButton"));
-                var todo = Assert.IsType<Button>(FindField(window, "TodoShortcutButton"));
-                Assert.Equal("开始专注", focus.Content);
-                Assert.Equal("查看待办", todo.Content);
-
-                focus.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus, panel.State);
-
-                window.Show();
-                todo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
-                Assert.Equal(Visibility.Visible, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Welcome_leaves_the_chat_body_when_conversation_content_begins()
-    {
-        StaRun(() =>
-        {
-            var viewModel = CreateViewModel();
-            var window = new DialogueWindow(viewModel);
-            try
-            {
-                window.Show();
-                Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(FindField(window, "Welcome")).Visibility);
-
-                viewModel.Conversation.Turns.Add(new ConversationTurnViewModel(
-                    "assistant", ChatMessageRole.Assistant, "欢迎之后的第一条消息"));
-
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(FindField(window, "Welcome")).Visibility);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Constrained_chat_hides_secondary_welcome_content_and_keeps_a_scrollable_composer()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            try
-            {
-                Assert.Equal(720, window.Width);
-                Assert.Equal(640, window.Height);
-                Assert.Equal(500, window.MinWidth);
-                Assert.Equal(540, window.MinHeight);
-
-                window.Width = window.MinWidth;
-                window.Height = window.MinHeight;
-                window.Show();
-                window.UpdateLayout();
-
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<TextBlock>(FindField(window, "WelcomeSecondaryCopy")).Visibility);
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(FindField(window, "WelcomeShortcuts")).Visibility);
-                var composer = Assert.IsType<Border>(FindField(window, "ComposerBorder"));
-                Assert.True(composer.ActualHeight >= 76, $"Composer height was {composer.ActualHeight:0.##} DIP.");
-                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
-                Assert.Equal(ScrollBarVisibility.Auto, input.VerticalScrollBarVisibility);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Composer_border_uses_the_focus_ring_when_the_input_has_keyboard_focus()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary
-            {
-                Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative),
-            });
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary
-            {
-                Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
-            });
-            try
-            {
-                window.Show();
-                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
-                var composer = Assert.IsType<Border>(FindField(window, "ComposerBorder"));
-                var focusRing = Assert.IsType<SolidColorBrush>(window.FindResource("Focus.Ring"));
-                var controlBorder = Assert.IsType<SolidColorBrush>(window.FindResource("Border.Control"));
-                Assert.NotEqual(controlBorder.Color, focusRing.Color);
-
-                input.Focus();
-                Keyboard.Focus(input);
-                StaRunner.Pump(window.Dispatcher);
-
-                Assert.True(input.IsKeyboardFocusWithin);
-                Assert.Equal(focusRing.Color, Assert.IsType<SolidColorBrush>(composer.BorderBrush).Color);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Wide_chat_keeps_the_reading_column_at_no_more_than_680_dip()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            try
-            {
-                window.Width = 1000;
-                window.Height = 720;
-                window.Show();
-                window.UpdateLayout();
-
-                var readingColumn = Assert.IsType<StackPanel>(FindField(window, "ReadingColumn"));
-                Assert.Equal(680, readingColumn.MaxWidth);
-                Assert.InRange(readingColumn.ActualWidth, 0, 680);
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Service_registration_uses_one_dialogue_window_instance()
-    {
-        StaRun(() =>
-        {
-            using var provider = FgoPet.App.Bootstrap.ServiceRegistration.AddFgoPet(
-                new Microsoft.Extensions.DependencyInjection.ServiceCollection(), []).BuildServiceProvider();
-
-            var first = provider.GetRequiredService<DialogueWindow>();
-            var second = provider.GetRequiredService<DialogueWindow>();
-            var firstViewModel = provider.GetRequiredService<DialogueWindowViewModel>();
-            var secondViewModel = provider.GetRequiredService<DialogueWindowViewModel>();
-
-            Assert.Same(first, second);
-            Assert.Same(firstViewModel, secondViewModel);
-            Assert.Same(firstViewModel.Conversation, secondViewModel.Conversation);
-            first.Close();
-        });
-    }
-
-    [Fact]
-    public void Enter_is_consumed_for_sending_and_the_text_box_keeps_multiline_input()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var window = new DialogueWindow(vm);
-            try
-            {
-                window.Show();
-                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
-                // Enter is handled centrally on the window (so the IME composing guard can
-                // apply) rather than through a KeyBinding on the text box.
-                Assert.Empty(input.InputBindings.OfType<KeyBinding>());
-                Assert.True(input.AcceptsReturn, "Shift+Enter must be able to insert a newline");
-
-                input.Focus();
-                Keyboard.Focus(input);
-                StaRunner.Pump(window.Dispatcher);
-                Assert.True(input.IsKeyboardFocusWithin, "the composer must hold keyboard focus");
-
-                var enter = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Enter)
-                {
-                    RoutedEvent = Keyboard.PreviewKeyDownEvent,
-                };
-                window.RaiseEvent(enter);
-
-                Assert.True(enter.Handled, "Enter must be consumed by the send path");
-            }
-            finally
-            {
-                window.Dispatcher.InvokeShutdown();
-            }
-        });
-    }
-
-    [Fact]
-    public void Project_menu_selects_clears_and_displays_saved_unavailable_project()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel(projectCatalog: new AcceptanceProjectCatalog());
-            var window = new DialogueWindow(vm) { Width = 500, Height = 540 };
-            try
-            {
-                window.Show();
-                StaRunner.Pump(window.Dispatcher);
-                var button = Assert.IsType<Button>(window.FindName("ProjectButton"));
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                StaRunner.Pump(window.Dispatcher);
-                var menu = Assert.IsType<ContextMenu>(button.ContextMenu);
-                var project = menu.Items.OfType<MenuItem>().Single(x => Equals(x.Header, "验收项目"));
-                project.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
-                Assert.Equal("acceptance", vm.Conversation.SessionContext.ProjectId);
-                StaRunner.Pump(window.Dispatcher);
-                Assert.Equal("验收项目", ((TextBlock)button.Content).Text);
-                menu.Items.OfType<MenuItem>().First().RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
-                Assert.Equal("", vm.Conversation.SessionContext.ProjectId);
-                vm.Conversation.SessionContext.TrySetProject("unavailable", "已保存的项目");
-                StaRunner.Pump(window.Dispatcher);
-                Assert.Equal("已保存的项目", ((TextBlock)button.Content).Text);
-                AssertInside((Grid)window.Content, button);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    private sealed class AcceptanceProjectCatalog : IDialogueProjectCatalog
-    {
-        public Task<DialogueProjectCatalogResult> ListAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new DialogueProjectCatalogResult(true, [new("acceptance", "验收项目", "", true)]));
-    }
-
-    private static DialogueWindow CreateWindow() => new(CreateViewModel());
-
-    [Theory]
-    [InlineData("FgoLight", 720, 640)]
-    [InlineData("FgoLight", 500, 540)]
-    [InlineData("ModernGray", 720, 640)]
-    [InlineData("ModernGray", 500, 540)]
-    public void Chat_and_expanded_todo_keep_primary_actions_inside_the_window(string theme, double width, double height)
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            vm.Conversation.Turns.Add(new ConversationTurnViewModel("user", ChatMessageRole.User, "帮我把今天的制作任务拆成三步。"));
-            vm.Conversation.Turns.Add(new ConversationTurnViewModel("assistant", ChatMessageRole.Assistant,
-                "可以，我们把「完成角色制作」拆成三步：\n\n1. 整理需要用到的素材\n2. 检查表情与动作\n3. 录制一段预览并复核\n\n按这个安排加入待办，可以吗？"));
-            var repository = new FeedbackTodoRepository();
-            repository.Save(new FgoPet.Core.Todo.TodoItem("visual-task", "完成角色制作", null,
-                FgoPet.Core.Todo.TodoPriority.Normal, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-                steps: [new("step-1", "整理需要用到的素材", 0, true), new("step-2", "检查表情与动作", 1), new("step-3", "录制一段预览并复核", 2)]));
-            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, workspaces: Workspaces(service)) { Width = width, Height = height };
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/UiFoundation/ThemeTokens.xaml", UriKind.Relative) });
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"/FgoPet.App;component/Themes/{theme}.xaml", UriKind.Relative) });
-            try
-            {
-                window.Show();
-                StaRunner.Pump(window.Dispatcher);
-                window.UpdateLayout();
-                var surface = Assert.IsType<Grid>(window.Content);
-                foreach (var name in new[] { "HistoryButton", "NewConversationButton", "SettingsButton", "SendButton", "InputBox" })
-                    AssertInside(surface, Assert.IsAssignableFrom<FrameworkElement>(window.FindName(name)));
-                CaptureVisual(surface, $"{theme}-{width}-chat");
-
-                ((Button)window.FindName("TasksButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                var workspace = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(((ContentControl)window.FindName("TasksPage")).Content);
-                var row = FindVisualChildren<Expander>((ItemsControl)workspace.FindName("ActiveItems")).Single();
-                row.IsExpanded = true;
-                window.UpdateLayout();
-                AssertInside(surface, (Button)workspace.FindName("AddTaskButton"));
-                foreach (var action in FindVisualChildren<Button>(row).Where(button => button.IsVisible))
-                {
-                    AssertInside(surface, action);
-                    var icon = FindVisualChildren<ContentPresenter>(action).First();
-                    var iconBounds = icon.TransformToAncestor(action).TransformBounds(new Rect(icon.RenderSize));
-                    var clip = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutClip(action);
-                    Assert.True(clip is null || clip.Bounds.Contains(iconBounds), $"Action icon was clipped: {action.Name}, icon={iconBounds}, clip={clip?.Bounds}");
-                }
-                Assert.Equal(3, FindVisualChildren<CheckBox>(row).Count());
-                CaptureVisual(surface, $"{theme}-{width}-todo");
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    private static void AssertInside(FrameworkElement root, FrameworkElement control)
-    {
-        var bounds = control.TransformToAncestor(root).TransformBounds(new Rect(control.RenderSize));
-        Assert.True(control.IsVisible && bounds.Width > 0 && bounds.Height > 0);
-        Assert.True(bounds.Left >= -1 && bounds.Top >= -1 && bounds.Right <= root.ActualWidth + 1 && bounds.Bottom <= root.ActualHeight + 1,
-            $"{control.Name}: {bounds} outside {root.RenderSize}");
-    }
-
-    private static void CaptureVisual(FrameworkElement surface, string name)
-    {
-        var directory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
-        if (string.IsNullOrWhiteSpace(directory)) return;
-        System.IO.Directory.CreateDirectory(directory);
-        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth), (int)Math.Ceiling(surface.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(surface);
-        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-        using var file = System.IO.File.Create(System.IO.Path.Combine(directory, name + ".png"));
-        encoder.Save(file);
-    }
-
-    [Fact]
-    public void Reasoning_toggle_keeps_a_caption_and_reveals_the_reasoning_text()
-    {
-        StaRun(() =>
-        {
-            var vm=CreateViewModel();
-            var window=new DialogueWindow(vm);
-            try
-            {
-                var turn=new ConversationTurnViewModel("reasoning",ChatMessageRole.Assistant,"回答");
-                turn.AppendReasoning("The model is reasoning");
-                turn.IsReasoningExpanded=false;
-                vm.Conversation.Turns.Add(turn);
-                window.Show();
-                StaRunner.Pump(window.Dispatcher);
-
-                var well=FindVisualChildren<Border>(window).Single(border => border.Name=="ReasoningWell");
-                Assert.True(well.IsVisible);
-
-                var toggle=FindVisualChildren<System.Windows.Controls.Primitives.ToggleButton>(window)
-                    .Single(button => button.Name=="ReasoningToggle");
-                Assert.True(toggle.IsVisible);
-                Assert.Contains(FindVisualChildren<TextBlock>(toggle),text => text.Text=="思考");
-
-                var reasoningText=FindVisualChildren<TextBlock>(window)
-                    .Single(text => text.Text=="The model is reasoning");
-                Assert.False(reasoningText.IsVisible);
-
-                toggle.IsChecked=true;
-                window.UpdateLayout();
-                Assert.True(turn.IsReasoningExpanded);
-                Assert.True(reasoningText.IsVisible);
-
-                // Streaming fragments must not be trimmed: English words keep their spaces.
-                Assert.Equal("The model is reasoning",turn.ReasoningText);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Empty_assistant_turn_does_not_render_a_bubble_or_message_actions()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var window = new DialogueWindow(vm);
-            try
-            {
-                vm.Conversation.Turns.Add(new ConversationTurnViewModel("tool", ChatMessageRole.Assistant, string.Empty));
-                window.Show();
-                StaRunner.Pump(window.Dispatcher);
-
-                var body = FindVisualChildren<Border>(window).Single(border => border.Name == "MessageBody");
-                var actions = FindVisualChildren<StackPanel>(window).Single(panel => panel.Name == "MessageActions");
-                Assert.False(body.IsVisible);
-                Assert.False(actions.IsVisible);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Settings_request_is_forwarded_without_replacing_chat_content()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var window = new DialogueWindow(vm);
-            FgoPet.App.Settings.SettingsSection? requested = null;
-            vm.SettingsRequested += section => requested = section;
-            try
-            {
-                vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.Personalization);
-
-                Assert.Equal(FgoPet.App.Settings.SettingsSection.Personalization, requested);
-                Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Legacy_settings_targets_are_forwarded_without_entering_dialogue_context()
-    {
-        var vm = CreateViewModel();
-        FgoPet.App.Settings.SettingsSection? requested = null;
-        vm.SettingsRequested += section => requested = section;
-
-        vm.NavigateTo(MainNavigationTarget.Servant);
-        Assert.Equal(FgoPet.App.Settings.SettingsSection.RolePackages, requested);
-        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-
-        vm.NavigateTo(MainNavigationTarget.MemoryReview);
-        Assert.Equal(FgoPet.App.Settings.SettingsSection.ConversationMemory, requested);
-        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-
-        vm.NavigateTo(MainNavigationTarget.AgentReconciliation);
-        Assert.Equal(FgoPet.App.Settings.SettingsSection.AgentConnection, requested);
-        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-
-        vm.NavigateTo(MainNavigationTarget.CapabilityDetail, selectedId: "todo-1");
-        Assert.Equal(MainNavigationTarget.Schedule, vm.CurrentTarget);
-    }
-
-    [Fact]
-    public void Navigation_replaces_chat_surface_and_preserves_the_draft()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var window = new DialogueWindow(vm, workspaces: new SampleWorkspaces());
-            try
-            {
-                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
-                input.Text = "尚未发送的草稿";
-                vm.NavigateTo(MainNavigationTarget.Schedule);
-                // The todo view replaces the chat body inside the same window.
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
-                Assert.Equal(Visibility.Visible, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
-                vm.NavigateTo(MainNavigationTarget.Companion);
-                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<ContentControl>(FindField(window, "TasksPage")).Visibility);
-                Assert.Equal("尚未发送的草稿", input.Text);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Configuration_request_stays_in_chat_and_preserves_draft()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var window = new DialogueWindow(vm);
-            FgoPet.App.Settings.SettingsSection? requested = null;
-            vm.SettingsRequested += section => requested = section;
-            try
-            {
-                window.Show();
-                var input = Assert.IsType<TextBox>(FindField(window, "InputBox"));
-                input.Text = "打开设置后的草稿";
-
-                vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.ModelConnection);
-                window.UpdateLayout();
-
-                Assert.Equal(FgoPet.App.Settings.SettingsSection.ModelConnection, requested);
-                Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-                Assert.Equal("打开设置后的草稿", input.Text);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Settings_request_does_not_add_dialogue_navigation_history()
-    {
-        var vm = CreateViewModel();
-
-        vm.NavigateToSettings(FgoPet.App.Settings.SettingsSection.ModelConnection);
-
-        Assert.Equal(MainNavigationTarget.Companion, vm.CurrentTarget);
-        Assert.False(vm.NavigateBack());
-    }
-
-    [Fact]
-    public void The_header_keeps_the_full_role_preview_readable_at_narrow_and_regular_widths()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            try
-            {
-                window.Show();
-                Assert.Equal(500, window.MinWidth);
-
-                window.Width = 800;
-                window.UpdateLayout();
-                var avatar = Assert.IsType<Border>(window.FindName("RoleAvatar"));
-                Assert.InRange(avatar.ActualWidth, 48, 56);
-                Assert.Equal(Stretch.Uniform, Assert.IsType<Image>(window.FindName("RoleImage")).Stretch);
-
-                window.Width = 640;
-                window.UpdateLayout();
-                Assert.InRange(avatar.ActualWidth, 40, 48);
-                Assert.True(avatar.TransformToAncestor(window).Transform(new Point()).X > 0);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    [Fact]
-    public void Narrow_history_overlays_without_compressing_the_conversation()
-    {
-        StaRun(() =>
-        {
-            var window = CreateWindow();
-            try
-            {
-                window.Width = 640;
-                window.Show();
-                var button = Assert.IsType<Button>(FindField(window, "HistoryButton"));
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                var drawer = Assert.IsType<Border>(FindField(window, "HistoryDrawer"));
-                Assert.Equal(Visibility.Visible, drawer.Visibility);
-                // The drawer overlays the chat body instead of compressing it.
-                Assert.Equal(Visibility.Visible, Assert.IsType<Grid>(FindField(window, "ChatBody")).Visibility);
-                Assert.Equal(Visibility.Visible, ((FrameworkElement)FindField(window, "Backdrop")!).Visibility);
-
-                var escape = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Escape)
-                {
-                    RoutedEvent = Keyboard.PreviewKeyDownEvent,
-                };
-                window.RaiseEvent(escape);
-
-                Assert.True(escape.Handled, "Escape must close the overlay");
-                Assert.Equal(Visibility.Collapsed, drawer.Visibility);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-
-
-    [Theory]
-    [InlineData("FgoLight.xaml")]
-    [InlineData("ModernGray.xaml")]
-    public void Feedback_workspace_creates_todo_and_preserves_chat_draft(string theme)
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            vm.Conversation.InputText = "保留我的聊天草稿";
-            var repository = new FeedbackTodoRepository();
-            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, workspaces: Workspaces(service));
-            window.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/FgoPet.App;component/Themes/" + theme, UriKind.Relative) });
-            try
-            {
-                window.Show();
-                ((Button)window.FindName("TasksButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(Visibility.Collapsed, ((Grid)window.FindName("ChatBody")).Visibility);
-                Assert.Equal(Visibility.Collapsed, ((Button)window.FindName("Backdrop")).Visibility);
-                var view = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(((ContentControl)window.FindName("TasksPage")).Content);
-                view.BeginAdd();
-                ((TextBox)view.FindName("TitleInput")).Text = "学习 Transformer 架构";
-                ((TextBox)view.FindName("DescriptionInput")).Text = "1. 理解自注意力\n2. 理解多头注意力与位置编码\n3. 阅读一份实现并总结";
-                var save = FindVisualChildren<Button>(view).Single(b => Equals(b.Content, "保存"));
-                save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                view.Refresh();
-                window.UpdateLayout();
-                Assert.Single(repository.List());
-                Assert.Single(((ItemsControl)view.FindName("ActiveItems")).Items);
-                var output = Environment.GetEnvironmentVariable("FGO_FEEDBACK_RENDER_DIR");
-                if (!string.IsNullOrEmpty(output))
-                {
-                    System.IO.Directory.CreateDirectory(output);
-                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
-                    bitmap.Render(window);
-                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-                    using var file = System.IO.File.Create(System.IO.Path.Combine(output, theme + ".png"));
-                    encoder.Save(file);
-                }
-                ((Button)window.FindName("ChatTabButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal("保留我的聊天草稿", vm.Conversation.InputText);
-                Assert.Equal(Visibility.Visible, ((Grid)window.FindName("ChatBody")).Visibility);
-            }
-            finally { window.Hide(); }
-        });
-    }
-
-    [Fact]
-    public void Reentering_todo_tab_regroups_completed_rows_without_restarting_the_window()
-    {
-        StaRun(() =>
-        {
-            var vm = CreateViewModel();
-            var repository = new FeedbackTodoRepository();
-            repository.Save(new FgoPet.Core.Todo.TodoItem(
-                "todo-reenter", "重新进入后应归档", null,
-                FgoPet.Core.Todo.TodoPriority.Normal, null,
-                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
-            var service = new FgoPet.App.Services.TodoApplicationService(repository, TimeProvider.System);
-            var window = new DialogueWindow(vm, workspaces: Workspaces(service));
-            try
-            {
-                window.Show();
-                ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-                var view = Assert.IsType<FgoPet.App.Views.TodoWorkspaceView>(
-                    ((ContentControl)window.FindName("TasksPage")!).Content);
-                var active = Assert.IsType<ItemsControl>(view.FindName("ActiveItems"));
-                Assert.Single(active.Items);
-
-                var checkbox = FindVisualChildren<CheckBox>(active).Single();
-                checkbox.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
-                window.UpdateLayout();
-                Assert.Single(active.Items);
-                Assert.Empty(Assert.IsType<ItemsControl>(view.FindName("CompletedItems")).Items);
-
-                ((Button)window.FindName("ChatTabButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                ((Button)window.FindName("TasksButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.UpdateLayout();
-
-                Assert.Empty(active.Items);
-                Assert.Single(Assert.IsType<ItemsControl>(view.FindName("CompletedItems")).Items);
-            }
-            finally { window.Hide(); }
-        });
-    }
-
-    private sealed class FeedbackTodoRepository : FgoPet.Core.Todo.ITodoRepository
-    {
-        private readonly Dictionary<string, FgoPet.Core.Todo.TodoItem> _items = new();
-        public void Save(FgoPet.Core.Todo.TodoItem item) => _items[item.Id] = item;
-        public FgoPet.Core.Todo.TodoItem? Get(string id) => _items.GetValueOrDefault(id);
-        public IReadOnlyList<FgoPet.Core.Todo.TodoItem> List(FgoPet.Core.Todo.TodoStatus? status = null) =>
-            _items.Values.Where(x => status is null || x.Status == status).ToArray();
-        public IReadOnlyList<FgoPet.Core.Todo.TodoItem> ListCompletedOn(DateOnly date) => Array.Empty<FgoPet.Core.Todo.TodoItem>();
-        public void Delete(string id) => _items.Remove(id);
-    }
-
-    [Fact]
-    public void History_load_more_button_uses_the_paged_query_and_hides_when_exhausted() => StaRun(() =>
-    {
-        var query = new TwoPageHistory();
-        var model = CreateViewModel(query);
-        model.Conversation.SetActiveServant("800100");
-        var window = new DialogueWindow(model);
-        try
-        {
-            window.Show();
-            ((Button)window.FindName("HistoryButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            window.UpdateLayout();
-            var more = Assert.Single(FindVisualChildren<Button>(window).Where(button => Equals(button.Content, "加载更多")));
-            Assert.True(more.IsVisible);
-            Assert.Equal(50, model.Conversation.History.Count);
-            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(more);
-            ((System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke)).Invoke();
-            StaRunner.Pump();
-            window.UpdateLayout();
-            Assert.Equal(51, model.Conversation.History.Count);
-            Assert.False(more.IsVisible);
-            Assert.True(query.SawCursor);
-        }
-        finally { window.Hide(); }
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.CopyTurn, "reply"), default)).Success);
+        Assert.Equal("纯文本消息", clipboard.Text);
+        clipboard.Throw = true;
+        Assert.Equal("CHAT_CLIPBOARD_UNAVAILABLE", Complete(host.HandleAsync(new(ChatWebHostAction.CopyTurn, "reply"), default)).ErrorCode);
+        vm.Conversation.Turns.Add(new("reply", ChatMessageRole.Assistant, "重复目标"));
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.CopyTurn, "reply"), default)).Success);
+        window.Hide(); clipboard.Throw = false;
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.CopyTurn, "reply"), default)).Success);
+        vm.Conversation.Dispose();
     });
 
-    private sealed class TwoPageHistory : IConversationHistoryQuery
+    [Fact]
+    public void Settings_requests_keep_the_chat_surface_and_unsent_draft() => StaRunner.Run(() =>
     {
-        public ConversationHistoryPage ReadPage(ConversationScope scope, int pageSize = 50, ConversationHistoryCursor? before = null) =>
-            ReadPage(scope.ServantId, pageSize, before);
-        public bool SawCursor { get; private set; }
-        public ConversationHistoryPage ReadPage(string servantId, int pageSize = 50, ConversationHistoryCursor? before = null)
-        {
-            SawCursor |= before is not null;
-            var items = Enumerable.Range(before is null ? 1 : 51, before is null ? 50 : 1)
-                .Select(index => new ConversationHistoryEntry("c-" + index, "Synthetic title " + index, DateTimeOffset.UtcNow, false)).ToArray();
-            return new ConversationHistoryPage(items, before is null ? new ConversationHistoryCursor(servantId, "cursor", "c-50") : null);
-        }
-    }
-
-    private static DialogueWindowViewModel CreateViewModel(IConversationHistoryQuery? history = null, IDialogueProjectCatalog? projectCatalog = null)
-    {
-        var settingsStore = new FakeSettingsStore(
-            DialogueSettings.Defaults with
-            {
-                ModelConnection = new FgoPet.Core.Settings.ModelConnectionSettings(
-                    "test", "https://example.test/v1", "test-model"),
-            });
-        var orchestrator = new ConversationOrchestrator(
-            new ThrowingProviderResolver(),
-            new ThrowingContentResolver(),
-            new FgoPet.Infrastructure.Dialogue.SqliteConversationRepository(
-                new FgoPet.Infrastructure.Persistence.RuntimeDatabase(":memory:")),
-            new PromptComposer(),
-            TimeProvider.System,
-            settingsStore);
-        return new DialogueWindowViewModel(new ConversationViewModel(orchestrator, settingsStore, history: history), projectCatalog: projectCatalog);
-    }
+        var vm = CreateViewModel(); vm.Conversation.InputText = "保留草稿";
+        using var window = new DialogueWindow(vm);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, null, null);
+        var content = ((ContentControl)window.FindName("ChatSurface")).Content;
+        var requests = new List<SettingsSection>(); vm.SettingsRequested += requests.Add;
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenPersonalizationSettings), default)).Success);
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenSpeechSettings), default)).Success);
+        vm.Conversation.ErrorText = "请配置模型连接";
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenModelSettings), default)).Success);
+        Assert.Equal(new[] { SettingsSection.Personalization, SettingsSection.Speech, SettingsSection.ModelConnection }, requests);
+        Assert.Same(content, ((ContentControl)window.FindName("ChatSurface")).Content);
+        Assert.Equal("保留草稿", vm.Conversation.InputText);
+        vm.Conversation.Dispose();
+    });
 
     [Fact]
-    public void Workspace_navigation_uses_the_reply_surface_identity_and_keeps_each_surface_state()
+    public void Workspace_navigation_uses_actual_reply_identity_and_keeps_each_surface_state() => StaRunner.Run(() =>
     {
-        StaRun(() =>
-        {
-            var model = CreateViewModel();
-            var catalog = new SampleWorkspaces("sample.notes", "sample.calendar");
-            var reply = new ConversationTurnViewModel("reply", ChatMessageRole.Assistant, "已确认")
-                { CreatedItemId = "event-42", WorkspaceId = "sample.calendar" };
-            model.Conversation.Turns.Add(reply);
-            var window = new DialogueWindow(model, workspaces: catalog);
-            try
-            {
-                window.Show(); window.UpdateLayout();
-                var button = FindVisualChildren<Button>(window).Single(item => ReferenceEquals(item.Tag, reply)
-                    && System.Windows.Automation.AutomationProperties.GetName(item) == "打开工作区");
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Same(catalog.Views["sample.calendar"], ((ContentControl)window.FindName("TasksPage")).Content);
-                Assert.Equal("event-42", catalog.Views["sample.calendar"].LastNavigation?.ItemId);
-                catalog.Views["sample.calendar"].Text = "unsaved calendar state";
-                reply.WorkspaceId = "sample.notes";
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                reply.WorkspaceId = "sample.calendar";
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal("unsaved calendar state", catalog.Views["sample.calendar"].Text);
-                Assert.Equal(2, catalog.Created);
-                reply.WorkspaceId = "missing.workspace";
-                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(2, catalog.Created);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
+        var vm = CreateViewModel(); vm.Conversation.InputText = "草稿";
+        var catalog = new SampleWorkspaces();
+        var owner = new Window { ShowInTaskbar = false, Width = 100, Height = 100 }; owner.Show();
+        using var coordinator = new WorkspaceWindowCoordinator(catalog, () => owner);
+        using var window = new DialogueWindow(vm, workspaces: catalog, workspaceNavigation: coordinator.Open);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, catalog, coordinator.Open);
+        var turn = new ConversationTurnViewModel("reply", ChatMessageRole.Assistant, "已确认")
+            { WorkspaceId = "sample.calendar", CreatedItemId = "event-42" };
+        vm.Conversation.Turns.Add(turn);
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspace, "reply"), default)).Success);
+        Assert.Equal("event-42", catalog.Views["sample.calendar"].Navigation?.ItemId);
+        catalog.Views["sample.calendar"].Text = "未保存的编辑";
+        turn.WorkspaceId = "sample.notes";
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspace, "reply"), default)).Success);
+        turn.WorkspaceId = "sample.calendar";
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspace, "reply"), default)).Success);
+        Assert.Equal("未保存的编辑", catalog.Views["sample.calendar"].Text);
+        Assert.Equal(2, catalog.Created);
+        Assert.Equal("草稿", vm.Conversation.InputText);
+        turn.WorkspaceId = "missing";
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspace, "reply"), default)).Success);
+        Assert.Equal(2, catalog.Created);
+        Assert.Null(window.FindName("TasksPage"));
+        coordinator.Dispose(); owner.Close(); vm.Conversation.Dispose();
+    });
 
     [Fact]
-    public void Missing_workspace_capability_keeps_chat_available_and_disables_workspace_navigation()
+    public void New_workspace_and_legacy_navigation_open_separate_existing_surfaces() => StaRunner.Run(() =>
     {
-        StaRun(() =>
-        {
-            var window = new DialogueWindow(CreateViewModel());
-            try
-            {
-                Assert.False(((Button)window.FindName("TasksButton")).IsEnabled);
-                Assert.False(((Button)window.FindName("TodoShortcutButton")).IsEnabled);
-                Assert.Null(((ContentControl)window.FindName("TasksPage")).Content);
-                Assert.Equal(Visibility.Visible, ((Grid)window.FindName("ChatBody")).Visibility);
-            }
-            finally { window.Dispatcher.InvokeShutdown(); }
-        });
-    }
-
-    private sealed class SampleWorkspaces : FgoPet.UiSdk.IWorkspaceCatalog
-    {
-        public SampleWorkspaces(params string[] ids) => Workspaces = (ids.Length == 0 ? ["sample.workspace"] : ids)
-            .Select(id => new FgoPet.Extensibility.WorkspaceDescriptor(id, id)).ToArray();
-        public IReadOnlyList<FgoPet.Extensibility.WorkspaceDescriptor> Workspaces { get; }
-        public Dictionary<string, SampleSurface> Views { get; } = new();
-        public int Created { get; private set; }
-        public FrameworkElement CreateView(string workspaceId)
-        {
-            Created++;
-            return Views[workspaceId] = new SampleSurface();
-        }
-    }
-    private sealed class SampleSurface : TextBox, FgoPet.UiSdk.IWorkspaceSurface
-    {
-        public FgoPet.UiSdk.WorkspaceNavigation? LastNavigation { get; private set; }
-        public void Navigate(FgoPet.UiSdk.WorkspaceNavigation navigation) => LastNavigation = navigation;
-        public void Dispose() { }
-    }
+        var vm = CreateViewModel(); var catalog = new SampleWorkspaces();
+        var routes = new List<(string Workspace, WorkspaceNavigation Navigation)>();
+        bool Route(string id, WorkspaceNavigation navigation) { routes.Add((id, navigation)); return true; }
+        using var window = new DialogueWindow(vm, workspaces: catalog, workspaceNavigation: Route);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, catalog, Route);
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.NewWorkspaceItem), default)).Success);
+        Assert.Equal(WorkspaceNavigationKind.NewItem, routes[0].Navigation.Kind);
+        vm.NavigateTo(MainNavigationTarget.Schedule, selectedId: "existing-42"); StaRunner.Pump();
+        Assert.Equal(WorkspaceNavigationKind.ExistingItem, routes[^1].Navigation.Kind);
+        Assert.Equal("existing-42", routes[^1].Navigation.ItemId);
+        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspaceOverview), default)).Success);
+        Assert.Equal(WorkspaceNavigationKind.Overview, routes[^1].Navigation.Kind);
+        vm.Conversation.Dispose();
+    });
 
     [Fact]
-    public void Shell_hosts_plugin_content_without_retired_card_resources()
+    public void Missing_capabilities_are_unavailable_without_replacing_chat() => StaRunner.Run(() =>
     {
-        var assemblies = new[] { typeof(DialogueWindow).Assembly, typeof(ConversationViewModel).Assembly,
-            typeof(TodoWorkspaceView).Assembly }.Distinct().ToArray();
-        var keys = assemblies.ToDictionary(assembly => assembly.GetName().Name!, ReadResourceKeys);
-        Assert.Equal("FgoPet.DesktopShell", Assert.Single(keys.Where(pair => pair.Value.Contains("dialogue/dialoguewindow.baml"))).Key);
-        Assert.Equal("FgoPet.Plugin.Todo.Desktop", typeof(TodoWorkspaceView).Assembly.GetName().Name);
-        Assert.All(keys.Values, resources =>
-        {
-            Assert.DoesNotContain("views/todoproposalcard.baml", resources);
-            Assert.DoesNotContain("views/archivedraftcard.baml", resources);
-        });
-    }
+        var vm = CreateViewModel(); using var window = new DialogueWindow(vm);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, null, null);
+        var availability = host.ReadPresentation().Actions!;
+        Assert.False(availability.CanOpenFocus); Assert.False(availability.CanOpenWorkspaceOverview);
+        Assert.False(availability.CanCreateWorkspaceItem);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.OpenWorkspaceOverview), default)).Success);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.OpenFocus), default)).Success);
+        Assert.NotNull(window.FindName("ChatSurface")); vm.Conversation.Dispose();
+    });
 
-    private static HashSet<string> ReadResourceKeys(Assembly assembly)
+    [Fact]
+    public void Surface_disposal_only_detaches_projection_and_keeps_conversation_commands() => StaRunner.Run(() =>
     {
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var name in assembly.GetManifestResourceNames().Where(name => name.EndsWith(".g.resources", StringComparison.Ordinal)))
-        {
-            using var stream = assembly.GetManifestResourceStream(name)!;
-            using var reader = new ResourceReader(stream);
-            var enumerator = reader.GetEnumerator();
-            while (enumerator.MoveNext()) keys.Add((string)enumerator.Key);
-        }
-        return keys;
-    }
+        var vm = CreateViewModel(); vm.Conversation.SetActiveServant("800100"); vm.Conversation.InputText = "保留输入";
+        using var window = new DialogueWindow(vm);
+        using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, null, null);
+        var factory = new ChatWebSurfaceFactory(new ChatWebSessionFactory(vm.Conversation),
+            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "fgopet-chat-structural-" + Guid.NewGuid().ToString("N")));
+        var surface = factory.CreateView(host); surface.Dispose();
+        Assert.Equal(WebSurfaceState.Closed, surface.State);
+        Assert.Equal("保留输入", vm.Conversation.InputText);
+        Assert.True(vm.Conversation.SendCommand.CanExecute(null)); vm.Conversation.Dispose();
+    });
 
-    private static DependencyObject? FindField(DialogueWindow window, string name) =>
-        window.FindName(name) as DependencyObject;
-
-    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    internal static DialogueWindowViewModel CreateViewModel(IConversationHistoryQuery? history = null, IDialogueProjectCatalog? projectCatalog = null)
     {
-        if (root is T match)
-        {
-            yield return match;
-        }
-
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-        {
-            foreach (var child in FindVisualChildren<T>(VisualTreeHelper.GetChild(root, index)))
-            {
-                yield return child;
-            }
-        }
+        var settings = new FakeSettingsStore(DialogueSettings.Defaults with
+        { ModelConnection = new FgoPet.Core.Settings.ModelConnectionSettings("test", "https://example.test/v1", "test-model") });
+        var database = new RuntimeDatabase(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "fgopet-chat-window-" + Guid.NewGuid().ToString("N"), "runtime.sqlite3"), pooling: false);
+        new RuntimeDatabaseMigrator(database).Migrate();
+        var engine = new ConversationOrchestrator(new ThrowingProviderResolver(), new ContentResolver(),
+            new SqliteConversationRepository(database), new PromptComposer(), TimeProvider.System, settings);
+        return new(new ConversationViewModel(engine, settings, history: history), projectCatalog: projectCatalog);
     }
-
+    private static WebSurfaceCommandResult Complete(ValueTask<WebSurfaceCommandResult> result)
+    {
+        var task = result.AsTask();
+        for (var i = 0; !task.IsCompleted && i < 20; i++) StaRunner.Pump();
+        Assert.True(task.IsCompleted, "The synthetic host command must complete without a real provider.");
+        return task.GetAwaiter().GetResult();
+    }
+    private sealed class SampleProjects : IDialogueProjectCatalog
+    { public Task<DialogueProjectCatalogResult> ListAsync(CancellationToken cancellationToken = default) => Task.FromResult(new DialogueProjectCatalogResult(true, [new("project-1", "验收项目", "", true)])); }
+    private sealed class ClipboardStub : IClipboardWriter
+    { public string? Text; public bool Throw; public void SetText(string text) { if (Throw) throw new ExternalException(); Text = text; } }
     private sealed class FakeSettingsStore(DialogueSettings initial) : IDialogueSettingsStore
-    {
-        public DialogueSettings Load() => initial;
-        public void Save(DialogueSettings settings) { }
-    }
-
-    private sealed class TestCredentials : FgoPet.Infrastructure.Secrets.ICredentialStore, FgoPet.Infrastructure.Secrets.ICredentialReader
-    {
-        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(false);
-        public Task DeleteAsync(string target, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
-    }
+    { public DialogueSettings Load() => initial; public void Save(DialogueSettings settings) { } }
     private sealed class ThrowingProviderResolver : IChatProviderResolver
+    { public IChatProvider Resolve() => throw new FgoPet.Infrastructure.Providers.ProviderRequestException(FgoPet.Infrastructure.Providers.ProviderFailureCategory.Configuration, "未配置。"); }
+    private sealed class ContentResolver : IConversationContentResolver
     {
-        public IChatProvider Resolve() =>
-            throw new FgoPet.Infrastructure.Providers.ProviderRequestException(
-                FgoPet.Infrastructure.Providers.ProviderFailureCategory.Configuration, "未配置。");
+        public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) => Task.FromResult(new ContentBinding(
+            new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty), null,
+            Array.Empty<KnowledgeEntry>(), Array.Empty<string>(), string.Empty, string.Empty));
     }
-
-    private sealed class ThrowingContentResolver : IConversationContentResolver
+    private sealed class SampleWorkspaces : IWorkspaceCatalog
     {
-        public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) =>
-            Task.FromResult(new ContentBinding(
-                new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty),
-                null,
-                Array.Empty<KnowledgeEntry>(),
-                Array.Empty<string>(),
-                string.Empty,
-                string.Empty));
+        public IReadOnlyList<FgoPet.Extensibility.WorkspaceDescriptor> Workspaces { get; } = [new("sample.calendar", "日历"), new("sample.notes", "笔记")];
+        public Dictionary<string, SampleSurface> Views { get; } = new(); public int Created;
+        public FrameworkElement CreateView(string id) { Created++; return Views[id] = new SampleSurface(); }
     }
-
-    private static FgoPet.UiSdk.IWorkspaceCatalog Workspaces(FgoPet.App.Services.TodoApplicationService service)
-    {
-        var core = new FgoPet.Plugin.Todo.TodoPlugin(new TodoProposalService(service));
-        var plugin = new FgoPet.Plugin.Todo.Desktop.TodoDesktopPlugin(core, service);
-        var catalog = FgoPet.Extensibility.PluginCatalog.Create([plugin]);
-        var runtime = new FgoPet.Extensibility.PluginRuntime(catalog);
-        Assert.True(runtime.StartAsync(default).GetAwaiter().GetResult().Succeeded);
-        return new FgoPet.UiSdk.WorkspaceCatalog(catalog, runtime, [plugin]);
-    }
-    private static void StaRun(Action action) => StaRunner.Run(action);
+    private sealed class SampleSurface : TextBox, IWorkspaceSurface
+    { public WorkspaceNavigation? Navigation; public void Navigate(WorkspaceNavigation navigation) => Navigation = navigation; public void Dispose() { } }
 }

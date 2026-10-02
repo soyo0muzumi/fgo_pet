@@ -17,13 +17,20 @@ public sealed class WorkspaceWindowCoordinator : IWorkspaceLauncher, IDisposable
         _owner = owner ?? throw new ArgumentNullException(nameof(owner));
     }
 
-    public bool Open(string workspaceId)
+    public bool Open(string workspaceId) => Open(workspaceId, new(WorkspaceNavigationKind.Overview));
+
+    public bool Open(string workspaceId, WorkspaceNavigation navigation)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_windows.TryGetValue(workspaceId, out var existing))
         {
-            existing.Window.Activate();
-            return true;
+            try
+            {
+                if (existing.View is IWorkspaceSurface surface) surface.Navigate(navigation);
+                existing.Window.Activate();
+                return true;
+            }
+            catch (Exception) { return false; }
         }
         var descriptor = _catalog.Workspaces.FirstOrDefault(item => item.Id == workspaceId);
         if (descriptor is null) return false;
@@ -47,7 +54,7 @@ public sealed class WorkspaceWindowCoordinator : IWorkspaceLauncher, IDisposable
             _windows.Add(workspaceId, (window, view));
             window.Show();
             if (view is IWorkspaceSurface surface)
-                surface.Navigate(new WorkspaceNavigation(WorkspaceNavigationKind.Overview));
+                surface.Navigate(navigation);
             return true;
         }
         catch (Exception)

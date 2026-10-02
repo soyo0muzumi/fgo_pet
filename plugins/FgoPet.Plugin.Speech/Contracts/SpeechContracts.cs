@@ -5,7 +5,6 @@ namespace FgoPet.Core.Speech;
 public enum SpeechProviderKind
 {
     OpenAiCompatible,
-    GptSoVits,
     IndexTts,
 }
 
@@ -66,11 +65,6 @@ public sealed record SpeechConnectionSettings
     public string OpenAiModel { get; init; } = "gpt-4o-mini-tts";
     public string OpenAiVoice { get; init; } = "alloy";
     public string OpenAiCredentialTarget { get; init; } = "fgo-pet/speech/openai";
-    public string GptSoVitsBaseUrl { get; init; } = "http://127.0.0.1:9880";
-    public string GptSoVitsReferenceAudioPath { get; init; } = string.Empty;
-    public string GptSoVitsPromptText { get; init; } = string.Empty;
-    public string GptSoVitsLanguage { get; init; } = "zh";
-    public string GptSoVitsPromptLanguage { get; init; } = "zh";
     public string IndexTtsBaseUrl { get; init; } = "http://127.0.0.1:7860";
     public string IndexTtsVoiceId { get; init; } = string.Empty;
     public IReadOnlyList<ReferenceVoice> IndexTtsVoices { get; init; } = Array.Empty<ReferenceVoice>();
@@ -95,11 +89,6 @@ public sealed record SpeechConnectionSettings
         OpenAiModel = Bounded(OpenAiModel, Defaults.OpenAiModel, 128),
         OpenAiVoice = Bounded(OpenAiVoice, Defaults.OpenAiVoice, 128),
         OpenAiCredentialTarget = Bounded(OpenAiCredentialTarget, Defaults.OpenAiCredentialTarget, 256),
-        GptSoVitsBaseUrl = Bounded(GptSoVitsBaseUrl, Defaults.GptSoVitsBaseUrl, 512),
-        GptSoVitsReferenceAudioPath = Bounded(GptSoVitsReferenceAudioPath, string.Empty, 512),
-        GptSoVitsPromptText = Bounded(GptSoVitsPromptText, string.Empty, 1_000),
-        GptSoVitsLanguage = Bounded(GptSoVitsLanguage, Defaults.GptSoVitsLanguage, 32),
-        GptSoVitsPromptLanguage = Bounded(GptSoVitsPromptLanguage, Defaults.GptSoVitsPromptLanguage, 32),
         AutoReadLimit = Math.Clamp(AutoReadLimit <= 0 ? 300 : AutoReadLimit, 1, 300),
         Rate = Math.Clamp(double.IsFinite(Rate) ? Rate : 1.0, 0.5, 2.0),
         Volume = Math.Clamp(double.IsFinite(Volume) ? Volume : 1.0, 0.0, 1.0),
@@ -127,14 +116,6 @@ public sealed record SpeechConnectionSettings
                 SpeechProviderKind.IndexTts => new SpeechSynthesisRequest(
                     "试听", settings.Provider, new Uri(settings.IndexTtsBaseUrl, UriKind.Absolute),
                     referenceAudioPath: GetIndexTtsReferenceAudioPath(settings)),
-                SpeechProviderKind.GptSoVits => new SpeechSynthesisRequest(
-                    "试听",
-                    settings.Provider,
-                    new Uri(settings.GptSoVitsBaseUrl, UriKind.Absolute),
-                    language: settings.GptSoVitsLanguage,
-                    referenceAudioPath: settings.GptSoVitsReferenceAudioPath,
-                    promptText: settings.GptSoVitsPromptText,
-                    promptLanguage: settings.GptSoVitsPromptLanguage),
                 _ => throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "未知语音服务。"),
             };
         }

@@ -1,0 +1,115 @@
+/* 数据与隐私页。颜色一律取自 root.css 语义变量，不硬编码具体色值，亮色与深色共用同一份规则。 */
+
+/* [hidden] 兜底：.pp-card / .pp-confirm 自带 display，会覆盖 hidden 的默认 display:none。 */
+.pp-page [hidden] { display: none !important; }
+
+.pp-page {
+  display: grid;
+  gap: 14px;
+  color: var(--text);
+}
+
+.pp-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  align-content: start;
+}
+
+.pp-card h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pp-danger-title { color: var(--danger); }
+
+.pp-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.pp-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.pp-status:empty { display: none; }
+
+.pp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: start;
+}
+
+/* 按钮四边等宽描边；强调语义只用描边/填充色表达，不用左侧粗条
+   （inset 阴影画竖条是直角矩形，会在圆角处与边框叠成深色块，且吃掉内边距）。 */
+.pp-button {
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.pp-button:hover:not(:disabled) { border-color: var(--accent); }
+.pp-button:disabled { opacity: .55; cursor: not-allowed; }
+
+.pp-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pp-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.pp-danger { border-color: var(--danger); color: var(--danger); }
+.pp-danger:hover:not(:disabled) { background: var(--danger); color: var(--on-accent); }
+
+.pp-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+
+.pp-confirm p {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.pp-error {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .pp-page { gap: 12px; }
+  .pp-card { padding: 12px; }
+  .pp-button { padding: 6px 10px; font-size: 12px; }
+}

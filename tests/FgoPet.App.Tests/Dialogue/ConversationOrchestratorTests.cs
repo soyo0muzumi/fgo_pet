@@ -147,7 +147,9 @@ public sealed class ConversationOrchestratorTests : IDisposable
             Connection = new SpeechConnectionSettings
             {
                 Enabled = true,
-                Provider = SpeechProviderKind.GptSoVits,
+                Provider = SpeechProviderKind.IndexTts,
+                IndexTtsVoiceId = "voice-1",
+                IndexTtsVoices = new[] { new ReferenceVoice("voice-1", "Voice One", "C:/voices/voice-1.wav") },
                 AutoReadEnabled = true,
             },
         });
@@ -180,7 +182,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
             Connection = new SpeechConnectionSettings
             {
                 Enabled = true,
-                Provider = SpeechProviderKind.GptSoVits,
+                Provider = SpeechProviderKind.IndexTts,
                 AutoReadEnabled = true,
                 DoNotDisturb = true,
             },
@@ -1193,7 +1195,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
     }
     private sealed class RecordingSpeechSynthesizer : ISpeechSynthesizer
     {
-        public SpeechProviderKind Provider => SpeechProviderKind.GptSoVits;
+        public SpeechProviderKind Provider => SpeechProviderKind.IndexTts;
         public string? LastText { get; private set; }
 
         public Task<SpeechSynthesisResult> SynthesizeAsync(

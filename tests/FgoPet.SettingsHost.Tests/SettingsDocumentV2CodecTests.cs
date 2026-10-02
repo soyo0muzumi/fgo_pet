@@ -101,11 +101,6 @@ public sealed class SettingsDocumentV2CodecTests
         Assert.Equal("gpt-4o-mini-tts", speech.OpenAiModel);
         Assert.Equal("alloy", speech.OpenAiVoice);
         Assert.Equal("fgo-pet/speech/openai", speech.OpenAiCredentialTarget);
-        Assert.Equal("http://127.0.0.1:9880", speech.GptSoVitsBaseUrl);
-        Assert.Equal("", speech.GptSoVitsReferenceAudioPath);
-        Assert.Equal("", speech.GptSoVitsPromptText);
-        Assert.Equal("zh", speech.GptSoVitsLanguage);
-        Assert.Equal("zh", speech.GptSoVitsPromptLanguage);
         Assert.True(speech.AutoReadEnabled);
         Assert.Equal(240, speech.AutoReadLimit);
         Assert.Equal(1.1, speech.Rate);
@@ -176,11 +171,6 @@ public sealed class SettingsDocumentV2CodecTests
         Assert.Equal("gpt-4o-mini-tts", speech.OpenAiModel);
         Assert.Equal("alloy", speech.OpenAiVoice);
         Assert.Equal("fgo-pet/speech/openai", speech.OpenAiCredentialTarget);
-        Assert.Equal("http://127.0.0.1:9880", speech.GptSoVitsBaseUrl);
-        Assert.Equal(string.Empty, speech.GptSoVitsReferenceAudioPath);
-        Assert.Equal(string.Empty, speech.GptSoVitsPromptText);
-        Assert.Equal("zh", speech.GptSoVitsLanguage);
-        Assert.Equal("zh", speech.GptSoVitsPromptLanguage);
         Assert.Equal("http://127.0.0.1:7860", speech.IndexTtsBaseUrl);
         Assert.Equal(string.Empty, speech.IndexTtsVoiceId);
         Assert.Empty(speech.IndexTtsVoices);
@@ -212,11 +202,35 @@ public sealed class SettingsDocumentV2CodecTests
     }
 
     [Theory]
-    [InlineData("{\"schema_version\":2,\"speech_connection\":{\"enabled\":true,\"provider\":\"unknown\"}}")]
     [InlineData("{\"schema_version\":2,\"agent_connection\":{\"enabled\":true,\"project_allowlist\":{\"codex\":[{\"target_id\":\"\",\"display_name\":\"Fixture\"}]}}}")]
     public void Rejects_invalid_owned_section_values(string json)
     {
         Assert.Throws<JsonException>(() => new SettingsDocumentV2Codec().Deserialize(json));
+    }
+
+    [Theory]
+    [InlineData("GptSoVits")]
+    [InlineData("TotallyUnknownProvider")]
+    public void Deserialize_unknown_speech_provider_falls_back_to_OpenAiCompatible(string provider)
+    {
+        var json = "{\"schema_version\":2,\"speech_connection\":{\"enabled\":true,\"provider\":\"" + provider + "\"}}";
+        var snapshot = new SettingsDocumentV2Codec().Deserialize(json);
+
+        Assert.Equal(SpeechProviderKind.OpenAiCompatible, snapshot.Speech.Connection.Provider);
+    }
+
+    [Theory]
+    [InlineData(SpeechProviderKind.OpenAiCompatible)]
+    [InlineData(SpeechProviderKind.IndexTts)]
+    public void Known_speech_provider_round_trips_through_serialization(SpeechProviderKind kind)
+    {
+        var codec = new SettingsDocumentV2Codec();
+        var json = "{\"schema_version\":2,\"speech_connection\":{\"enabled\":true,\"provider\":\"" + kind + "\"}}";
+        var first = codec.Deserialize(json);
+        var serialized = codec.Serialize(first);
+
+        Assert.Contains("\"provider\":\"" + kind + "\"", serialized);
+        Assert.Equal(kind, codec.Deserialize(serialized).Speech.Connection.Provider);
     }
 
     private static string Fixture(string name) =>
@@ -267,11 +281,6 @@ public sealed class SettingsDocumentV2CodecTests
         Assert.Equal(expectedSpeech.OpenAiModel, actualSpeech.OpenAiModel);
         Assert.Equal(expectedSpeech.OpenAiVoice, actualSpeech.OpenAiVoice);
         Assert.Equal(expectedSpeech.OpenAiCredentialTarget, actualSpeech.OpenAiCredentialTarget);
-        Assert.Equal(expectedSpeech.GptSoVitsBaseUrl, actualSpeech.GptSoVitsBaseUrl);
-        Assert.Equal(expectedSpeech.GptSoVitsReferenceAudioPath, actualSpeech.GptSoVitsReferenceAudioPath);
-        Assert.Equal(expectedSpeech.GptSoVitsPromptText, actualSpeech.GptSoVitsPromptText);
-        Assert.Equal(expectedSpeech.GptSoVitsLanguage, actualSpeech.GptSoVitsLanguage);
-        Assert.Equal(expectedSpeech.GptSoVitsPromptLanguage, actualSpeech.GptSoVitsPromptLanguage);
         Assert.Equal(expectedSpeech.IndexTtsBaseUrl, actualSpeech.IndexTtsBaseUrl);
         Assert.Equal(expectedSpeech.IndexTtsVoiceId, actualSpeech.IndexTtsVoiceId);
         Assert.Equal(expectedSpeech.IndexTtsVoices, actualSpeech.IndexTtsVoices);

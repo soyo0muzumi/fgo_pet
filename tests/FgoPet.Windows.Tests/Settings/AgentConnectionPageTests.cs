@@ -6,7 +6,6 @@ using System.Windows.Media;
 using FgoPet.App.Bootstrap;
 using FgoPet.App.ViewModels;
 using FgoPet.App.Views;
-using FgoPet.App.Views.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Infrastructure.Agents;
 using FgoPet.Work.Execution.Settings;
@@ -19,7 +18,7 @@ namespace FgoPet.Windows.Tests.Settings;
 public sealed class AgentConnectionPageTests
 {
     [Fact]
-    public void Production_services_resolve_and_existing_page_renders_without_starting_runtime()
+    public void Production_settings_owner_resolves_without_starting_runtime()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -39,43 +38,14 @@ public sealed class AgentConnectionPageTests
                 viewModel.ApprovedSources.Add(new AgentApprovedSourceViewModel(new AgentApprovedSource("codex", "instance-approved",
                     "Approved Codex", "1", false, ["project-1", "unresolved-secret"], false)));
                 WaitForCompletion(viewModel.RefreshTargetsAsync());
-                var page = provider.GetRequiredService<AgentConnectionSettingsView>();
-                Assert.Same(viewModel, page.DataContext);
                 Assert.True(viewModel.IsAdministrationAvailable);
                 Assert.False(viewModel.Enabled);
                 Assert.Equal(AgentRelayConnectionState.Disabled, provider.GetRequiredService<IAgentRelayRuntime>().Current.State);
-                page.Resources.MergedDictionaries.Add(new ResourceDictionary
-                { Source = new Uri("/FgoPet.App;component/Themes/ModernGray.xaml", UriKind.Relative) });
-                page.Measure(new Size(620, 800));
-                page.Arrange(new Rect(0, 0, 620, 800));
-                page.UpdateLayout();
-                var buttons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
-                Assert.Contains("开始检测", buttons);
-                Assert.Contains("测试连接", buttons);
-                Assert.Contains("批准", buttons);
-                Assert.Contains("保存权限", buttons);
-                Assert.Contains("撤销授权", buttons);
-                Assert.Contains("重新配对", buttons);
-                Assert.Contains(Descendants(page).OfType<CheckBox>(), item => item.Content?.ToString() == "我确认仅允许所选项目访问此来源");
-
-                var advanced = Descendants(page).OfType<Expander>().Single(item => item.Header?.ToString() == "高级诊断与维护");
-                Assert.False(advanced.IsExpanded);
-                advanced.IsExpanded = true;
-                page.UpdateLayout();
-                var advancedButtons = Descendants(page).OfType<Button>().Select(button => button.Content?.ToString()).ToArray();
-                Assert.Contains("保存总开关", advancedButtons);
-                Assert.Contains("刷新项目", advancedButtons);
-                Assert.Contains("复制诊断信息", advancedButtons);
-                var textBlocks = Descendants(page).OfType<TextBlock>().Select(item => item.Text).ToArray();
-                Assert.Contains("Project A", textBlocks);
-                Assert.Contains("（只读）", textBlocks);
-                Assert.Contains("已有项目授权暂无法匹配，仍会保留；如需删除请使用下方明确操作。", textBlocks);
-                Assert.DoesNotContain("允许的项目 ID", textBlocks);
-                Assert.DoesNotContain("unresolved-secret", textBlocks);
-                Assert.Empty(Descendants(page).OfType<TextBox>());
-                Assert.DoesNotContain(Descendants(page).OfType<Button>(), button =>
-                    button.Content?.ToString() is "归档安全候选" or "继续归档" or "清除全部 Agent Todo 数据");
-                Assert.False(double.IsNaN(page.DesiredSize.Height));
+                var source = Assert.Single(viewModel.ApprovedSources);
+                Assert.True(source.HasUnresolvedTargets);
+                Assert.DoesNotContain("unresolved-secret", viewModel.BuildDiagnosticText());
+                Assert.DoesNotContain(provider.GetServices<FgoPet.UiSdk.ISettingsWebPage>(),
+                    owner => owner.SettingsPageId == "AgentConnection");
             }
             catch (Exception error) { failure = error; }
             finally

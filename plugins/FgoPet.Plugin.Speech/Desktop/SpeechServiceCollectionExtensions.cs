@@ -17,10 +17,13 @@ public static class SpeechServiceCollectionExtensions
         services.AddSingleton(provider => new SpeechConnectionViewModel(
             provider.GetRequiredService<ISpeechSettingsStore>(), provider.GetRequiredService<ICredentialStore>(),
             provider.GetRequiredService<SpeechPlaybackCoordinator>(), voicesDirectory));
-        services.AddSingleton<SpeechConnectionPage>();
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            "Speech", _ => provider.GetRequiredService<SpeechConnectionPage>(), "语音朗读", "选择角色的声音，调整朗读与播放偏好。",
+            "Speech", _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"), "语音朗读", "选择角色的声音，调整朗读与播放偏好。",
             "能力", ["语音", "朗读", "声音"], 120));
+        services.AddSingleton<ISpeechVoiceFilePicker, WpfSpeechVoiceFilePicker>();
+        services.AddSingleton<ISettingsWebPage>(provider => new SpeechWebPage(
+            provider.GetRequiredService<SpeechConnectionViewModel>(),
+            provider.GetRequiredService<ISpeechVoiceFilePicker>()));
         return services;
     }
 

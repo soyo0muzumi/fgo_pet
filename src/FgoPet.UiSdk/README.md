@@ -12,6 +12,8 @@ The consumed legacy `ISettingsNavigator` and `PackageDetailRoute` publish presen
 
 Transient surfaces are registered by ID through `ITransientSurfaceViewFactory`; owners still return a `FrameworkElement`. `WebView2SurfaceHost` restricts local navigation and accepts only declared typed commands. The shell owns the separate transient window and its lifetime, and no feature receives a generic host-object bridge.
 
+`ISettingsWebPage` contributes a local Settings page module and named commands with catalog metadata supplied through the existing factory contract. Built-in page factories carry metadata only and reject legacy CreateView calls with SETTINGS_USE_WEB_ROOT; the Settings window uses Web modules. The published factory contract remains available to external content consumers. Mutable owners create an independent handler per root host. Asynchronous handlers must honor the supplied cancellation token before committing; navigation and host closure cancel pending page work. Catalog metadata and feature state remain with their existing owners.
+
 Dependencies: Extensibility, Platform.Contracts and published Kernel geometry/portrait contracts, plus WPF/framework libraries and the existing CommunityToolkit command contract. No feature implementation or desktop-host dependency.
 
 Validation: shared control/theme, generic content replacement, portrait/window placement and disposal cases in Windows.Tests; settings coordinator cases in SettingsHost.Tests; the evaluated architecture gate.

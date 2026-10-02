@@ -29,11 +29,14 @@
     <Compile Include="Desktop\PackageDiagnosticViewModel.cs">
       <Link>modules\character\Desktop\PackageDiagnosticViewModel.cs</Link>
     </Compile>
-    <Page Include="Desktop\PersonalizationPage.xaml">
-      <Link>Settings\PersonalizationPage.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\PersonalizationPage.xaml.cs">
-      <Link>modules\character\Desktop\PersonalizationPage.xaml.cs</Link>
+    <Compile Include="Desktop\PersonalizationWebPage.cs">
+      <Link>modules\character\Desktop\PersonalizationWebPage.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\ThemeWebPage.cs">
+      <Link>modules\character\Desktop\ThemeWebPage.cs</Link>
+    </Compile>
+    <Compile Include="Desktop\RolePackagesWebPage.cs">
+      <Link>modules\character\Desktop\RolePackagesWebPage.cs</Link>
     </Compile>
     <Compile Include="Desktop\PersonalizationViewModel.cs">
       <Link>modules\character\Desktop\PersonalizationViewModel.cs</Link>
@@ -41,20 +44,8 @@
     <Compile Include="Desktop\RecentServantSwitcherViewModel.cs">
       <Link>modules\character\Desktop\RecentServantSwitcherViewModel.cs</Link>
     </Compile>
-    <Page Include="Desktop\RolePackageDetailPage.xaml">
-      <Link>Settings\RolePackageDetailPage.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\RolePackageDetailPage.xaml.cs">
-      <Link>modules\character\Desktop\RolePackageDetailPage.xaml.cs</Link>
-    </Compile>
     <Compile Include="Desktop\RolePackageDetailViewModel.cs">
       <Link>modules\character\Desktop\RolePackageDetailViewModel.cs</Link>
-    </Compile>
-    <Page Include="Desktop\RolePackagesPage.xaml">
-      <Link>Settings\RolePackagesPage.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\RolePackagesPage.xaml.cs">
-      <Link>modules\character\Desktop\RolePackagesPage.xaml.cs</Link>
     </Compile>
     <Compile Include="Desktop\ServantAppearanceItemViewModel.cs">
       <Link>modules\character\Desktop\ServantAppearanceItemViewModel.cs</Link>
@@ -65,12 +56,32 @@
     <Compile Include="Desktop\ServantLibraryViewModel.cs">
       <Link>modules\character\Desktop\ServantLibraryViewModel.cs</Link>
     </Compile>
-    <Page Include="Desktop\ThemePage.xaml">
-      <Link>Settings\ThemePage.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\ThemePage.xaml.cs">
-      <Link>modules\character\Desktop\ThemePage.xaml.cs</Link>
-    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Desktop\ui\settings\personalization\personalization.js">
+      <Link>Desktop\ui\settings\root\pages\personalization.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\personalization\personalization.css">
+      <Link>Desktop\ui\settings\root\pages\personalization.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\theme\theme.js">
+      <Link>Desktop\ui\settings\root\pages\theme.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\theme\theme.css">
+      <Link>Desktop\ui\settings\root\pages\theme.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\role-packages\role-packages.js">
+      <Link>Desktop\ui\settings\root\pages\role-packages.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Desktop\ui\settings\role-packages\role-packages.css">
+      <Link>Desktop\ui\settings\root\pages\role-packages.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />

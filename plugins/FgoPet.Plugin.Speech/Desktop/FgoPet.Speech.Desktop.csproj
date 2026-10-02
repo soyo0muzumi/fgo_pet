@@ -20,4 +20,15 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 前端资源挂载到受控 root/pages；源在 Desktop/ui/settings/speech，Link 必须带 Desktop\ 前缀。 -->
+    <Content Include="ui\settings\speech\speech.js">
+      <Link>Desktop\ui\settings\root\pages\speech.js</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ui\settings\speech\speech.css">
+      <Link>Desktop\ui\settings\root\pages\speech.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

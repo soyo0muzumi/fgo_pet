@@ -1,0 +1,295 @@
+/* 对话与记忆页。颜色一律取自 root.css 语义变量（--surface/--text/--muted/--line/--accent/--danger），
+   不硬编码具体色值，因此亮色与深色主题共用同一份规则。 */
+
+/* [hidden] 兜底：本页的 .cm-card / .cm-confirm 等自带 display，会覆盖 hidden 的默认 display:none，
+   必须显式压制，否则“隐藏”的元素仍会渲染出来（W4 语音页踩过同一个坑）。 */
+.cm-page [hidden] { display: none !important; }
+
+.cm-page {
+  display: grid;
+  gap: 14px;
+  color: var(--text);
+}
+
+.cm-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  /* 并排卡片会被拉伸到等高；若让内部行也分摊剩余高度，行距会被拉大、
+     标签被推离分隔线（右卡内容少时尤其明显）。行高保持自然，余量留在卡片底部。 */
+  align-content: start;
+}
+
+.cm-columns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cm-card-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.cm-card-heading h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cm-card-heading p,
+.cm-status,
+.cm-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 开关行：文案在左、开关在右，同一行内的控件与文字基线对齐。 */
+.cm-switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.cm-switch-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cm-switch-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cm-switch-description {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* 真实 checkbox 保留在 DOM 里（可聚焦、可键盘切换、可被读屏识别），只做视觉隐藏。 */
+.cm-switch-row input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cm-switch-control {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--page);
+  transition: background-color .15s ease, border-color .15s ease;
+}
+
+.cm-switch-control i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform .15s ease, background-color .15s ease;
+}
+
+.cm-switch-row input:checked + .cm-switch-control {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.cm-switch-row input:checked + .cm-switch-control i {
+  transform: translateX(16px);
+  background: var(--on-accent);
+}
+
+.cm-switch-row input:focus-visible + .cm-switch-control {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cm-list {
+  display: grid;
+  gap: 6px;
+  max-height: 230px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.cm-list-button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cm-list-button:hover { border-color: var(--accent); }
+
+.cm-list-item.is-selected .cm-list-button {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.cm-list-button:focus-visible,
+.cm-button:focus-visible,
+.cm-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cm-empty {
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cm-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  /* 行高必须显式收紧：默认继承按钮的 1.45，11px 字下徽标行盒 15.95px + 4px 边距/内边距
+     = 19.95px，会超过正文行盒 18.85px，使带徽标的行比不带徽标的行高出约 1.1px（同一列表内行高不齐）。 */
+  line-height: 1.2;
+}
+
+.cm-badge-muted { border-color: var(--muted); color: var(--muted); }
+.cm-badge-quiet { border-color: var(--line); color: var(--muted); }
+
+.cm-detail {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.cm-detail-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cm-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cm-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.cm-textarea {
+  min-height: 62px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.cm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* 按钮换行成多行时，默认 align-content:stretch 会把 flex line 拉高。
+     本块作为被拉伸的 grid item（卡片等高时），会让按钮比相邻卡片同排按钮高出零点几像素。 */
+  align-content: start;
+}
+
+/* 按钮四边等宽描边；强调语义只用 --accent 描边表达，不使用左侧粗条
+   （inset 阴影画竖条是直角矩形，会在圆角处与边框叠成深色块，且吃掉内边距）。 */
+.cm-button {
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.cm-button:hover:not(:disabled) { border-color: var(--accent); }
+.cm-button:disabled { opacity: .55; cursor: not-allowed; }
+
+.cm-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.cm-danger { border-color: var(--danger); color: var(--danger); }
+.cm-danger:hover:not(:disabled) { background: var(--danger); color: var(--on-accent); }
+
+.cm-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+
+.cm-confirm p {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cm-error {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* 窄窗口：双列塌陷为单列，避免横向溢出。 */
+@media (max-width: 720px) {
+  .cm-columns { grid-template-columns: minmax(0, 1fr); }
+  .cm-page { gap: 12px; }
+  .cm-card { padding: 12px; }
+  .cm-button { padding: 6px 10px; font-size: 12px; }
+}

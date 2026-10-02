@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Threading;
 using FgoPet.App.Servants;
 using FgoPet.Character.Settings;
 using FgoPet.Core.Packs;
@@ -175,9 +176,12 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
     public IAsyncRelayCommand OpenPackFolderCommand { get; }
     public IRelayCommand BackCommand { get; }
 
-    public async Task LoadAsync()
+    public Task LoadAsync() => LoadAsync(CancellationToken.None);
+
+    public async Task LoadAsync(CancellationToken cancellationToken)
     {
         await _library.LoadAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         var card = _library.Servants.FirstOrDefault(candidate => candidate.PackageId == _route.PackageId);
         if (card is null)
         {
@@ -220,13 +224,14 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
 
         if (!_addressLoaded)
         {
-            await LoadAddressAsync();
+            await LoadAddressAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             _addressLoaded = true;
         }
 
         if (_loadedPackageVersion != card.PackageVersion)
         {
-            LoadAndRevalidatePackageSettings(card);
+            LoadAndRevalidatePackageSettings(card, cancellationToken);
             _loadedPackageVersion = card.PackageVersion;
         }
 
@@ -339,16 +344,17 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
     partial void OnDiagnosticChanged(PackageDiagnosticViewModel? value) =>
         OnPropertyChanged(nameof(IsDiagnosticVisible));
 
-    private async Task LoadAddressAsync()
+    private async Task LoadAddressAsync(CancellationToken cancellationToken)
     {
         var preference = await _preferences.LoadAsync(ServantId);
+        cancellationToken.ThrowIfCancellationRequested();
         UsePackageDefaultAddress = preference.AddressMode == AddressMode.PackageDefault;
         UseCustomAddress = preference.AddressMode == AddressMode.UserDefined;
         CustomAddress = preference.AddressText ?? string.Empty;
         AddressStatus = string.Empty;
     }
 
-    private void LoadAndRevalidatePackageSettings(ServantCardViewModel card)
+    private void LoadAndRevalidatePackageSettings(ServantCardViewModel card, CancellationToken cancellationToken)
     {
         var snapshot = _settings.Load();
         var hasSaved = snapshot.PackageSettings.TryGetValue(card.ServantId, out var savedValues);
@@ -405,6 +411,7 @@ public sealed partial class RolePackageDetailViewModel : ObservableObject
         {
             allPackageSettings[card.ServantId] = normalized;
         }
+        cancellationToken.ThrowIfCancellationRequested();
         _settings.Save(snapshot with { PackageSettings = allPackageSettings });
     }
 

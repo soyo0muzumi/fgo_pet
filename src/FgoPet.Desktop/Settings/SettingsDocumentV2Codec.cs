@@ -181,11 +181,6 @@ internal sealed class SettingsDocumentV2Codec
         [property: JsonPropertyName("openai_model")] string? OpenAiModel,
         [property: JsonPropertyName("openai_voice")] string? OpenAiVoice,
         [property: JsonPropertyName("openai_credential_target")] string? OpenAiCredentialTarget,
-        [property: JsonPropertyName("gpt_sovits_base_url")] string? GptSoVitsBaseUrl,
-        [property: JsonPropertyName("gpt_sovits_reference_audio_path")] string? GptSoVitsReferenceAudioPath,
-        [property: JsonPropertyName("gpt_sovits_prompt_text")] string? GptSoVitsPromptText,
-        [property: JsonPropertyName("gpt_sovits_language")] string? GptSoVitsLanguage,
-        [property: JsonPropertyName("gpt_sovits_prompt_language")] string? GptSoVitsPromptLanguage,
         [property: JsonPropertyName("auto_read_enabled")] bool? AutoReadEnabled,
         [property: JsonPropertyName("auto_read_limit")] int? AutoReadLimit,
         [property: JsonPropertyName("rate")] double? Rate,
@@ -198,11 +193,10 @@ internal sealed class SettingsDocumentV2Codec
 
         public SpeechConnectionSettings ToModel()
         {
-            var provider = string.IsNullOrWhiteSpace(Provider)
-                ? SpeechProviderKind.OpenAiCompatible
-                : Enum.TryParse<SpeechProviderKind>(Provider, ignoreCase: true, out var parsed)
-                    ? parsed
-                    : throw new JsonException("Unknown speech provider.");
+            // 未知 provider（含已移除的旧值）回退到默认，而不是让整个设置文档反序列化失败。
+            var provider = Enum.TryParse<SpeechProviderKind>(Provider, ignoreCase: true, out var parsed)
+                ? parsed
+                : SpeechProviderKind.OpenAiCompatible;
             return new SpeechConnectionSettings
             {
                 Enabled = Enabled,
@@ -215,11 +209,6 @@ internal sealed class SettingsDocumentV2Codec
                 OpenAiModel = OpenAiModel ?? string.Empty,
                 OpenAiVoice = OpenAiVoice ?? string.Empty,
                 OpenAiCredentialTarget = OpenAiCredentialTarget ?? string.Empty,
-                GptSoVitsBaseUrl = GptSoVitsBaseUrl ?? string.Empty,
-                GptSoVitsReferenceAudioPath = GptSoVitsReferenceAudioPath ?? string.Empty,
-                GptSoVitsPromptText = GptSoVitsPromptText ?? string.Empty,
-                GptSoVitsLanguage = GptSoVitsLanguage ?? string.Empty,
-                GptSoVitsPromptLanguage = GptSoVitsPromptLanguage ?? string.Empty,
                 AutoReadEnabled = AutoReadEnabled ?? false,
                 AutoReadLimit = AutoReadLimit ?? 300,
                 Rate = Rate ?? 1.0,
@@ -239,11 +228,6 @@ internal sealed class SettingsDocumentV2Codec
                 normalized.OpenAiModel,
                 normalized.OpenAiVoice,
                 normalized.OpenAiCredentialTarget,
-                normalized.GptSoVitsBaseUrl,
-                sanitizeLocalPaths ? string.Empty : normalized.GptSoVitsReferenceAudioPath,
-                normalized.GptSoVitsPromptText,
-                normalized.GptSoVitsLanguage,
-                normalized.GptSoVitsPromptLanguage,
                 normalized.AutoReadEnabled,
                 normalized.AutoReadLimit,
                 normalized.Rate,

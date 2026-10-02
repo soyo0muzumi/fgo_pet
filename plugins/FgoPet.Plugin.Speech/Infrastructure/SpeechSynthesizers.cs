@@ -9,21 +9,14 @@ namespace FgoPet.Infrastructure.Speech;
 
 internal static class SpeechHttp
 {
-    public static Uri Resolve(Uri endpoint, string resource, bool loopbackOnly)
+    public static Uri Resolve(Uri endpoint, string resource)
     {
         if (endpoint is null || !endpoint.IsAbsoluteUri || endpoint.Scheme is not ("http" or "https"))
         {
             throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "语音服务地址无效。");
         }
 
-        if (loopbackOnly)
-        {
-            if (endpoint.Scheme != Uri.UriSchemeHttp || !endpoint.IsLoopback)
-            {
-                throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "GPT-SoVITS 只允许连接本机 HTTP 服务。");
-            }
-        }
-        else if (endpoint.Scheme == Uri.UriSchemeHttp && !endpoint.IsLoopback)
+        if (endpoint.Scheme == Uri.UriSchemeHttp && !endpoint.IsLoopback)
         {
             throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "非本机语音服务必须使用 HTTPS。");
         }
@@ -91,7 +84,7 @@ public sealed class OpenAiCompatibleSpeechSynthesizer : ISpeechProvider
             throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "语音 provider 与请求不匹配。");
         }
 
-        var endpoint = SpeechHttp.Resolve(request.Endpoint, "audio/speech", loopbackOnly: false);
+        var endpoint = SpeechHttp.Resolve(request.Endpoint, "audio/speech");
         var target = string.IsNullOrWhiteSpace(request.CredentialTarget)
             ? "fgo-pet/speech/openai"
             : request.CredentialTarget;
@@ -109,57 +102,6 @@ public sealed class OpenAiCompatibleSpeechSynthesizer : ISpeechProvider
             input = request.Text,
             voice = string.IsNullOrWhiteSpace(request.Voice) ? "alloy" : request.Voice,
             response_format = "wav",
-        }), Encoding.UTF8, "application/json");
-
-        try
-        {
-            using var response = await _httpClient.SendAsync(
-                httpRequest,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken).ConfigureAwait(false);
-            return await SpeechHttp.ReadWaveAsync(response, cancellationToken).ConfigureAwait(false);
-        }
-        catch (SpeechSynthesisException)
-        {
-            throw;
-        }
-        catch (HttpRequestException error)
-        {
-            throw SpeechHttp.Network(error);
-        }
-    }
-}
-
-public sealed class GptSoVitsSpeechSynthesizer : ISpeechProvider
-{
-    private readonly HttpClient _httpClient;
-
-    public GptSoVitsSpeechSynthesizer(HttpClient httpClient) =>
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-
-    public SpeechProviderKind Provider => SpeechProviderKind.GptSoVits;
-
-    public async Task<SpeechSynthesisResult> SynthesizeAsync(
-        SpeechSynthesisRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Provider != Provider)
-        {
-            throw new SpeechSynthesisException(SpeechFailureCategory.Configuration, "语音 provider 与请求不匹配。");
-        }
-
-        var endpoint = SpeechHttp.Resolve(request.Endpoint, "tts", loopbackOnly: true);
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        httpRequest.Content = new StringContent(JsonSerializer.Serialize(new
-        {
-            text = request.Text,
-            text_lang = string.IsNullOrWhiteSpace(request.Language) ? "zh" : request.Language,
-            ref_audio_path = request.ReferenceAudioPath,
-            prompt_text = request.PromptText,
-            prompt_lang = string.IsNullOrWhiteSpace(request.PromptLanguage) ? request.Language : request.PromptLanguage,
-            media_type = "wav",
-            streaming_mode = false,
         }), Encoding.UTF8, "application/json");
 
         try

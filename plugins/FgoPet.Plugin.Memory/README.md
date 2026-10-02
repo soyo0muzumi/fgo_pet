@@ -52,3 +52,5 @@ Core / App / Infrastructure / Windows 的 memory 相关测试；dialogue↔memor
 ## Validation
 
 Use the Memory Core/Desktop test projects under `tests/`, plus affected application tests and the architecture gate for boundary changes. Privacy, source ownership, generation rotation, and failure/retry behavior must remain covered.
+
+`MemoryWebPage` owns the shared Settings Web module over `MemoryViewModel`. The former ConversationMemoryPage XAML is removed; role context, review, confirmation, and data policies retain their existing owners.

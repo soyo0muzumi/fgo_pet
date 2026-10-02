@@ -70,6 +70,8 @@
     <Page Include="Desktop\DialogueWindow.xaml">
       <Link>Dialogue\DialogueWindow.xaml</Link>
     </Page>
+    <Compile Include="Desktop\ChatWebSurfaceFactory.cs" />
+    <Compile Include="Desktop\ChatWebHostActions.cs" />
     <Compile Include="Desktop\DialogueWindow.xaml.cs">
       <Link>host\DesktopShell\Desktop\DialogueWindow.xaml.cs</Link>
     </Compile>
@@ -104,18 +106,6 @@
     <Compile Include="Desktop\SettingsNavigationItem.cs">
       <Link>host\DesktopShell\Desktop\SettingsNavigationItem.cs</Link>
     </Compile>
-    <Page Include="Desktop\SettingsNavigationView.xaml">
-      <Link>Settings\Views\SettingsNavigationView.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\SettingsNavigationView.xaml.cs">
-      <Link>host\DesktopShell\Desktop\SettingsNavigationView.xaml.cs</Link>
-    </Compile>
-    <Page Include="Desktop\SettingsShellView.xaml">
-      <Link>Settings\Views\SettingsShellView.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\SettingsShellView.xaml.cs">
-      <Link>host\DesktopShell\Desktop\SettingsShellView.xaml.cs</Link>
-    </Compile>
     <Compile Include="Desktop\SettingsViewModel.cs">
       <Link>host\DesktopShell\Desktop\SettingsViewModel.cs</Link>
     </Compile>
@@ -125,16 +115,12 @@
     <Compile Include="Desktop\SettingsWindow.xaml.cs">
       <Link>host\DesktopShell\Desktop\SettingsWindow.xaml.cs</Link>
     </Compile>
-    <Page Include="Desktop\UserProfilePage.xaml">
-      <Link>Settings\UserProfilePage.xaml</Link>
-    </Page>
-    <Compile Include="Desktop\UserProfilePage.xaml.cs">
-      <Link>host\DesktopShell\Desktop\UserProfilePage.xaml.cs</Link>
-    </Compile>
     <Compile Include="Desktop\UserProfileViewModel.cs">
       <Link>host\DesktopShell\Desktop\UserProfileViewModel.cs</Link>
     </Compile>
     <Compile Include="Desktop\UserProfileWebFactory.cs" />
+    <Compile Include="Desktop\SettingsWebRootFactory.cs" />
+    <Content Include="Desktop\ui\settings\root\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\settings\user-profile\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="Infrastructure\DialogueWindowPlacementCoordinator.cs">
       <Link>host\DesktopShell\Infrastructure\DialogueWindowPlacementCoordinator.cs</Link>

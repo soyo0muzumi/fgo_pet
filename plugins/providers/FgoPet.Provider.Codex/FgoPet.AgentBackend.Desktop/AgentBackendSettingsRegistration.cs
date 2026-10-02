@@ -6,7 +6,6 @@ using FgoPet.AgentRuntime;
 using FgoPet.Extensibility;
 using FgoPet.Kernel.Lifecycle;
 using FgoPet.Core.Agents;
-using FgoPet.App.Views.Settings;
 using FgoPet.Infrastructure.Agents;
 using FgoPet.UiSdk;
 using FgoPet.Work.Execution.Settings;
@@ -107,9 +106,8 @@ public static class AgentBackendSettingsRegistration
             provider.GetRequiredService<IAgentRelayAdministration>(),
             provider.GetRequiredService<IAgentRelayRuntime>(),
             provider.GetRequiredService<IAgentTargetCatalog>()));
-        services.AddSingleton<AgentConnectionSettingsView>();
         services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-            "AgentConnection", _ => provider.GetRequiredService<AgentConnectionSettingsView>(), "Agent 连接", "连接你的 Agent，管理可访问的项目。",
+            "AgentConnection", _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"), "Agent 连接", "连接你的 Agent，管理可访问的项目。",
             "能力", ["Agent", "连接", "项目"], 130));
         return services;
     }

@@ -166,7 +166,12 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     partial void OnShowReasoningChanged(bool value)
     {
-        _settings.Save(_settings.Load() with { ShowReasoning = value });
+        // Serialize the read-modify-write of the shared DialogueSettings document so a concurrent
+        // Save (ModelConnection) or another owner writing the same document cannot lose this update.
+        lock (_settings)
+        {
+            _settings.Save(_settings.Load() with { ShowReasoning = value });
+        }
         ShowReasoningChanged?.Invoke(value);
     }
 
@@ -252,7 +257,10 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
                 throw new ProviderRequestException(ProviderFailureCategory.Configuration, "请先输入 API Key。");
             }
 
-            _settings.Save(_settings.Load() with { ModelConnection = connection });
+            lock (_settings)
+            {
+                _settings.Save(_settings.Load() with { ModelConnection = connection });
+            }
             ConnectionSaved?.Invoke(connection);
             StatusText = $"已保存 · {ProviderStatusText} · {ModelStatusText}";
         }

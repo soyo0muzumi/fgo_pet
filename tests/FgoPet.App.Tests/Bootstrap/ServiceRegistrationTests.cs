@@ -55,9 +55,8 @@ public sealed class ServiceRegistrationTests
         Assert.Equal("ModelConnection", Assert.Single(settings.Search("聊天")).Id);
         Assert.Equal(["开始使用", "能力", "管理"], settings.Search(null)
             .Select(page => page.Group).Distinct());
-        Assert.Null(provider.GetService<FgoPet.App.Settings.SpeechConnectionPage>());
-        Assert.Null(provider.GetService<FgoPet.App.Settings.ConversationMemoryPage>());
-        Assert.Null(provider.GetService<FgoPet.App.Views.Settings.AgentConnectionSettingsView>());
+        Assert.DoesNotContain(provider.GetServices<ISettingsWebPage>(), page =>
+            page.SettingsPageId is "Speech" or "ConversationMemory" or "AgentConnection");
         Assert.Null(provider.GetService<FgoPet.App.Services.TodoApplicationService>());
         await provider.GetRequiredService<AppStartup>().StartAsync(["--smoke-test"]);
         Assert.Equal(0, lifetime.ExitCode);
@@ -98,10 +97,10 @@ public sealed class ServiceRegistrationTests
     {
         await using var provider = new ServiceCollection().AddFgoPet([], includeIndexTts: false).BuildServiceProvider();
         var providers = provider.GetServices<FgoPet.Core.Speech.ISpeechProvider>().ToArray();
-        Assert.Equal(2, providers.Length);
+        Assert.Single(providers);
         Assert.DoesNotContain(providers, item => item.Provider == FgoPet.Core.Speech.SpeechProviderKind.IndexTts);
         Assert.Contains(providers, item => item.Provider == FgoPet.Core.Speech.SpeechProviderKind.OpenAiCompatible);
-        Assert.Contains(providers, item => item.Provider == FgoPet.Core.Speech.SpeechProviderKind.GptSoVits);
+        Assert.DoesNotContain(providers, item => item.Provider.ToString() == "GptSoVits");
         Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
         Assert.Contains(provider.GetRequiredService<PluginCatalog>().Plugins, item => item.Manifest.Id == "firstparty.speech");
         await provider.GetRequiredService<PluginRuntime>().StopAsync();

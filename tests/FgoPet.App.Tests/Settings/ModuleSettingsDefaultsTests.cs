@@ -57,11 +57,6 @@ public sealed class ModuleSettingsDefaultsTests
         Assert.Equal("gpt-4o-mini-tts", connection.OpenAiModel);
         Assert.Equal("alloy", connection.OpenAiVoice);
         Assert.Equal("fgo-pet/speech/openai", connection.OpenAiCredentialTarget);
-        Assert.Equal("http://127.0.0.1:9880", connection.GptSoVitsBaseUrl);
-        Assert.Equal(string.Empty, connection.GptSoVitsReferenceAudioPath);
-        Assert.Equal(string.Empty, connection.GptSoVitsPromptText);
-        Assert.Equal("zh", connection.GptSoVitsLanguage);
-        Assert.Equal("zh", connection.GptSoVitsPromptLanguage);
         Assert.Equal("http://127.0.0.1:7860", connection.IndexTtsBaseUrl);
         Assert.Equal(string.Empty, connection.IndexTtsVoiceId);
         Assert.Empty(connection.IndexTtsVoices);

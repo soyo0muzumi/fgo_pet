@@ -45,44 +45,6 @@ public sealed class SpeechSynthesizerTests
         Assert.Equal(12, result.WavBytes.Length);
     }
 
-    [Fact]
-    public async Task GptSoVits_posts_to_local_tts_endpoint_without_remote_http()
-    {
-        Uri? capturedUri = null;
-        string? capturedBody = null;
-        using var client = new HttpClient(new StubHandler(async request =>
-        {
-            capturedUri = request.RequestUri;
-            capturedBody = request.Content is null ? null : await request.Content.ReadAsStringAsync();
-            return WaveResponse();
-        }));
-        var synthesizer = new GptSoVitsSpeechSynthesizer(client);
-
-        var result = await synthesizer.SynthesizeAsync(new SpeechSynthesisRequest(
-            "开始专注。",
-            SpeechProviderKind.GptSoVits,
-            new Uri("http://127.0.0.1:9880"),
-            language: "zh"));
-
-        Assert.Equal("/tts", capturedUri!.AbsolutePath);
-        using var json = JsonDocument.Parse(capturedBody!);
-        Assert.Equal("开始专注。", json.RootElement.GetProperty("text").GetString());
-        Assert.Equal(12, result.WavBytes.Length);
-    }
-
-    [Fact]
-    public async Task GptSoVits_rejects_non_loopback_endpoint()
-    {
-        var synthesizer = new GptSoVitsSpeechSynthesizer(new HttpClient(new StubHandler(_ => Task.FromResult(WaveResponse()))));
-
-        var error = await Assert.ThrowsAsync<SpeechSynthesisException>(() =>
-            synthesizer.SynthesizeAsync(new SpeechSynthesisRequest(
-                "测试",
-                SpeechProviderKind.GptSoVits,
-                new Uri("http://192.0.2.1:9880"))));
-
-        Assert.Equal(SpeechFailureCategory.Configuration, error.Category);
-    }
 
     private static HttpResponseMessage WaveResponse() => new(HttpStatusCode.OK)
     {

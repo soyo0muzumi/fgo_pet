@@ -1,6 +1,5 @@
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using System.Xml.Linq;
 using Xunit;
 
 namespace FgoPet.Architecture.Tests;
@@ -47,23 +46,10 @@ public sealed class DialogueWorkPresentationBoundaryTests
     }
 
     [Fact]
-    public void Dialogue_xaml_does_not_import_Work_or_host_implementation_controls()
+    public void Dialogue_presentation_has_no_legacy_Xaml_controls()
     {
         var desktop = Path.Combine(FindRepositoryRoot(), "plugins", "FgoPet.Plugin.Dialogue", "Desktop");
-        var files = Directory.GetFiles(desktop, "*.xaml", SearchOption.AllDirectories);
-        Assert.NotEmpty(files);
-        foreach (var path in files)
-        {
-            var document = XDocument.Load(path);
-            Assert.NotNull(document.Root);
-            var forbidden = document.Root!.DescendantsAndSelf().Attributes()
-                .Where(attribute => attribute.IsNamespaceDeclaration)
-                .Select(attribute => attribute.Value.Split(';')
-                    .FirstOrDefault(part => part.StartsWith("assembly=", StringComparison.Ordinal)))
-                .Where(part => part is not null && IsForbiddenImplementation(part["assembly=".Length..]))
-                .ToArray();
-            Assert.True(forbidden.Length == 0, $"{path} imports a forbidden implementation control.");
-        }
+        Assert.Empty(Directory.GetFiles(desktop, "*.xaml", SearchOption.AllDirectories));
     }
 
     [Theory]

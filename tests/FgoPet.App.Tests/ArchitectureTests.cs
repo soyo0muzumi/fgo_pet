@@ -64,6 +64,7 @@ public sealed class ArchitectureTests
         var offenders = ProjectFiles()
             .Where(IsOnThisCheckout)
             .Where(path => !Path.GetFileName(path).EndsWith(".Tests.csproj", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !IsTestProject(path))
             .Where(path => !Path.GetFileName(path).Equals("FgoPet.App.csproj", StringComparison.OrdinalIgnoreCase))
             .Where(path => XDocument.Parse(File.ReadAllText(path)).Descendants("ProjectReference")
                 .Any(reference => string.Equals(
@@ -74,6 +75,23 @@ public sealed class ArchitectureTests
             .ToArray();
 
         Assert.Empty(offenders);
+    }
+
+    private static bool IsTestProject(string path) => XDocument.Load(path).Descendants("IsTestProject")
+        .Any(element => string.Equals(element.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+
+    [Fact]
+    public void Explicit_test_project_metadata_is_recognized_even_without_a_tests_filename()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "fgopet-project-" + Guid.NewGuid().ToString("N") + ".csproj");
+        try
+        {
+            File.WriteAllText(path, "<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>");
+            Assert.True(IsTestProject(path));
+            File.WriteAllText(path, "<Project><PropertyGroup><IsTestProject>false</IsTestProject></PropertyGroup></Project>");
+            Assert.False(IsTestProject(path));
+        }
+        finally { File.Delete(path); }
     }
 
     [Fact]

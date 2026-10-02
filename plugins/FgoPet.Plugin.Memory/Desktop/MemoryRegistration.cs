@@ -48,10 +48,11 @@ public static class MemoryRegistration
                 provider.GetRequiredService<MemoryViewModel>(), Dispatcher.CurrentDispatcher));
         if (enabled)
         {
-            services.AddSingleton<ConversationMemoryPage>();
             services.AddSingleton<ISettingsPageViewFactory>(provider => new SettingsPageViewFactory(
-                nameof(SettingsSection.ConversationMemory), _ => provider.GetRequiredService<ConversationMemoryPage>(),
+                nameof(SettingsSection.ConversationMemory), _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"),
                 "对话与记忆", "管理对话和记忆偏好。", "能力", ["对话", "记忆"], 140));
+            services.AddSingleton<ISettingsWebPage>(provider => new MemoryWebPage(
+                provider.GetRequiredService<MemoryViewModel>()));
             services.AddSingleton<IFgoPetPlugin>(provider => new MemoryPlugin(
                 provider.GetRequiredService<IMemoryRecall>(), provider.GetRequiredService<IConversationSourceReader>(),
                 provider.GetRequiredService<IMemoryCandidateSink>(), provider.GetRequiredService<MemoryExtractionQueue>(),

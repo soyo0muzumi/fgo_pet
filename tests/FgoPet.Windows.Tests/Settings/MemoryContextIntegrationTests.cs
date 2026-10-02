@@ -20,7 +20,7 @@ namespace FgoPet.Windows.Tests.Settings;
 public sealed class MemoryContextIntegrationTests
 {
     [Fact]
-    public async Task Memory_empty_surface_displays_role_and_failure_states_and_offers_retry()
+    public async Task Memory_owner_reports_role_and_failure_states_and_offers_retry()
     {
         await StaRunner.RunAsync(async () =>
         {
@@ -31,43 +31,18 @@ public sealed class MemoryContextIntegrationTests
                 (_, _) => fail
                     ? Task.FromException<(IReadOnlyList<FgoPet.Core.Memory.MemoryCandidate>, IReadOnlyList<FgoPet.Core.Memory.StoredMemory>)>(new IOException("synthetic private detail"))
                     : Task.FromResult<(IReadOnlyList<FgoPet.Core.Memory.MemoryCandidate>, IReadOnlyList<FgoPet.Core.Memory.StoredMemory>)>(([], [])));
-            var page = new ConversationMemoryPage(model);
-            page.Resources.MergedDictionaries.Insert(0, new ResourceDictionary
-            {
-                Source = new Uri("/FgoPet.App;component/Themes/FgoLight.xaml", UriKind.Relative),
-            });
-            page.Background = (Brush)page.FindResource("WindowBackgroundBrush");
-            page.Measure(new Size(720, double.PositiveInfinity));
-            page.Arrange(new Rect(new Point(), page.DesiredSize));
-            page.UpdateLayout();
-            var status = Assert.IsType<TextBlock>(Assert.Single(page.CandidatesEmptyState.Children.Cast<UIElement>()));
-            Assert.Contains("选择角色", status.Text);
-            Assert.Same(model.RefreshCommand, page.RefreshButton.Command);
+            Assert.Contains("选择角色", model.CandidatesStatusText);
 
             model.ActiveServantId = "a";
             await model.RefreshAsync();
             StaRunner.Pump();
-            Assert.Contains("记忆加载失败", status.Text);
-            Assert.DoesNotContain("synthetic", status.Text);
+            Assert.Contains("记忆加载失败", model.CandidatesStatusText);
+            Assert.DoesNotContain("synthetic", model.CandidatesStatusText);
             fail = false;
             await model.RefreshCommand.ExecuteAsync(null);
             StaRunner.Pump();
-            Assert.Contains("暂无待审核", status.Text);
+            Assert.Contains("暂无待审核", model.CandidatesStatusText);
 
-            var captureDirectory = Environment.GetEnvironmentVariable("FGO_PET_UI_CAPTURE_DIR");
-            if (!string.IsNullOrWhiteSpace(captureDirectory))
-            {
-                Directory.CreateDirectory(captureDirectory);
-                page.Measure(new Size(720, double.PositiveInfinity));
-                page.Arrange(new Rect(new Point(), page.DesiredSize));
-                page.UpdateLayout();
-                var bitmap = new RenderTargetBitmap(720, (int)Math.Ceiling(page.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-                bitmap.Render(page);
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                using var file = File.Create(Path.Combine(captureDirectory, "memory-empty.png"));
-                encoder.Save(file);
-            }
         });
     }
 
