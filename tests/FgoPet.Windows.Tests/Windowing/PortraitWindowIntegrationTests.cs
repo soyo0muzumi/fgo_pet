@@ -30,6 +30,115 @@ namespace FgoPet.Windows.Tests.Windowing;
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [Theory]
+    [InlineData(100, 1.0)]
+    [InlineData(800, 1.0)]
+    [InlineData(100, 1.5)]
+    [InlineData(800, 1.5)]
+    [InlineData(100, 2.0)]
+    [InlineData(800, 2.0)]
+    public void Actual_icon_rail_stays_adjacent_to_portrait_on_either_side(double left, double scale)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(new FakeFocusService()));
+            var window = new PortraitWindow(panel) { Left = left, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1000 * scale), (int)(800 * scale));
+                var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
+                var view = Assert.IsType<AttachedPanelView>(host.Content);
+                var chat = Assert.IsType<Button>(view.FindName("ChatEntryButton"));
+                var more = Assert.IsType<Button>(view.FindName("MoreEntryButton"));
+                foreach (var state in new[] { 0, 1, 2 })
+                {
+                    if (state == 1) more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    if (state == 2) panel.FocusClick();
+                    var bounds = window.ArrangeOverlayPanel(geometry, area, dpi);
+                    var size = new Size(bounds.Width / scale, bounds.Height / scale);
+                    host.Measure(size);
+                    host.Arrange(new Rect(size));
+                    var iconLeft = bounds.Left / scale + chat.TranslatePoint(new Point(), host).X;
+                    var portrait = window.PortraitScreenBounds;
+                    var gap = left > 500 ? portrait.X - iconLeft - chat.ActualWidth : iconLeft - portrait.Right;
+                    Assert.Equal(12, gap, 3);
+                    if (state == 2)
+                    {
+                        var card = Assert.IsType<Border>(view.FindName("CardSurface"));
+                        Assert.Equal(Visibility.Visible, card.Visibility);
+                        var cardLeft = bounds.Left / scale + card.TranslatePoint(new Point(), host).X;
+                        var cardGap = left > 500 ? iconLeft - cardLeft - card.ActualWidth : cardLeft - iconLeft - chat.ActualWidth;
+                        Assert.Equal(8, cardGap, 3);
+                    }
+                }
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(600)]
+    public void Expanding_quick_actions_keeps_the_icon_rail_top_fixed_near_the_right_edge(double top)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 800, Top = top };
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, new Dpi2(1, 1));
+                var area = new DeviceRect(0, 0, 1000, 800);
+                var compact = window.ArrangeOverlayPanel(geometry, area, new Dpi2(1, 1));
+                var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
+                var view = Assert.IsType<AttachedPanelView>(host.Content);
+                var more = Assert.IsType<Button>(view.FindName("MoreEntryButton"));
+                more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expanded = window.ArrangeOverlayPanel(geometry, area, new Dpi2(1, 1));
+                Assert.True(expanded.Height > compact.Height);
+                Assert.Equal(compact.Top, expanded.Top);
+                Assert.Equal(compact.Left, expanded.Left);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void Panel_side_does_not_oscillate_when_dragging_around_the_right_edge_threshold(double scale)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 519, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1000 * scale), (int)(800 * scale));
+                var first = window.ArrangeOverlayPanel(geometry, area, dpi);
+                Assert.True(first.Right <= window.PortraitScreenBounds.X * scale);
+                foreach (var left in new[] { 517, 519, 516, 519 })
+                {
+                    window.MovePortraitToDevice(new DevicePoint((int)(left * scale), (int)(100 * scale)), dpi);
+                    var bounds = window.ArrangeOverlayPanel(geometry, area, dpi);
+                    Assert.True(bounds.Right <= window.PortraitScreenBounds.X * scale);
+                }
+                window.MovePortraitToDevice(new DevicePoint((int)(450 * scale), (int)(100 * scale)), dpi);
+                var returned = window.ArrangeOverlayPanel(geometry, area, dpi);
+                Assert.True(returned.Left >= window.PortraitScreenBounds.Right * scale);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Fact]
     public void Portrait_host_consumes_registered_renderer_content_and_disposal_discards_queued_updates()
     {

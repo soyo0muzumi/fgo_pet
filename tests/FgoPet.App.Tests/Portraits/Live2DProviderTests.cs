@@ -3,6 +3,14 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Reflection;
+using System.Windows.Threading;
+using FgoPet.App.Bootstrap;
+using FgoPet.App.Dialogue;
+using FgoPet.App.Runtime;
+using FgoPet.Core.Dialogue;
+using FgoPet.Kernel.Companion;
+using Microsoft.Extensions.DependencyInjection;
 using FgoPet.App.Portraits.Live2D;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Packs;
@@ -15,10 +23,55 @@ namespace FgoPet.App.Tests.Portraits;
 
 public sealed class Live2DProviderTests
 {
+    [Fact]
+    public void Chat_projection_tracks_the_current_turn_and_rejects_stale_or_disposed_work()
+    {
+        StaTest.Run(() =>
+        {
+            using var services = new ServiceCollection().AddFgoPet([]).BuildServiceProvider();
+            var conversations = services.GetRequiredService<ConversationOrchestrator>();
+            var identity = new AppRuntime();
+            using var presentation = new CompanionPresentation(identity);
+            var fallback = new StaticSurface();
+            using var portrait = new Live2DPortraitController(fallback, new EmptyRepository(),
+                Path.GetTempPath(), Path.GetTempPath(), Path.GetTempPath());
+            portrait.ActivateAsync(new PortraitSelection("pkg", "casual", "1.0.0"), default).GetAwaiter().GetResult();
+            identity.SetActiveRole(new ActiveRoleState("pkg", "casual", "1.0.0", "mash"));
+            using var plugin = new Live2DPresentationPlugin(presentation, () => conversations, portrait);
+            plugin.StartAsync(default).GetAwaiter().GetResult();
+            // Inject events through the real subscribed delegate, without network or persistence.
+            var updated = typeof(ConversationOrchestrator).GetField("Updated", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            void Emit(ConversationUpdateType type, string turn = "turn", ExpressionSemantic? expression = null) =>
+                ((Action<ConversationUpdate>)updated.GetValue(conversations)!).Invoke(
+                    new(type, turn, ServantId: "mash", Expression: expression));
+            bool Thinking() => (bool)typeof(Live2DPortraitController)
+                .GetField("_thinking", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(portrait)!;
+            void Drain()
+            {
+                var frame = new DispatcherFrame();
+                Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () => frame.Continue = false);
+                Dispatcher.PushFrame(frame);
+            }
+
+            Emit(ConversationUpdateType.UserMessagePersisted); Drain(); Assert.True(Thinking());
+            Emit(ConversationUpdateType.AssistantCompleted, "other"); Drain(); Assert.True(Thinking());
+            Emit(ConversationUpdateType.AssistantDelta); Drain(); Assert.False(Thinking());
+            Emit(ConversationUpdateType.AssistantCompleted, expression: ExpressionSemantic.Shy);
+            Drain(); Assert.Equal(ExpressionSemantic.Shy, fallback.Semantic);
+
+            Emit(ConversationUpdateType.UserMessagePersisted);
+            identity.SetActiveRole(new ActiveRoleState("pkg", "casual", "1.0.0", "mash"));
+            Drain(); Assert.False(Thinking());
+            Emit(ConversationUpdateType.UserMessagePersisted);
+            plugin.Dispose(); Drain(); Assert.False(Thinking());
+        });
+    }
+
     [Theory]
-    [InlineData(1.0, 242)]
-    [InlineData(2.0, 483)]
-    public void Mash_viewport_keeps_portrait_height_and_fits_full_width(double dpiScale, int expectedDeviceWidth)
+    [InlineData(1.0, 266)]
+    [InlineData(1.5, 398)]
+    [InlineData(2.0, 531)]
+    public void Mash_viewport_reserves_headroom_and_side_space_at_the_existing_character_scale(double dpiScale, int expectedDeviceWidth)
     {
         var staticGeometry = PortraitLayout.Calculate(
             new PortraitSourceGeometry(303, 603, 13, 0, 256, 240, 151, 360),
@@ -26,8 +79,9 @@ public sealed class Live2DProviderTests
 
         var liveGeometry = Live2DPortraitController.MashGeometry(staticGeometry);
 
-        Assert.Equal(staticGeometry.LogicalSize.Height, liveGeometry.LogicalSize.Height);
-        Assert.Equal(241.5, liveGeometry.LogicalSize.Width);
+        Assert.Equal(staticGeometry.LogicalSize.Height + 36, liveGeometry.LogicalSize.Height);
+        Assert.Equal(265.5, liveGeometry.LogicalSize.Width);
+        Assert.Equal(36, liveGeometry.OverlayLogicalRect.Y);
         Assert.Equal(expectedDeviceWidth, liveGeometry.DeviceSize.Width);
         Assert.InRange(Math.Abs(liveGeometry.BottomAnchorDevice.X - liveGeometry.DeviceSize.Width / 2), 0, 1);
     }

@@ -24,6 +24,7 @@ public partial class PortraitWindow : Window
     private bool _stablePanelLayoutPrepared;
     private DeviceRect? _panelWorkArea;
     private Dpi2 _panelDpi = new(1, 1);
+    private bool _panelOnLeft;
 
     public PortraitWindow() : this(new AttachedPanelViewModel(TimeProvider.System))
     {
@@ -181,35 +182,48 @@ public partial class PortraitWindow : Window
             Math.Max(1, (int)Math.Ceiling(reservedHeightDip * dpi.Y)),
             (int)Math.Floor(workArea.Height * AttachedPanelVisualMetrics.WorkAreaRatio));
         var marginX = Math.Min((int)Math.Round(16 * dpi.X), Math.Max(0, (workArea.Width - panelWidth) / 2));
-        var marginY = Math.Min((int)Math.Round(16 * dpi.Y), Math.Max(0, (workArea.Height - panelHeight) / 2));
+        var marginY = Math.Min((int)Math.Round(16 * dpi.Y), Math.Max(0, (workArea.Height - reservedHeight) / 2));
+        var entryHeight = (int)Math.Ceiling(AttachedPanelVisualMetrics.CalculateHeight(
+            AttachedPanelState.Compact, false, false, workAreaHeightDip) * dpi.Y);
         var gap = Math.Max(1, (int)Math.Round(12 * dpi.X));
         var rightLeft = portraitBounds.Right + gap;
         var leftLeft = portraitBounds.Left - panelWidth - gap;
-        var rightFits = rightLeft + panelWidth <= workArea.Right - marginX;
+        // Choose a side using the widest entry/focus footprint, so changing
+        // panel content does not push the icon rail across the portrait.
+        var sideWidth = Math.Min(workArea.Width, Math.Max(panelWidth,
+            (int)Math.Ceiling(AttachedPanelVisualMetrics.CalculateWidth(geometry.LogicalSize.Width, true) * dpi.X)));
+        var rightFits = rightLeft + sideWidth <= workArea.Right - marginX;
         var leftFits = leftLeft >= workArea.Left + marginX;
         int preferredLeft;
         int preferredTop;
         if (rightFits || leftFits)
         {
-            preferredLeft = rightFits ? rightLeft : leftLeft;
-            preferredTop = anchor.Y - panelHeight / 2;
+            var switchBuffer = (int)Math.Ceiling(32 * dpi.X);
+            var useRight = rightFits && (!_panelOnLeft || !leftFits
+                || rightLeft + sideWidth + switchBuffer <= workArea.Right - marginX);
+            _panelOnLeft = !useRight;
+            preferredLeft = useRight ? rightLeft : leftLeft;
+            // Keep the base entries anchored; extra actions grow downward into
+            // the already-reserved space instead of moving every icon upward.
+            preferredTop = anchor.Y - entryHeight / 2;
         }
         else
         {
             preferredLeft = anchor.X - panelWidth / 2;
             var verticalGap = Math.Max(1, (int)Math.Round(12 * dpi.Y));
             var belowTop = portraitBounds.Bottom + verticalGap;
-            var aboveTop = portraitBounds.Top - panelHeight - verticalGap;
-            preferredTop = belowTop + panelHeight <= workArea.Bottom - marginY
+            var aboveTop = portraitBounds.Top - reservedHeight - verticalGap;
+            preferredTop = belowTop + reservedHeight <= workArea.Bottom - marginY
                 ? belowTop
                 : aboveTop >= workArea.Top + marginY
                     ? aboveTop
-                    : anchor.Y - panelHeight / 2;
+                    : anchor.Y - entryHeight / 2;
         }
 
+        _panelView.SetPlacementSide(_panelOnLeft);
         var panelBounds = new DeviceRect(
             Math.Clamp(preferredLeft, workArea.Left + marginX, workArea.Right - panelWidth - marginX),
-            Math.Clamp(preferredTop, workArea.Top + marginY, workArea.Bottom - panelHeight - marginY),
+            Math.Clamp(preferredTop, workArea.Top + marginY, workArea.Bottom - reservedHeight - marginY),
             panelWidth,
             panelHeight);
         var reservedPanelBounds = new DeviceRect(

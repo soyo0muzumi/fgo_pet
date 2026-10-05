@@ -78,3 +78,27 @@ def test_rejects_copyrighted_asset_output_in_tracked_source(tmp_path: Path):
     with pytest.raises(ValueError, match="ignored artifacts"):
         stage_model(model, motions, sdk, output)
     assert not output.exists()
+
+
+def test_desktop_mapping_keeps_state_motions_out_of_random_taps(tmp_path: Path):
+    model, motions, sdk = fixture_assets(tmp_path)
+    data = (motions / "tap.motion3.json").read_text()
+    for name in [*(f"hiyori_m{i:02}" for i in range(1, 11)), "thinking", "shame", "tired"]:
+        (motions / f"{name}.motion3.json").write_text(data)
+    output = tmp_path / "output"
+    stage_model(model, motions, sdk, output, desktop_behaviors=True)
+    groups = json.loads((output / "model/mash.model3.json").read_text())["FileReferences"]["Motions"]
+    assert groups["Thinking"] == [{"File": "motions/thinking.motion3.json"}]
+    assert groups["Shy"] == [{"File": "motions/shame.motion3.json"}]
+    assert groups["Sleep"] == [{"File": "motions/tired.motion3.json"}]
+    assert groups["Concerned"] == [{"File": "motions/hiyori_m10.motion3.json"}]
+    assert groups["TapBody"] == [{"File": f"motions/hiyori_m{i:02}.motion3.json"} for i in (7, 8, 9)]
+    assert not (output / "model/motions/hiyori_m02.motion3.json").exists()
+
+
+def test_desktop_mapping_rejects_missing_actions_before_output(tmp_path: Path):
+    model, motions, sdk = fixture_assets(tmp_path)
+    output = tmp_path / "output"
+    with pytest.raises(ValueError, match="Missing desktop motion"):
+        stage_model(model, motions, sdk, output, desktop_behaviors=True)
+    assert not output.exists()

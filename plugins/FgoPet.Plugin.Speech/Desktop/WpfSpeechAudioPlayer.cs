@@ -9,11 +9,16 @@ namespace FgoPet.App.Speech;
 /// <summary>Plays one WAV at a time from a per-session temporary file.</summary>
 public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
 {
+    private readonly Func<Action<double?>?>? _createPlaybackObserver;
     private readonly object _gate = new();
     private CancellationTokenSource? _active;
     private MediaPlayer? _mediaPlayer;
     private Dispatcher? _dispatcher;
     private bool _disposed;
+
+    // Optional host binding; null means no presentation consumer. Each session gets its own sink.
+    public WpfSpeechAudioPlayer(Func<Action<double?>?>? createPlaybackObserver = null)
+        => _createPlaybackObserver = createPlaybackObserver;
 
     public async Task PlayAsync(
         SpeechSynthesisResult audio,
@@ -29,25 +34,57 @@ public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
         var file = Path.Combine(sessionRoot, Guid.NewGuid().ToString("N") + ".wav");
         var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var observer = _createPlaybackObserver?.Invoke();
+        lock (_gate) _active = linked;
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         MediaPlayer? player = null;
+        DispatcherTimer? levelTimer = null;
+        bool IsCurrent() { lock (_gate) return ReferenceEquals(_active, linked); }
+        void Publish(double? level)
+        {
+            if (!IsCurrent()) return;
+            try { observer?.Invoke(level); }
+            catch (InvalidOperationException) { } // A closed UI dispatcher must not interrupt audio playback.
+        }
         EventHandler? opened = null;
         EventHandler? ended = null;
         EventHandler<ExceptionEventArgs>? failed = null;
         try
         {
+            var envelope = observer is null ? null : WavSpeechEnvelope.Create(audio.WavBytes);
             await File.WriteAllBytesAsync(file, audio.WavBytes, cancellationToken).ConfigureAwait(false);
 
             await dispatcher.InvokeAsync(() =>
             {
+                linked.Token.ThrowIfCancellationRequested();
+                if (!IsCurrent()) throw new OperationCanceledException(linked.Token);
                 player = new MediaPlayer
                 {
                     Volume = new SpeechPlaybackOptions(options.Rate, options.Volume).SafeVolume,
                     SpeedRatio = new SpeechPlaybackOptions(options.Rate, options.Volume).SafeRate,
                 };
-                opened = (_, _) => player.Play();
-                ended = (_, _) => completion.TrySetResult(true);
-                failed = (_, _) => completion.TrySetException(new InvalidOperationException("speech_playback_failed"));
+                if (envelope is { IsSupported: true })
+                {
+                    levelTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+                        { Interval = TimeSpan.FromMilliseconds(33) };
+                    levelTimer.Tick += (_, _) =>
+                    {
+                        if (!IsCurrent() || linked.IsCancellationRequested) { levelTimer.Stop(); return; }
+                        Publish(envelope.Sample(player.Position) * options.SafeVolume);
+                    };
+                }
+                opened = (_, _) =>
+                {
+                    if (!IsCurrent() || linked.IsCancellationRequested) return;
+                    player.Play();
+                    if (levelTimer is not null) { Publish(0); levelTimer.Start(); }
+                };
+                ended = (_, _) => { levelTimer?.Stop(); Publish(null); completion.TrySetResult(true); };
+                failed = (_, _) =>
+                {
+                    levelTimer?.Stop(); Publish(null);
+                    completion.TrySetException(new InvalidOperationException("speech_playback_failed"));
+                };
                 player.MediaOpened += opened;
                 player.MediaEnded += ended;
                 player.MediaFailed += failed;
@@ -56,9 +93,7 @@ public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
 
             lock (_gate)
             {
-                _active = linked;
-                _mediaPlayer = player;
-                _dispatcher = dispatcher;
+                if (ReferenceEquals(_active, linked)) { _mediaPlayer = player; _dispatcher = dispatcher; }
             }
 
             using var registration = linked.Token.Register(() =>
@@ -66,8 +101,9 @@ public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
                 completion.TrySetCanceled(linked.Token);
                 try
                 {
-                    if (dispatcher.CheckAccess()) player?.Stop();
-                    else _ = dispatcher.BeginInvoke(new Action(() => player?.Stop()));
+                    void CancelPlayback() { levelTimer?.Stop(); player?.Stop(); Publish(null); }
+                    if (dispatcher.CheckAccess()) CancelPlayback();
+                    else _ = dispatcher.BeginInvoke(new Action(CancelPlayback));
                 }
                 catch (InvalidOperationException) { }
             });
@@ -79,6 +115,7 @@ public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
             {
                 await dispatcher.InvokeAsync(() =>
                 {
+                    levelTimer?.Stop(); Publish(null);
                     if (player is null) return;
                     if (opened is not null) player.MediaOpened -= opened;
                     if (ended is not null) player.MediaEnded -= ended;
@@ -115,7 +152,8 @@ public sealed class WpfSpeechAudioPlayer : ISpeechAudioPlayer
             dispatcher = _dispatcher;
         }
 
-        active?.Cancel();
+        try { active?.Cancel(); }
+        catch (ObjectDisposedException) { } // Captured session may finish concurrently.
         if (player is null || dispatcher is null) return;
         try
         {
