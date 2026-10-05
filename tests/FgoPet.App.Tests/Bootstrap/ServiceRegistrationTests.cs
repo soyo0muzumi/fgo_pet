@@ -35,7 +35,7 @@ public sealed class ServiceRegistrationTests
         services.RemoveAll<IAppLifetime>();
         services.AddSingleton<IAppLifetime>(lifetime);
         await using var provider = services.BuildServiceProvider();
-        Assert.Equal(new[] { "firstparty.content", "firstparty.portrait-static" },
+        Assert.Equal(new[] { "firstparty.content", "firstparty.portrait-live2d", "firstparty.portrait-static" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());

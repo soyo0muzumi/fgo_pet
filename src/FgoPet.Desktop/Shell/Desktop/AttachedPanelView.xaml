@@ -42,7 +42,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid ClipToBounds="True" SnapsToDevicePixels="True">
+    <Grid x:Name="PanelContents" HorizontalAlignment="Left" ClipToBounds="True" SnapsToDevicePixels="True">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -68,7 +68,7 @@
             </Grid>
         </Border>
 
-        <StackPanel Grid.Column="0" VerticalAlignment="Top">
+        <StackPanel x:Name="EntryRail" Grid.Column="0" VerticalAlignment="Top">
             <StackPanel x:Name="CompanionControlIsland" Orientation="Vertical" HorizontalAlignment="Left">
                 <Grid>
                     <Button x:Name="ChatEntryButton"

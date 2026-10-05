@@ -66,6 +66,10 @@ Under **Settings → Capabilities → Agent Connection**, detect and approve a r
 
 ### Speech
 
+Live2D characters support cursor attention, a gentle head hover reaction, chat Thinking,
+short emotion motions, idle sleep with click-to-wake, and audio-driven lip sync.
+Model and motion data are supplied separately in character packs; available reactions depend on the pack.
+
 Under **Settings → Capabilities → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
 
 ## Security and privacy boundaries

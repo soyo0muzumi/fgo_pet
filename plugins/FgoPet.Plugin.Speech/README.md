@@ -41,6 +41,20 @@ The module owns `SpeechSettings` and `ISpeechSettingsStore`, and consumes the pr
 
 The host's existing explicit factory passes the same `SpeechPlaybackCoordinator` singleton to Desktop Shell's `DialogueWindowViewModel` through `IConfiguredSpeechPlayback`. Settings preview retains its existing implementation-level use within the Speech surface. No second playback instance or alias with a separate lifetime is created. The host owns disposal of synthesis, playback and the audio player; disposing the window consumer only stops its current playback and detaches its own subscriptions.
 
+`WpfSpeechAudioPlayer` optionally obtains one presentation observer per playback.
+`WavSpeechEnvelope` derives bounded 20 ms RMS frames from PCM 8/16/24/32-bit or float
+32/64-bit WAV data in memory. It rejects truncated, unsupported, oversized or overly
+long data for animation while retaining normal playback. No audio or text goes to
+the observer: only normalized energy (including playback volume) or null on stop.
+The player samples against `MediaPlayer.Position` after `MediaOpened`, so opening
+latency and playback rate do not advance the mouth prematurely. Cancellation,
+completion and failure stop the timer and release presentation; superseded sessions
+cannot release the new session's presentation. The configured playback port is unchanged.
+
+The host's `Live2DSpeechBinding` owns role identity and dispatcher delivery. Speech
+does not reference Live2D or the Desktop shell. Both local IndexTTS and external
+OpenAI-compatible services share the same WAV playback path.
+
 ## Validation
 
 Run all three speech test projects plus the affected solution tests and Release build. Project/reference changes also require Phase 4; the workflow includes speech source and Dialogue project-file paths without changing its three-round or failure criteria.

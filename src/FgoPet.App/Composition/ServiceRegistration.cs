@@ -1,4 +1,5 @@
 using FgoPet.Core.Panels;
+using FgoPet.App.Composition;
 using FgoPet.Infrastructure.Speech;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.App.Theming;
@@ -111,6 +112,10 @@ public static class ServiceRegistration
             Path.Combine(paths.StorageRoot, "Live2DSessions"),
             Path.Combine(paths.StorageRoot, "Live2DWebView2")))
         .Replace(ServiceDescriptor.Singleton<FgoPet.Kernel.Presentation.IPortraitBackend>(provider => provider.GetRequiredService<Live2DPortraitController>()))
+        .AddSingleton<IFgoPetPlugin>(provider => new Live2DPresentationPlugin(
+            provider.GetRequiredService<CompanionPresentation>(),
+            () => provider.GetRequiredService<FgoPet.App.Dialogue.ConversationOrchestrator>(),
+            provider.GetRequiredService<Live2DPortraitController>()))
         .AddSingleton<IPortraitSurface>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>() as IPortraitSurface
             ?? throw new InvalidOperationException("The selected portrait backend has no desktop surface."))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>())
@@ -161,6 +166,12 @@ public static class ServiceRegistration
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<HttpClient>()
         .AddSpeechServices(includeSpeech)
+        .AddSingleton(provider => new Live2DSpeechBinding(
+            provider.GetRequiredService<AppRuntime>(),
+            provider.GetRequiredService<Live2DPortraitController>().SetSpeechLevel,
+            provider.GetRequiredService<Live2DPortraitController>().MatchesRole))
+        .Replace(ServiceDescriptor.Singleton<FgoPet.Core.Speech.ISpeechAudioPlayer>(provider =>
+            new WpfSpeechAudioPlayer(provider.GetRequiredService<Live2DSpeechBinding>().CreateObserver)))
         .AddSingleton<WindowsCredentialStore>()
         .AddSingleton<ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())

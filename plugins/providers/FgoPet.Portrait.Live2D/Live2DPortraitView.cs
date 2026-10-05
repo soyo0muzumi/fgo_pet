@@ -1,7 +1,9 @@
 using System.IO;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using FgoPet.App.Portraits;
 using FgoPet.UiSdk;
 using Microsoft.Web.WebView2.Core;
@@ -25,10 +27,20 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
     private bool _started;
     private bool _failed;
     private bool _disposed;
+    private string _expressionKey = "neutral";
+    private bool _thinking;
+    private double? _speechLevel;
+    private readonly DispatcherTimer _pointerTimer;
+    private DesktopPointerSampler _pointerSampler = new();
 
     public Live2DPortraitView(string profileRoot)
     {
         _profileRoot = profileRoot;
+        _pointerTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(33),
+        };
+        _pointerTimer.Tick += OnPointerTick;
         Children.Add(_staticView);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -41,6 +53,47 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
     public void PlayTap()
     {
         if (HitMask is not null) _browser?.CoreWebView2?.PostWebMessageAsJson("{\"type\":\"live2d.tap\"}");
+    }
+
+    public void SetExpression(string key)
+    {
+        _expressionKey = key;
+        SendPresentation();
+    }
+
+    public void SetThinking(bool active)
+    {
+        _thinking = active;
+        SendPresentation();
+    }
+
+    public void SetSpeechLevel(double? level)
+    {
+        _speechLevel = level;
+        SendSpeech();
+    }
+
+    private void SendSpeech()
+    {
+        if (_disposed || !_modelReady || HitMask is null || _browser?.CoreWebView2 is not { } core) return;
+        try
+        {
+            core.PostWebMessageAsJson(JsonSerializer.Serialize(new
+            {
+                type = "live2d.speech", active = _speechLevel.HasValue, level = _speechLevel ?? 0,
+            }));
+        }
+        catch (Exception error) when (error is InvalidOperationException or COMException)
+        {
+            if (_browser is { } browser) Fail(browser);
+        }
+    }
+
+    private void SendPresentation()
+    {
+        if (!_modelReady || HitMask is null || _browser?.CoreWebView2 is not { } core) return;
+        core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "live2d.expression", key = _expressionKey }));
+        core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "live2d.thinking", active = _thinking }));
     }
 
     public void Present(IPortraitFrame staticFrame, Live2DSession? session, bool showLive)
@@ -60,6 +113,8 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
         {
             _browser.Visibility = showLive && HitMask is not null ? Visibility.Visible : Visibility.Hidden;
         }
+        if (showLive && HitMask is not null && IsLoaded) _pointerTimer.Start();
+        else _pointerTimer.Stop();
     }
 
     public void Dispose()
@@ -68,6 +123,7 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
         _disposed = true;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
+        _pointerTimer.Tick -= OnPointerTick;
         CloseBrowser();
     }
 
@@ -78,6 +134,37 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args) => CloseBrowser();
+
+    private void OnPointerTick(object? sender, EventArgs args)
+    {
+        if (_browser is not { IsVisible: true, CoreWebView2: { } core } browser
+            || HitMask is null || browser.ActualWidth <= 0 || browser.ActualHeight <= 0
+            || !GetCursorPos(out var cursor)) return;
+        try
+        {
+            // PointToScreen supplies physical pixels, including current per-monitor DPI.
+            // Reproject every sample so dragging/scaling never leaves a stale gaze origin.
+            if (_pointerSampler.TrySample(new Point(cursor.X, cursor.Y), browser.PointToScreen(new Point()),
+                browser.PointToScreen(new Point(browser.ActualWidth, browser.ActualHeight)), out var sample))
+            {
+                core.PostWebMessageAsJson(JsonSerializer.Serialize(new
+                {
+                    type = "live2d.pointer", x = sample.X, y = sample.Y, active = sample.Active,
+                }));
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or COMException)
+        {
+            Fail(browser);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CursorPoint { public int X; public int Y; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out CursorPoint point);
 
     private void EnsureBrowser()
     {
@@ -155,7 +242,12 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
                 if (mask is null) return;
                 var first = HitMask is null;
                 HitMask = mask;
-                if (first) Ready?.Invoke(mask);
+                if (first)
+                {
+                    SendPresentation();
+                    SendSpeech();
+                    Ready?.Invoke(mask);
+                }
             }
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException)
@@ -179,6 +271,8 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
 
     private void CloseBrowser()
     {
+        _pointerTimer.Stop();
+        _pointerSampler = new DesktopPointerSampler();
         _started = false;
         _modelReady = false;
         HitMask = null;

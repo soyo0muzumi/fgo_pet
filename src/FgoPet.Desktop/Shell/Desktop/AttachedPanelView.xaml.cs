@@ -45,6 +45,15 @@ public partial class AttachedPanelView : UserControl, IDisposable
         Clip = geometry;
     }
 
+    internal void SetPlacementSide(bool onLeft)
+    {
+        // The entry rail hugs the portrait; any card occupies the outward side.
+        PanelContents.HorizontalAlignment = onLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        Grid.SetColumn(EntryRail, onLeft ? 1 : 0);
+        Grid.SetColumn(CardSurface, onLeft ? 0 : 1);
+        CardSurface.Margin = onLeft ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
+    }
+
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         DetachModel();

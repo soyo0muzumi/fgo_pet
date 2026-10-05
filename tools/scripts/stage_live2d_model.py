@@ -46,7 +46,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def stage_model(model: Path, motions: Path, sdk: Path, output: Path) -> dict[str, Any]:
+def stage_model(model: Path, motions: Path, sdk: Path, output: Path, *, desktop_behaviors: bool = False) -> dict[str, Any]:
     model, motions, sdk, output = (path.resolve() for path in (model, motions, sdk, output))
     repository = Path(__file__).resolve().parents[2]
     if output.is_relative_to(repository) and not output.is_relative_to(repository / "artifacts"):
@@ -105,11 +105,29 @@ def stage_model(model: Path, motions: Path, sdk: Path, output: Path) -> dict[str
     framework_license, _ = _source(sdk, "Framework/LICENSE.md")
     motion_entries = [{"File": f"motions/{motion.name}"} for motion in motion_files]
     references["Motions"] = {"Idle": motion_entries[:1], "TapBody": motion_entries[1:]}
+    if desktop_behaviors:
+        selected = {
+            "Idle": ["hiyori_m01"],
+            "TapBody": ["hiyori_m07", "hiyori_m08", "hiyori_m09"],
+            "Thinking": ["thinking"], "Shy": ["shame"],
+            "Concerned": ["hiyori_m10"], "Surprised": ["hiyori_m07"], "Sleep": ["tired"],
+        }
+        available = {path.name for path in motion_files}
+        for names in selected.values():
+            for name in names:
+                if f"{name}.motion3.json" not in available:
+                    raise ValueError(f"Missing desktop motion: {name}")
+        references["Motions"] = {
+            group: [{"File": f"motions/{name}.motion3.json"} for name in names]
+            for group, names in selected.items()
+        }
+        used = {f"{name}.motion3.json" for names in selected.values() for name in names}
+        motion_files = [motion for motion in motion_files if motion.name in used]
     provenance = {
         "modelSha256": _sha256(model),
         "coreSha256": _sha256(core),
         "motionCount": len(motion_files),
-        "motionMapping": "provisional: first sorted motion Idle, remaining TapBody",
+        "motionMapping": "reviewed desktop state groups" if desktop_behaviors else "provisional: first sorted motion Idle, remaining TapBody",
         "purpose": "local staging input; not an installed role package or renderer acceptance",
     }
 
@@ -146,8 +164,9 @@ def main() -> None:
     parser.add_argument("--motions", required=True, type=Path)
     parser.add_argument("--sdk", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--desktop-behaviors", action="store_true", help="Use the reviewed Mash desktop state mapping")
     args = parser.parse_args()
-    print(json.dumps(stage_model(args.model, args.motions, args.sdk, args.output), indent=2))
+    print(json.dumps(stage_model(args.model, args.motions, args.sdk, args.output, desktop_behaviors=args.desktop_behaviors), indent=2))
 
 
 if __name__ == "__main__":
