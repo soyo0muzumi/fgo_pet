@@ -124,9 +124,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             await EnsureSuccessAsync(response, cancellationToken);
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
-            var done = false;
             string? lastFinishReason = null;
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            await foreach (var line in ReadLinesBoundedAsync(reader, cancellationToken))
             {
                 if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
@@ -140,12 +139,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                     // a literal "stop" here would clobber a real "tool_calls" marker
                     // that arrived earlier in the stream.
                     yield return new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: lastFinishReason);
-                    done = true;
                     break;
                 }
 
                 string? finishReason = null;
-                ChatToolCallDelta? toolCallDelta = null;
+                IReadOnlyList<ChatToolCallDelta> toolCallDeltas = [];
                 string? textDelta = null;
                 string? reasoningDelta = null;
                 ChatUsage? usage = null;
@@ -178,7 +176,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                             ? content.GetString()
                             : null;
                         reasoningDelta = ReadReasoningDelta(delta);
-                        toolCallDelta = ReadToolCallDelta(delta);
+                        toolCallDeltas = ReadToolCallDeltas(delta);
                     }
                     else
                     {
@@ -203,24 +201,48 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
                 // A single delta may carry content, reasoning, tool calls or a finish
                 // reason together; emitting the first match only would drop the rest.
-                if (!string.IsNullOrEmpty(textDelta) || toolCallDelta is not null
+                if (!string.IsNullOrEmpty(textDelta) || toolCallDeltas.Count > 0
                     || reasoningDelta is not null || finishReason is not null || usage is not null)
                 {
                     yield return new ChatStreamChunk(
                         textDelta ?? string.Empty,
                         IsComplete: false,
                         FinishReason: finishReason,
-                        ToolCallDelta: toolCallDelta,
+                        ToolCallDelta: toolCallDeltas.FirstOrDefault(),
                         ReasoningDelta: reasoningDelta,
                         Usage: usage);
+                    foreach (var call in toolCallDeltas.Skip(1))
+                        yield return new ChatStreamChunk(string.Empty, ToolCallDelta: call);
                 }
             }
 
-            if (!done)
-            {
-                yield return new ChatStreamChunk(string.Empty, IsComplete: true);
-            }
+            // EOF is not the provider's completion marker. Native aggregation rejects a truncated stream.
         }
+    }
+
+    private static async IAsyncEnumerable<string> ReadLinesBoundedAsync(StreamReader reader,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
+    {
+        // Includes JSON escaping headroom for all allowed deltas, with a finite pre-parse allocation bound.
+        const int maxLineCharacters = 512 * 1024;
+        var buffer = new char[4096];
+        var line = new StringBuilder();
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), token)) > 0)
+            for (var index = 0; index < count; index++)
+            {
+                var character = buffer[index];
+                if (character is '\r' or '\n')
+                {
+                    yield return line.ToString();
+                    line.Clear();
+                    continue;
+                }
+                if (line.Length >= maxLineCharacters)
+                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型串流数据超出安全上限。");
+                line.Append(character);
+            }
+        if (line.Length > 0) yield return line.ToString();
     }
 
     private static int? ReadNonnegativeInt(JsonElement element, string name) =>
@@ -259,18 +281,24 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         return null;
     }
 
-    private static ChatToolCallDelta? ReadToolCallDelta(JsonElement delta)
+    private static IReadOnlyList<ChatToolCallDelta> ReadToolCallDeltas(JsonElement delta)
     {
         if (!delta.TryGetProperty("tool_calls", out var toolCalls) || toolCalls.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return [];
         }
 
+        var calls = new List<ChatToolCallDelta>();
+        if (toolCalls.GetArrayLength() > FgoPet.Kernel.Agent.ModelProtocol.MaxCalls) throw new JsonException("Too many calls.");
         foreach (var call in toolCalls.EnumerateArray())
         {
-            var index = call.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsed)
-                ? parsed
-                : 0;
+            var index = 0;
+            if (call.TryGetProperty("index", out var indexElement))
+            {
+                if (indexElement.ValueKind != JsonValueKind.Number || !indexElement.TryGetInt32(out index) || index < 0)
+                    throw new JsonException("Invalid call index.");
+            }
+            else if (toolCalls.GetArrayLength() > 1) throw new JsonException("Multiple calls require indexes.");
             string? id = call.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
                 ? idElement.GetString()
                 : null;
@@ -291,10 +319,10 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 continue;
             }
 
-            return new ChatToolCallDelta(index, id, name, argumentsDelta);
+            calls.Add(new ChatToolCallDelta(index, id, name, argumentsDelta));
         }
 
-        return null;
+        return calls;
     }
 
     private async Task<HttpRequestMessage> CreateAuthorizedRequestAsync(

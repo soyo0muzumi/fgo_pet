@@ -24,7 +24,7 @@ public interface IConversationContentResolver
     Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken);
 }
 
-public sealed class ConversationOrchestrator
+public sealed partial class ConversationOrchestrator
 {
     private readonly IChatProviderResolver _providerResolver;
     private readonly IConversationContentResolver _contentResolver;
@@ -58,7 +58,11 @@ public sealed class ConversationOrchestrator
         IRequestTokenMeter? tokenMeter = null,
         DialogueContextLifetime? lifetime = null,
         IConversationRecall? recall = null,
-        IConversationContextStore? contextStore = null)
+        IConversationContextStore? contextStore = null,
+        NativeConversationRuntime? nativeRuntime = null,
+        FgoPet.Kernel.Agent.IAgentRunStore? agentRuns = null,
+        IAgentFinalDeliveryStore? finalDeliveries = null,
+        Func<ToolScope, bool>? nativeScopeCurrent = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -74,6 +78,12 @@ public sealed class ConversationOrchestrator
         _lifetime = lifetime ?? new DialogueContextLifetime();
         _recall = recall;
         _contextStore = contextStore;
+        _nativeRuntime = nativeRuntime;
+        _agentRuns = agentRuns;
+        _finalDeliveries = finalDeliveries;
+        _nativeScopeCurrent = nativeScopeCurrent;
+        if (nativeRuntime is not null && (agentRuns is null || finalDeliveries is null))
+            throw new ArgumentException("Native runtime requires durable run and final delivery owners.");
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -114,6 +124,8 @@ public sealed class ConversationOrchestrator
             stage = "创建会话";
             var scope = new ConversationScope(servantId, requestContext?.ProjectId);
             conversationId = lease.Commit(() => GetOrCreateConversation(servantId, contentContext, scope, requestContext?.ProjectLabel));
+            if (_nativeRuntime?.HasActiveConversation(conversationId) == true)
+                return new(ConversationSendStatus.Failed, conversationId, SafeError: "当前任务仍在等待处理，请先完成或停止该任务。");
             stage = "读取会话历史";
             var allMessages = _conversations.LoadMessages(conversationId, servantId).ToArray();
             var existing = allMessages
@@ -139,11 +151,16 @@ public sealed class ConversationOrchestrator
                 userMessage.Text,
                 ServantId: servantId));
 
-            var capabilityScope = new ToolScope(conversationId, servantId, requestContext?.ProjectId);
+            var capabilityScope = new ToolScope(conversationId, servantId, scope.ProjectId);
             var local = lease.Commit(() => _capabilities?.TryHandleInput(capabilityScope, userText));
             if (local?.Reply is { } localReply)
                 return lease.Commit(() => PersistLocalReply(conversationId, servantId, contentContext,
                     localReply, local.Outcome, local.CreatedItemId, local.WorkspaceId));
+            if (_nativeRuntime is not null)
+            {
+                stage = "执行原生任务";
+                return await SendNativeAsync(binding, userMessage, capabilityScope, requestContext, requestCancellation.Token);
+            }
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
             var session = await ConversationModelTurn.CreateAsync(_providerResolver, _settings, _contextResolver, _tokenMeter,
@@ -316,6 +333,19 @@ public sealed class ConversationOrchestrator
             Publish(new ConversationUpdate(ConversationUpdateType.Cancelled, conversationId, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Cancelled, conversationId);
         }
+        catch (FgoPet.Kernel.Agent.AgentStateException error) when (_nativeRuntime is not null)
+        {
+            var safeError = error.Code switch
+            {
+                "RUN_HOST_CLOSED" => "模型任务暂不可用，本地功能仍可使用。",
+                "RUN_STATE_QUOTA_EXCEEDED" => "任务存储已达上限，请先通过历史记录入口清理不需要的对话。",
+                _ => "任务结果未能安全保存或确认，请先核对实际状态，再决定是否重试。",
+            };
+            Publish(new(ConversationUpdateType.RequestStage, conversationId, ServantId: servantId,
+                RequestStage: ConversationRequestStage.Failed));
+            Publish(new(ConversationUpdateType.Failed, conversationId, ServantId: servantId, SafeError: safeError));
+            return new(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
+        }
         catch (ProviderRequestException error)
         {
             var safeError = error.Message;
@@ -400,6 +430,7 @@ public sealed class ConversationOrchestrator
     public void CancelCurrent()
     {
         _lifetime.Invalidate();
+        _nativeRuntime?.CancelAll();
         lock (_gate)
         {
             _activeCancellation?.Cancel();
@@ -474,6 +505,7 @@ public sealed class ConversationOrchestrator
             // state. Wait until it releases the request slot before deleting.
             if (_activeCancellation is not null) return false;
             if (!_conversations.Exists(conversationId, servantId)) return false;
+            _nativeRuntime?.CancelConversation(conversationId);
             var stateKey = ActiveConversationStateKey(servantId);
             _conversations.DeleteConversation(conversationId, servantId, stateKey);
             if (_conversationIds.GetValueOrDefault(servantId) == conversationId)

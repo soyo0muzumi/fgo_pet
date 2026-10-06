@@ -14,11 +14,12 @@ public sealed class TodoPlugin : IFgoPetPlugin, IToolProvider, IConversationCont
     private readonly ITodoDraftWorkflow _drafts;
     private CancellationToken _stopping;
     private bool _closed;
-    public TodoPlugin(ITodoConversationPort? proposals = null, ITodoDraftWorkflow? drafts = null)
+    public TodoPlugin(ITodoConversationPort? proposals = null, ITodoDraftWorkflow? drafts = null,
+        IReadOnlyList<IToolProvider>? nativeTools = null)
     {
         _proposals = proposals;
         _drafts = drafts ?? proposals?.Drafts ?? throw new ArgumentException("Todo requires its draft owner.");
-        Contributions = new(proposals is null ? [] : [this], [new("todo.workspace", "待办")], [])
+        Contributions = new([.. (proposals is null ? Array.Empty<IToolProvider>() : [this]), .. (nativeTools ?? [])], [new("todo.workspace", "待办")], [])
         { Contexts = proposals is null ? [] : [this], Continuations = [this], TextInterpreters = proposals is null ? [] : [this], Prompts = proposals is null ? [] : [new TodoPromptProvider()] };
     }
     public PluginManifest Manifest { get; } = new("firstparty.todo", "1.0.0", 1, []);
@@ -63,7 +64,7 @@ public sealed class TodoPlugin : IFgoPetPlugin, IToolProvider, IConversationCont
     {
         CheckRunning();
         var pending = _drafts.Get(scope.ConversationId, scope.RoleId);
-        if (pending is null) return null;
+        if (pending is null || pending.RequiresNativeConfirmation) return null;
         // The entire utterance must authorize the operation. Questions, quotations and negations do not.
         var normalized = userMessage.Trim().TrimEnd('。', '.', '！', '!');
         if (normalized is "取消" or "取消草稿" or "取消待办" or "不创建" or "不用了" or "算了")

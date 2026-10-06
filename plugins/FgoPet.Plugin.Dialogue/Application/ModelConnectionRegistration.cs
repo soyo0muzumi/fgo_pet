@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 using FgoPet.App.Settings;
 using FgoPet.UiSdk;
 using Microsoft.Extensions.DependencyInjection;
+using FgoPet.Kernel.Agent;
+using FgoPet.Platform.Secrets;
 
 namespace FgoPet.App.Dialogue;
 
@@ -29,7 +31,25 @@ public static class ModelConnectionRegistration
         .AddSingleton(provider => new DialogueContextLifetime(provider.GetRequiredService<IProcessLifetime>().StoppingToken))
         .AddSingleton<IDialogueContextLifetime>(provider => provider.GetRequiredService<DialogueContextLifetime>())
         .AddSingleton<SqliteConversationRepository>()
+        .AddSingleton<IConversationReader>(provider => provider.GetRequiredService<SqliteConversationRepository>())
         .AddSingleton<IConversationSourceReader>(provider => new ConversationSourceReader(provider.GetRequiredService<SqliteConversationRepository>()))
+        .AddSingleton<IAgentQueryResolver, ProtectedConversationQueryResolver>()
+        .AddSingleton<SqliteAgentRunStore>()
+        .AddSingleton<IAgentRunStore>(provider => provider.GetRequiredService<SqliteAgentRunStore>())
+        .AddSingleton<IAgentFinalDeliveryStore, SqliteAgentFinalDeliveryStore>()
+        .AddSingleton<NativeAgentAvailability>()
+        .AddSingleton<ToolRegistry>()
+        .AddSingleton<SkillRegistry>()
+        .AddSingleton<AgentContextAssembler>()
+        .AddSingleton(provider => new NativeConversationRuntime(provider.GetRequiredService<IAgentRunStore>(),
+            provider.GetRequiredService<ToolRegistry>(), new(provider.GetRequiredService<SkillRegistry>(),
+                provider.GetRequiredService<AgentContextAssembler>()), provider.GetRequiredService<TimeProvider>(),
+            admissionAvailable: () => provider.GetRequiredService<NativeAgentAvailability>().IsReady))
+        .AddSingleton<IFgoPetPlugin>(provider => new NativeAgentLifecyclePlugin(
+            () => provider.GetRequiredService<SqliteAgentRunStore>(), () => provider.GetRequiredService<IAgentFinalDeliveryStore>(),
+            () => provider.GetRequiredService<NativeConversationRuntime>(), () => provider.GetRequiredService<ConversationCapabilityRouter>(),
+            provider.GetRequiredService<IConversationReader>(), provider.GetRequiredService<IDialogueSettingsStore>(),
+            provider.GetRequiredService<NativeAgentAvailability>(), provider.GetRequiredService<ILogger<NativeAgentLifecyclePlugin>>()))
         .AddSingleton<IConversationRecallRepository, SqliteConversationRecallRepository>()
         .AddSingleton<IConversationRecall, ConversationRecallService>()
         .AddSingleton<IConversationContextStore, SqliteConversationContextStore>()
@@ -51,7 +71,10 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<IRequestTokenMeter>(),
             provider.GetRequiredService<DialogueContextLifetime>(),
             provider.GetRequiredService<IConversationRecall>(),
-            provider.GetRequiredService<IConversationContextStore>()))
+            provider.GetRequiredService<IConversationContextStore>(),
+            provider.GetRequiredService<NativeConversationRuntime>(), provider.GetRequiredService<IAgentRunStore>(),
+            provider.GetRequiredService<IAgentFinalDeliveryStore>(),
+            scope => provider.GetService<FgoPet.App.Runtime.AppRuntime>()?.ActiveRole?.ServantId == scope.RoleId))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),

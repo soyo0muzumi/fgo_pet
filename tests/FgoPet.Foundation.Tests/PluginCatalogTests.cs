@@ -7,6 +7,53 @@ namespace FgoPet.Foundation.Tests;
 
 public sealed class PluginCatalogTests
 {
+    [Theory]
+    [InlineData("todo.list")]
+    [InlineData("workspace.read")]
+    [InlineData("legacy_tool")]
+    [InlineData("a.b_c")]
+    public void Tool_names_allow_dotted_segments_and_legacy_underscores(string name)
+    {
+        var plugin = new SamplePlugin("test.tools", contributes: false)
+        { Contributions = new([new NamedProvider(name)], [], []) };
+        Assert.Equal(name, Assert.Single(PluginCatalog.Create([plugin]).Tools).Descriptor.Name);
+    }
+
+    [Theory]
+    [InlineData(".todo")]
+    [InlineData("todo.")]
+    [InlineData("todo..list")]
+    [InlineData("todo/../list")]
+    [InlineData("todo.List")]
+    [InlineData("todo.1list")]
+    public void Malformed_tool_names_are_rejected(string name)
+    {
+        var plugin = new SamplePlugin("test.tools", contributes: false)
+        { Contributions = new([new NamedProvider(name)], [], []) };
+        Assert.Equal("PLUGIN_INVALID_TOOL", Assert.Throws<PluginValidationException>(
+            () => PluginCatalog.Create([plugin])).Code);
+    }
+
+    [Fact]
+    public void Tool_names_are_bounded_and_dotted_duplicates_are_rejected()
+    {
+        var plugin = new SamplePlugin("test.tools", contributes: false)
+        { Contributions = new([new NamedProvider(new string('a', 64))], [], []) };
+        Assert.Single(PluginCatalog.Create([plugin]).Tools);
+        Assert.Throws<ArgumentException>(() => new NamedProvider(new string('a', 65)));
+        Assert.Throws<ArgumentException>(() => new NamedProvider(""));
+        plugin.Contributions = new([new NamedProvider("todo.list"), new NamedProvider("todo.list")], [], []);
+        Assert.Equal("PLUGIN_DUPLICATE_TOOL", Assert.Throws<PluginValidationException>(
+            () => PluginCatalog.Create([plugin])).Code);
+    }
+
+    private sealed class NamedProvider(string name) : IToolProvider
+    {
+        public ToolDescriptor Descriptor { get; } = new(name, "Synthetic", "{\"type\":\"object\"}", ToolEffect.ReadOnly);
+        public ValueTask<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken token)
+            => ValueTask.FromResult(new ToolResult(true, default));
+    }
+
     [Fact]
     public void Sample_plugin_contributes_tools_workspace_and_settings_without_core_types()
     {

@@ -455,6 +455,45 @@ public sealed class RuntimeDatabaseMigrator
         }
     }
 
+    /// <summary>Applies a module-owned schema without adding business tables to the platform schema.</summary>
+    public void MigrateModule(string moduleId, IReadOnlyList<Migration> migrations)
+    {
+        ArgumentNullException.ThrowIfNull(migrations);
+        if (string.IsNullOrEmpty(moduleId) || moduleId.Length > 128 ||
+            moduleId.Any(c => !(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-')) ||
+            migrations.Count is < 1 or > 32)
+            throw new ArgumentException("Invalid module migration definition.");
+        for (var index = 0; index < migrations.Count; index++)
+            if (migrations[index].Version != index + 1 || string.IsNullOrWhiteSpace(migrations[index].Sql) ||
+                migrations[index].Sql.Length > 262144)
+                throw new ArgumentException("Module migrations must be ordered and contiguous.", nameof(migrations));
+
+        using var connection = _database.Open();
+        // Bookkeeping and all pending scripts share one transaction, including first creation.
+        using var transaction = connection.BeginTransaction();
+        using (var create = new SqliteCommand("""
+            CREATE TABLE IF NOT EXISTS module_schema_migrations(
+              module_id TEXT NOT NULL, version INTEGER NOT NULL, applied_at_utc TEXT NOT NULL,
+              PRIMARY KEY(module_id, version));
+            """, connection, transaction)) create.ExecuteNonQuery();
+        using var query = new SqliteCommand(
+            "SELECT COALESCE(MAX(version),0) FROM module_schema_migrations WHERE module_id=$module", connection, transaction);
+        query.Parameters.AddWithValue("$module", moduleId);
+        var current = (long)query.ExecuteScalar()!;
+        if (current > migrations.Count) throw new RuntimeDatabaseVersionException(current, migrations.Count);
+        foreach (var migration in migrations.Where(item => item.Version > current))
+        {
+            using (var script = new SqliteCommand(migration.Sql, connection, transaction)) script.ExecuteNonQuery();
+            using var record = new SqliteCommand(
+                "INSERT INTO module_schema_migrations VALUES($module,$version,$applied)", connection, transaction);
+            record.Parameters.AddWithValue("$module", moduleId);
+            record.Parameters.AddWithValue("$version", migration.Version);
+            record.Parameters.AddWithValue("$applied", DateTimeOffset.UtcNow.ToString("O"));
+            record.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
     public static long ReadVersion(SqliteConnection connection)
     {
         using var exists = connection.CreateCommand();

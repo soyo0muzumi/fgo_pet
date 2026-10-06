@@ -27,6 +27,9 @@ public sealed record PluginContributions(ImmutableArray<IToolProvider> Tools,
     public ImmutableArray<IPostTurnObserver> PostTurnObservers { get; init; } = [];
     public ImmutableArray<ICompanionFeedbackProvider> FeedbackProviders { get; init; } = [];
     public ImmutableArray<TransientSurfaceDescriptor> TransientSurfaces { get; init; } = [];
+    public ImmutableArray<ISkillProvider> Skills { get; init; } = [];
+    public ImmutableArray<IAgentContextProvider> AgentContexts { get; init; } = [];
+    public ImmutableArray<IAgentRunObserver> AgentObservers { get; init; } = [];
 }
 
 /// <summary>Trusted, statically registered capability. The supplied token represents process shutdown.</summary>
@@ -40,10 +43,14 @@ public interface IFgoPetPlugin : IAsyncDisposable
 
 public enum ToolEffect { ReadOnly, Proposal, Command }
 public sealed record ToolScope(string ConversationId, string RoleId, string? ProjectId);
-public sealed record ToolInvocation(ToolScope Scope, JsonElement Arguments);
+public sealed record ToolInvocation(ToolScope Scope, JsonElement Arguments)
+{
+    public ToolExecutionContext? ExecutionContext { get; init; }
+}
 public sealed record ToolResult(bool Success, JsonElement Payload, string? ErrorCode = null)
 {
     public ConversationContributionResult? Conversation { get; init; }
+    public ToolExecutionState? ExecutionState { get; init; }
 }
 
 public sealed record ToolDescriptor

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" /></ItemGroup>
+  <ItemGroup><Compile Remove="Parser/**/*.cs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="Parser/FgoPet.DocumentParser.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
+  <Target Name="IncludeDocumentParserPayload" BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems" DependsOnTargets="ResolveProjectReferences">
+    <MSBuild Projects="Parser/FgoPet.DocumentParser.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_DocumentParserTarget" />
+    </MSBuild>
+    <PropertyGroup><_DocumentParserDirectory>@(_DocumentParserTarget->'%(RootDir)%(Directory)')</_DocumentParserDirectory></PropertyGroup>
+    <ItemGroup>
+      <_DocumentParserAppHost Include="$(_DocumentParserDirectory)FgoPet.DocumentParser.exe" />
+      <_DocumentParserPayload Include="$(_DocumentParserDirectory)FgoPet.DocumentParser.dll;$(_DocumentParserDirectory)FgoPet.DocumentParser.deps.json;$(_DocumentParserDirectory)FgoPet.DocumentParser.runtimeconfig.json;$(_DocumentParserDirectory)UglyToad.PdfPig*.dll" />
+      <ContentWithTargetPath Include="@(_DocumentParserPayload)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="%(Filename)%(Extension)" />
+      <ContentWithTargetPath Include="@(_DocumentParserAppHost)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" TargetPath="%(Filename)%(Extension)" />
+      <ContentWithTargetPath Include="Parser/licenses/PdfPig-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="licenses/PdfPig-LICENSE.txt" />
+    </ItemGroup>
+  </Target>
+</Project>

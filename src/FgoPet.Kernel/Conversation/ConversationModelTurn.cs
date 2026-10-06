@@ -4,11 +4,13 @@ using FgoPet.Core.Settings;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Providers;
 using FgoPet.Kernel.Conversation;
+using System.Collections.Immutable;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
 /// <summary>One provider turn owns streaming, bounded retries and connection-downgrade state.</summary>
-internal sealed class ConversationModelTurn
+internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputBudget
 {
     private const int MaxPrimaryAttempts = 3;
     private readonly IDialogueSettingsStore? _settings;
@@ -22,9 +24,24 @@ internal sealed class ConversationModelTurn
     public PromptBudget Budget { get; }
     private int PrimaryAttempts { get; set; }
     private bool SawOutput { get; set; }
+    private string? _agentServantId;
+    private string? _agentConversationId;
     public bool ToolsFallbackUsed { get; private set; }
     public bool ContextCompactionRetryUsed { get; set; }
     public bool CanRecoverContextLimit => !ContextCompactionRetryUsed && PrimaryAttempts < MaxPrimaryAttempts && !SawOutput;
+    public int InputTokenBudget => Budget.InputTokens;
+
+    public int MeasureInputTokens(StepEnvironment environment)
+    {
+        if (_agentServantId is null || _agentConversationId is null) throw new InvalidOperationException("Native step requires its factory.");
+        var withTools = Connection?.ToolsSupported != false && !ToolsFallbackUsed && !environment.Tools.IsEmpty;
+        var names = new ModelToolNameMap(withTools ? environment.Tools.Select(tool => tool.Name) : []);
+        var tools = withTools ? environment.Tools.Select(tool => new ChatToolDefinition(names.ToWireName(tool.Name),
+            tool.Description, tool.Parameters.GetRawText())).ToArray() : null;
+        var request = ChatRequest.CreateAgent(_agentServantId, _agentConversationId, environment.Messages,
+            tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
+        return _tokenMeter.Measure(Route, request).InputTokens;
+    }
 
     private ConversationModelTurn(IChatProvider provider, ModelConnectionSettings? connection,
         ModelRouteKey route, PromptBudget budget, IDialogueSettingsStore? settings, IRequestTokenMeter meter,
@@ -57,8 +74,127 @@ internal sealed class ConversationModelTurn
         {
             _tokenMeter.Invalidate(Route);
             _cancelCurrent();
+            throw new OperationCanceledException("Model connection changed.", cancellationToken);
         }
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    public static async Task<IAgentModelStep> CreateAgentStepAsync(IChatProviderResolver providerResolver,
+        IDialogueSettingsStore? settings, IModelContextResolver contextResolver, IRequestTokenMeter meter,
+        Action<ConversationUpdate> publish, Action cancelCurrent, string servantId, string conversationId,
+        CancellationToken cancellationToken)
+    {
+        var turn = await CreateAsync(providerResolver, settings, contextResolver, meter, null, publish, cancelCurrent,
+            cancellationToken);
+        turn._agentServantId = servantId;
+        turn._agentConversationId = conversationId;
+        return turn;
+    }
+
+    /// <summary>One logical step; every actual provider attempt reserves from the same durable Run budget.</summary>
+    public async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget,
+        CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        ArgumentNullException.ThrowIfNull(budget);
+        if (_agentServantId is null || _agentConversationId is null) throw new InvalidOperationException("Native step requires its factory.");
+        EnsureCurrent(token);
+        ModelProtocol.ValidateTranscript(environment.Messages);
+        if (environment.Tools.IsDefault) throw new AgentProtocolException("MODEL_INVALID_TOOLS");
+        // A historical canonical ID and a currently offered ID must never share a wire name.
+        _ = new ModelToolNameMap(environment.Tools.Select(t => t.Name)
+            .Concat(environment.Messages.SelectMany(m => m.ToolCalls).Where(c => c.IsResolved).Select(c => c.Name))
+            .Distinct(StringComparer.Ordinal));
+        PrimaryAttempts = 0;
+        SawOutput = false;
+        ContextCompactionRetryUsed = false;
+        var messages = environment.Messages;
+        var previousCallIds = environment.Messages.SelectMany(m => m.ToolCalls).Select(c => c.CallId).ToHashSet(StringComparer.Ordinal);
+        while (true)
+        {
+            EnsureCurrent(token);
+            var withTools = Connection?.ToolsSupported != false && !ToolsFallbackUsed && !environment.Tools.IsEmpty;
+            var names = new ModelToolNameMap(withTools ? environment.Tools.Select(t => t.Name) : []);
+            var tools = withTools ? environment.Tools.Select(tool => new ChatToolDefinition(names.ToWireName(tool.Name),
+                tool.Description, tool.Parameters.GetRawText())).ToArray() : null;
+            ChatRequest BuildRequest() => ChatRequest.CreateAgent(_agentServantId, _agentConversationId, messages,
+                tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
+            var request = BuildRequest();
+            while (_tokenMeter.Measure(Route, request).InputTokens > Budget.InputTokens)
+            {
+                messages = RemoveOldestCompleteGroup(messages);
+                request = BuildRequest();
+            }
+            // Materialize the exact serializer input before charging. Malformed local envelopes never send.
+            _ = ChatRequestInputEnvelope.Write(Route.ModelId, request);
+            if (PrimaryAttempts >= MaxPrimaryAttempts)
+                throw new ProviderRequestException(ProviderFailureCategory.ServiceUnavailable, "本轮重试次数已用完，请稍后重试。");
+            EnsureCurrent(token);
+            await budget.ReserveAsync(token);
+            EnsureCurrent(token);
+            PrimaryAttempts++;
+            var aggregator = new ModelStepAggregator(names);
+            var accepted = false;
+            try
+            {
+                PublishNativeStage(ConversationRequestStage.RequestStarted);
+                await foreach (var chunk in Provider.StreamAsync(request, token))
+                {
+                    EnsureCurrent(token);
+                    SawOutput |= !string.IsNullOrEmpty(chunk.TextDelta) || chunk.ToolCallDelta is not null || chunk.ReasoningDelta is not null;
+                    if (!accepted) { accepted = true; PublishNativeStage(ConversationRequestStage.ResponseHeadersReceived); }
+                    aggregator.Add(chunk);
+                    if (chunk.ToolCallDelta is not null) PublishNativeStage(ConversationRequestStage.StreamingTool);
+                    if (!string.IsNullOrEmpty(chunk.TextDelta)) PublishNativeStage(ConversationRequestStage.StreamingAnswer);
+                    // Reasoning is never placed in native events or the execution transcript.
+                    if (chunk.IsComplete) break;
+                }
+                EnsureCurrent(token);
+                var response = aggregator.Complete(previousCallIds);
+                if (response.Usage is not null) _tokenMeter.RecordUsage(Route, request, response.Usage);
+                return response;
+            }
+            catch (ProviderRequestException error) when (!SawOutput && PrimaryAttempts < MaxPrimaryAttempts)
+            {
+                if (withTools && !ToolsFallbackUsed && error.Category == ProviderFailureCategory.ToolsRejected)
+                {
+                    EnsureCurrent(token);
+                    ToolsFallbackUsed = true;
+                    MarkToolsUnsupported();
+                    continue;
+                }
+                if (error.Category == ProviderFailureCategory.ContextLimitExceeded && CanRecoverContextLimit)
+                {
+                    ContextCompactionRetryUsed = true;
+                    messages = RemoveOldestCompleteGroup(messages);
+                    continue;
+                }
+                if (error.Category is ProviderFailureCategory.Network or ProviderFailureCategory.ServiceUnavailable) continue;
+                throw;
+            }
+        }
+    }
+
+    private void PublishNativeStage(ConversationRequestStage stage) => _publish(new(ConversationUpdateType.RequestStage,
+        _agentConversationId!, ServantId: _agentServantId, RequestStage: stage));
+
+    internal static ImmutableArray<ModelMessage> RemoveOldestCompleteGroup(ImmutableArray<ModelMessage> messages)
+    {
+        // Protect system instructions, the most recent user input and the latest response/results group.
+        var latestUser = -1;
+        for (var i = 0; i < messages.Length; i++) if (messages[i].Role == ModelMessageRole.User) latestUser = i;
+        var latestGroup = messages.Length - 1;
+        while (latestGroup > 0 && messages[latestGroup].Role == ModelMessageRole.Tool) latestGroup--;
+        for (var i = 0; i < messages.Length; i++)
+        {
+            var message = messages[i];
+            if (message.Role is ModelMessageRole.System or ModelMessageRole.Tool || i == latestUser || i >= latestGroup) continue;
+            var length = 1 + message.ToolCalls.Length;
+            var trimmed = messages.RemoveRange(i, length);
+            ModelProtocol.ValidateTranscript(trimmed);
+            return trimmed;
+        }
+        throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
     }
 
     /// <summary>

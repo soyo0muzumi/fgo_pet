@@ -1,5 +1,7 @@
 using FgoPet.Extensibility;
 using FgoPet.Core.Validation;
+using System.Collections.Immutable;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Core.Dialogue;
 
@@ -63,6 +65,8 @@ public enum ConversationSendStatus
     Cancelled,
     Failed,
     ConfigurationRequired,
+    WaitingUserInput,
+    WaitingApproval,
 }
 
 public sealed record Conversation
@@ -143,7 +147,10 @@ public sealed record ConversationSendResult(
     ConversationSendStatus Status,
     string ConversationId,
     string? AssistantMessageId = null,
-    string? SafeError = null);
+    string? SafeError = null)
+{
+    public string? RunId { get; init; }
+}
 
 public enum ConversationUpdateType
 {
@@ -193,6 +200,17 @@ public sealed record ConversationUpdate(
 
 public sealed record ChatRequest
 {
+    /// <summary>Native transcript entry; no tool role is added to semantic conversation history.</summary>
+    public static ChatRequest CreateAgent(string servantId, string conversationId,
+        ImmutableArray<ModelMessage> messages, ContentContextKey? contentContext = null,
+        IReadOnlyDictionary<string, string>? metadata = null, IReadOnlyList<ChatToolDefinition>? tools = null,
+        string? toolChoice = null, int? maxOutputTokens = null)
+    {
+        ModelProtocol.ValidateTranscript(messages);
+        return new ChatRequest(servantId, conversationId, [], contentContext, metadata, tools, toolChoice,
+            maxOutputTokens, messages);
+    }
+
     public ChatRequest(
         string servantId,
         string conversationId,
@@ -202,13 +220,22 @@ public sealed record ChatRequest
         IReadOnlyList<ChatToolDefinition>? tools = null,
         string? toolChoice = null,
         int? maxOutputTokens = null)
+        : this(servantId, conversationId, messages, contentContext, metadata, tools, toolChoice, maxOutputTokens, default)
+    {
+    }
+
+    private ChatRequest(string servantId, string conversationId, IReadOnlyList<PromptMessage> messages,
+        ContentContextKey? contentContext, IReadOnlyDictionary<string, string>? metadata,
+        IReadOnlyList<ChatToolDefinition>? tools, string? toolChoice, int? maxOutputTokens,
+        ImmutableArray<ModelMessage> modelMessages)
     {
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
         ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
         if (maxOutputTokens is <= 0) throw new ArgumentOutOfRangeException(nameof(maxOutputTokens));
         MaxOutputTokens = maxOutputTokens;
+        ModelMessages = modelMessages;
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
-        if (Messages.Count == 0)
+        if (ModelMessages.IsDefault && Messages.Count == 0)
         {
             throw new ArgumentException("At least one message is required.", nameof(messages));
         }
@@ -235,6 +262,9 @@ public sealed record ChatRequest
     public string ServantId { get; }
     public string ConversationId { get; }
     public IReadOnlyList<PromptMessage> Messages { get; }
+    public ImmutableArray<ModelMessage> ModelMessages { get; }
+    public bool IsAgentRequest => !ModelMessages.IsDefault;
+    public int EffectiveMessageCount => IsAgentRequest ? ModelMessages.Length : Messages.Count;
     public ContentContextKey? ContentContext { get; }
     public IReadOnlyDictionary<string, string> Metadata { get; }
     public IReadOnlyList<ChatToolDefinition>? Tools { get; }

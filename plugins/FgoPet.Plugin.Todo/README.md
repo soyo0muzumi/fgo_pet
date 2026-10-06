@@ -18,4 +18,6 @@ Backend authorization remains with Agent Backend. Persist only sanitized archive
 
 ## Validation
 
+`NativeTodoTools` adapts the same Todo owner to native list/proposal/command ports. A frozen draft, business confirmation, item version and Run idempotency key must all match before one transactional mutation. `todo_agent_receipts` binds the result to conversation/role/project and the exact mutation fingerprint. Unconfirmed outcomes reconcile by reading this receipt; they never replay the write. Receipts are bounded to 4096 rows and cascade with conversation deletion; capacity rejects new writes without evicting receipts. Native drafts cannot be confirmed through the legacy text-confirmation route. Production native Command policy remains denied until its approval UI is connected.
+
 Use `plugins/FgoPet.Plugin.Todo/Tests` for Todo, proposal, adapter, and archive behavior; `tests/FgoPet.Infrastructure.Tests` for SQLite persistence; and `tests/FgoPet.Windows.Tests/Todo` and `tests/FgoPet.Windows.Tests/Shell` for workspace and Web surface integration.

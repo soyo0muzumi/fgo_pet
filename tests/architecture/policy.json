@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "projects": [
     {
+      "path": "plugins/FgoPet.Plugin.Documents/Parser/FgoPet.DocumentParser.csproj",
+      "module": "documents",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Workspace/FgoPet.Plugin.Workspace.csproj",
+      "module": "workspace",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Shell/FgoPet.Plugin.Shell.csproj",
+      "module": "shell",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Documents/FgoPet.Plugin.Documents.csproj",
+      "module": "documents",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Skills/FgoPet.Plugin.Skills.csproj",
+      "module": "skills",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Capability.Tests/FgoPet.Capability.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tests/FgoPet.Agent.Tests/FgoPet.Agent.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
       "path": "src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj",
       "module": "platform",
       "layer": "implementation",
@@ -391,6 +433,10 @@
     {
       "id": "capabilities-to-neutral-contracts",
       "fromModules": [
+        "shell",
+        "documents",
+        "workspace",
+        "skills",
         "conversation",
         "character",
         "todo",
@@ -491,7 +537,11 @@
         "content",
         "rendering",
         "conversation",
-        "settings-host"
+        "settings-host",
+        "documents",
+        "workspace",
+        "shell",
+        "skills"
       ],
       "toLayers": [
         "host",

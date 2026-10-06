@@ -10,4 +10,6 @@ Dependencies are owned Focus.Core, neutral Platform storage/contracts, Extensibi
 
 Owned tables: `focus_presets`, `focus_sessions`, `runtime_events`, `timeline_entries`, `servant_bonds`, `bond_ledger`. Recovery must preserve exactly-once completion accounting; display snapshots must not be written as authoritative facts.
 
+Native `focus.get/start/pause/stop` adapters use the existing session service through `IFocusNativeDispatcher`. Desktop supplies one WPF dispatcher and cadence owner, and checks the active role again at dispatch. Get is read-only; mutations require native Command authorization, which production currently denies pending the approval UI. The adapter introduces no second timer or completion ledger.
+
 Validation uses Core focus/bond/timeline tests, Infrastructure ledger/recovery tests, App compact/Focus tests and Windows focus/panel/window/theme integration tests. Release compilation checks the actual assembly boundary. Device and sleep/resume acceptance are separate from automated checks.

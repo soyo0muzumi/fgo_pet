@@ -760,20 +760,20 @@ public sealed class ConversationOrchestratorTests : IDisposable
         await orchestrator.SendAsync("800100", "你好", CancellationToken.None);
 
         Assert.NotNull(provider.LastRequest);
-        var tool = Assert.Single(provider.LastRequest!.Tools!);
-        Assert.Equal(TodoToolContracts.SubmitTodoProposalsToolName, tool.Name);
+        Assert.Equal(new[] { "memory.search", TodoToolContracts.SubmitTodoProposalsToolName },
+            provider.LastRequest!.Tools!.Select(tool => tool.Name));
         Assert.Equal("auto", provider.LastRequest.ToolChoice);
     }
 
     [Fact]
-    public async Task Conversation_without_a_registered_capability_sends_no_tools()
+    public async Task Conversation_with_only_Memory_registered_offers_only_memory_search()
     {
         var provider = new FakeProvider([new ChatStreamChunk("收到。", IsComplete: true)]);
         var result = await CreateOrchestrator(provider, settings: new FakeSettings()).SendAsync("800100", "你好", default);
         Assert.Equal(ConversationSendStatus.Completed, result.Status);
         Assert.NotNull(provider.LastRequest);
-        Assert.Null(provider.LastRequest!.Tools);
-        Assert.Null(provider.LastRequest.ToolChoice);
+        Assert.Equal("memory.search", Assert.Single(provider.LastRequest!.Tools!).Name);
+        Assert.Equal("auto", provider.LastRequest.ToolChoice);
     }
 
     [Fact]

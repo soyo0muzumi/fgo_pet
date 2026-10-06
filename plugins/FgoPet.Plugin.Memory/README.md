@@ -51,6 +51,8 @@ Core / App / Infrastructure / Windows 的 memory 相关测试；dialogue↔memor
 
 ## Validation
 
+`memory.search` and `NativeMemoryContext` query the existing confirmed-memory owner. They retain current role/project scope, enabled/reviewed filters, bounded output and source provenance. Context resolves the original user query through the protected query port and rechecks it before returning data; unavailable sources are reported as unavailable. Model/tool execution traces are never memory extraction evidence. Post-turn extraction continues to consume only authoritative user statements and validated final assistant messages.
+
 Use the Memory Core/Desktop test projects under `tests/`, plus affected application tests and the architecture gate for boundary changes. Privacy, source ownership, generation rotation, and failure/retry behavior must remain covered.
 
 `MemoryWebPage` owns the shared Settings Web module over `MemoryViewModel`. The former ConversationMemoryPage XAML is removed; role context, review, confirmation, and data policies retain their existing owners.

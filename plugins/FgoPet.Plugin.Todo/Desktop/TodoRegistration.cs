@@ -24,7 +24,10 @@ public static class TodoRegistration
                 provider.GetRequiredService<TimeProvider>()))
             .AddSingleton<TodoProposalService>()
             .AddSingleton<ITodoDraftWorkflow>(provider => provider.GetRequiredService<TodoProposalService>().Drafts)
-            .AddSingleton(provider => new TodoPlugin(provider.GetRequiredService<TodoProposalService>()))
+            .AddSingleton(provider => new TodoPlugin(provider.GetRequiredService<TodoProposalService>(),
+                nativeTools: NativeTodoTools.Create(provider.GetRequiredService<TodoApplicationService>(),
+                    provider.GetRequiredService<ITodoRepository>(), provider.GetRequiredService<TodoProposalService>(),
+                    provider.GetRequiredService<TimeProvider>())))
             .AddSingleton<TodoChangeFeed>()
             .AddSingleton<TodoWebAdapter>()
             .AddSingleton(provider => new TodoPeekSurfaceFactory(

@@ -74,7 +74,7 @@ public static class ServiceRegistration
         services
         .AddAgentBackendServices(paths.StorageRoot, includeAgentBackend)
         .AddTodoCapability(includeTodo, paths.StorageRoot)
-        .AddFocusCapability(includeFocus)
+        .AddFocusCapability(includeFocus, provider => () => provider.GetRequiredService<AppRuntime>().ActiveRole?.ServantId)
         .AddMemoryCapability(includeMemory, provider => new ProviderMemoryCandidateExtractor(
             connection => provider.GetRequiredService<IChatProviderResolver>().Resolve(connection),
             provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
@@ -177,6 +177,7 @@ public static class ServiceRegistration
         .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
+        .AddNativeCapabilities()
         .AddDialogueRuntime()
         .AddChatWebPresentation()
         .AddModelConnectionSettings()

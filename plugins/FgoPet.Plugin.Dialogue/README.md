@@ -20,11 +20,23 @@ The shell owns `DialogueWindowViewModel` (window navigation, focus/read receipts
 
 ## Persistence and security
 
+The OpenAI-compatible provider preserves native assistant call groups and ordered tool observations using the shared request envelope. A streaming event can contain multiple calls; EOF without an explicit complete response is incomplete. Kernel's native model adapter maps request-local wire aliases, bounds complete responses and charges each provider attempt. Kernel also exposes policy, approval and question broker DTO mechanisms, but product Chat/UI presentation and reply routing remain pending; production backend orchestration uses the native coordinator.
+
 Dialogue repositories own `conversations`, `chat_messages`, `conversation_summaries`, `conversation_contexts`, `chat_message_search` and their original-message projections. They preserve existing schemas and conversation/role/project scope checks. Model outputs remain untrusted: retain injection wrapping, typed tool/schema validation, and safe provider failure handling. Credentials remain in Windows Credential Manager; do not write keys or raw user data to diagnostics.
+
+`SqliteAgentRunStore` owns `agent_runs` and `agent_run_events`. It protects execution checkpoints through the platform protected-state port, binds them to an existing completed user message and conversation scope, and commits revision/cursor/evidence with metadata events atomically. Conversation/message deletion cascades to these records. Storage is bounded to 256 retained runs, 64 MiB of protected checkpoint blobs, 4 MiB per plaintext checkpoint and 1024 metadata events per run; terminal rows expire after seven days during admission. One journal slot is reserved for closure. Startup explicitly closes unfinished runs without replay; unconfirmed command intent becomes `ExecutionUnknown`. This adapter requires startup closure before host admission.
+
+`ModelConnectionRegistration` now registers the native backend for production conversation sends after existing local continuation handling. The frontend approval/question bridge remains deferred: production omits `user.ask` and denies Command tools.
+
+`SqliteAgentFinalDeliveryStore` owns a separately protected acceptance ledger. It verifies completed checkpoints and current source/content scope, then publishes semantic clarification history and the validated final answer in one transaction with deterministic message IDs. Repeated publication returns the same answer; an atomic claim limits post-turn observer dispatch to once. The ledger admits at most 256 rows and 16 MiB of protected payload, rejecting overflow without evicting accepted finals. Conversation/root-message deletion cascades to both stores. Private execution transcripts never become conversation messages or memory evidence.
+
+Both native stores delay module migrations until first use. `NativeAgentLifecyclePlugin` runs after global database initialization, closes unfinished runs without replay and publishes already accepted finals before enabling admission. Recovery never calls a model or tool. Storage failure keeps native admission closed while offline capabilities remain available.
+
+Accepted finals retain their source Run against terminal retention. Stale pending scope/source records remain protected and are skipped during recovery; they do not prevent other valid finals from publishing. Corrupt protected records fail closed. Claimed observer dispatch is best effort and never replays after a crash; observer failure does not disable readiness or undo a published answer.
 
 ## Validation and remaining boundaries
 
-Run relevant Core contract, App conversation/prompt, Infrastructure provider/SQLite and Windows dialogue/settings tests. Prompt/budget and context lifetime changes also require the affected EndToEnd checks and the evaluated architecture gate. These suites are regression checks, not real-provider or device acceptance.
+Run relevant Core contract, App conversation/prompt, Infrastructure provider/SQLite and Windows dialogue/settings tests. Prompt/budget and context lifetime changes also require the affected EndToEnd checks and the evaluated architecture gate. These suites and browser fixtures are regression checks, not product Chat/UI, real-provider or device acceptance.
 
 The concrete provider/WPF conversation presentation mix remains to be narrowed. Dialogue has no Character, Speech or HostContracts project reference; window integration belongs to Shell. Legacy Core/Infrastructure aggregation is retired; that does not by itself complete generic hosting or long-file decomposition.
 

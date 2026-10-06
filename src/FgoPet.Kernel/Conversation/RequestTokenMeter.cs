@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using FgoPet.Core.Dialogue;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Infrastructure.Providers;
 
@@ -19,7 +20,9 @@ public sealed class RequestTokenMeter : IRequestTokenMeter
         try
         {
             var bytes = Encoding.UTF8.GetByteCount(ChatRequestInputEnvelope.Write(route.ModelId, request));
-            return new(checked(bytes + 12 * request.Messages.Count + 32), TokenCountKind.Estimated, fingerprint);
+            var metadataBytes = request.Metadata.Count == 0 ? 0
+                : Encoding.UTF8.GetByteCount(System.Text.Json.JsonSerializer.Serialize(request.Metadata));
+            return new(checked(bytes + metadataBytes + 12 * request.EffectiveMessageCount + 32), TokenCountKind.Estimated, fingerprint);
         }
         catch (OverflowException) { throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext); }
     }
@@ -64,7 +67,7 @@ public static class ChatRequestInputEnvelope
     {
         var payload = new Dictionary<string, object?> {
             ["model"] = modelId,
-            ["messages"] = request.Messages.Select(message => new {
+            ["messages"] = request.IsAgentRequest ? ProjectNativeMessages(request) : request.Messages.Select(message => new {
                 role = message.Role.ToString().ToLowerInvariant(), content = message.Text
             }),
         };
@@ -76,5 +79,24 @@ public static class ChatRequestInputEnvelope
             payload["tool_choice"] = request.ToolChoice ?? "auto";
         }
         return payload;
+    }
+
+    private static object ProjectNativeMessages(ChatRequest request)
+    {
+        ModelProtocol.ValidateTranscript(request.ModelMessages);
+        return request.ModelMessages.Select(message => {
+            var projected = new Dictionary<string, object?> {
+                ["role"] = message.Role.ToString().ToLowerInvariant(), ["content"] = message.Content
+            };
+            if (!message.ToolCalls.IsEmpty)
+                projected["tool_calls"] = message.ToolCalls.Select(call => new {
+                    id = call.CallId, type = "function", function = new {
+                        name = call.IsResolved ? ModelToolNameMap.GetWireName(call.Name) : call.Name,
+                        arguments = call.ArgumentsJson
+                    }
+                });
+            if (message.Role == ModelMessageRole.Tool) projected["tool_call_id"] = message.ToolCallId;
+            return projected;
+        });
     }
 }

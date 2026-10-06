@@ -67,6 +67,9 @@
   <ItemGroup>
     <Compile Include="Application/ModelConnectionRegistration.cs" />
     <Compile Include="Application/ChatWebRegistration.cs" />
+    <Compile Include="Infrastructure/SqliteAgentRunStore.cs" />
+    <Compile Include="Infrastructure/SqliteAgentFinalDeliveryStore.cs" />
+    <Compile Include="Application/NativeAgentLifecyclePlugin.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- 前端资源由并行前端 agent 持有；此处仅按既定路径挂载到受控 root/pages。 -->

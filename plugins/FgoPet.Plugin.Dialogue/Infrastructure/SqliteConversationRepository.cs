@@ -119,6 +119,15 @@ public sealed class SqliteConversationRepository : IConversationStore
         ArgumentNullException.ThrowIfNull(message);
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
+        Append(connection, transaction, message);
+        transaction.Commit();
+    }
+
+    internal static void Append(SqliteConnection connection, SqliteTransaction transaction, ChatMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(message);
         var conversationServant = ReadConversationServant(connection, transaction, message.ConversationId);
         if (conversationServant is null)
         {
@@ -167,8 +176,6 @@ public sealed class SqliteConversationRepository : IConversationStore
             update.Parameters.AddWithValue("$id", message.ConversationId);
             update.ExecuteNonQuery();
         }
-
-        transaction.Commit();
     }
 
     public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId)

@@ -7,10 +7,19 @@ namespace FgoPet.Infrastructure.Dialogue;
 
 public sealed class ProviderConversationSummarizer : IConversationSummarizer
 {
-    public async Task<SummaryAttempt> SummarizeAsync(IChatProvider provider, ChatRequest request, CancellationToken cancellationToken)
+    public Task<SummaryAttempt> SummarizeAsync(IChatProvider provider, ChatRequest request, CancellationToken cancellationToken)
+        => SendAsync(provider, request, null, cancellationToken);
+    public Task<SummaryAttempt> SummarizeAsync(IChatProvider provider, ChatRequest request,
+        FgoPet.Kernel.Agent.IModelRequestBudget budget, CancellationToken cancellationToken)
+        => SendAsync(provider, request, budget, cancellationToken);
+    private static async Task<SummaryAttempt> SendAsync(IChatProvider provider, ChatRequest request,
+        FgoPet.Kernel.Agent.IModelRequestBudget? budget, CancellationToken cancellationToken)
     {
         if (request.Tools is not null || request.MaxOutputTokens is not > 0)
             throw new ArgumentException("Summaries require a bounded request without tools.", nameof(request));
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = ChatRequestInputEnvelope.Write(provider.ModelId, request);
+        if (budget is not null) await budget.ReserveAsync(cancellationToken);
         var text = new StringBuilder();
         string? finish = null;
         ChatUsage? usage = null;

@@ -10,6 +10,46 @@ namespace FgoPet.Infrastructure.Tests.Providers;
 
 public sealed class OpenAiCompatibleChatProviderTests
 {
+    [Fact]
+    public async Task All_calls_in_a_single_delta_are_emitted_in_order()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"fixture\",\"tool_calls\":[{\"index\":0,\"id\":\"a\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}},{\"index\":1,\"id\":\"b\",\"function\":{\"name\":\"second\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n"));
+        var chunks = await StreamAll(CreateProvider(handler, "fixture"), BuildToolRequest());
+        Assert.Equal(new[] { "a", "b" }, chunks.Where(c => c.ToolCallDelta is not null).Select(c => c.ToolCallDelta!.Id));
+        Assert.Equal("fixture", string.Concat(chunks.Select(c => c.TextDelta)));
+    }
+
+    [Fact]
+    public async Task End_of_stream_without_done_is_never_complete()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"stop\"}]}\n\n"));
+        var chunks = await StreamAll(CreateProvider(handler, "fixture"), BuildToolRequest());
+        Assert.DoesNotContain(chunks, c => c.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("\"bad\"")]
+    [InlineData("999999999999")]
+    public async Task Invalid_call_indexes_are_rejected_before_emitting_calls(string index)
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":" + index + ",\"id\":\"a\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}}]}}]}\n\ndata: [DONE]\n\n"));
+        var error = await Assert.ThrowsAsync<ProviderRequestException>(() => StreamAll(CreateProvider(handler, "fixture"), BuildToolRequest()));
+        Assert.Equal(ProviderFailureCategory.InvalidResponse, error.Category);
+    }
+
+    [Fact]
+    public async Task Oversized_stream_lines_are_rejected_before_json_parsing()
+    {
+        var handler = new RecordingHandler(_ => StreamResponse("data: " + new string(' ', 600000) +
+            "{\"choices\":[{\"delta\":{\"content\":\"fixture\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"));
+        var error = await Assert.ThrowsAsync<ProviderRequestException>(() => StreamAll(CreateProvider(handler, "fixture"), BuildToolRequest()));
+        Assert.Equal(ProviderFailureCategory.InvalidResponse, error.Category);
+    }
+
     [Theory]
     [InlineData("https://api.openai.com/v1", "max_completion_tokens")]
     [InlineData("https://proxy.test/v1", "max_tokens")]

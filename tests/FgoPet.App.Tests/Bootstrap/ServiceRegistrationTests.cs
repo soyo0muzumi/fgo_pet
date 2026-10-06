@@ -35,12 +35,15 @@ public sealed class ServiceRegistrationTests
         services.RemoveAll<IAppLifetime>();
         services.AddSingleton<IAppLifetime>(lifetime);
         await using var provider = services.BuildServiceProvider();
-        Assert.Equal(new[] { "firstparty.content", "firstparty.portrait-live2d", "firstparty.portrait-static" },
+        Assert.Equal(new[] { "documents", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
-        Assert.Empty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
+        var readTools = provider.GetRequiredService<ConversationCapabilityRouter>().Tools;
+        Assert.Equal(new[] { "document.read", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
+            readTools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.All(readTools, tool => Assert.Equal(ToolEffect.ReadOnly, tool.Effect));
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
         Assert.Empty(provider.GetRequiredService<ITransientSurfaceCatalog>().TransientSurfaces);
         var settings = provider.GetRequiredService<SettingsPageCatalog>();

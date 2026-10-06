@@ -3,8 +3,9 @@ using FgoPet.Infrastructure.Providers;
 
 namespace FgoPet.App.Dialogue;
 
-public sealed class CompactionCallBudget
+public sealed class CompactionCallBudget(FgoPet.Kernel.Agent.IModelRequestBudget? modelBudget = null)
 {
+    public FgoPet.Kernel.Agent.IModelRequestBudget? ModelBudget { get; } = modelBudget;
     public int CallsUsed { get; private set; }
     public bool TryConsume() { if (CallsUsed >= 3) return false; CallsUsed++; return true; }
 }
@@ -61,7 +62,9 @@ public sealed class ConversationSummaryService(IConversationContextStore store, 
                 if (request is null || !calls.TryConsume()) return false;
                 lease.CheckCurrent();
                 revalidate();
-                var attempt = await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);
+                var attempt = calls.ModelBudget is { } shared
+                    ? await summarizer.SummarizeAsync(provider, request, shared, cancellationToken).ConfigureAwait(false)
+                    : await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);
                 lease.CheckCurrent();
                 revalidate();
                 if (!IsValid(attempt, batch[^1].MessageId)) return false;
