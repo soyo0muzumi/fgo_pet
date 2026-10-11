@@ -1,5 +1,17 @@
 /* Margin v5 settings shell. Business forms remain owned by their page modules. */
-:root { --sidebar-width:212px; font:14px var(--ui); }
+:root {
+  color-scheme: light dark;
+  --surface: #ffffff;
+  --page: #f6f5f8;
+  --text: #252137;
+  --muted: #6d687b;
+  --line: #dcd9e2;
+  --accent: #7050b8;
+  --on-accent: #ffffff;
+  --danger: #b44c5d;
+  --sidebar-width:212px;
+  font:14px var(--ui);
+}
 * { box-sizing:border-box; }
 [hidden] { display:none!important; }
 html,body { width:100%; height:100%; min-height:0; margin:0; }

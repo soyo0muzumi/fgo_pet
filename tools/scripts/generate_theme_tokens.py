@@ -40,7 +40,27 @@ CSS_KEYS = {
     "--danger": "DangerColor",
 }
 COLORS = re.compile(r'    <Color x:Key="([^"]+)">([^<]+)</Color>')
-CSS_ROOT = re.compile(r"\A:root\s*\{[^}]*\}", re.S)
+CSS_ROOT = re.compile(
+    r"\A(?P<prefix>(?:\s|/\*.*?\*/)*)"
+    r":root\s*\{(?P<body>[^}]*)\}",
+    re.S,
+)
+CSS_VALUE_TOKENS = re.compile(r'''/\*.*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\.|[();]''', re.S)
+
+
+def css_declarations(body: str):
+    """Split declarations without splitting quoted values or CSS functions."""
+    start = depth = 0
+    for token in CSS_VALUE_TOKENS.finditer(body):
+        value = token.group()
+        if value == "(":
+            depth += 1
+        elif value == ")":
+            depth = max(0, depth - 1)
+        elif value == ";" and depth == 0:
+            yield body[start:token.start()]
+            start = token.end()
+    yield body[start:]
 
 
 def read(path: Path) -> str:
@@ -103,12 +123,12 @@ def outputs(source: dict) -> dict[Path, str]:
         if config["font"]:
             lines += [f'  font-family: {config["font"]};', "  font-size: 14px;"]
         managed = set(CSS_KEYS) | {"color-scheme", "font-family", "font-size"}
-        for declaration in root.group().splitlines()[1:-1]:
+        for declaration in css_declarations(root.group("body")):
             name = declaration.partition(":")[0].strip()
             if name and name not in managed:
-                lines.append(declaration)
+                lines.append(f"  {declaration.strip()};")
         lines.append("}")
-        generated[path] = "\n".join(lines) + current[root.end():]
+        generated[path] = root.group("prefix") + "\n".join(lines) + current[root.end():]
     return generated
 
 
