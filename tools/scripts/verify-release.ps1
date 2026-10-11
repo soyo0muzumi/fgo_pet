@@ -17,22 +17,8 @@ function Get-Sha256([string]$Path) {
     }
     finally { $stream.Dispose() }
 }
-function Test-ForbiddenPayloadPath([string]$RelativePath) {
-    $normalized = $RelativePath.Replace('\\', '/').ToLowerInvariant()
-    $segments = $normalized.Split('/')
-    $leaf = $segments[-1]
-    $extension = [System.IO.Path]::GetExtension($leaf).ToLowerInvariant()
-    $forbiddenExtensions = @('.fgopetpack', '.cs', '.csproj', '.sln', '.py', '.ps1', '.pdb', '.log', '.db', '.db3', '.pfx', '.pem', '.key', '.snk', '.md')
-    $forbiddenNames = @('settings.json', '.env')
-    $forbiddenDirectories = @('.git', '.vs', '.idea', 'source', 'src', 'tests', 'test', 'docs', 'doc', 'scripts', 'screenshots', 'screenshot', 'logs', 'log')
-    $sensitiveNamePatterns = @('*credential*', '*secret*', '*password*', '*token*', '*pairing*', '*user-data*', '*userdata*', '*user_data*')
-    if ($forbiddenExtensions -contains $extension -or $forbiddenNames -contains $leaf -or $extension -like '.sqlite*' -or
-        @($segments | Where-Object { $forbiddenDirectories -contains $_ }).Count -gt 0) { return $true }
-    foreach ($segment in $segments) {
-        if (@($sensitiveNamePatterns | Where-Object { $segment -like $_ }).Count -gt 0) { return $true }
-    }
-    return $false
-}
+# Payload gate lives in release-common.ps1 so that verify and publish cannot drift apart.
+. (Join-Path $PSScriptRoot 'release-common.ps1')
 function Test-SafePosixPath([string]$Path) {
     return -not [string]::IsNullOrWhiteSpace($Path) -and $Path -notmatch '\\' -and $Path -notmatch '^[A-Za-z]:' -and
         -not $Path.StartsWith('/') -and $Path.Split('/') -notcontains '..' -and $Path.Split('/') -notcontains '.' -and
@@ -60,7 +46,7 @@ try {
     foreach ($entry in @($manifest.files)) {
         $path = [string]$entry.path
         $hash = [string]$entry.sha256
-        if (-not (Test-SafePosixPath $path) -or (Test-ForbiddenPayloadPath $path)) { Fail 'manifest contains a forbidden or unsafe payload path.' }
+        if (-not (Test-SafePosixPath $path) -or (Test-FgoPetForbiddenPayloadPath -RelativePath $path)) { Fail 'manifest contains a forbidden or unsafe payload path.' }
         if ($hash -notmatch '^[0-9a-f]{64}$') { Fail 'manifest contains a missing or invalid SHA-256 hash.' }
         if ($expected.ContainsKey($path)) { Fail 'manifest contains a duplicate payload path.' }
         $expected[$path] = $hash
@@ -73,6 +59,13 @@ try {
     $expectedRequired = ($requiredSet | Sort-Object) -join '|'
     if ($declaredRequired -ne $expectedRequired) { Fail 'required executable contract is invalid.' }
 
+    # The viewer runtime is a required payload member: without it the app silently
+    # falls back to the static portrait, which is precisely the defect this check
+    # exists to catch. Byte equality against the archive is enforced further below.
+    foreach ($live2dMember in @('Live2D/index.html', 'Live2D/app.js', 'Live2D/live2dcubismcore.js')) {
+        if ($expected.ContainsKey($live2dMember) -eq $false) { Fail "manifest is missing a required Live2D runtime file: $live2dMember" }
+    }
+
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($archive.FullName)
     try {
@@ -80,7 +73,7 @@ try {
         foreach ($member in $zip.Entries) {
             if ($member.FullName.EndsWith('/')) { continue }
             $path = $member.FullName
-            if (-not (Test-SafePosixPath $path) -or (Test-ForbiddenPayloadPath $path)) { Fail 'application archive contains a forbidden or unsafe payload path.' }
+            if (-not (Test-SafePosixPath $path) -or (Test-FgoPetForbiddenPayloadPath -RelativePath $path)) { Fail 'application archive contains a forbidden or unsafe payload path.' }
             if ($actual.ContainsKey($path)) { Fail 'application archive contains a duplicate payload path.' }
             $stream = $member.Open()
             try { $sha = [System.Security.Cryptography.SHA256]::Create(); try { $hash = ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() } finally { $sha.Dispose() } } finally { $stream.Dispose() }

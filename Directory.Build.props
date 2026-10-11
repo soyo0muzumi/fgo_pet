@@ -55,4 +55,23 @@
     -->
   </PropertyGroup>
 
+  <PropertyGroup Label="排除构建输出残留">
+    <!--
+      背景（2026-10-02 实测）：历史上若用【相对路径】调用 dotnet build 的 artifacts-path 参数，
+      MSBuild 会把该相对路径按【每个工程目录】解析，于是在各工程下留下
+      `&lt;proj&gt;/artifacts/&lt;name&gt;/obj/**` 的生成物（其中就有 AssemblyInfo.cs）。这些目录被 .gitignore
+      忽略、不受版本控制，但会被 SDK 默认的 `**/*.cs` 通配符当成源码收进去，与 obj/ 下真正生成的
+      AssemblyInfo 撞车，报 CS0579「特性重复」。实测本仓库已积累 137 个此类残留目录，导致不带任何
+      参数的普通 dotnet build 直接失败（72 条错误）。
+
+      这里刻意用【追加】写法而不是赋值：本文件由 Microsoft.Common.props 先于 Microsoft.NET.Sdk 的
+      DefaultItems 导入，SDK 随后仍会把 BaseOutputPath/** 、BaseIntermediateOutputPath/** 追加进来，
+      所以不会顶掉默认的 bin/**、obj/** 排除。
+
+      注意：命令行 -p:DefaultItemExcludes=... 是【赋值】语义，会顶掉上述默认排除，反而把 obj/** 变成
+      被包含项并制造新的重复——这是本次排查踩到的坑，不要用它来绕过本问题。
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
+  </PropertyGroup>
+
 </Project>
