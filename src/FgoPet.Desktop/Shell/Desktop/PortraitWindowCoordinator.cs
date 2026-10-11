@@ -364,7 +364,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
             || e.PropertyName == nameof(AttachedPanelViewModel.IsCompactSurfaceActive)
             || e.PropertyName == nameof(AttachedPanelViewModel.BlocksAutoCollapse);
 
-        if (relayout && _window.AttachedPanel.State != AttachedPanelState.Collapsed)
+        if (relayout && (_window.AttachedPanel.State != AttachedPanelState.Collapsed || _window.AttachedPanel.IsCompactSurfaceActive))
         {
             // State switches and the compact message→timer body swap both change the
             // panel height budget; re-arranging keeps portrait and panel anchored.

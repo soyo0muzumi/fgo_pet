@@ -23,8 +23,12 @@ public sealed class WorkspaceWindowCoordinatorTests
             Assert.True(coordinator.Open("fixture.workspace"));
             Assert.Equal(1, catalog.CreatedCount);
             Assert.Equal(WorkspaceNavigationKind.Overview, catalog.View!.LastNavigation?.Kind);
+            var workspaceWindow = Window.GetWindow(catalog.View)!;
+            workspaceWindow.WindowState = WindowState.Minimized;
             Assert.True(coordinator.Open("fixture.workspace"));
             Assert.Equal(1, catalog.CreatedCount);
+            Assert.Same(workspaceWindow, Window.GetWindow(catalog.View));
+            Assert.Equal(WindowState.Normal, workspaceWindow.WindowState);
 
             coordinator.Dispose();
             Assert.True(catalog.View.Disposed);

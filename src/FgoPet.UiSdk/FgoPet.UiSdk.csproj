@@ -5,6 +5,7 @@
   <ItemGroup>
     <Page Include="Resources/Themes/SettingsControls.xaml" Link="Themes/SettingsControls.xaml" />
     <Page Include="Resources/Shell/ChatControls.xaml" Link="Ui/Shell/ChatControls.xaml" />
+    <Page Include="Resources/Shell/MarginContextMenu.xaml" Link="Ui/Shell/MarginContextMenu.xaml" />
     <Page Include="Resources/Shell/ShellTokens.xaml" Link="Ui/Shell/ShellTokens.xaml" />
   </ItemGroup>
   <ItemGroup>

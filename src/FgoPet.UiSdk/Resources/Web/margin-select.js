@@ -15,8 +15,12 @@
     const trigger = document.createElement("button");
     trigger.type = "button"; trigger.className = "margin-select-trigger";
     trigger.setAttribute("aria-haspopup", "listbox"); trigger.setAttribute("aria-expanded", "false");
-    const label = document.createElement("span"), arrow = document.createElement("span");
-    arrow.textContent = "⌄"; arrow.setAttribute("aria-hidden", "true"); trigger.append(label, arrow);
+    const label = document.createElement("span");
+    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    arrow.classList.add("margin-select-chevron");
+    arrow.setAttribute("viewBox", "0 0 16 16"); arrow.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M4 6l4 4 4-4"); arrow.append(path); trigger.append(label, arrow);
     select.after(trigger);
     function sync() {
       label.textContent = select.selectedOptions[0]?.textContent || "";
@@ -59,7 +63,7 @@
         else if (event.key === "ArrowUp") next = Math.max(0, index - 1);
         else if (event.key === "Home") next = 0;
         else if (event.key === "End") next = available.length - 1;
-        else if (event.key === "Escape") { event.preventDefault(); close(true); return; }
+        else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); return; }
         else if (event.key === "Tab") { close(true); return; }
         else return;
         event.preventDefault(); available[next]?.focus();

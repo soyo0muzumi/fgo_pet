@@ -31,6 +31,52 @@ namespace FgoPet.Windows.Tests.Windowing;
 public sealed class PortraitWindowIntegrationTests
 {
     [Theory]
+    [InlineData(1.0, false)]
+    [InlineData(1.5, false)]
+    [InlineData(2.0, false)]
+    [InlineData(1.0, true)]
+    [InlineData(1.5, true)]
+    [InlineData(2.0, true)]
+    public void Today_placement_avoids_visible_focus_controls(double scale, bool running)
+    {
+        StaRun(() =>
+        {
+            var focus = new FakeFocusService();
+            var panel = new AttachedPanelViewModel(TimeProvider.System,
+                new FocusCompactViewModel(focus));
+            var window = new PortraitWindow(panel) { Left = 1200, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                panel.FocusClick();
+                if (running)
+                {
+                    focus.Start(FocusPresetCatalog.Short, "fixture-character");
+                    focus.RaiseChanged();
+                }
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1600 * scale), (int)(1000 * scale));
+                var controls = window.ArrangeOverlayPanel(geometry, area, dpi);
+                var portrait = window.PortraitScreenBounds;
+                var bounds = new DeviceRect((int)Math.Round(portrait.X * scale),
+                    (int)Math.Round(portrait.Y * scale), (int)Math.Round(portrait.Width * scale),
+                    (int)Math.Round(portrait.Height * scale));
+                var today = TransientSurfacePlacement.Place(window.GetTransientAnchor(bounds), area, dpi, 320, 400);
+                Assert.True(today.Right <= controls.Left || today.Left >= controls.Right
+                    || today.Bottom <= controls.Top || today.Top >= controls.Bottom);
+                if (running) { focus.Stop(); focus.RaiseChanged(); }
+                panel.Escape();
+                panel.Escape();
+                Assert.False(window.IsAttachedPanelVisible);
+                Assert.Equal(bounds, window.GetTransientAnchor(bounds));
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
     [InlineData(100, 1.0)]
     [InlineData(800, 1.0)]
     [InlineData(100, 1.5)]
@@ -61,6 +107,15 @@ public sealed class PortraitWindowIntegrationTests
                     var size = new Size(bounds.Width / scale, bounds.Height / scale);
                     host.Measure(size);
                     host.Arrange(new Rect(size));
+                    if (state == 2)
+                    {
+                        Assert.False(chat.IsVisible);
+                        var card = Assert.IsType<Border>(view.FindName("CardSurface"));
+                        var cardLeft = bounds.Left / scale + card.TranslatePoint(new Point(), host).X;
+                        var portraitBounds = window.PortraitScreenBounds;
+                        Assert.True(cardLeft >= portraitBounds.Right || cardLeft + card.ActualWidth <= portraitBounds.X);
+                        continue;
+                    }
                     var iconLeft = bounds.Left / scale + chat.TranslatePoint(new Point(), host).X;
                     var portrait = window.PortraitScreenBounds;
                     var gap = left > 500 ? portrait.X - iconLeft - chat.ActualWidth : iconLeft - portrait.Right;
@@ -422,7 +477,7 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactSurfaceActive);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                // The timer ring is 196 DIP, so the focus surface budget is 220 DIP.
+                // A 142 DIP transparent host reserves room for ribbon hover controls.
                 Assert.True(timerBounds.Height <= 220,
                     $"timer body height {timerBounds.Height} must stay within the focus surface budget");
 

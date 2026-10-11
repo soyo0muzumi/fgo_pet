@@ -7,6 +7,18 @@ namespace FgoPet.Capability.Tests.Workspace;
 public sealed class WorkspaceAuthorizationRegistryTests
 {
     [Fact]
+    public void Native_directory_grant_validates_before_replacing_existing_authority()
+    {
+        var scope = new ToolScope("conversation", "role", null);
+        var registry = new WorkspaceAuthorizationRegistry(_ => true);
+        var first = registry.GrantValidated(scope, Path.GetTempPath());
+        Assert.Throws<WorkspaceAccessException>(() => registry.GrantValidated(scope, "relative"));
+        Assert.Throws<WorkspaceAccessException>(() => registry.GrantValidated(scope, Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
+        Assert.Equal(first, registry.GetCurrent(scope));
+        var next = registry.GrantValidated(scope, Path.GetTempPath());
+        Assert.NotEqual(first.Authorization, next.Authorization);
+    }
+    [Fact]
     public void Grants_require_current_host_scope_and_do_not_inherit_across_conversations()
     {
         var scope = new ToolScope("conversation", "role", null);

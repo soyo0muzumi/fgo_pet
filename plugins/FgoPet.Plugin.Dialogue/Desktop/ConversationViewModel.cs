@@ -44,6 +44,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     partial void OnFilterHistoryByProjectChanged(bool value) => LoadHistory();
     private bool _acceptRequestUpdates;
     private string _activeConversationId = string.Empty;
+    // Composer drafts belong to a conversation and live only for this UI process.
+    private readonly Dictionary<(string ServantId, string ConversationId), string> _conversationDrafts = new();
     public string CurrentConversationId => _activeConversationId;
     private bool _configurationRequired;
     private long _sessionGeneration;
@@ -265,6 +267,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             return;
         }
 
+        RememberCurrentDraft();
+        InputText = string.Empty;
         InvalidateSession();
         SessionChanged?.Invoke();
         Turns.Clear();
@@ -377,6 +381,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         CancelHistoryDeletion();
         try
         {
+            RememberCurrentDraft();
+            InputText = string.Empty;
             InvalidateSession();
             SessionChanged?.Invoke();
             var messages = _orchestrator.LoadConversation(conversationId, ActiveServantId);
@@ -385,6 +391,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
             RestoreProjectContext(_orchestrator.GetConversation(conversationId, ActiveServantId));
             _activeConversationId = conversationId;
+            InputText = _conversationDrafts.GetValueOrDefault((ActiveServantId, conversationId), string.Empty);
             foreach (var message in messages.Where(m => m.Role is ChatMessageRole.User or ChatMessageRole.Assistant))
             {
                 if (message.Role == ChatMessageRole.Assistant
@@ -591,6 +598,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         }
         CancelHistoryDeletion();
         if (_activeConversationId == item.ConversationId) ResetConversationView();
+        _conversationDrafts.Remove((ActiveServantId, item.ConversationId));
         LoadHistory();
         HistoryStatus = "对话已删除。" + HistoryStatus;
         return true;
@@ -609,6 +617,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void ResetConversationView(bool clearContext = true)
     {
+        RememberCurrentDraft();
+        InputText = string.Empty;
         InvalidateSession();
         CancelHistoryDeletion();
         SessionChanged?.Invoke();
@@ -638,6 +648,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         SendOrStopCommand.NotifyCanExecuteChanged();
     }
 
+    private void RememberCurrentDraft()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveServantId) || string.IsNullOrWhiteSpace(_activeConversationId)) return;
+        var key = (ActiveServantId, _activeConversationId);
+        if (string.IsNullOrEmpty(InputText)) _conversationDrafts.Remove(key);
+        else _conversationDrafts[key] = InputText;
+    }
+
     private void OnConversationUpdated(ConversationUpdate update)
     {
         if (_disposed || !_acceptRequestUpdates) return;
@@ -655,6 +673,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             }
 
             _activeConversationId = update.ConversationId;
+            OnPropertyChanged(nameof(CurrentConversationId));
             RequestStatusText = "正在准备请求…";
             ErrorText = string.Empty;
             Turns.Add(new ConversationTurnViewModel(

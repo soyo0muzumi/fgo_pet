@@ -27,6 +27,8 @@
     <Compile Include="Contracts\ChatWebHostContracts.cs">
       <Link>modules\dialogue\Contracts\ChatWebHostContracts.cs</Link>
     </Compile>
+    <Compile Include="Contracts\ChatWorkspaceSelection.cs" />
+    <Compile Include="Desktop\ChatWorkspaceSelection.cs" />
     <Compile Include="Contracts\ChatWebSnapshot.cs">
       <Link>modules\dialogue\Contracts\ChatWebSnapshot.cs</Link>
     </Compile>

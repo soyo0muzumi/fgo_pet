@@ -24,6 +24,30 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         Path.Combine(Path.GetTempPath(), $"fgo-dialogue-presentation-{Guid.NewGuid():N}.db");
 
     [Fact]
+    public void Conversation_drafts_are_isolated_and_restored_within_the_process()
+    {
+        using var model = CreateViewModel();
+        var repository = new SqliteConversationRepository(TestRuntimeDatabase.Create(_databasePath));
+        var context = new ContentContextKey("800100", "test", "1", "default", "p1", "k1");
+        repository.CreateConversation("draft-a", "800100", context, DateTimeOffset.UtcNow);
+        repository.CreateConversation("draft-b", "800100", context, DateTimeOffset.UtcNow);
+        model.SetActiveServant("800100");
+        model.SetActiveConversation("draft-a");
+        model.InputText = "Margin acceptance draft A";
+        model.SetActiveConversation("draft-b");
+        Assert.Empty(model.InputText);
+        model.InputText = "Margin acceptance draft B";
+        model.NewConversationCommand.Execute(null);
+        Assert.Empty(model.InputText);
+        model.SetActiveConversation("draft-a");
+        Assert.Equal("Margin acceptance draft A", model.InputText);
+        model.SetActiveConversation("draft-b");
+        Assert.Equal("Margin acceptance draft B", model.InputText);
+        model.SetActiveServant("another-role");
+        Assert.Empty(model.InputText);
+    }
+
+    [Fact]
     public void History_starts_with_one_bounded_page()
     {
         var model = CreateViewModel();
@@ -172,7 +196,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
     }
 
     [Fact]
-    public async Task Unconfigured_model_blocks_send_while_preserving_editable_draft_across_conversations()
+    public async Task Unconfigured_model_preserves_blocked_draft_but_new_conversation_starts_empty()
     {
         var settings = new SequenceSettingsStore(DialogueSettings.Defaults with { ModelConnection = null });
         var viewModel = CreateViewModel(settings);
@@ -189,7 +213,7 @@ public sealed class ConversationViewModelPresentationTests : IDisposable
         viewModel.NewConversationCommand.Execute(null);
         Assert.True(viewModel.IsConfigurationRequired);
         Assert.False(viewModel.CanSend);
-        Assert.Equal("离线时写好的草稿", viewModel.InputText);
+        Assert.Empty(viewModel.InputText);
     }
 
     [Fact]

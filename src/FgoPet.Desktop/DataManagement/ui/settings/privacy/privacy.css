@@ -113,3 +113,17 @@
   .pp-card { padding: 12px; }
   .pp-button { padding: 6px 10px; font-size: 12px; }
 }
+
+/* Margin v5 paper detail; explicit restore/delete confirmation remains visible. */
+.pp-page { min-width:0; gap:20px; color:var(--ink); font:13px var(--ui); }
+.pp-card { min-width:0; padding:12px 0 20px; border:0; border-bottom:1px solid var(--rule); border-radius:0; background:none; }
+.pp-card h2 { font:13.5px var(--ui); font-weight:400; }
+.pp-note { font-size:11.5px; line-height:1.7; color:var(--muted); overflow-wrap:anywhere; }
+.pp-status { font-size:11px; line-height:1.7; color:var(--faint); }
+.pp-button { padding:6px 15px; border-color:var(--rule-2); border-radius:3px; background:none; color:var(--ink-2); font:13px var(--ui); }
+.pp-primary { background:var(--accent); border-color:transparent; color:white; }
+.pp-primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.07); }
+.pp-danger { color:var(--danger); border-color:var(--rule-2); }
+.pp-danger:hover:not(:disabled) { background:var(--paper-sunk); color:var(--danger); }
+.pp-confirm,.pp-error { min-width:0; padding:12px; border-radius:6px; background:var(--paper-sunk); }
+.pp-confirm p { overflow-wrap:anywhere; }

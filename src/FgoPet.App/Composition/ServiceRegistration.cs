@@ -253,7 +253,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<IWorkspaceCatalog>(),
             provider.GetRequiredService<FgoPet.Kernel.Companion.CompanionPresentation>(),
             webFactory: provider.GetRequiredService<ChatWebSurfaceFactory>(),
-            workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open))
+            workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open,
+            localWorkspace: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>()))
         .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
         {

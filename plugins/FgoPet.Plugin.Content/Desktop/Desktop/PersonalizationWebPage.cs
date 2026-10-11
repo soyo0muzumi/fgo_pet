@@ -207,7 +207,10 @@ public sealed class PersonalizationWebPage : ISettingsWebPage
             : new
             {
                 displayName = servant.DisplayName,
-                previewDataUrl = TryCreatePreviewDataUrl(servant.PreviewSource),
+                // The appearance preview is a verified single expression. Package
+                // previews may be contact sheets, so retain the neutral placeholder
+                // when no valid appearance preview is available.
+                previewDataUrl = TryCreatePreviewDataUrl(_library?.CurrentAppearance?.PreviewPath),
             };
 
         return new

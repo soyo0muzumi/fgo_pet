@@ -19,19 +19,32 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
     private readonly IClipboardWriter _clipboard;
     private readonly Func<string, WorkspaceNavigation, bool>? _workspace;
     private readonly string? _defaultWorkspace;
+    private readonly IChatWorkspaceSelection? _localWorkspace;
+    private readonly Func<string?> _chooseDirectory;
     private string? _avatarPath, _avatar;
     private bool _disposed;
     public event EventHandler? Changed;
     public ChatWebHostActions(DialogueWindowViewModel vm, DialogueWindow window, IClipboardWriter clipboard,
-        IAttachedPanelLauncher? panel, IWorkspaceCatalog? catalog, Func<string, WorkspaceNavigation, bool>? workspace)
+        IAttachedPanelLauncher? panel, IWorkspaceCatalog? catalog, Func<string, WorkspaceNavigation, bool>? workspace,
+        IChatWorkspaceSelection? localWorkspace = null, Func<string?>? chooseDirectory = null)
     {
         _vm = vm; _window = window; _clipboard = clipboard; _panel = panel; _workspace = workspace;
         _defaultWorkspace = catalog?.Workspaces.FirstOrDefault()?.Id;
+        _localWorkspace = localWorkspace;
+        _chooseDirectory = chooseDirectory ?? (() =>
+        {
+            var picker = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = MarginStrings.Get("chat.choose.workspace"), Multiselect = false,
+            };
+            return picker.ShowDialog(_window) == true ? picker.FolderName : null;
+        });
+        if (_localWorkspace is not null) _localWorkspace.Changed += OnChanged;
         vm.PropertyChanged += OnChanged;
         vm.ModelSelection.PropertyChanged += OnChanged;
         vm.ProjectSelection.PropertyChanged += OnChanged;
     }
-    private void OnChanged(object? sender, PropertyChangedEventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
+    private void OnChanged(object? sender, EventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
     public ChatWebHostPresentation ReadPresentation()
     {
         if (_avatarPath != _vm.SelectedServant?.PreviewSource)
@@ -47,7 +60,9 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
             _vm.ProjectSelection.IsLoading, _vm.ProjectSelection.StatusText,
             new(_panel is not null, _workspace is not null && _defaultWorkspace is not null,
                 _workspace is not null && _defaultWorkspace is not null, true, true, _vm.Conversation.CanOpenModelSettings,
-                _vm.ProjectSelection.IsAvailable && !streaming));
+                _vm.ProjectSelection.IsAvailable && !streaming,
+                _localWorkspace?.CanChoose == true,
+                _localWorkspace?.Label is not null && !streaming), _localWorkspace?.Label);
     }
     public async ValueTask<WebSurfaceCommandResult> HandleAsync(ChatWebHostRequest request, CancellationToken cancellationToken)
     {
@@ -58,6 +73,15 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         var turn = matches.Length == 1 ? matches[0] : null;
         switch (request.Action)
         {
+            case ChatWebHostAction.ChooseWorkspace when _window.IsVisible && _localWorkspace?.CanChoose == true:
+                if (!_localWorkspace.Choose(() =>
+                {
+                    var directory = _chooseDirectory();
+                    return cancellationToken.IsCancellationRequested || !_window.IsVisible ? null : directory;
+                })) return new(false, ErrorCode: "CHAT_HOST_ACTION_FAILED");
+                break;
+            case ChatWebHostAction.ClearWorkspace when _window.IsVisible && !_vm.Conversation.IsStreaming && _localWorkspace?.Label is not null:
+                _localWorkspace.Clear(); break;
             case ChatWebHostAction.Hide: _window.Hide(); break;
             case ChatWebHostAction.SetExpanded when request.Expanded is { } expanded: _window.SetExpanded(expanded); break;
             case ChatWebHostAction.CopyTurn when turn?.Actions.CanCopy == true && _window.IsVisible:
@@ -124,5 +148,6 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         if (_disposed) return; _disposed = true;
         _vm.PropertyChanged -= OnChanged; _vm.ModelSelection.PropertyChanged -= OnChanged;
         _vm.ProjectSelection.PropertyChanged -= OnChanged;
+        if (_localWorkspace is not null) _localWorkspace.Changed -= OnChanged;
     }
 }

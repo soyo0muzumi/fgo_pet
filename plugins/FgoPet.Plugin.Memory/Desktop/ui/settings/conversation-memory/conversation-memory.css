@@ -293,3 +293,30 @@
   .cm-card { padding: 12px; }
   .cm-button { padding: 6px 10px; font-size: 12px; }
 }
+
+/* Margin v5 paper detail. Review and maintenance commands remain owner-managed. */
+.cm-page { min-width:0; gap:20px; color:var(--ink); font:13px var(--ui); }
+.cm-card { min-width:0; padding:12px 0 20px; border:0; border-bottom:1px solid var(--rule); border-radius:0; background:none; }
+.cm-columns { min-width:0; grid-template-columns:minmax(0,1fr); gap:20px; }
+.cm-card-heading h2 { font:13.5px var(--ui); font-weight:400; }
+.cm-card-heading p,.cm-status,.cm-note { font-size:11px; line-height:1.7; color:var(--faint); }
+.cm-card-heading p:empty,.cm-status:empty,.cm-detail-text:empty { display:none; }
+.cm-switch-title { font-weight:400; }
+.cm-switch-description { font-size:11.5px; line-height:1.7; color:var(--muted); }
+.cm-switch-control { width:38px; height:22px; border-color:var(--rule); background:var(--paper); }
+.cm-switch-control i { width:16px; height:16px; top:2px; left:2px; }
+.cm-list { min-width:0; gap:4px; }
+.cm-list-button { min-width:0; padding:8px 10px; border-color:var(--rule-2); border-radius:6px; background:var(--paper); color:var(--ink); font:13px/1.6 var(--ui); overflow-wrap:anywhere; }
+.cm-list-item.is-selected .cm-list-button { border-color:var(--accent-line); background:var(--accent-soft); box-shadow:none; }
+.cm-badge { border:0; border-radius:3px; background:var(--paper-sunk); color:var(--muted); }
+.cm-detail { min-width:0; padding-top:12px; border-color:var(--rule); }
+.cm-detail-text { font-size:11px; line-height:1.7; color:var(--faint); }
+.cm-input { min-width:0; padding:8px 10px; border-color:var(--rule-2); border-radius:6px; background:var(--paper); color:var(--ink); font:13px/1.6 var(--ui); }
+.cm-button { padding:6px 15px; border-color:var(--rule-2); border-radius:3px; background:none; color:var(--ink-2); font:13px var(--ui); }
+.cm-primary { background:var(--accent); border-color:transparent; color:white; }
+.cm-primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.07); }
+.cm-danger { color:var(--danger); border-color:var(--rule-2); }
+.cm-danger:hover:not(:disabled) { background:var(--paper-sunk); color:var(--danger); }
+.cm-confirm,.cm-error { min-width:0; padding:12px; border-radius:6px; background:var(--paper-sunk); }
+.cm-confirm p { overflow-wrap:anywhere; }
+@media(prefers-reduced-motion:reduce) { .cm-switch-control,.cm-switch-control i { transition:none; } }

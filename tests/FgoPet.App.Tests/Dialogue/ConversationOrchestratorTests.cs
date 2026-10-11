@@ -883,11 +883,12 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Null(model.PendingDraftVersion);
         Assert.False(model.RetryCapabilityCommand.CanExecute(null));
         Assert.Equal(1, changed);
-        Assert.Equal("保留未发送草稿", model.InputText);
+        Assert.Empty(model.InputText);
         Assert.Null(CreateConversationRepository().ReadState("LastActiveConversationId:800100"));
         Assert.Empty(memories.ListCandidates("800100"));
         Assert.Single(memories.ListEnabledMemories("800100"));
 
+        model.InputText = "新对话草稿";
         await model.SendCommand.ExecuteAsync(null);
         Assert.NotEqual(deletedId, model.CurrentConversationId);
         Assert.Equal(2, model.Turns.Count);

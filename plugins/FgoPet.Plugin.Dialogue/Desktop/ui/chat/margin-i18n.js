@@ -13,6 +13,9 @@
   "chat.open.linked.item": "Open linked item",
   "chat.open.speech.settings": "Open speech settings",
   "chat.no.projects.available": "No projects available",
+  "chat.choose.workspace": "Choose a workspace for this conversation",
+  "chat.workspace": "Workspace",
+  "chat.clear.workspace": "Remove workspace access",
   "chat.no.models.available": "No models available",
   "chat.refreshing.projects": "Refreshing projects",
   "chat.refresh.projects": "Refresh projects",
@@ -74,12 +77,25 @@
   "chat.project": "Project",
   "chat.model": "Model",
   "chat.reconnect": "Reconnect",
-  "chat.new.content.jump.to.bottom": "New content · Jump to bottom"
+  "chat.new.content.jump.to.bottom": "New content · Jump to bottom",
+  "speech.stop": "Stop reading",
+  "speech.retry": "Retry reading",
+  "speech.preparing": "Preparing to read…",
+  "speech.reading": "Reading…",
+  "speech.failed": "Reading failed. You can retry.",
+  "speech.stopped": "Reading stopped."
 };
   function t(key, values = {}) {
     return (english[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
   }
-  window.MarginI18n = { t };
+  // Adapt legacy owner display labels without changing its speech state or commands.
+  const speechKeys = {
+    "朗读": "chat.read.aloud", "停止朗读": "speech.stop", "重试朗读": "speech.retry",
+    "去朗读设置": "chat.open.speech.settings", "准备朗读…": "speech.preparing",
+    "正在朗读…": "speech.reading", "朗读失败，可重试。": "speech.failed", "朗读已停止。": "speech.stopped"
+  };
+  function speechText(value) { return speechKeys[value] ? t(speechKeys[value]) : value; }
+  window.MarginI18n = { t, speechText };
   document.querySelectorAll("[data-i18n]").forEach(node => node.textContent = t(node.dataset.i18n));
   for (const attribute of ["aria-label", "title", "placeholder"])
     document.querySelectorAll(`[data-i18n-${attribute}]`).forEach(node =>

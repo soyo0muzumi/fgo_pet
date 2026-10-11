@@ -21,7 +21,8 @@ public sealed class TransientSurfaceCoordinator : IDisposable
     public TransientSurfaceCoordinator(ITransientSurfaceCatalog catalog, IScreenLayoutService screen,
         Func<PortraitWindow> owner, Func<PortraitWindowCoordinator> portrait,
         Action<string>? diagnostics = null)
-        : this(catalog, screen, () => owner(), () => portrait().PortraitDeviceBounds, diagnostics)
+        : this(catalog, screen, () => owner(),
+            () => owner().GetTransientAnchor(portrait().PortraitDeviceBounds), diagnostics)
     {
     }
 

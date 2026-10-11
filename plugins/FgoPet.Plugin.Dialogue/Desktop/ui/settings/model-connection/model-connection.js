@@ -1,3 +1,74 @@
+const english = {
+  "model.feedback.modelsRefreshed": "Refreshed {count} models.",
+  "model.feedback.testSucceeded": "Connection succeeded (not saved) · {details}",
+  "model.feedback.saved": "Saved · {details}",
+  "model.feedback.notTested": "Connection not tested.",
+  "model.feedback.testDraftChanged": "Test completed, but the draft changed. The result was not applied.",
+  "model.feedback.refreshDraftChanged": "Refresh completed, but the draft changed. The result was not applied.",
+  "model.feedback.keyCleared": "API key cleared.",
+  "model.feedback.outputLimit": "Maximum output exceeds the model limit or leaves no room for input.",
+  "model.feedback.invalidTest": "Connection test failed. Check the settings.",
+  "model.feedback.invalidRefresh": "Model refresh failed. Check the settings.",
+  "model.dirty": "You have unsaved changes. Save to apply them.",
+  "model.heading": "Model",
+  "model.lead": "Connect your preferred model service.",
+  "model.provider": "Provider",
+  "model.model": "Model",
+  "model.chooseModel": "Choose an available model",
+  "model.models": "Available models",
+  "model.endpoint": "Endpoint",
+  "model.key": "API key",
+  "model.clearKey": "Clear saved key",
+  "model.context": "Context & output",
+  "model.contextLead": "Set limits for model context and output.",
+  "model.contextLabel": "Context window (tokens, optional)",
+  "model.contextAria": "Context window override",
+  "model.output": "Maximum output (tokens)",
+  "model.outputAria": "Maximum output",
+  "model.reasoning": "Show model reasoning",
+  "model.reasoningHint": "Show reasoning while a reply is generated. When off, show only generation status.",
+  "model.offline": "Your companion and local Focus remain available without a model connection.",
+  "model.test": "Test connection",
+  "model.save": "Save",
+  "model.testHint": "Testing the connection does not save changes.",
+  "model.retry": "Retry",
+  "model.retryChange": "Retry change",
+  "model.reload": "Reload",
+  "model.numericHint": "Use positive whole numbers, or leave blank to use model metadata. The service validates these limits.",
+  "model.instant": "Saved immediately; does not wait for Save.",
+  "model.noModels": "No models loaded. Test the connection to load available models.",
+  "model.loadFailed": "Model settings could not be loaded. Try again.",
+  "model.notCompleted": "The action did not complete. Current settings were reloaded; you can retry.",
+  "model.styleFailed": "The page style could not be loaded. Reopen the page.",
+  "model.advanced": "Advanced configuration",
+  "model.keySaved": "Key saved in Windows Credential Manager.",
+  "model.keyNotSaved": "No key saved.",
+  "model.current": "Current model: {name}"
+};
+const t = (key, values = {}) => (english[key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] === undefined ? match : String(values[name]));
+
+// Translate only known owner UI feedback. Service names and unrecognized content
+// remain literal text; the owner snapshot and command behavior are unchanged.
+const ownerFeedbackKeys = new Map([
+  ["未测试连接。", "model.feedback.notTested"],
+  ["测试完成，但草稿已更改；结果未应用。", "model.feedback.testDraftChanged"],
+  ["刷新完成，但草稿已更改；结果未应用。", "model.feedback.refreshDraftChanged"],
+  ["API Key 已清除。", "model.feedback.keyCleared"],
+  ["最大输出超出模型限制，或没有为输入留下空间。", "model.feedback.outputLimit"],
+  ["测试连接失败：设置无效。", "model.feedback.invalidTest"],
+  ["刷新模型失败：设置无效。", "model.feedback.invalidRefresh"],
+]);
+function ownerFeedback(text) {
+  const key = ownerFeedbackKeys.get(text);
+  if (key) return t(key);
+  const count = /^已刷新 ([0-9]+) 个模型。$/.exec(text);
+  if (count) return t("model.feedback.modelsRefreshed", { count: count[1] });
+  for (const [source, target] of [["连接成功（尚未保存） · ", "model.feedback.testSucceeded"], ["已保存 · ", "model.feedback.saved"]]) {
+    if (text.startsWith(source)) return t(target, { details: text.slice(source.length) });
+  }
+  return text;
+}
+
 // Model Connection settings page (Web module).
 // 完整、可读地呈现原 WPF ModelConnectionPage 的能力，不新增业务语义。
 // 命令契约（pageId 由 root 自动注入）：
@@ -5,45 +76,45 @@
 // 密钥只写不读：API Key 输入框为 type=password，提交前保留用户输入，但任何快照都不含密钥值。
 const MARKUP = `
   <div class="mc-page" data-state="loading">
-    <p class="mc-dirty" data-dirty role="status" aria-live="polite" hidden>你有未保存的更改，点“保存连接”后才会生效。</p>
+    <p class="mc-dirty" data-dirty role="status" aria-live="polite" hidden>${t("model.dirty")}</p>
 
     <section class="mc-card" aria-labelledby="mc-connection-heading">
       <div class="mc-card-heading">
-        <h2 id="mc-connection-heading">聊天模型</h2>
-        <p>连接你习惯使用的模型服务。</p>
+        <h2 id="mc-connection-heading">${t("model.heading")}</h2>
+        <p>${t("model.lead")}</p>
       </div>
 
       <div class="mc-fields">
         <div class="mc-field" data-field-wrap="providerId">
-          <label class="mc-label" for="mc-provider">模型供应商</label>
-          <select id="mc-provider" class="mc-input" data-field="providerId" aria-label="模型供应商"></select>
+          <label class="mc-label" for="mc-provider">${t("model.provider")}</label>
+          <select id="mc-provider" class="mc-input" data-field="providerId" aria-label="${t("model.provider")}"></select>
         </div>
 
         <div class="mc-field" data-field-wrap="modelId">
-          <label class="mc-label" for="mc-model">默认模型 ID</label>
+          <label class="mc-label" for="mc-model">${t("model.model")}</label>
           <div class="mc-model">
             <input id="mc-model" class="mc-input" type="text" inputmode="text" autocomplete="off"
-                   data-field="modelId" aria-label="默认模型 ID" aria-describedby="mc-model-hint">
-            <button type="button" class="mc-icon-button" data-model-toggle aria-label="展开可用模型列表"
-                    aria-expanded="false" aria-controls="mc-model-list">▾</button>
+                   data-field="modelId" aria-label="${t("model.model")}" aria-describedby="mc-model-hint">
+            <button type="button" class="mc-icon-button" data-model-toggle aria-label="${t("model.chooseModel")}"
+                    aria-expanded="false" aria-controls="mc-model-list"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
           </div>
           <p class="mc-field-hint" id="mc-model-hint" data-model-hint></p>
-          <div class="mc-model-list" id="mc-model-list" data-model-list hidden role="listbox" aria-label="可用模型"></div>
+          <div class="mc-model-list" id="mc-model-list" data-model-list hidden role="listbox" aria-label="${t("model.models")}"></div>
         </div>
       </div>
 
       <div class="mc-field">
-        <label class="mc-label" for="mc-base">Base URL</label>
+        <label class="mc-label" for="mc-base">${t("model.endpoint")}</label>
         <input id="mc-base" class="mc-input" type="text" inputmode="url" autocomplete="off"
-               data-field="baseUrl" aria-label="Base URL">
+               data-field="baseUrl" aria-label="${t("model.endpoint")}">
       </div>
 
       <div class="mc-field">
-        <label class="mc-label" for="mc-key">API Key</label>
+        <label class="mc-label" for="mc-key">${t("model.key")}</label>
         <div class="mc-key">
           <input id="mc-key" class="mc-input" type="password" autocomplete="new-password" data-field="apiKey"
-                 aria-label="API Key" aria-describedby="mc-key-state">
-          <button type="button" class="mc-button" data-clear-key>清除已保存密钥</button>
+                 aria-label="${t("model.key")}" aria-describedby="mc-key-state">
+          <button type="button" class="mc-button" data-clear-key>${t("model.clearKey")}</button>
         </div>
         <p class="mc-field-hint" id="mc-key-state" data-key-state></p>
       </div>
@@ -51,47 +122,47 @@ const MARKUP = `
 
     <section class="mc-card" aria-labelledby="mc-context-heading">
       <div class="mc-card-heading">
-        <h2 id="mc-context-heading">上下文与输出</h2>
-        <p>控制发送给模型的上下文与生成长度。</p>
+        <h2 id="mc-context-heading">${t("model.context")}</h2>
+        <p>${t("model.contextLead")}</p>
       </div>
       <div class="mc-field">
-        <label class="mc-label" for="mc-context-override">上下文上限（tokens，可留空使用模型资料）</label>
+        <label class="mc-label" for="mc-context-override">${t("model.contextLabel")}</label>
         <input id="mc-context-override" class="mc-input" type="text" inputmode="numeric" autocomplete="off"
-               data-field="contextWindowOverride" aria-label="上下文上限覆盖" aria-describedby="mc-numeric-hint">
+               data-field="contextWindowOverride" aria-label="${t("model.contextAria")}" aria-describedby="mc-numeric-hint">
       </div>
       <div class="mc-field">
-        <label class="mc-label" for="mc-max-output">最大输出（tokens）</label>
+        <label class="mc-label" for="mc-max-output">${t("model.output")}</label>
         <input id="mc-max-output" class="mc-input" type="text" inputmode="numeric" autocomplete="off"
-               data-field="maxOutputTokens" aria-label="最大输出" aria-describedby="mc-numeric-hint">
+               data-field="maxOutputTokens" aria-label="${t("model.outputAria")}" aria-describedby="mc-numeric-hint">
       </div>
       <p class="mc-field-hint" data-numeric-hint></p>
       <p class="mc-context-limit" data-context-limit></p>
     </section>
 
-    <section class="mc-card" aria-label="显示模型思考过程">
+    <section class="mc-card" aria-label="${t("model.reasoning")}">
       <label class="mc-switch-row">
         <span class="mc-switch-copy">
-          <span class="mc-switch-title">显示模型思考过程</span>
-          <span class="mc-switch-description">对话窗口在生成回复时展示模型的思考流；关闭后仅显示生成状态。</span>
+          <span class="mc-switch-title">${t("model.reasoning")}</span>
+          <span class="mc-switch-description">${t("model.reasoningHint")}</span>
         </span>
-        <input type="checkbox" data-field="showReasoning" aria-label="显示模型思考过程">
+        <input type="checkbox" data-field="showReasoning" aria-label="${t("model.reasoning")}">
         <span class="mc-switch-control" aria-hidden="true"><i></i></span>
         <span class="mc-switch-flag" data-reasoning-flag aria-live="polite"></span>
       </label>
     </section>
 
-    <p class="mc-offline-note">未连接模型时，桌宠与本地专注仍可离线使用。</p>
+    <p class="mc-offline-note">${t("model.offline")}</p>
 
     <div class="mc-actions">
-      <button type="button" class="mc-button" data-test>测试连接</button>
-      <button type="button" class="mc-button mc-button--primary" data-save>保存连接</button>
+      <button type="button" class="mc-button" data-test>${t("model.test")}</button>
+      <button type="button" class="mc-button mc-button--primary" data-save>${t("model.save")}</button>
     </div>
-    <p class="mc-test-note">测试连接不会保存修改。</p>
+    <p class="mc-test-note">${t("model.testHint")}</p>
 
     <div class="mc-feedback" aria-live="polite" aria-atomic="true">
       <p class="mc-status" role="status" data-status></p>
       <p class="mc-error" role="alert" aria-live="assertive" data-error></p>
-      <button type="button" class="mc-button mc-retry" data-retry hidden>重试</button>
+      <button type="button" class="mc-button mc-retry" data-retry hidden>${t("model.retry")}</button>
     </div>
   </div>`;
 
@@ -185,6 +256,21 @@ export async function mount(container, context) {
   stylesheet.href = new URL("./model-connection.css", import.meta.url).href;
   stylesheet.dataset.settingsOwner = "model-connection";
   container.innerHTML = MARKUP;
+  const advanced = document.createElement("details");
+  advanced.className = "mc-advanced";
+  advanced.open = context?.state?.advancedOpen === true;
+  const advancedLabel = document.createElement("summary");
+  advancedLabel.textContent = t("model.advanced");
+  const advancedFields = document.createElement("div");
+  advancedFields.className = "mc-advanced-fields";
+  advancedFields.append(container.querySelector("#mc-base").closest(".mc-field"),
+    container.querySelector("#mc-context-heading").closest("section"),
+    container.querySelector('[data-field="showReasoning"]').closest("section"));
+  advanced.append(advancedLabel, advancedFields);
+  const actions = container.querySelector(".mc-actions");
+  actions.prepend(container.querySelector("[data-save]"));
+  container.querySelector(".mc-card").after(actions, container.querySelector(".mc-test-note"), advanced,
+    container.querySelector(".mc-offline-note"));
 
   let disposed = false;
   let mode = "loading";
@@ -234,7 +320,7 @@ export async function mount(container, context) {
     // 密钥输入框永不因读取失败而禁用：用户必须仍能输入。
     keyInput.disabled = mode === "busy";
     retry.hidden = mode === "loading" || mode === "busy" || (!localError && !(snapshot && snapshot.errorText));
-    retry.textContent = retryCommand ? "重试此更改" : "重试读取";
+    retry.textContent = retryCommand ? t("model.retryChange") : t("model.reload");
     retry.disabled = mode === "loading" || mode === "busy";
     testButton.disabled = !interactive;
     saveButton.disabled = !interactive;
@@ -247,8 +333,8 @@ export async function mount(container, context) {
 
   function renderSnapshot() {
     if (!snapshot) return;
-    status.textContent = snapshot.statusText;
-    error.textContent = localError || snapshot.errorText || styleError;
+    status.textContent = ownerFeedback(snapshot.statusText);
+    error.textContent = localError || ownerFeedback(snapshot.errorText) || styleError;
 
     providerSelect.replaceChildren();
     for (const provider of snapshot.providers) {
@@ -261,7 +347,7 @@ export async function mount(container, context) {
 
     modelInput.value = snapshot.modelId;
     modelHint.textContent = snapshot.modelStatusText && snapshot.modelStatusText !== snapshot.modelId
-      ? `当前模型：${snapshot.modelStatusText}` : "";
+      ? t("model.current", { name: snapshot.modelStatusText }) : "";
     buildModelList();
 
     baseInput.value = snapshot.baseUrl;
@@ -269,17 +355,18 @@ export async function mount(container, context) {
     maxOutput.value = snapshot.maxOutputTokensText;
     contextLimit.textContent = snapshot.contextLimitText;
     numericHint.textContent = !positiveIntegerText(snapshot.contextWindowOverrideText) || !positiveIntegerText(snapshot.maxOutputTokensText)
-      ? "上下文上限与最大输出须为正整数；留空表示使用模型资料。此提示仅为格式提醒，最终校验以后端为准。"
+      ? t("model.numericHint")
       : "";
 
-    keyState.textContent = snapshot.keyStateText;
+    keyState.textContent = t("model." + (snapshot.isKeySaved ? "keySaved" : "keyNotSaved"));
     showReasoning.checked = snapshot.showReasoning;
     updateReasoningFlag();
+    if (numericHint.textContent) advanced.open = true;
   }
 
   // 即时保存语义只在这里陈述一次；开关说明行只描述行为本身，避免同一句话出现在两处。
   function updateReasoningFlag() {
-    reasoningFlag.textContent = "（更改后立即保存，不等保存连接）";
+    reasoningFlag.textContent = t("model.instant");
   }
 
   function buildModelList() {
@@ -287,7 +374,7 @@ export async function mount(container, context) {
     if (!snapshot || snapshot.availableModels.length === 0) {
       const empty = document.createElement("p");
       empty.className = "mc-model-empty";
-      empty.textContent = "尚未获取模型。点“测试连接”或“刷新”获取供应商模型。";
+      empty.textContent = t("model.noModels");
       modelList.append(empty);
       return;
     }
@@ -299,6 +386,12 @@ export async function mount(container, context) {
       item.dataset.modelId = model.id;
       item.textContent = model.displayName;
       item.setAttribute("aria-selected", String(model.id === snapshot.modelId));
+      if (model.id === snapshot.modelId) {
+        const check = document.createElement("span");
+        check.textContent = "✓";
+        check.setAttribute("aria-hidden", "true");
+        item.append(check);
+      }
       item.addEventListener("click", () => selectModel(model.id));
       modelList.append(item);
     }
@@ -339,7 +432,7 @@ export async function mount(container, context) {
       setMode("ready");
     } catch {
       if (disposed) return;
-      localError = "模型服务设置读取失败，请重试。";
+      localError = t("model.loadFailed");
       retryCommand = null;
       if (snapshot) renderSnapshot();
       else error.textContent = localError;
@@ -366,7 +459,7 @@ export async function mount(container, context) {
       setMode("ready");
     } catch (caught) {
       if (disposed) return;
-      const message = "操作未完成，已回读当前状态。你可以重试。";
+      const message = t("model.notCompleted");
       const failedSnapshot = normalizeSnapshot(caught?.details);
       if (failedSnapshot) {
         snapshot = failedSnapshot;
@@ -402,7 +495,7 @@ export async function mount(container, context) {
     if (typeof initialState.pickerOpen === "boolean") pickerOpen = initialState.pickerOpen;
     renderPicker();
     numericHint.textContent = !positiveIntegerText(contextOverride.value) || !positiveIntegerText(maxOutput.value)
-      ? "上下文上限与最大输出须为正整数；留空表示使用模型资料。此提示仅为格式提醒，最终校验以后端为准。"
+      ? t("model.numericHint")
       : "";
   }
 
@@ -513,6 +606,7 @@ export async function mount(container, context) {
     return {
       dirty,
       pickerOpen,
+      advancedOpen: advanced.open,
       // 注意：apiKey 不写入页面状态（只写不读，避免把密钥暂存到内存快照）。
       draft: {
         providerId: providerSelect.value,
@@ -538,7 +632,7 @@ export async function mount(container, context) {
   const stylesheetLoaded = await waitForStylesheet(stylesheet, signal);
   if (disposed) return dispose;
   if (!stylesheetLoaded) {
-    styleError = "模型服务页面样式加载失败，请重新打开页面。";
+    styleError = t("model.styleFailed");
     error.textContent = styleError;
   }
   void refreshSnapshot(true);

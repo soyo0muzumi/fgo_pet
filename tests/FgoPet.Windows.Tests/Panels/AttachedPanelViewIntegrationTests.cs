@@ -241,9 +241,9 @@ public sealed class AttachedPanelViewIntegrationTests
     }
 
     [Theory]
-    [InlineData("FgoLight", "#FFFFFFFF", "#FF7050B8")]
-    [InlineData("ModernGray", "#FF23242B", "#FFC3A8FF")]
-    public void Focus_cards_consume_the_theme_surface_and_action_resources(string theme, string content, string action)
+    [InlineData("FgoLight", "#FFFBFAF8", "#FFB2718B")]
+    [InlineData("ModernGray", "#FFFBFAF8", "#FFB2718B")]
+    public void Focus_cards_keep_the_frozen_paper_and_accent_in_both_themes(string theme, string content, string action)
     {
         StaRun(() =>
         {
@@ -266,9 +266,9 @@ public sealed class AttachedPanelViewIntegrationTests
             Assert.Equal(
                 (Color)ColorConverter.ConvertFromString(action),
                 Assert.IsType<SolidColorBrush>(Assert.IsType<Button>(FocusView(view).FindName("StartFocusButton")).Background).Color);
-            Assert.Equal(
-                (Color)ColorConverter.ConvertFromString(content),
-                Assert.IsType<SolidColorBrush>(Assert.IsType<Ellipse>(setup.Children[0]).Fill).Color);
+            Assert.Equal(Visibility.Visible, setup.Visibility);
+            Assert.IsType<StackPanel>(FocusView(view).FindName("QuickDurations"));
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(FocusView(view).FindName("SessionOptions")).Visibility);
         });
     }
 
@@ -291,15 +291,15 @@ public sealed class AttachedPanelViewIntegrationTests
 
             var phase = Assert.IsType<TextBlock>(FocusView(view).FindName("CompactPhaseText"));
             var pause = Assert.IsType<Button>(FocusView(view).FindName("PauseResumeButton"));
-            Assert.Equal("专注中", phase.Text);
-            Assert.Equal("暂停专注", pause.ToolTip?.ToString());
+            Assert.Equal("Focusing", phase.Text);
+            Assert.Equal("Pause", pause.ToolTip?.ToString());
 
             focus.Pause();
             focus.RaiseChanged();
             view.UpdateLayout();
 
-            Assert.Equal("已暂停", phase.Text);
-            Assert.Equal("继续专注", pause.ToolTip?.ToString());
+            Assert.Equal("Paused", phase.Text);
+            Assert.Equal("Resume", pause.ToolTip?.ToString());
             Assert.NotEqual(Visibility.Collapsed, pause.Visibility);
         });
     }

@@ -239,7 +239,7 @@ public sealed class DialogueWindowIntegrationTests
     private sealed class ContentResolver : IConversationContentResolver
     {
         public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) => Task.FromResult(new ContentBinding(
-            new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty), null,
+            new ContentContextKey(servantId, "stub.pack", "1.0.0", "default", "1", "1"), null,
             Array.Empty<KnowledgeEntry>(), Array.Empty<string>(), string.Empty, string.Empty));
     }
     private sealed class SampleWorkspaces : IWorkspaceCatalog

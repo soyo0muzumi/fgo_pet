@@ -16,6 +16,36 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class ChatWebSessionTests : IDisposable
 {
+    [Theory]
+    [InlineData("chooseWorkspace", ChatWebHostAction.ChooseWorkspace)]
+    [InlineData("clearWorkspace", ChatWebHostAction.ClearWorkspace)]
+    public async Task Workspace_bridge_requires_live_identity_availability_and_has_no_path_payload(string action, ChatWebHostAction expected)
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        var host = new RecordingChatHostActions
+        {
+            Presentation = new("Role", null, [], [], Actions: new(CanChooseWorkspace: true, CanClearWorkspace: true), WorkspaceLabel: "Synthetic workspace"),
+        };
+        using var session = new ChatWebSession(conversation, host);
+        var identity = session.ReadSnapshot().Identity;
+        string Payload(bool injectPath = false) => JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["sessionId"] = identity.SessionId, ["servantId"] = identity.ServantId,
+            ["conversationId"] = identity.ConversationId, ["action"] = action,
+        }.Concat(injectPath ? new Dictionary<string, object?> { ["path"] = "C:\\untrusted" } : []).ToDictionary(pair => pair.Key, pair => pair.Value));
+        Assert.Equal("Synthetic workspace", session.ReadSnapshot().Presentation.WorkspaceLabel);
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload(true)), default)).Success);
+        Assert.Empty(host.Requests);
+        Assert.True((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        Assert.Equal(expected, Assert.Single(host.Requests).Action);
+        conversation.IsStreaming = true;
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        conversation.IsStreaming = false;
+        conversation.NewConversationCommand.Execute(null);
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        Assert.Single(host.Requests);
+    }
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-chat-web-{Guid.NewGuid():N}.db");
 
     [Fact]
@@ -84,13 +114,14 @@ public sealed class ChatWebSessionTests : IDisposable
 
         var newer = await session.HandleCommandAsync(Message("chat.draft", Draft(initial, "新输入", 2)), CancellationToken.None);
         var older = await session.HandleCommandAsync(Message("chat.draft", Draft(initial, "迟到输入", 1)), CancellationToken.None);
+        Assert.Equal("新输入", conversation.InputText);
         conversation.SetActiveServant("other-servant");
         var stale = await session.HandleCommandAsync(Message("chat.stop", Identity(initial)), CancellationToken.None);
 
         Assert.True(newer.Success);
         Assert.False(older.Success);
         Assert.False(stale.Success);
-        Assert.Equal("新输入", conversation.InputText);
+        Assert.Empty(conversation.InputText);
     }
 
     [Fact]

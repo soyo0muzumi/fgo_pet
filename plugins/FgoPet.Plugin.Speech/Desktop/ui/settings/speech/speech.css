@@ -230,3 +230,31 @@
 @media (prefers-reduced-motion: reduce) {
   .sc-page *, .sc-page *::before, .sc-page *::after { transition-duration: 0.01ms !important; }
 }
+
+/* Margin v5 fields and buttons; playback options keep the original owner commands. */
+.sc-page { gap:0; font:13px var(--ui); }
+.sc-card { padding:0; gap:0; border:0; border-radius:0; background:none; }
+.sc-card[aria-labelledby=sc-provider-heading] > .sc-card-heading,
+.sc-card[data-card] > .sc-card-heading,.sc-advanced .sc-card-heading { display:none; }
+.sc-field { gap:6px; padding:12px 0; border-bottom:1px solid var(--rule); }
+.sc-label { font-size:12px; font-weight:400; color:var(--muted); }
+.sc-input { min-height:32px; height:32px; padding:0 10px; border-color:var(--rule-2); border-radius:6px; background:var(--paper); color:var(--ink); font:13px var(--ui); }
+.sc-field-hint { min-height:0; font-size:11px; line-height:1.7; color:var(--faint); }
+.sc-field-hint:empty,.sc-status:empty,.sc-error:empty { display:none; }
+.sc-switch-row { padding:13px 0; border-bottom:1px solid var(--rule); }
+.sc-switch-title { font-weight:400; }
+.sc-switch-description { font-size:11.5px; line-height:1.6; color:var(--faint); }
+.sc-actions { justify-content:flex-start; gap:8px; padding:0; margin-top:16px; border:0; flex-wrap:wrap; }
+.sc-button { min-height:0; padding:6px 15px; border:1px solid var(--rule-2); border-radius:3px; background:none; color:var(--ink-2); font:13px var(--ui); }
+.sc-button--primary { background:var(--accent); border-color:transparent; color:white; }
+.sc-button--primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.07); }
+.sc-immediate { border-color:var(--accent-line); }
+.sc-test-note { margin-top:10px!important; font-size:11px; line-height:1.7; color:var(--muted); }
+.sc-advanced { margin-top:20px; min-width:0; }
+.sc-advanced summary { padding:8px 0; cursor:pointer; color:var(--muted); font:12px var(--ui); }
+.sc-advanced > .sc-card { padding-top:4px; }
+.sc-feedback { margin-top:12px; }
+.sc-dirty { margin-bottom:14px!important; border-color:var(--accent-line); border-radius:6px; background:var(--accent-soft); }
+.sc-delete-confirm { border-color:var(--rule-2); border-radius:6px; background:var(--paper-sunk); }
+.sc-delete-confirm [data-delete-confirm-btn] { color:var(--danger); border-color:var(--danger); }
+@media(max-width:420px) { .sc-key,.sc-voice-row { grid-template-columns:minmax(0,1fr); } .sc-key button,.sc-voice-row button { justify-self:start; } }

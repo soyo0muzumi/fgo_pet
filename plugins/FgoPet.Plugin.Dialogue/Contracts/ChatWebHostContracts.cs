@@ -10,7 +10,8 @@ public sealed record ChatWebHostPresentation(
     IReadOnlyList<ChatWebChoice> Models,
     bool IsProjectsLoading = false,
     string ProjectsStatus = "",
-    ChatWebHostAvailability? Actions = null);
+    ChatWebHostAvailability? Actions = null,
+    string? WorkspaceLabel = null);
 
 /// <summary>A value selected from a current, host-owned catalog.</summary>
 public sealed record ChatWebChoice(string Id, string Label, bool Selected, bool CanSelect = true);
@@ -23,7 +24,9 @@ public sealed record ChatWebHostAvailability(
     bool CanOpenPersonalizationSettings = false,
     bool CanOpenSpeechSettings = false,
     bool CanOpenModelSettings = false,
-    bool CanRefreshProjects = false);
+    bool CanRefreshProjects = false,
+    bool CanChooseWorkspace = false,
+    bool CanClearWorkspace = false);
 
 public enum ChatWebHostAction
 {
@@ -42,6 +45,8 @@ public enum ChatWebHostAction
     RefreshProjects,
     SelectProject,
     SelectModel,
+    ChooseWorkspace,
+    ClearWorkspace,
 }
 
 /// <summary>Finite request passed from the Dialogue adapter to its native host.</summary>

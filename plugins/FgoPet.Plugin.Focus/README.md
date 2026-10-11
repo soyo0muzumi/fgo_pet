@@ -6,6 +6,10 @@ Focus.Desktop owns the process cadence and the compact Focus view. `FocusCompact
 
 The desktop projection observes the Kernel's current role, detaches on disposal and fences view construction and commands during process shutdown. Ticks update content without requesting shell geometry changes unless activity visibility changes. Loading or hiding a view does not create a second timer.
 
+The shell's Focus menu toggles the expanded panel. The inactive setup card has a Close panel button; closing it or pressing Escape preserves its options and does not start or stop a session. Running details can be dismissed independently of the timer; Stop remains the explicit session-ending command.
+
+Margin presents 10/25/50-minute quick starts as single-cycle sessions. Session options retain the existing 5–180 minute duration, 1–60 minute break and 1–12 cycle bounds, with a 25/5/1 initial selection. An active session shows a three-pixel remaining-progress ribbon; hovering or clicking reveals remaining time, pause/resume and stop. Clicking outside the running controls or deactivating their owner window dismisses the details without stopping the session; a second ribbon click also dismisses them while the pointer remains over the view. English presentation labels belong to `FocusStrings`. The existing preset catalog, cadence, recovery and completion owner remain authoritative.
+
 Dependencies are owned Focus.Core, neutral Platform storage/contracts, Extensibility signals, Kernel role/lifetime contracts and UiSdk. Focus must not reference Dialogue or DesktopShell implementation.
 
 Owned tables: `focus_presets`, `focus_sessions`, `runtime_events`, `timeline_entries`, `servant_bonds`, `bond_ledger`. Recovery must preserve exactly-once completion accounting; display snapshots must not be written as authoritative facts.

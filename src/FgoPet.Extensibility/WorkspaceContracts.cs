@@ -16,6 +16,13 @@ public interface IWorkspaceAuthorizationSource
 {
     WorkspaceAuthorization? GetCurrent(ToolScope scope);
 }
+/// <summary>Trusted local host gestures only; never exposed as a model tool.</summary>
+public interface IWorkspaceAuthorizationManager : IWorkspaceAuthorizationSource
+{
+    string ValidateDirectory(string rootPath);
+    WorkspaceAuthorization GrantValidated(ToolScope scope, string rootPath);
+    void Revoke(ToolScope scope);
+}
 public enum WorkspacePathKind { File, Directory }
 public interface IWorkspacePathLease : IDisposable
 {

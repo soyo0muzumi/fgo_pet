@@ -3,11 +3,26 @@ using FgoPet.Extensibility;
 namespace FgoPet.Plugin.Workspace;
 
 /// <summary>In-process host grants only. No model tool or package can create or change a grant.</summary>
-public sealed class WorkspaceAuthorizationRegistry(Func<ToolScope, bool> isCurrent) : IWorkspaceAuthorizationSource
+public sealed class WorkspaceAuthorizationRegistry(Func<ToolScope, bool> isCurrent) : IWorkspaceAuthorizationManager
 {
     private readonly object gate = new();
     private readonly Dictionary<ToolScope, WorkspaceAuthorization> grants = [];
     private long revision;
+    public string ValidateDirectory(string rootPath)
+    {
+        var scope = new ToolScope("host-directory-validation", "host", null);
+        var candidate = new WorkspaceAuthorization(scope, new("host-validation", 0), rootPath, rootPath);
+        return new WorkspaceAccessGuard(new CandidateSource(candidate)).GetAuthorization(scope).RootPath;
+    }
+    public WorkspaceAuthorization GrantValidated(ToolScope scope, string rootPath)
+    {
+        var canonical = ValidateDirectory(rootPath);
+        return Grant(scope, canonical, canonical);
+    }
+    private sealed class CandidateSource(WorkspaceAuthorization candidate) : IWorkspaceAuthorizationSource
+    {
+        public WorkspaceAuthorization? GetCurrent(ToolScope scope) => scope == candidate.Scope ? candidate : null;
+    }
     public WorkspaceAuthorization Grant(ToolScope scope, string rootPath, string currentDirectory)
     {
         ArgumentNullException.ThrowIfNull(scope);

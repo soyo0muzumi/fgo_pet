@@ -50,10 +50,16 @@
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
   <Target Name="CopySiblingRelay" AfterTargets="Build">
+    <PropertyGroup>
+      <CompanionRelayOutput>$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)</CompanionRelayOutput>
+      <CompanionAdapterOutput>$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)</CompanionAdapterOutput>
+      <CompanionRelayOutput Condition="'$(UseArtifactsOutput)' == 'true'">$(ArtifactsPath)\bin\FgoPet.AgentRelay\$(ArtifactsPivots)</CompanionRelayOutput>
+      <CompanionAdapterOutput Condition="'$(UseArtifactsOutput)' == 'true'">$(ArtifactsPath)\bin\FgoPet.CodexAdapter\$(ArtifactsPivots)</CompanionAdapterOutput>
+    </PropertyGroup>
     <ItemGroup>
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
+      <SiblingRelay Include="$(CompanionRelayOutput)\FgoPet.AgentRelay.*" />
+      <SiblingRelay Include="$(CompanionAdapterOutput)\FgoPet.CodexAdapter.*" />
+      <SiblingRelay Include="$(CompanionAdapterOutput)\System.Security.Cryptography.ProtectedData.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(SiblingRelay)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>

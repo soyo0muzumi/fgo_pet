@@ -60,7 +60,9 @@ public sealed class ChatWebWindowTests
                 await Task.Delay(25);
             }
             Assert.Equal("20", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('#messages article').length"));
-            await web.CoreWebView2.ExecuteScriptAsync("var scroll=document.getElementById('message-scroll');scroll.scrollTop=500;scroll.dispatchEvent(new Event('scroll'));document.getElementById('composer').focus();");
+            // Let the frozen entry animation settle before establishing a user reading anchor.
+            await Task.Delay(350);
+            await web.CoreWebView2.ExecuteScriptAsync("var scroll=document.getElementById('message-scroll');scroll.scrollTo({top:500,behavior:'instant'});scroll.dispatchEvent(new Event('scroll'));document.getElementById('composer').focus();");
             await Task.Delay(100);
             Assert.Equal("500", await web.CoreWebView2.ExecuteScriptAsync("Math.round(scroll.scrollTop)"));
             window.Hide();
@@ -98,7 +100,7 @@ public sealed class ChatWebWindowTests
             {
                 var surface = Assert.IsType<ContentControl>(window.FindName("ChatSurface"));
                 var failure = Assert.IsType<StackPanel>(surface.Content);
-                Assert.Contains("聊天页面暂时无法打开", Assert.IsType<TextBlock>(failure.Children[0]).Text);
+                Assert.Equal(FgoPet.UiSdk.MarginStrings.Get("chat.unavailable"), Assert.IsType<TextBlock>(failure.Children[0]).Text);
                 Assert.False(Assert.IsType<Button>(failure.Children[1]).IsEnabled);
                 Assert.Null(window.FindName("InputBox"));
                 Assert.Null(window.FindName("MessagesList"));

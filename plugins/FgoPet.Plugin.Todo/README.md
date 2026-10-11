@@ -12,6 +12,10 @@ The Todo plugin references Extensibility and Platform Storage. Keep business sta
 
 The Web adapter uses the existing `TodoApplicationService.Changed` event and a process-local revision. The service and repository remain authoritative; Web snapshots are refreshed after changes and writes use the existing conflict checks. Direct Quick Add is separate from AI proposals, which still require explicit confirmation.
 
+The Margin Today peek presents active items, due/overdue items and undated items added on the user's current local day. The adapter projects `inProgress`, `dueToday`, `overdue` and `addedToday` from the same local-day calculation; the page maps these keys to English labels in `todo-i18n.js`. It uses the shared paper palette without changing item storage, ETag checks or incomplete-step confirmation. View all remembered things opens the existing full Todo workspace owner.
+
+The registered WPF notebook uses local Margin paper resources and English presentation keys in `TodoWorkspaceStrings`. Derived labels are formatted in Desktop from the existing typed editor sessions. Core remains authoritative for editing, steps, confirmation and undo; the Web workspace is not registered by this presentation change. The notebook header projects the current date and active count, and row metadata uses existing due/creation/completion timestamps. Collapsed rows expose read-only step previews; expanding opens the original editing controls. Local templates provide circular completion controls and small borderless action icons. Narrow layouts reduce horizontal margins and keep editing actions reachable through the existing scroll host.
+
 ## Safety
 
 Backend authorization remains with Agent Backend. Persist only sanitized archive errors. Proposal confirmation and archive writes must preserve their established idempotency and user-confirmation rules.

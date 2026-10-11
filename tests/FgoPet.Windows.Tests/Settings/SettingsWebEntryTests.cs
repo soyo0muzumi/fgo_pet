@@ -29,15 +29,18 @@ public sealed class SettingsWebEntryTests
             var web = Assert.IsType<Microsoft.Web.WebView2.Wpf.WebView2>(host.Children[0]);
             async Task PageReady(string id) => await WaitUntil(async () =>
                 await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('.navigation-item[aria-current=page]')?.dataset.pageId === "
+                    "document.body.dataset.pageId === "
                     + JsonSerializer.Serialize(id)
                     + " && document.getElementById('page-content').children.length > 0 && !document.getElementById('root-status').textContent") == "true");
             await PageReady("RolePackages");
+            Assert.Equal("[\"Companion\",\"Services\",\"App\",\"Privacy & Safety\"]",
+                await web.CoreWebView2.ExecuteScriptAsync(
+                    "Array.from(document.querySelectorAll('#settings-navigation .section-name')).map(node => node.textContent)"));
             foreach (var id in new[] { "UserProfile", "Personalization", "ModelConnection", "Speech",
                          "ConversationMemory", "Privacy", "Theme", "RolePackages" })
             {
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('.navigation-item[data-page-id=" + id + "]').click()");
+                vm.Navigate(id);
+                window.NavigateToSelectedPage();
                 await PageReady(id);
                 Assert.Equal(id, vm.SelectedPageId);
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('main h1').length"));
@@ -52,8 +55,25 @@ public sealed class SettingsWebEntryTests
                         Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, file);
                 }
             }
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=services]').click()");
+            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "document.body.dataset.settingsOverview === 'services'") == "true");
             Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
-                "document.querySelector('.navigation-item[data-page-id=AgentConnection]').disabled"));
+                "Array.from(document.querySelectorAll('.detail-row')).every(row => !row.disabled)"));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-page-id=ModelConnection]').click()");
+            await PageReady("ModelConnection");
+            Assert.Equal("Services", JsonSerializer.Deserialize<string>(
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-parent').textContent")));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");
+            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "document.body.dataset.settingsOverview === 'services'") == "true");
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=privacy]').click()");
+            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "document.body.dataset.settingsOverview === 'privacy'") == "true");
+            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('.detail-row[data-page-id=AgentConnection]').disabled"));
+            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('.detail-row[data-page-id=ActionPermissions]').disabled"));
             vm.Select(SettingsSection.UserProfile);
             window.NavigateToSelectedPage();
             await PageReady("UserProfile");
@@ -66,6 +86,13 @@ public sealed class SettingsWebEntryTests
             await PageReady("UserProfile");
             Assert.Equal("未保存的查验草稿", JsonSerializer.Deserialize<string>(
                 await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('profile-display-name').value")));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");
+            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "document.body.dataset.settingsOverview === 'app'") == "true");
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.detail-row[data-page-id=UserProfile]').click()");
+            await PageReady("UserProfile");
+            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "document.getElementById('profile-display-name').value === '未保存的查验草稿'") == "true");
             window.Close();
             vm.Select(SettingsSection.Theme);
             window.NavigateToSelectedPage();

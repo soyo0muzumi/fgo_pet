@@ -29,8 +29,6 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     window: $("chat-window"),
-    avatar: $("role-avatar-image"),
-    avatarFallback: $("role-avatar-fallback"),
     roleName: $("role-name"),
     historyToggle: $("history-toggle"),
     historyPanel: $("history-panel"),
@@ -65,8 +63,10 @@
     composerCount: $("composer-count"),
     send: $("send-message"),
     stop: $("stop-generation"),
-    project: $("project-select"),
-    refreshProjects: $("refresh-projects"),
+    chooseWorkspace: $("choose-workspace"),
+    workspaceSelection: $("workspace-selection"),
+    workspaceLabel: $("workspace-label"),
+    clearWorkspace: $("clear-workspace"),
     model: $("model-select"),
     pageStatus: $("page-status"),
     pageStatusText: $("page-status-text"),
@@ -111,7 +111,7 @@
         pending.delete(requestId);
         logRequest(type, requestId, "timeout", "CHAT_TIMEOUT");
         reject(new Error("CHAT_TIMEOUT"));
-      }, requestTimeoutMs);
+      }, type === "chat.host" && payload.action === "chooseWorkspace" ? 600000 : requestTimeoutMs);
       pending.set(requestId, { resolve, reject, timer, type });
       try {
         bridge.postMessage({ type, requestId, payload });
@@ -221,7 +221,7 @@
 
   function restoreAnchor(anchor) {
     if (!anchor || anchor.atBottom) {
-      el.scroll.scrollTop = el.scroll.scrollHeight;
+      el.scroll.scrollTo({ top: el.scroll.scrollHeight, behavior: "instant" });
       followingLatest = true;
       el.jumpBottom.hidden = true;
       return;
@@ -230,7 +230,7 @@
     if (node && node.isConnected) {
       const box = el.scroll.getBoundingClientRect();
       const rect = node.getBoundingClientRect();
-      el.scroll.scrollTop += rect.top - box.top - anchor.offset;
+      el.scroll.scrollTo({ top: el.scroll.scrollTop + rect.top - box.top - anchor.offset, behavior: "instant" });
     }
     followingLatest = false;
   }
@@ -344,22 +344,18 @@
     if (!record || record.role !== role) {
       if (record) record.article.remove();
       const article = document.createElement("article");
-      article.className = `turn turn--${role}`;
+      article.className = `turn ${role === "assistant" ? "her" : "user"}`;
       article.dataset.turnId = turn.id;
       article.setAttribute("data-role", role);
       record = { role, article, heading: null, body: null, reasoning: null, actions: null, streaming: null };
       if (role === "assistant") {
         const heading = document.createElement("div");
-        heading.className = "turn-heading";
-        const marker = document.createElement("span");
-        marker.className = "turn-marker";
-        marker.setAttribute("aria-hidden", "true");
-        const name = document.createElement("span");
-        heading.append(marker, name);
+        heading.className = "who";
+
         record.heading = heading;
         article.append(heading);
       }
-      const body = document.createElement("div");
+      const body = document.createElement("p");
       body.className = "chat-message-text";
       article.append(body);
       record.body = body;
@@ -378,14 +374,14 @@
 
   function renderTurn(turn, presentation) {
     const record = getTurnNode(turn);
-    if (record.heading) setText(record.heading.lastElementChild, presentation.roleName || t("chat.companion"));
+    if (record.heading) setText(record.heading, presentation.roleName || t("chat.companion"));
     setText(record.body, turn.text);
 
     const reasoningText = typeof turn.reasoningText === "string" ? turn.reasoningText : "";
     if (presentation.showReasoning && (reasoningText || turn.reasoningSummary)) {
       if (!record.reasoning) {
         const details = document.createElement("details");
-        details.className = "turn-reasoning";
+        details.className = "think";
         const summary = document.createElement("summary");
         const text = document.createElement("div");
         text.className = "chat-message-text";
@@ -405,14 +401,14 @@
     record.actions.replaceChildren();
     if (turn.canCopy) record.actions.append(makeButton("turn-action turn-copy", t("chat.copy.message"), "copy", "copyTurn", turn.id));
     if (turn.canReadAloud) {
-      const speechLabel = typeof turn.speechActionText === "string" && turn.speechActionText ? turn.speechActionText : t("chat.read.aloud");
+      const speechLabel = window.MarginI18n.speechText(turn.speechActionText) || t("chat.read.aloud");
       const readButton = makeButton("turn-action", speechLabel, "read", "readTurn", turn.id, speechLabel);
       record.actions.append(readButton);
       if (turn.speechStatusText) {
         const speechStatus = document.createElement("span");
         speechStatus.className = "turn-action-text";
         speechStatus.setAttribute("role", "status");
-        setText(speechStatus, turn.speechStatusText);
+        setText(speechStatus, window.MarginI18n.speechText(turn.speechStatusText));
         record.actions.append(speechStatus);
       }
       if (turn.speechNeedsConfiguration) {
@@ -443,9 +439,12 @@
         turnNodes.delete(id);
       }
     }
-    const fragment = document.createDocumentFragment();
-    for (const node of ordered) fragment.append(node);
-    el.messages.append(fragment);
+    // Keep admitted turns mounted: detaching the whole thread restarts the v5
+    // entry animation on every snapshot and shifts the saved reading anchor.
+    ordered.forEach((node, index) => {
+      const current = el.messages.children[index];
+      if (current !== node) el.messages.insertBefore(node, current || null);
+    });
     el.empty.hidden = turns.length > 0;
   }
 
@@ -506,17 +505,13 @@
     const presentation = snapshot.presentation || {};
     const conversation = snapshot.conversation || {};
     const actions = presentation.actions || {};
-    const project = conversation.project || null;
-    const projectId = project && typeof project.id === "string" ? project.id : "";
-    const projects = Array.isArray(presentation.projects) ? presentation.projects : [];
     const models = Array.isArray(presentation.models) ? presentation.models : [];
-    appendOptions(el.project, projects, projectId, t("chat.no.projects.available"));
     appendOptions(el.model, models, "", t("chat.no.models.available"));
-    el.refreshProjects.hidden = actions.canRefreshProjects !== true;
-    el.refreshProjects.disabled = presentation.isProjectsLoading === true || conversation.isStreaming === true;
-    el.refreshProjects.title = presentation.isProjectsLoading ? t("chat.refreshing.projects") : presentation.projectsStatus || t("chat.refresh.projects");
-    if (presentation.projectsStatus) el.refreshProjects.setAttribute("aria-description", presentation.projectsStatus);
-    else el.refreshProjects.removeAttribute("aria-description");
+    el.chooseWorkspace.hidden = actions.canChooseWorkspace !== true && !presentation.workspaceLabel;
+    el.chooseWorkspace.disabled = actions.canChooseWorkspace !== true || conversation.isStreaming === true;
+    el.workspaceLabel.textContent = typeof presentation.workspaceLabel === "string" ? presentation.workspaceLabel : "";
+    el.workspaceSelection.hidden = !el.workspaceLabel.textContent;
+    el.clearWorkspace.disabled = actions.canClearWorkspace !== true || conversation.isStreaming === true;
   }
 
   function renderContextChips(conversation) {
@@ -631,7 +626,7 @@
       button.textContent = label;
       el.moreActions.append(button);
     }
-    el.moreMenu.hidden = el.moreActions.childElementCount === 0;
+    el.moreMenu.hidden = false;
   }
 
   function renderSnapshot(snapshot) {
@@ -640,19 +635,6 @@
     const history = snapshot.history || {};
     const roleName = typeof presentation.roleName === "string" && presentation.roleName.trim() ? presentation.roleName : t("chat.chat");
     setText(el.roleName, roleName);
-    setText(el.avatarFallback, [...roleName][0] || t("chat.c"));
-    const avatarUrl = typeof presentation.avatarPngDataUrl === "string" && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(presentation.avatarPngDataUrl)
-      ? presentation.avatarPngDataUrl : "";
-    if (avatarUrl) {
-      if (el.avatar.src !== avatarUrl) el.avatar.src = avatarUrl;
-      el.avatar.hidden = false;
-      el.avatarFallback.hidden = true;
-    } else {
-      el.avatar.removeAttribute("src");
-      el.avatar.hidden = true;
-      el.avatarFallback.hidden = false;
-    }
-
     el.window.classList.toggle("is-expanded", window.innerWidth >= 720);
     const expanded = window.innerWidth >= 720;
     el.expand.setAttribute("aria-pressed", String(expanded));
@@ -668,6 +650,7 @@
       ? [conversation.thinkingTimerText || t("chat.thinking"), conversation.requestStatusText].filter(Boolean).join(" · ")
       : conversation.requestStatusText || "";
     setText(el.conversationStatus, status);
+    el.conversationStatus.hidden = !status;
     setText(el.conversationError, conversation.errorText || "");
     el.conversationError.hidden = !conversation.errorText;
     const capability = conversation.capabilityNotice || {};
@@ -703,7 +686,7 @@
     const localDraftReady = Boolean(text.trim() && text !== serverDraftText && conversation && conversation.configurationRequired !== true);
     const canSend = Boolean(conversation && conversation.canSend) || localDraftReady;
     const streaming = Boolean(state && state.conversation && state.conversation.isStreaming);
-    el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("zh-CN")} / ${maxMessageChars.toLocaleString("zh-CN")}` : "";
+    el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("en-US")} / ${maxMessageChars.toLocaleString("en-US")}` : "";
     el.composer.disabled = !state;
     el.send.disabled = !canSend || streaming || overLimit || !text.trim() || submitInProgress;
     el.stop.disabled = !state || !state.conversation || state.conversation.canStop !== true;
@@ -714,7 +697,6 @@
       if (el.composerError.textContent.includes(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}))) showComposerError("");
     }
     const disableSelections = streaming;
-    el.project.disabled = disableSelections || el.project.options.length === 0;
     el.model.disabled = disableSelections || el.model.options.length === 0;
   }
 
@@ -981,12 +963,12 @@
     });
     $("hide-window").addEventListener("click", () => { void hideWindow(); });
     el.pageRetry.addEventListener("click", () => { void refreshSnapshot(); });
-    el.refreshProjects.addEventListener("click", () => { void hostAction("refreshProjects"); });
+    el.chooseWorkspace.addEventListener("click", () => { void hostAction("chooseWorkspace"); });
+    el.clearWorkspace.addEventListener("click", () => { void hostAction("clearWorkspace"); });
     el.capabilityRetry.addEventListener("click", () => {
       if (state) void commandWithSnapshot("chat.retryCapability", identityPayload(state), false).catch(() => {});
     });
     el.capabilitySettings.addEventListener("click", () => { void hostAction("openModelSettings"); });
-    el.project.addEventListener("change", () => { if (el.project.value) void hostAction("selectProject", { targetId: el.project.value }); });
     el.model.addEventListener("change", () => { if (el.model.value) void hostAction("selectModel", { targetId: el.model.value }); });
     el.jumpBottom.addEventListener("click", () => {
       el.scroll.scrollTop = el.scroll.scrollHeight;

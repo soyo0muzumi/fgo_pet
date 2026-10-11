@@ -33,12 +33,13 @@ public partial class DialogueWindow : Window, IDisposable
         IAttachedPanelLauncher? panel = null, ISettingsNavigator? settingsNavigation = null,
         IWorkspaceCatalog? workspaces = null, CompanionPresentation? presentation = null,
         IClipboardWriter? clipboard = null, ChatWebSurfaceFactory? webFactory = null,
-        Func<string, WorkspaceNavigation, bool>? workspaceNavigation = null)
+        Func<string, WorkspaceNavigation, bool>? workspaceNavigation = null,
+        FgoPet.Dialogue.Contracts.IChatWorkspaceSelection? localWorkspace = null)
     {
         _viewModel = viewModel; _factory = webFactory; _workspace = workspaceNavigation;
         _defaultWorkspace = workspaces?.Workspaces.FirstOrDefault()?.Id; _presentation = presentation;
         InitializeComponent(); DataContext = viewModel;
-        _actions = new(viewModel, this, clipboard ?? new SystemClipboardWriter(), panel, workspaces, workspaceNavigation);
+        _actions = new(viewModel, this, clipboard ?? new SystemClipboardWriter(), panel, workspaces, workspaceNavigation, localWorkspace);
         viewModel.OpenRequested += OnOpenRequested;
         viewModel.NavigationRequested += OnNavigationRequested;
         viewModel.Conversation.NewWorkspaceItemRequested += OnNewWorkspaceItem;
@@ -147,13 +148,16 @@ public partial class DialogueWindow : Window, IDisposable
     private void OnShutdown(object? sender, EventArgs args) => DisposePresentation();
     internal void SetExpanded(bool expanded)
     {
+        WindowStyle = expanded ? WindowStyle.SingleBorderWindow : WindowStyle.None;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, expanded ? null : new System.Windows.Shell.WindowChrome
+        { CaptionHeight = 0, CornerRadius = new CornerRadius(10), GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(6) });
         Width = expanded ? 824 : 376; Height = expanded ? 740 : 500;
         if (LayoutRequestedHandler is { } place) { place(); return; }
         var area = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).WorkingArea;
         var dpi = VisualTreeHelper.GetDpi(this);
         var width = Math.Min(Width, area.Width / dpi.DpiScaleX);
         var height = Math.Min(Height, area.Height / dpi.DpiScaleY);
-        MinWidth = Math.Min(320, width); MinHeight = Math.Min(400, height);
+        MinWidth = Math.Min(240, width); MinHeight = Math.Min(240, height);
         Width = width; Height = height;
         Left = Math.Clamp(Left, area.Left / dpi.DpiScaleX, area.Right / dpi.DpiScaleX - width);
         Top = Math.Clamp(Top, area.Top / dpi.DpiScaleY, area.Bottom / dpi.DpiScaleY - height);

@@ -101,6 +101,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         _libraryViewModel = libraryViewModel;
         _settingsViewModel = settingsViewModel;
         _portrait = portrait;
+        portrait?.UseMarginEntries();
         _coordinator = coordinator;
         _lifetime = lifetime;
         _paths = paths;
@@ -303,11 +304,37 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 31, 27)),
             FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 13,
         };
-        menu.Items.Add(Item(MarginStrings.Get("entry.chat"), (_, _) => ShowDialogueWindow()));
+        menu.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("pack://application:,,,/FgoPet.UiSdk;component/Ui/Shell/MarginContextMenu.xaml"),
+        });
+        menu.Style = (Style)menu.FindResource("MarginContextMenu");
+        var chat = Item(MarginStrings.Get("entry.chat"), (_, _) => ShowDialogueWindow());
+        chat.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(178, 113, 139));
+        chat.InputGestureText = "Ctrl Alt Space";
+        menu.Items.Add(chat);
+        var today = Item(MarginStrings.Get("entry.today"), (_, _) => _attachedPanel?.OpenTasks());
+        today.IsEnabled = _attachedPanel is not null;
+        menu.Items.Add(today);
+        var focus = Item(MarginStrings.Get("entry.focus"), (_, _) =>
+        {
+            if (_attachedPanel is null) return;
+            if (_attachedPanel.State == FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus)
+            {
+                _attachedPanel.Escape();
+                return;
+            }
+            if (_attachedPanel.State == FgoPet.Core.Panels.AttachedPanelState.Collapsed) _attachedPanel.PortraitClick();
+            if (_attachedPanel.State != FgoPet.Core.Panels.AttachedPanelState.ExpandedFocus) _attachedPanel.FocusClick();
+        });
+        focus.IsEnabled = _attachedPanel?.CompactSurface is not null;
+        menu.Items.Add(focus);
         menu.Items.Add(Item(MarginStrings.Get("entry.settings"), (_, _) => ShowSettings()));
         menu.Items.Add(Item(MarginStrings.Get("entry.hide"), (_, _) => ToggleOwnedPortrait()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item(MarginStrings.Get("entry.exit"), (_, _) => Exit()));
+        foreach (var action in menu.Items.OfType<MenuItem>())
+            action.Style = (Style)menu.FindResource("MarginContextAction");
         return menu;
     }
 

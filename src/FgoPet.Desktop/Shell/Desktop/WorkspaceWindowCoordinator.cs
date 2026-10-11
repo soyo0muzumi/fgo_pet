@@ -27,6 +27,8 @@ public sealed class WorkspaceWindowCoordinator : IWorkspaceLauncher, IDisposable
             try
             {
                 if (existing.View is IWorkspaceSurface surface) surface.Navigate(navigation);
+                if (existing.Window.WindowState == WindowState.Minimized)
+                    existing.Window.WindowState = WindowState.Normal;
                 existing.Window.Activate();
                 return true;
             }

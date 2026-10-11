@@ -5,7 +5,7 @@ using FgoPet.Core.Todo;
 namespace FgoPet.App.Services;
 
 public sealed record TodoPeekTask(string Id, string Title, TodoStatus Status, DateTimeOffset? DueAt,
-    int CompletedSteps, int TotalSteps, string Etag);
+    int CompletedSteps, int TotalSteps, string Etag, string Reason = "addedToday");
 
 public sealed record TodoPeekSnapshot(long Revision, IReadOnlyList<TodoPeekTask> Tasks, int CompletedToday);
 
@@ -120,7 +120,11 @@ public sealed class TodoWebAdapter(TodoApplicationService todos, TodoChangeFeed 
             .ThenBy(item => item.DueAt)
             .ThenBy(item => item.Title, StringComparer.CurrentCulture)
             .Select(item => new TodoPeekTask(item.Id, item.Title, item.Status, item.DueAt,
-                item.Steps.Count(step => step.IsCompleted), item.Steps.Count, Etag(item)))
+                item.Steps.Count(step => step.IsCompleted), item.Steps.Count, Etag(item),
+                item.Status == TodoStatus.Active ? "inProgress" : item.DueAt is { } due
+                    ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(due, localZone).DateTime) < today
+                        ? "overdue" : "dueToday"
+                    : "addedToday"))
             .ToArray(), CompletedToday: todos.ListHistory().Count(item => item.CompletedAt is { } completedAt
                 && DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(completedAt, localZone).DateTime) == today)),
             cancellationToken);

@@ -15,8 +15,6 @@
   <div class="settings-layout">
     <aside class="settings-sidebar" aria-label="Settings navigation" data-i18n-aria-label="settings.navigation">
       <div class="sidebar-heading" data-i18n="settings.title">Settings</div>
-      <label class="search-label" for="settings-search" data-i18n="settings.search">Search settings</label>
-      <input id="settings-search" class="settings-search" type="search" placeholder="Search settings and keywords" data-i18n-placeholder="settings.searchHint" autocomplete="off" aria-label="Search settings" data-i18n-aria-label="settings.search">
       <nav id="settings-navigation" class="settings-navigation" aria-label="Settings groups" data-i18n-aria-label="settings.groups">
         <p class="navigation-loading" role="status">Loading settings…</p>
       </nav>
@@ -24,6 +22,7 @@
 
     <main class="settings-main">
       <header class="page-heading">
+        <button id="settings-back" class="crumb" type="button" hidden><span class="back-chevron" aria-hidden="true">‹</span><span data-i18n="settings.back">Back</span><span id="settings-parent" class="crumb-parent"></span></button>
         <h1 id="page-title" tabindex="-1">Settings</h1>
         <p id="page-description" class="page-description"></p>
       </header>
