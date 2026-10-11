@@ -64,3 +64,5 @@ Core-only tests protect contract availability and the absence of raw-synthesis/d
 Real provider playback, sound quality/latency, DPI, IME, multi-monitor, Narrator, and high-contrast checks remain manual acceptance boundaries. Contract doubles are not device or provider acceptance.
 
 Settings presentation uses `SpeechWebPage` over the existing connection view model and native voice-file picker. The former SpeechConnectionPage XAML is removed; synthesis, credentials and playback ownership remain unchanged.
+
+The Margin detail uses English localization keys and shared paper controls, with playback options under a presentation-only disclosure. Provider-specific connection and voice controls, preview, immediate key operations and explicit voice-deletion confirmation retain their existing owner commands. Known owner feedback is mapped to English keys in the page only; unknown service content and names remain literal text. Keys never enter navigation state. `MarginServiceSettingsWebTests` checks the production page with synthetic data, narrow-window scrolling, retry and command dispatch; it does not contact providers or play audio.

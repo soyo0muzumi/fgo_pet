@@ -6,7 +6,7 @@ The host guard supplies the resource authorization. Its frozen fingerprint cover
 
 `expectedVersion` is cooperative optimistic concurrency. The final replacement is not a cross-process compare-and-swap: another writer can change a file after the last version check and before replacement.
 
-`WorkspaceAuthorizationRegistry` accepts explicit in-process host grants for a current conversation/role/project only. Revocation or replacement changes the authority identity; no model argument or package can grant a root. Host composition registers an empty registry until a trusted grant is supplied, so workspace, documents and shell access fail closed without one. The registry is bounded to 64 scopes and does not evict existing authority when full.
+`WorkspaceAuthorizationRegistry` accepts explicit in-process host grants for a current conversation/role/project only. Revocation or replacement changes the authority identity; no model argument or package can grant a root. Host composition registers an empty registry until a trusted grant is supplied, so workspace, documents and shell access fail closed without one. Chat's native directory picker supplies that explicit session grant through `IWorkspaceAuthorizationManager`; directory validation precedes replacement of existing authority. The registry is bounded to 64 scopes and does not evict existing authority when full.
 
 When paired with `shell.exec`, the workspace constrains the shell's working directory only. Shell commands still run with host-user permissions and may access other paths, use the network, or start child processes; the workspace guard is not a process sandbox.
 

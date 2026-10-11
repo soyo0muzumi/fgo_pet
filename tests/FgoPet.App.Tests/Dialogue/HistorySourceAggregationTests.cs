@@ -128,7 +128,7 @@ public sealed class HistorySourceAggregationTests
             var conversations = new SqliteConversationRepository(database);
             var key = new ContentContextKey("mash", "pack", "1", "default", "1", "1");
             conversations.CreateConversation("history", "mash", key, DateTimeOffset.UnixEpoch, Scope.ProjectId);
-            var text = string.Concat(Enumerable.Repeat("原计划🙂；更正保留。", 400));
+            var text = string.Concat(Enumerable.Repeat("上次说的原计划🙂；更正保留。", 400));
             conversations.Append(new("message-1", "history", "mash", ChatMessageRole.User, text,
                 ChatMessageStatus.Completed, DateTimeOffset.UnixEpoch, key, 1));
             var repository = new SmallSqlitePages(new SqliteConversationRecallRepository(database));
@@ -157,7 +157,7 @@ public sealed class HistorySourceAggregationTests
         var resolver = new NoModelResolver();
         var service = new ConversationRecallService(repository, resolver, new Settings(),
             new ModelContextResolver(_ => throw new InvalidOperationException("Direct matches must not query models.")), new RequestTokenMeter());
-        return service.RetrieveAsync(Scope, "current", "原计划", token);
+        return service.RetrieveAsync(Scope, "current", "上次说的原计划", token);
     }
     private sealed class NoModelResolver : IChatProviderResolver
     {

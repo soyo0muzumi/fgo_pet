@@ -120,6 +120,7 @@
     </Compile>
     <Compile Include="Desktop\UserProfileWebFactory.cs" />
     <Compile Include="Desktop\SettingsWebRootFactory.cs" />
+    <Content Include="../../FgoPet.UiSdk/Resources/Web/*" Link="Desktop/ui/settings/root/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\settings\root\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\settings\user-profile\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="Infrastructure\DialogueWindowPlacementCoordinator.cs">

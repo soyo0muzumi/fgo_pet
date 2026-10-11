@@ -22,6 +22,60 @@ namespace FgoPet.Windows.Tests.Dialogue;
 public sealed class DialogueWindowIntegrationTests
 {
     [Fact]
+    public void Repeated_runtime_entry_restores_minimized_chat_without_replacing_draft_or_surface() => StaRunner.Run(() =>
+    {
+        var vm = CreateViewModel();
+        using var window = new DialogueWindow(vm);
+        vm.Conversation.InputText = "unsent draft";
+        vm.Conversation.PendingDraftId = "existing-pending";
+        vm.Conversation.PendingDraftVersion = 4;
+        vm.Conversation.Turns.Add(new("reply", ChatMessageRole.Assistant, "retained history"));
+        var surface = ((ContentControl)window.FindName("ChatSurface")).Content;
+        vm.RequestOpen();
+        window.WindowState = WindowState.Minimized;
+        vm.RequestOpen();
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        window.Close();
+        Assert.False(window.IsVisible);
+        vm.RequestOpen();
+        Assert.True(window.IsVisible);
+        Assert.Same(surface, ((ContentControl)window.FindName("ChatSurface")).Content);
+        Assert.Equal("unsent draft", vm.Conversation.InputText);
+        Assert.Equal("existing-pending", vm.Conversation.PendingDraftId);
+        Assert.Equal(4, vm.Conversation.PendingDraftVersion);
+        Assert.Single(vm.Conversation.Turns);
+        vm.Conversation.Dispose();
+    });
+
+    [Fact]
+    public void Portrait_tray_and_shortcut_share_the_same_chat_and_preserve_hidden_draft() => StaRunner.Run(() =>
+    {
+        var vm = CreateViewModel();
+        using var window = new DialogueWindow(vm);
+        var portrait = new FgoPet.App.Main.PortraitWindow();
+        using var tray = new FgoPet.App.Tray.TrayService();
+        using var ui = new FgoPet.App.Bootstrap.DesktopAppUi(tray, null!, new SettingsViewModel(),
+            portrait, null!, null!, null!, null!, dialogueWindow:window, dialogue:vm);
+        vm.Conversation.InputText = "retained draft";
+        var surface = ((ContentControl)window.FindName("ChatSurface")).Content;
+        portrait.HandlePortraitClick();
+        Assert.True(window.IsVisible);
+        Assert.False(portrait.IsAttachedPanelVisible);
+        window.WindowState = WindowState.Minimized;
+        tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == MarginStrings.Get("entry.chat")).PerformClick();
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        window.Close();
+        ui.PortraitMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == MarginStrings.Get("entry.chat"))
+            .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.True(window.IsVisible);
+        window.Hide(); vm.RequestOpen();
+        Assert.True(window.IsVisible);
+        Assert.Same(surface, ((ContentControl)window.FindName("ChatSurface")).Content);
+        Assert.Equal("retained draft", vm.Conversation.InputText);
+        portrait.Close(); vm.Conversation.Dispose();
+    });
+
+    [Fact]
     public void Host_metadata_refreshes_real_project_choices_and_preserves_saved_unavailable_project() => StaRunner.Run(() =>
     {
         var vm = CreateViewModel(projectCatalog: new SampleProjects());
@@ -185,7 +239,7 @@ public sealed class DialogueWindowIntegrationTests
     private sealed class ContentResolver : IConversationContentResolver
     {
         public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) => Task.FromResult(new ContentBinding(
-            new ContentContextKey("stub", "stub.pack", "1.0.0", "default", "1", string.Empty), null,
+            new ContentContextKey(servantId, "stub.pack", "1.0.0", "default", "1", "1"), null,
             Array.Empty<KnowledgeEntry>(), Array.Empty<string>(), string.Empty, string.Empty));
     }
     private sealed class SampleWorkspaces : IWorkspaceCatalog

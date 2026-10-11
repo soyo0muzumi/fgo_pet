@@ -230,6 +230,8 @@ internal sealed class ChatWebSession : IChatWebSession
         "refreshProjects" => availability.CanRefreshProjects && !_conversation.IsStreaming,
         "selectProject" => !_conversation.IsStreaming,
         "selectModel" => !_conversation.IsStreaming,
+        "chooseWorkspace" => availability.CanChooseWorkspace && !_conversation.IsStreaming,
+        "clearWorkspace" => availability.CanClearWorkspace && !_conversation.IsStreaming,
         _ => false,
     };
 
@@ -251,6 +253,8 @@ internal sealed class ChatWebSession : IChatWebSession
             "refreshProjects" => ChatWebHostAction.RefreshProjects,
             "selectProject" => ChatWebHostAction.SelectProject,
             "selectModel" => ChatWebHostAction.SelectModel,
+            "chooseWorkspace" => ChatWebHostAction.ChooseWorkspace,
+            "clearWorkspace" => ChatWebHostAction.ClearWorkspace,
             _ => (ChatWebHostAction?)null,
         };
         return action is { } value ? new ChatWebHostRequest(value, command.TargetId, command.Expanded) : null;
@@ -297,7 +301,7 @@ internal sealed class ChatWebSession : IChatWebSession
             && identity.ConversationId == current.ConversationId;
     }
 
-    private ChatWebIdentity CurrentIdentity() => new(_sessionId,
+    private ChatWebIdentity CurrentIdentity() => new($"{_sessionId}-{_sessionEpoch}",
         _conversation.ActiveServantId ?? string.Empty,
         _conversation.CurrentConversationId ?? string.Empty);
 
@@ -383,7 +387,8 @@ internal sealed class ChatWebSession : IChatWebSession
             models,
             raw.IsProjectsLoading,
             Safe(raw.ProjectsStatus, 256),
-            raw.Actions ?? new ChatWebHostAvailability());
+            raw.Actions ?? new ChatWebHostAvailability(),
+            raw.WorkspaceLabel is null ? null : Safe(raw.WorkspaceLabel, 160));
     }
 
     private static IReadOnlyList<ChatWebChoice> SanitizeChoices(IReadOnlyList<ChatWebChoice>? choices,

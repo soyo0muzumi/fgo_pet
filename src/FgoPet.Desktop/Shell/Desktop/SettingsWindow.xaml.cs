@@ -17,10 +17,10 @@ public partial class SettingsWindow : Window, IDisposable
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         ArgumentNullException.ThrowIfNull(webFactory);
         InitializeComponent();
-        Width = 1000;
-        Height = 760;
-        MinWidth = 320;
-        MinHeight = 400;
+        Width = 824;
+        Height = 740;
+        MinWidth = 240;
+        MinHeight = 240;
         _webSurface = webFactory.CreateView(viewModel.SelectedPageId, OnWebNavigated);
         Content = _webSurface;
         _webSurface.Ready += OnWebReady;

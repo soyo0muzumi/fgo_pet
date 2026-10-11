@@ -56,3 +56,5 @@ Core / App / Infrastructure / Windows 的 memory 相关测试；dialogue↔memor
 Use the Memory Core/Desktop test projects under `tests/`, plus affected application tests and the architecture gate for boundary changes. Privacy, source ownership, generation rotation, and failure/retry behavior must remain covered.
 
 `MemoryWebPage` owns the shared Settings Web module over `MemoryViewModel`. The former ConversationMemoryPage XAML is removed; role context, review, confirmation, and data policies retain their existing owners.
+
+The Margin detail uses English localization keys and paper controls, with candidate review and confirmed memories in vertically stacked sections. Memory bodies and owner status render as plain text. Editing, approval, enable/disable and deletion retain the existing commands; delete-all retains its inline confirmation. `MarginMemoryDataWebTests` exercises production page assets with synthetic data and does not access private memories or perform real deletion. Owner and backup tests verify data policies separately.

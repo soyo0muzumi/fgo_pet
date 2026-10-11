@@ -35,6 +35,9 @@ public sealed class ServiceRegistrationTests
         services.RemoveAll<IAppLifetime>();
         services.AddSingleton<IAppLifetime>(lifetime);
         await using var provider = services.BuildServiceProvider();
+        Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
+            provider.GetRequiredService<IWorkspaceAuthorizationManager>());
+        Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
         Assert.Equal(new[] { "documents", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());

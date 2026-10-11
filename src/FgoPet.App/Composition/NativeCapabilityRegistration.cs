@@ -28,6 +28,7 @@ internal static class NativeCapabilityRegistration
             return conversation is { IsArchived: false } && conversation.ProjectId == scope.ProjectId;
         }))
         .AddSingleton<IWorkspaceAuthorizationSource>(provider => provider.GetRequiredService<WorkspaceAuthorizationRegistry>())
+        .AddSingleton<IWorkspaceAuthorizationManager>(provider => provider.GetRequiredService<WorkspaceAuthorizationRegistry>())
         .AddSingleton<IWorkspaceAccessGuard, WorkspaceAccessGuard>()
         .AddSingleton<IFgoPetPlugin>(provider => new WorkspacePlugin(provider.GetRequiredService<IWorkspaceAccessGuard>()))
         .AddSingleton<IFgoPetPlugin>(provider => new ShellPlugin(provider.GetRequiredService<IWorkspaceAccessGuard>(),

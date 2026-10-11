@@ -1,3 +1,35 @@
+const english = {
+  "memory.feature": "Memory",
+  "memory.enabled": "Enable memory",
+  "memory.enabledHint": "The model may suggest memories during a conversation. Only memories you confirm are used in later conversations.",
+  "memory.instant": "Changes apply immediately.",
+  "memory.review": "Awaiting review",
+  "memory.candidates": "Memory candidates",
+  "memory.editCandidate": "Edit candidate",
+  "memory.save": "Save edit",
+  "memory.approve": "Confirm",
+  "memory.reject": "Reject",
+  "memory.replace": "Correct selected memory",
+  "memory.confirmed": "Confirmed memories",
+  "memory.editMemory": "Edit memory",
+  "memory.disable": "Disable",
+  "memory.enable": "Enable",
+  "memory.delete": "Delete",
+  "memory.maintenance": "Maintenance",
+  "memory.refresh": "Refresh",
+  "memory.deleteAll": "Delete all user data",
+  "memory.deleteGroup": "Confirm deletion",
+  "memory.deletePrompt": "Deleting all user data cannot be undone. Focus and bond history are excluded. Continue?",
+  "memory.confirmDelete": "Confirm deletion",
+  "memory.cancel": "Cancel",
+  "memory.unavailable": "This page is temporarily unavailable.",
+  "memory.empty": "No entries yet.",
+  "memory.replacement": "Correction",
+  "memory.disabled": "Disabled",
+  "memory.failed": "The action did not complete. Current state was reloaded; you can retry."
+};
+const t = key => english[key] || key;
+
 // 统一 Web 设置：对话与记忆页。
 // 命令（经 context.request 调用，pageId 由 root 自动注入）：
 //   memory.get / setEnabled / refresh / selectCandidate / selectMemory /
@@ -10,68 +42,68 @@ const MARKUP = `
   <section class="cm-page" data-state="loading" aria-busy="true">
     <p class="cm-error" data-error role="alert" aria-live="assertive" hidden></p>
 
-    <section class="cm-card" aria-label="记忆功能">
+    <section class="cm-card" aria-label="${t("memory.feature")}">
       <label class="cm-switch-row">
         <span class="cm-switch-copy">
-          <span class="cm-switch-title">启用记忆</span>
-          <span class="cm-switch-description">启用后模型可以在对话中产生候选记忆；只有经过你确认的记忆才会进入后续对话。</span>
+          <span class="cm-switch-title">${t("memory.enabled")}</span>
+          <span class="cm-switch-description">${t("memory.enabledHint")}</span>
         </span>
         <input type="checkbox" id="cm-enabled" data-field="memoryEnabled" />
         <span class="cm-switch-control" aria-hidden="true"><i></i></span>
       </label>
-      <p class="cm-note">此项即时生效，不等刷新。</p>
+      <p class="cm-note">${t("memory.instant")}</p>
     </section>
 
     <div class="cm-columns">
-      <section class="cm-card" aria-label="待审核候选">
+      <section class="cm-card" aria-label="${t("memory.review")}">
         <div class="cm-card-heading">
-          <h2>待审核候选</h2>
+          <h2>${t("memory.review")}</h2>
           <p data-candidates-status role="status" aria-live="polite"></p>
         </div>
-        <ul class="cm-list" data-candidates role="listbox" aria-label="候选记忆"></ul>
+        <ul class="cm-list" data-candidates role="listbox" aria-label="${t("memory.candidates")}"></ul>
         <div class="cm-detail">
           <p class="cm-detail-text" data-candidate-details></p>
-          <label class="cm-label" for="cm-candidate-edit">编辑候选正文</label>
+          <label class="cm-label" for="cm-candidate-edit">${t("memory.editCandidate")}</label>
           <textarea id="cm-candidate-edit" class="cm-input cm-textarea" data-candidate-edit rows="3"></textarea>
           <div class="cm-actions">
-            <button type="button" class="cm-button" data-edit-candidate>保存编辑</button>
-            <button type="button" class="cm-button cm-primary" data-approve-candidate>确认</button>
-            <button type="button" class="cm-button" data-reject-candidate>拒绝</button>
-            <button type="button" class="cm-button" data-select-replacement>更正选中记忆</button>
+            <button type="button" class="cm-button" data-edit-candidate>${t("memory.save")}</button>
+            <button type="button" class="cm-button cm-primary" data-approve-candidate>${t("memory.approve")}</button>
+            <button type="button" class="cm-button" data-reject-candidate>${t("memory.reject")}</button>
+            <button type="button" class="cm-button" data-select-replacement>${t("memory.replace")}</button>
           </div>
         </div>
       </section>
 
-      <section class="cm-card" aria-label="已确认记忆">
+      <section class="cm-card" aria-label="${t("memory.confirmed")}">
         <div class="cm-card-heading">
-          <h2>已确认记忆</h2>
+          <h2>${t("memory.confirmed")}</h2>
           <p data-memories-status role="status" aria-live="polite"></p>
         </div>
-        <ul class="cm-list" data-memories role="listbox" aria-label="已确认记忆"></ul>
+        <ul class="cm-list" data-memories role="listbox" aria-label="${t("memory.confirmed")}"></ul>
         <div class="cm-detail">
           <p class="cm-detail-text" data-memory-details></p>
-          <label class="cm-label" for="cm-memory-edit">编辑记忆正文</label>
+          <label class="cm-label" for="cm-memory-edit">${t("memory.editMemory")}</label>
           <textarea id="cm-memory-edit" class="cm-input cm-textarea" data-memory-edit rows="3"></textarea>
           <div class="cm-actions">
-            <button type="button" class="cm-button" data-edit-memory>保存编辑</button>
-            <button type="button" class="cm-button" data-disable-memory>停用</button>
-            <button type="button" class="cm-button" data-enable-memory>启用</button>
-            <button type="button" class="cm-button cm-danger" data-delete-memory>删除</button>
+            <button type="button" class="cm-button" data-edit-memory>${t("memory.save")}</button>
+            <button type="button" class="cm-button" data-disable-memory>${t("memory.disable")}</button>
+            <button type="button" class="cm-button" data-enable-memory>${t("memory.enable")}</button>
+            <button type="button" class="cm-button cm-danger" data-delete-memory>${t("memory.delete")}</button>
           </div>
         </div>
       </section>
     </div>
 
-    <section class="cm-card" aria-label="维护">
+    <section class="cm-card" aria-label="${t("memory.maintenance")}">
       <div class="cm-actions">
-        <button type="button" class="cm-button" data-refresh>刷新</button>
-        <button type="button" class="cm-button cm-danger" data-delete-all>删除全部用户数据</button>
+        <button type="button" class="cm-button" data-refresh>${t("memory.refresh")}</button>
+        <button type="button" class="cm-button cm-danger" data-delete-all>${t("memory.deleteAll")}</button>
       </div>
-      <div class="cm-confirm" data-delete-confirm hidden role="group" aria-label="删除全部确认">
-        <p>删除全部用户数据不可撤销（不含专注与羁绊历史）。确认继续？</p>
+      <div class="cm-confirm" data-delete-confirm hidden role="group" aria-label="${t("memory.deleteGroup")}">
+        <p>${t("memory.deletePrompt")}</p>
         <div class="cm-actions">
-          <button type="button" class="cm-button cm-danger" data-delete-confirm-btn>确认删除</button>
-          <button type="button" class="cm-button" data-delete-cancel>取消</button>
+          <button type="button" class="cm-button cm-danger" data-delete-confirm-btn>${t("memory.confirmDelete")}</button>
+          <button type="button" class="cm-button" data-delete-cancel>${t("memory.cancel")}</button>
         </div>
       </div>
       <p class="cm-status" data-status role="status" aria-live="polite"></p>
@@ -144,7 +176,7 @@ export async function mount(container, context) {
 
   function presentFailure(errorText) {
     errorEl.textContent = typeof errorText === "string" && errorText.length > 0
-      ? errorText : "这一页暂时无法使用。";
+      ? errorText : t("memory.unavailable");
     errorEl.hidden = false;
     page.dataset.state = "error";
     setBusy(false);
@@ -183,7 +215,7 @@ export async function mount(container, context) {
     if (items.length === 0) {
       const empty = document.createElement("li");
       empty.className = "cm-empty";
-      empty.textContent = "暂无条目。";
+      empty.textContent = t("memory.empty");
       list.append(empty);
       return;
     }
@@ -198,8 +230,8 @@ export async function mount(container, context) {
       button.className = "cm-list-button";
       button.textContent = item.text;
 
-      if (item.hasReplacement === true) button.append(badge("更正项", ""));
-      if (item.isEnabled === false) button.append(badge("已停用", " cm-badge-muted"));
+      if (item.hasReplacement === true) button.append(badge(t("memory.replacement"), ""));
+      if (item.isEnabled === false) button.append(badge(t("memory.disabled"), " cm-badge-muted"));
       if (Number.isFinite(item.version)) button.append(badge("v" + item.version, " cm-badge-quiet"));
 
       button.addEventListener("click", () => onActivate(item.id));
@@ -243,7 +275,7 @@ export async function mount(container, context) {
     } catch { /* 回读失败时保留上一次快照；错误横幅已经给出提示。 */ }
   }
 
-  async function send(type, payload = {}, failureText = "操作未完成，已回读当前状态。你可以重试。") {
+  async function send(type, payload = {}, failureText = t("memory.failed")) {
     if (disposed) return null;
     setBusy(true);
     try {
@@ -328,6 +360,6 @@ export async function mount(container, context) {
     page.dataset.state = "disposed";
   }
 
-  await send("memory.get", {}, "这一页暂时无法使用。");
+  await send("memory.get", {}, t("memory.unavailable"));
   return dispose;
 }

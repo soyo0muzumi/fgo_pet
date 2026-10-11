@@ -1,3 +1,4 @@
+using FgoPet.Plugin.Todo.Desktop;
 using Row = FgoPet.Plugin.Todo.TodoEditorSession;
 using FgoPet.Plugin.Todo;
 using FgoPet.UiSdk;
@@ -48,6 +49,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
     {
         _service = service;
         InitializeComponent();
+        SizeChanged += (_, _) => ApplyMarginLayout();
         AddHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDown), handledEventsToo: true);
         // Handle both the initial quick-add controls and the dynamically-created
         // row/step editors.  IME composition must guard every editor uniformly.
@@ -88,6 +90,18 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
             _highlightedTodoId = null;
             Refresh();
         };
+    }
+
+    private void ApplyMarginLayout()
+    {
+        var narrow = ActualWidth < 600;
+        NotebookBody.Margin = narrow ? new Thickness(16, 24, 16, 28) : new Thickness(56, 34, 56, 48);
+        Grid.SetRow(AddTaskButton, narrow ? 1 : 0);
+        Grid.SetColumn(AddTaskButton, narrow ? 0 : 3);
+        Grid.SetColumnSpan(AddTaskButton, narrow ? 4 : 1);
+        AddTaskButton.HorizontalAlignment = narrow ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        AddTaskButton.Width = narrow ? double.NaN : 200;
+        AddTaskButton.Margin = narrow ? new Thickness(0, 8, 0, 2) : new Thickness(0, 0, 0, 2);
     }
 
     public void Navigate(WorkspaceNavigation navigation)
@@ -145,6 +159,8 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         try
         {
             var activeItems = _service.ListActive();
+            NotebookHeading.Text = DateTime.Now.ToString(TodoWorkspaceStrings.Get("todo.dateFormat"), System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+            NotebookSummary.Text = TodoWorkspaceStrings.Format("todo.count", activeItems.Count);
             var historyItems = _service.ListHistory();
             var historyIds = historyItems.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
             _sessionCompletedIds.RemoveWhere(id => !historyIds.Contains(id));
@@ -165,6 +181,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
             _activeRows.Clear();
             _historyRows.Clear();
             EmptyText.Visibility = Visibility.Collapsed;
+            NotebookSummary.Text = string.Empty;
             SetStatus("读取待办失败，请稍后重新打开。");
         }
     }
@@ -644,7 +661,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
     private void OnRevealDescription(object sender, RoutedEventArgs e) { ShowDescription(); DescriptionInput.Focus(); }
     private void SetStatus(string text)
     {
-        StatusText.Text = text;
+        StatusText.Text = TodoWorkspaceStrings.LocalizeStatus(text);
         _statusTimer.Stop();
         if (!string.IsNullOrWhiteSpace(text)) _statusTimer.Start();
     }
@@ -798,7 +815,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var editor = FindVisualChildren<TextBox>(this).FirstOrDefault(textBox =>
                 ReferenceEquals(textBox.DataContext, row) &&
-                System.Windows.Automation.AutomationProperties.GetName(textBox) == "新步骤标题");
+                System.Windows.Automation.AutomationProperties.GetName(textBox) == TodoWorkspaceStrings.NewStepTitle);
             editor?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -809,7 +826,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                 ReferenceEquals(candidate.Tag, step) &&
-                System.Windows.Automation.AutomationProperties.GetName(candidate) == "编辑步骤");
+                System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.EditStep);
             button?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -820,7 +837,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                 ReferenceEquals(candidate.Tag, step) &&
-                System.Windows.Automation.AutomationProperties.GetName(candidate) == "更多步骤操作");
+                System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.MoreStepActions);
             button?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -833,7 +850,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
             {
                 var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                     candidate.Tag is TodoStepEditor step && ReferenceEquals(step.Parent, row) && step.Item.Id == stepId &&
-                    System.Windows.Automation.AutomationProperties.GetName(candidate) == "编辑步骤");
+                    System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.EditStep);
                 if (button is not null)
                 {
                     button.Focus();
@@ -850,7 +867,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                 ReferenceEquals(candidate.Tag, row) &&
-                System.Windows.Automation.AutomationProperties.GetName(candidate) == "添加步骤");
+                System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.AddStep);
             button?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -861,7 +878,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                 candidate.Tag is Row candidateRow && ReferenceEquals(candidateRow, row) &&
-                System.Windows.Automation.AutomationProperties.GetName(candidate) == "取消完成");
+                System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.CancelCompletion);
             button?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -872,7 +889,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             var button = FindVisualChildren<Button>(this).FirstOrDefault(candidate =>
                 candidate.Tag is TodoStepEditor candidateStep && ReferenceEquals(candidateStep, step) &&
-                System.Windows.Automation.AutomationProperties.GetName(candidate) == "取消删除步骤");
+                System.Windows.Automation.AutomationProperties.GetName(candidate) == TodoWorkspaceStrings.CancelDeleteStep);
             button?.Focus();
         }), DispatcherPriority.Loaded);
     }
@@ -909,7 +926,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         _editingId = null;
         TitleInput.Text = "";
         DescriptionInput.Text = "";
-        EditorHeading.Text = "快速新增";
+        EditorHeading.Text = TodoWorkspaceStrings.QuickAdd;
         OptionalDescriptionPanel.Visibility = Visibility.Collapsed;
         RevealDescriptionButton.Visibility = Visibility.Visible;
         QuickAddEditor.Visibility = Visibility.Collapsed;
@@ -1044,7 +1061,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
         {
             _undo = _service.Complete(row.Item.Id, confirmIncompleteSteps: false);
             _sessionCompletedIds.Add(row.Item.Id);
-            SetStatus("已完成");
+            SetStatus(TodoWorkspaceStrings.Completed);
             UndoButton.Visibility = Visibility.Visible;
             _undoTimer.Stop();
             _undoTimer.Start();
@@ -1078,7 +1095,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
             _undo = _service.Complete(expected.Id, confirmIncompleteSteps: true);
             row.EndCompletionConfirmation();
             _sessionCompletedIds.Add(row.Item.Id);
-            SetStatus("已完成");
+            SetStatus(TodoWorkspaceStrings.Completed);
             UndoButton.Visibility = Visibility.Visible;
             _undoTimer.Stop();
             _undoTimer.Start();
@@ -1141,7 +1158,7 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
     private void OnDelete(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: Row row }) return;
-        if (MessageBox.Show(Window.GetWindow(this), "删除待办“" + row.Item.Title + "”？此操作不能撤销。", "删除待办", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        if (MessageBox.Show(Window.GetWindow(this), TodoWorkspaceStrings.Format("todo.deleteTaskPrompt", row.Item.Title), TodoWorkspaceStrings.DeleteTask, MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
         try { if (_focusTodoId == row.Item.Id) _focusTodoId = null; if (_highlightedTodoId == row.Item.Id) _highlightedTodoId = null; _service.Delete(row.Item.Id); SetStatus("已删除"); }
         catch (Exception ex) when (IsRecoverable(ex)) { SetStatus("删除失败，任务可能仍有活动执行。"); }
     }
@@ -1171,9 +1188,9 @@ public partial class TodoWorkspaceView : UserControl, IWorkspaceSurface, IAsyncD
             item.Tag = step;
             item.IsEnabled = item.Header?.ToString() switch
             {
-                "上移步骤" => step.CanMoveUp && CanRunStepMutation(),
-                "下移步骤" => step.CanMoveDown && CanRunStepMutation(),
-                "删除步骤" => step.CanDelete && CanRunStepMutation(),
+                var action when action == TodoWorkspaceStrings.MoveStepUp => step.CanMoveUp && CanRunStepMutation(),
+                var action when action == TodoWorkspaceStrings.MoveStepDown => step.CanMoveDown && CanRunStepMutation(),
+                var action when action == TodoWorkspaceStrings.DeleteStep => step.CanDelete && CanRunStepMutation(),
                 _ => false
             };
         }

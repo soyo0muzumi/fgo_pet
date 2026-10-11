@@ -1,19 +1,38 @@
+const english = {
+  "profile.title": "Your name",
+  "profile.name": "Display name",
+  "profile.reload": "Reload",
+  "profile.cancel": "Cancel changes",
+  "profile.reset": "Restore defaults",
+  "profile.save": "Save",
+  "profile.loading": "Loading your name…",
+  "profile.draft": "Your unsaved changes were kept.",
+  "profile.loadFailed": "Your name could not be loaded. Try again.",
+  "profile.saved": "Your name was saved.",
+  "profile.saveFailed": "The change could not be saved. Your input was kept.",
+  "profile.cancelled": "Changes cancelled.",
+  "profile.resetDone": "Your name was reset.",
+  "profile.resetFailed": "The reset failed. Your input was kept.",
+  "profile.explanation": "This is your global display name. Each character's form of address is managed separately in its character settings."
+};
+const t = key => english[key] || key;
+
 export function mount(container, context) {
   let disposed = false;
   let loaded = false;
   let savedName = "";
   let busy = false;
   container.innerHTML = `
-    <form class="profile-panel" aria-label="用户资料">
-      <label for="profile-display-name">显示名称</label>
+    <form class="profile-panel" aria-label="${t("profile.title")}">
+      <label for="profile-display-name">${t("profile.name")}</label>
       <input id="profile-display-name" class="profile-name" data-action="display-name" maxlength="80" autocomplete="off" disabled>
       <p class="profile-explanation"></p>
       <p class="profile-status" role="status" aria-live="polite"></p>
-      <button class="profile-button" data-action="retry" type="button" hidden>重试读取</button>
+      <button class="profile-button" data-action="retry" type="button" hidden>${t("profile.reload")}</button>
       <div class="profile-actions">
-        <button class="profile-button" data-action="cancel" type="button" disabled>取消修改</button>
-        <button class="profile-button" data-action="reset" type="button" disabled>恢复默认</button>
-        <button class="profile-button profile-button--primary" data-action="save" type="submit" disabled>保存</button>
+        <button class="profile-button" data-action="cancel" type="button" disabled>${t("profile.cancel")}</button>
+        <button class="profile-button" data-action="reset" type="button" disabled>${t("profile.reset")}</button>
+        <button class="profile-button profile-button--primary" data-action="save" type="submit" disabled>${t("profile.save")}</button>
       </div>
     </form>`;
 
@@ -43,7 +62,7 @@ export function mount(container, context) {
     loaded = true;
     savedName = typeof snapshot.displayName === "string" ? snapshot.displayName : "";
     input.value = savedName;
-    explanation.textContent = typeof snapshot.explanation === "string" ? snapshot.explanation : "";
+    explanation.textContent = t("profile.explanation");
   }
 
   function restoreDraft(draft, errorText) {
@@ -56,7 +75,7 @@ export function mount(container, context) {
   async function load() {
     retry.hidden = true;
     setBusy(true);
-    report("正在读取资料…");
+    report(t("profile.loading"));
     try {
       const snapshot = await context.request("getProfile");
       if (disposed) return;
@@ -65,7 +84,7 @@ export function mount(container, context) {
       const restoredDraft = draft && draft.dirty === true && typeof draft.displayName === "string";
       if (restoredDraft) {
         input.value = draft.displayName;
-        report("已保留未保存的修改");
+        report(t("profile.draft"));
       }
       setBusy(false);
       if (!restoredDraft) {
@@ -76,7 +95,7 @@ export function mount(container, context) {
       if (!disposed) {
         setBusy(false);
         retry.hidden = false;
-        report("资料读取失败，请重试读取。", true);
+        report(t("profile.loadFailed"), true);
         retry.focus({ preventScroll: true });
       }
     }
@@ -92,17 +111,17 @@ export function mount(container, context) {
       if (disposed) return;
       apply(snapshot);
       setBusy(false);
-      report("已保存用户资料");
+      report(t("profile.saved"));
       input.focus({ preventScroll: true });
     } catch {
-      if (!disposed) restoreDraft(draft, "保存失败，输入已保留。");
+      if (!disposed) restoreDraft(draft, t("profile.saveFailed"));
     }
   });
 
   cancel.addEventListener("click", () => {
     if (disposed || busy || !loaded) return;
     input.value = savedName;
-    report("已取消修改");
+    report(t("profile.cancelled"));
     input.focus({ preventScroll: true });
   });
 
@@ -117,10 +136,10 @@ export function mount(container, context) {
       if (disposed) return;
       apply(snapshot);
       setBusy(false);
-      report("已恢复默认用户资料");
+      report(t("profile.resetDone"));
       input.focus({ preventScroll: true });
     } catch {
-      if (!disposed) restoreDraft(draft, "恢复失败，输入已保留。");
+      if (!disposed) restoreDraft(draft, t("profile.resetFailed"));
     }
   });
 

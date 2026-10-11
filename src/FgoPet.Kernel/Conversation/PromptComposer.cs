@@ -61,8 +61,10 @@ public sealed class PromptComposer
                 throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
             messages.Add(new(ChatMessageRole.System, wrapped));
         }
+        if (context.RecalledHistory.Count > 0 || context.RecallStatus != RecallStatus.Empty)
+            messages.Add(new(ChatMessageRole.System, "优先回答当前用户消息。历史召回默认仅作静默背景，不要求用户选择历史会话；普通闲聊、新话题和语义自洽的问题直接回应。用户询问系统为何追问历史时，回答当前问题，不再进行历史消歧，不编造系统原因。只有明确引用过去内容且多个高置信候选无法唯一解析时才可澄清。"));
         if (context.RecallStatus == RecallStatus.Unavailable)
-            messages.Add(new(ChatMessageRole.System, "历史检索暂不可用或来源已变化，不能声称已核实历史；必要时请用户补充。"));
+            messages.Add(new(ChatMessageRole.System, "历史检索暂不可用或来源已变化，不能声称已核实历史。仍优先回答当前问题；仅当用户明确要求的历史细节不可缺少时请其补充，不要求选择旧会话。"));
         AddOptional("servant_core", context.Persona.CoreText);
         if (context.Persona.FindAppearance(context.ContentContext.AppearanceId) is { } overlay)
             AddOptional($"appearance:{overlay.AppearanceId}", overlay.Text);

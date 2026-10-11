@@ -1,3 +1,32 @@
+const english = {
+  "appearance.heading": "Appearance",
+  "appearance.lead": "Changes apply immediately. Follow Windows to switch with your system.",
+  "appearance.choose": "Choose appearance",
+  "appearance.systemAria": "Follow Windows light or dark appearance",
+  "appearance.system": "Follow Windows",
+  "appearance.systemHint": "Switch with your Windows setting",
+  "appearance.lightAria": "FGO Light appearance",
+  "appearance.darkAria": "FGO Dark appearance",
+  "appearance.lightHint": "Light appearance",
+  "appearance.darkHint": "Dark appearance",
+  "appearance.light": "Light",
+  "appearance.dark": "Dark",
+  "appearance.reload": "Reload",
+  "appearance.closed": "Settings window closed.",
+  "appearance.changed": "The page changed. Choose an appearance again.",
+  "appearance.invalid": "Invalid appearance. Choose again.",
+  "appearance.failed": "The appearance change could not be confirmed. Try again.",
+  "appearance.readFailed": "Appearance settings could not be loaded. Try again.",
+  "appearance.readAfterFailed": "The change and current appearance could not be confirmed. Try again.",
+  "appearance.retrying": "Retrying…",
+  "appearance.styleFailed": "The page style could not be loaded. Try again.",
+  "appearance.retry": "Retry",
+  "appearance.effectiveDark": "Dark (FGO Dark)",
+  "appearance.effectiveLight": "Light (FGO Light)",
+  "appearance.effective": "Current appearance: {name}"
+};
+const t = (key, values = {}) => (english[key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] === undefined ? match : String(values[name]));
+
 const THEMES = ["System", "FgoLight", "FgoDark"];
 
 const MARKUP = `
@@ -5,39 +34,39 @@ const MARKUP = `
     <article class="theme-card">
       <header class="theme-card-heading">
         <div>
-          <h2 id="theme-card-heading">界面外观</h2>
-          <p>选择后立即应用，也可按 Windows 的浅色或深色设置自动切换。</p>
+          <h2 id="theme-card-heading">${t("appearance.heading")}</h2>
+          <p>${t("appearance.lead")}</p>
         </div>
       </header>
       <fieldset class="theme-options">
-        <legend class="theme-visually-hidden">选择界面主题</legend>
+        <legend class="theme-visually-hidden">${t("appearance.choose")}</legend>
         <label class="theme-choice" data-theme-choice="System">
-          <input type="radio" name="theme-choice" value="System" aria-label="跟随 Windows 的浅色或深色设置">
+          <input type="radio" name="theme-choice" value="System" aria-label="${t("appearance.systemAria")}">
           <span class="theme-swatch theme-swatch--system" aria-hidden="true">
-            <span class="theme-system-mini theme-system-mini--light"><span class="theme-system-window"></span><small>浅色</small></span>
+            <span class="theme-system-mini theme-system-mini--light"><span class="theme-system-window"></span><small>${t("appearance.light")}</small></span>
             <span class="theme-system-switch">↔</span>
-            <span class="theme-system-mini theme-system-mini--dark"><span class="theme-system-window"></span><small>深色</small></span>
+            <span class="theme-system-mini theme-system-mini--dark"><span class="theme-system-window"></span><small>${t("appearance.dark")}</small></span>
           </span>
-          <span class="theme-choice-title">跟随 Windows</span>
-          <span class="theme-choice-description">按 Windows 设置自动切换浅色或深色</span>
+          <span class="theme-choice-title">${t("appearance.system")}</span>
+          <span class="theme-choice-description">${t("appearance.systemHint")}</span>
         </label>
         <label class="theme-choice" data-theme-choice="FgoLight">
-          <input type="radio" name="theme-choice" value="FgoLight" aria-label="FGO Light 浅色主题">
+          <input type="radio" name="theme-choice" value="FgoLight" aria-label="${t("appearance.lightAria")}">
           <span class="theme-swatch theme-swatch--light" aria-hidden="true"><i></i><i></i></span>
-          <span class="theme-choice-title">浅色</span>
-          <span class="theme-choice-description">浅灰色表面与紫色强调</span>
+          <span class="theme-choice-title">${t("appearance.light")}</span>
+          <span class="theme-choice-description">${t("appearance.lightHint")}</span>
         </label>
         <label class="theme-choice" data-theme-choice="FgoDark">
-          <input type="radio" name="theme-choice" value="FgoDark" aria-label="FGO Dark 深色主题">
+          <input type="radio" name="theme-choice" value="FgoDark" aria-label="${t("appearance.darkAria")}">
           <span class="theme-swatch theme-swatch--dark" aria-hidden="true"><i></i><i></i></span>
-          <span class="theme-choice-title">深色</span>
-          <span class="theme-choice-description">深灰色表面与柔和紫色</span>
+          <span class="theme-choice-title">${t("appearance.dark")}</span>
+          <span class="theme-choice-description">${t("appearance.darkHint")}</span>
         </label>
       </fieldset>
       <p class="theme-effective" data-theme-effective></p>
       <p class="theme-status" data-theme-status role="status" aria-live="polite"></p>
       <p class="theme-error" data-theme-error role="alert" aria-live="assertive"></p>
-      <button class="theme-retry" type="button" data-retry hidden>重试读取</button>
+      <button class="theme-retry" type="button" data-retry hidden>${t("appearance.reload")}</button>
     </article>
   </section>`;
 
@@ -59,10 +88,10 @@ function normalizeSnapshot(value) {
 
 function bridgeErrorText(error) {
   switch (error && error.message) {
-    case "WEB_SURFACE_CLOSED": return "设置窗口已关闭。";
-    case "SETTINGS_PAGE_CHANGED": return "页面已切换，请重新选择主题。";
-    case "SETTINGS_INVALID_INPUT": return "主题选项无效，请重新选择。";
-    default: return "主题操作未能确认，请重试。";
+    case "WEB_SURFACE_CLOSED": return t("appearance.closed");
+    case "SETTINGS_PAGE_CHANGED": return t("appearance.changed");
+    case "SETTINGS_INVALID_INPUT": return t("appearance.invalid");
+    default: return t("appearance.failed");
   }
 }
 
@@ -124,8 +153,8 @@ export async function mount(container, context) {
         input.checked = input.value === snapshot.selected;
         input.closest(".theme-choice")?.classList.toggle("is-selected", input.checked);
       }
-      const label = snapshot.effective === "FgoDark" ? "深色（FGO Dark）" : "浅色（FGO Light）";
-      effective.textContent = `当前生效：${label}`;
+      const label = snapshot.effective === "FgoDark" ? t("appearance.effectiveDark") : t("appearance.effectiveLight");
+      effective.textContent = t("appearance.effective", { name: label });
       status.textContent = snapshot.statusText;
     } else {
       effective.textContent = "";
@@ -174,7 +203,7 @@ export async function mount(container, context) {
     } catch {
       if (disposed) return;
       mode = "read-error";
-      localError = "主题设置读取失败，请重试。";
+      localError = t("appearance.readFailed");
     }
     render();
     schedulePendingRefresh();
@@ -204,7 +233,7 @@ export async function mount(container, context) {
       } catch {
         if (disposed) return;
         mode = "read-error";
-        localError = "主题操作未能确认，读取当前主题也失败，请重试。";
+        localError = t("appearance.readAfterFailed");
       }
     }
     render();
@@ -222,21 +251,21 @@ export async function mount(container, context) {
     if (stylesheetFailed) {
       mode = "busy";
       localError = "";
-      retry.textContent = "正在重试…";
+      retry.textContent = t("appearance.retrying");
       render();
       stylesheet.href = new URL(`./theme.css?retry=${Date.now()}`, import.meta.url).href;
       stylesheetFailed = !(await waitForStylesheet(stylesheet, signal));
       if (disposed) return;
       if (stylesheetFailed) {
         mode = "read-error";
-        localError = "主题页面样式加载失败，请重试。";
-        retry.textContent = "重试";
+        localError = t("appearance.styleFailed");
+        retry.textContent = t("appearance.retry");
         render();
         return;
       }
       mode = "read-error";
       localError = "";
-      retry.textContent = "重试读取";
+      retry.textContent = t("appearance.reload");
       render();
     }
     void refreshSnapshot();
@@ -265,8 +294,8 @@ export async function mount(container, context) {
   if (!stylesheetLoaded) {
     stylesheetFailed = true;
     mode = "read-error";
-    localError = "主题页面样式加载失败，请重试。";
-    retry.textContent = "重试";
+    localError = t("appearance.styleFailed");
+    retry.textContent = t("appearance.retry");
     render();
     return dispose;
   }

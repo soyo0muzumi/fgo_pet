@@ -64,6 +64,11 @@
 
 
                 <ContentControl x:Name="CompactContentHost" />
+                <Button x:Name="CloseCompactButton" Content="×" Width="22" Height="22"
+                        FontFamily="Segoe UI" FontSize="16" Padding="0" BorderThickness="0"
+                        Background="Transparent" Foreground="#6E6961"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"
+                        Click="OnCloseCompactClick" />
 
             </Grid>
         </Border>

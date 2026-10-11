@@ -72,12 +72,19 @@ public sealed class RolePackagesWebTests
                 LogBoundary("webview-ready", "role-packages-root", "rolePackages.get", "success");
 
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('main h1#page-title').length"));
-                Assert.Equal("角色包", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Characters", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("0", await Script(web, "document.querySelector('[data-role-packages-page] h1') ? '1' : '0'"));
                 Assert.Equal("community.sample", await Script(web,
                     "document.querySelector('[data-package-card]')?.dataset.packageId ?? ''"));
                 Assert.Equal(0, installer.InstallCount);
                 Assert.Empty(portrait.Activations);
+                window.Width = 824;
+                Assert.Equal("Choose local file", await Script(web, "document.querySelector('[data-select-file]').getAttribute('aria-label')"));
+                Assert.Equal("16px", await Script(web, "getComputedStyle(document.querySelector('[data-select-file] svg')).width"));
+                Assert.Equal("true", await Script(web, "(() => { const input=document.querySelector('[data-catalog-search]').getBoundingClientRect(), picker=document.querySelector('[data-select-file]').getBoundingClientRect(); return picker.left>=input.right && Math.abs(picker.top-input.top)<1; })()"));
+                Assert.Equal("18px", await Script(web, "getComputedStyle(document.querySelector('.rp-package-name')).fontSize"));
+                Assert.Equal("32px", await Script(web, "getComputedStyle(document.querySelector('[data-catalog-search]')).height"));
+                await MarginCharacterCapture.Save(web, "characters-catalog");
 
                 navigation.OpenPackageCommand.Execute(new PackageDetailRoute("community.sample", "测试角色"));
                 await WaitUntil(async () => await Script(web,
@@ -90,6 +97,12 @@ public sealed class RolePackagesWebTests
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('[data-detail-header] [data-detail-name]')?.textContent ?? ''") == "测试角色");
                 LogBoundary("webview-navigation", "role-packages-root", "rolePackages.open", "success");
+                Assert.Contains("Back", await Script(web, "document.querySelector('[data-back-to-catalog]').textContent"));
+                Assert.Equal("inline-flex", await Script(web, "getComputedStyle(document.querySelector('#settings-back')).display"));
+                Assert.Equal("none", await Script(web, "getComputedStyle(document.querySelector('[data-back-to-catalog]')).display"));
+                Assert.Equal("true", await Script(web, "document.querySelector('#settings-back').getBoundingClientRect().bottom < document.querySelector('#page-title').getBoundingClientRect().top"));
+                Assert.Equal("true", await Script(web, "document.querySelector('#settings-back').getBoundingClientRect().top >= 0"));
+                await MarginCharacterCapture.Save(web, "characters-detail");
                 Assert.Equal("detail", await Script(web, "document.querySelector('[data-route=detail]').hidden ? 'hidden' : 'detail'"));
 
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=packageInfo]').click()");
@@ -97,6 +110,7 @@ public sealed class RolePackagesWebTests
                     "document.querySelector('[data-section-panel=packageInfo]').hidden ? 'hidden' : 'visible'") == "visible");
                 Assert.Contains("community.sample", await Script(web,
                     "document.querySelector('[data-section-panel=packageInfo]').innerText"));
+                await MarginCharacterCapture.Save(web, "characters-package-info");
 
                 window.Width = 320;
                 await WaitUntil(async () =>
@@ -110,7 +124,13 @@ public sealed class RolePackagesWebTests
                 Assert.Equal("true", await Script(web,
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
                 LogBoundary("webview-narrow", "role-packages-root", "layout.check", "success");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-save-package-settings]').scrollIntoView({block:'center'})");
+                Assert.Equal("true", await Script(web, "(() => { const r=document.querySelector('[data-save-package-settings]').getBoundingClientRect(); return r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth; })()"));
+                await MarginCharacterCapture.Save(web, "characters-small");
                 Assert.Equal(0, settings.SaveCount);
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");
+                await WaitUntil(async () => await Script(web,
+                    "document.querySelector('[data-route=catalog]')?.hidden === false") == "true");
             }
             finally
             {

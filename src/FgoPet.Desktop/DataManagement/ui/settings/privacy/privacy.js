@@ -1,3 +1,25 @@
+const english = {
+  "data.export": "Export user data",
+  "data.exportHint": "Export conversations, summaries, candidates, confirmed memories and safe content metadata. API keys, full prompts, original story text and character-package assets are excluded.",
+  "data.exportTo": "Export to file…",
+  "data.backup": "Private backup & restore",
+  "data.backupHint": "A .fgopetbackup contains restorable application data, non-sensitive settings and character-package references. API keys, Agent credentials, original package assets and prompts are excluded.",
+  "data.createBackup": "Create private backup…",
+  "data.restoreBackup": "Restore private backup…",
+  "data.restoreGroup": "Confirm backup restore",
+  "data.restorePrompt": "After validating the backup, the app will close. Reopen it to finish restoring. Restore replaces current application data. API keys and Agent credentials are not restored. Agent tasks in progress need review and are not dispatched again automatically.",
+  "data.confirmRestore": "Confirm restore",
+  "data.cancel": "Cancel",
+  "data.deleteAll": "Delete all user data",
+  "data.deleteHint": "Delete all conversations, memories, address preferences and model-connection metadata. This cannot be undone. Focus and bond history are unaffected.",
+  "data.deleteGroup": "Confirm deletion of all user data",
+  "data.deletePrompt": "Delete all conversations, memories, address preferences and model connections? This cannot be undone.",
+  "data.confirmDelete": "Confirm deletion",
+  "data.unavailable": "This page is temporarily unavailable.",
+  "data.failed": "The action did not complete. Current state was reloaded; you can retry."
+};
+const t = key => english[key] || key;
+
 // 统一 Web 设置：数据与隐私页。
 // 命令（经 context.request 调用，pageId 由 root 自动注入）：
 //   privacy.get / privacy.export / privacy.createBackup / privacy.restoreBackup / privacy.deleteAll
@@ -9,46 +31,46 @@ const MARKUP = `
   <section class="pp-page" data-state="loading" aria-busy="true">
     <p class="pp-error" data-error role="alert" aria-live="assertive" hidden></p>
 
-    <section class="pp-card" aria-label="导出用户数据">
-      <h2>导出用户数据</h2>
-      <p class="pp-note">导出对话、摘要、候选、已确认记忆与安全的内容元数据。API Key、完整 Prompt、原始剧情与角色包资产不会包含在导出中。</p>
+    <section class="pp-card" aria-label="${t("data.export")}">
+      <h2>${t("data.export")}</h2>
+      <p class="pp-note">${t("data.exportHint")}</p>
       <div class="pp-actions">
-        <button type="button" class="pp-button pp-primary" data-export>导出到所选文件…</button>
+        <button type="button" class="pp-button pp-primary" data-export>${t("data.exportTo")}</button>
       </div>
       <p class="pp-status" data-export-status role="status" aria-live="polite"></p>
     </section>
 
-    <section class="pp-card" aria-label="私有备份与恢复">
-      <h2>私有备份与恢复</h2>
-      <p class="pp-note">私有备份使用 .fgopetbackup 保存可恢复的业务数据、非敏感设置和角色包引用；不包含 API Key、Agent 凭据、原始角色包资产或 Prompt。</p>
+    <section class="pp-card" aria-label="${t("data.backup")}">
+      <h2>${t("data.backup")}</h2>
+      <p class="pp-note">${t("data.backupHint")}</p>
       <div class="pp-actions">
-        <button type="button" class="pp-button pp-primary" data-create-backup>创建私有备份…</button>
-        <button type="button" class="pp-button pp-danger" data-restore-backup>恢复私有备份…</button>
+        <button type="button" class="pp-button pp-primary" data-create-backup>${t("data.createBackup")}</button>
+        <button type="button" class="pp-button pp-danger" data-restore-backup>${t("data.restoreBackup")}</button>
       </div>
       <p class="pp-status" data-backup-status role="status" aria-live="polite"></p>
 
-      <div class="pp-confirm" data-restore-confirm hidden role="group" aria-label="确认恢复私有备份">
-        <p>备份校验后将关闭应用，请重新打开以完成恢复。恢复会替换当前业务数据；API Key 和 Agent 凭据不会恢复，进行中的 Agent 任务需要重新核对且不会自动重新派发。</p>
+      <div class="pp-confirm" data-restore-confirm hidden role="group" aria-label="${t("data.restoreGroup")}">
+        <p>${t("data.restorePrompt")}</p>
         <div class="pp-actions">
-          <button type="button" class="pp-button pp-danger" data-restore-confirm-btn>确认恢复</button>
-          <button type="button" class="pp-button" data-restore-cancel>取消</button>
+          <button type="button" class="pp-button pp-danger" data-restore-confirm-btn>${t("data.confirmRestore")}</button>
+          <button type="button" class="pp-button" data-restore-cancel>${t("data.cancel")}</button>
         </div>
       </div>
     </section>
 
-    <section class="pp-card" aria-label="删除全部用户数据">
-      <h2 class="pp-danger-title">删除全部用户数据</h2>
-      <p class="pp-note">删除全部对话、记忆、称呼设置和模型连接元数据。此操作不可撤销，且不影响专注与羁绊历史。</p>
+    <section class="pp-card" aria-label="${t("data.deleteAll")}">
+      <h2 class="pp-danger-title">${t("data.deleteAll")}</h2>
+      <p class="pp-note">${t("data.deleteHint")}</p>
       <div class="pp-actions">
-        <button type="button" class="pp-button pp-danger" data-delete-all>删除全部用户数据</button>
+        <button type="button" class="pp-button pp-danger" data-delete-all>${t("data.deleteAll")}</button>
       </div>
       <p class="pp-status" data-delete-status role="status" aria-live="polite"></p>
 
-      <div class="pp-confirm" data-delete-confirm hidden role="group" aria-label="确认删除全部用户数据">
-        <p>确定删除全部对话、记忆、称呼设置和模型连接吗？此操作不可撤销。</p>
+      <div class="pp-confirm" data-delete-confirm hidden role="group" aria-label="${t("data.deleteGroup")}">
+        <p>${t("data.deletePrompt")}</p>
         <div class="pp-actions">
-          <button type="button" class="pp-button pp-danger" data-delete-confirm-btn>确认删除</button>
-          <button type="button" class="pp-button" data-delete-cancel>取消</button>
+          <button type="button" class="pp-button pp-danger" data-delete-confirm-btn>${t("data.confirmDelete")}</button>
+          <button type="button" class="pp-button" data-delete-cancel>${t("data.cancel")}</button>
         </div>
       </div>
     </section>
@@ -119,7 +141,7 @@ export async function mount(container, context) {
 
   function presentFailure(errorText) {
     errorEl.textContent = typeof errorText === "string" && errorText.length > 0
-      ? errorText : "这一页暂时无法使用。";
+      ? errorText : t("data.unavailable");
     errorEl.hidden = false;
     page.dataset.state = "error";
     setBusy(false);
@@ -143,7 +165,7 @@ export async function mount(container, context) {
     } catch { /* 回读失败时保留上一次快照；错误横幅已经给出提示。 */ }
   }
 
-  async function send(type, failureText = "操作未完成，已回读当前状态。你可以重试。") {
+  async function send(type, failureText = t("data.failed")) {
     if (disposed) return null;
     setBusy(true);
     try {
@@ -203,6 +225,6 @@ export async function mount(container, context) {
     page.dataset.state = "disposed";
   }
 
-  await send("privacy.get", "这一页暂时无法使用。");
+  await send("privacy.get", t("data.unavailable"));
   return dispose;
 }

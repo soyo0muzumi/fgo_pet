@@ -1,0 +1,103 @@
+(() => {
+  "use strict";
+  const english = {
+  "chat.open.this.page.in.fgo.pet": "Open this page in FGO Pet.",
+  "chat.chat.could.not.complete.this.action.try.again.later": "Chat could not complete this action. Try again later.",
+  "chat.this.conversation.has.changed.please.try.again": "This conversation has changed. Please try again.",
+  "chat.the.conversation.is.no.longer.in.this.list": "The conversation is no longer in this list.",
+  "chat.the.selection.has.changed.refresh.and.try.again": "The selection has changed. Refresh and try again.",
+  "chat.the.action.could.not.be.completed.try.again": "The action could not be completed. Try again.",
+  "chat.this.action.is.currently.unavailable": "This action is currently unavailable.",
+  "chat.loading.conversations": "Loading conversations…",
+  "chat.new.messages": "New messages",
+  "chat.open.linked.item": "Open linked item",
+  "chat.open.speech.settings": "Open speech settings",
+  "chat.no.projects.available": "No projects available",
+  "chat.choose.workspace": "Choose a workspace for this conversation",
+  "chat.workspace": "Workspace",
+  "chat.clear.workspace": "Remove workspace access",
+  "chat.no.models.available": "No models available",
+  "chat.refreshing.projects": "Refreshing projects",
+  "chat.refresh.projects": "Refresh projects",
+  "chat.no.conversations.yet": "No conversations yet",
+  "chat.confirm.conversation.deletion": "Confirm conversation deletion",
+  "chat.cancel.deletion": "Cancel deletion",
+  "chat.open.focus": "Open Focus",
+  "chat.new.note": "New note",
+  "chat.loading": "Loading…",
+  "chat.delete.conversation": "Delete conversation",
+  "chat.open.notes": "Open notes",
+  "chat.companion.settings": "Companion settings",
+  "chat.generating": "Generating",
+  "chat.reasoning": "Reasoning",
+  "chat.copy.message": "Copy message",
+  "chat.speech.settings": "Speech settings",
+  "chat.view.item": "View item",
+  "chat.open.source": "Open source",
+  "chat.load.more": "Load more",
+  "chat.model.settings": "Model settings",
+  "chat.compact.window": "Compact window",
+  "chat.expand.window": "Expand window",
+  "chat.thinking": "Thinking",
+  "chat.untitled": "Untitled",
+  "chat.this.item": "this item",
+  "chat.new.conversation": "+ New conversation",
+  "chat.companion": "Companion",
+  "chat.read.aloud": "Read aloud",
+  "chat.delete": "Delete",
+  "chat.cancel": "Cancel",
+  "chat.chat": "Chat",
+  "chat.c": "C",
+  "chat.inputLimit": "Use no more than {limit} characters.",
+  "chat.removeContext": "Remove context: {label}",
+  "chat.deletePrompt": "Delete “{title}”?",
+  "chat.chat.window": "Chat window",
+  "chat.chat.actions": "Chat actions",
+  "chat.conversations": "Conversations",
+  "chat.hide.chat": "Hide Chat",
+  "chat.more.actions": "More actions",
+  "chat.close.conversations": "Close conversations",
+  "chat.current.conversation": "Current conversation",
+  "chat.messages": "Messages",
+  "chat.recalled.sources": "Recalled sources",
+  "chat.context": "Context",
+  "chat.say.something": "Say something…",
+  "chat.send": "Send",
+  "chat.stop.generation": "Stop generation",
+  "chat.choose.project": "Choose project",
+  "chat.choose.model": "Choose model",
+  "chat.current.project.only": "Current project only",
+  "chat.reload": "Reload",
+  "chat.retry": "Retry",
+  "chat.start.a.conversation": "Start a conversation",
+  "chat.sources": "Sources",
+  "chat.message": "Message",
+  "chat.enter.to.send.shift.enter.for.a.new.line": "Enter to send · Shift + Enter for a new line",
+  "chat.stop": "Stop",
+  "chat.project": "Project",
+  "chat.model": "Model",
+  "chat.reconnect": "Reconnect",
+  "chat.new.content.jump.to.bottom": "New content · Jump to bottom",
+  "speech.stop": "Stop reading",
+  "speech.retry": "Retry reading",
+  "speech.preparing": "Preparing to read…",
+  "speech.reading": "Reading…",
+  "speech.failed": "Reading failed. You can retry.",
+  "speech.stopped": "Reading stopped."
+};
+  function t(key, values = {}) {
+    return (english[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? ""));
+  }
+  // Adapt legacy owner display labels without changing its speech state or commands.
+  const speechKeys = {
+    "朗读": "chat.read.aloud", "停止朗读": "speech.stop", "重试朗读": "speech.retry",
+    "去朗读设置": "chat.open.speech.settings", "准备朗读…": "speech.preparing",
+    "正在朗读…": "speech.reading", "朗读失败，可重试。": "speech.failed", "朗读已停止。": "speech.stopped"
+  };
+  function speechText(value) { return speechKeys[value] ? t(speechKeys[value]) : value; }
+  window.MarginI18n = { t, speechText };
+  document.querySelectorAll("[data-i18n]").forEach(node => node.textContent = t(node.dataset.i18n));
+  for (const attribute of ["aria-label", "title", "placeholder"])
+    document.querySelectorAll(`[data-i18n-${attribute}]`).forEach(node =>
+      node.setAttribute(attribute, t(node.getAttribute(`data-i18n-${attribute}`))));
+})();

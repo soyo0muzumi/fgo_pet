@@ -127,6 +127,7 @@ public sealed class DialogueWindowPlacementTests
 
     [Theory]
     [InlineData(1.0)]
+    [InlineData(1.25)]
     [InlineData(1.5)]
     [InlineData(2.0)]
     public void Placement_constrains_window_size_and_bounds_at_monitor_dpi(double scale)
@@ -196,10 +197,10 @@ public sealed class DialogueWindowPlacementTests
             var window = new Window { Width = 760, Height = 560, MinWidth = 320, MinHeight = 240 };
 
             coordinator.ApplyOnOpen(window, new DeviceRect(20, 20, 30, 50));
-            Assert.Equal(160, window.Width);
-            Assert.Equal(120, window.Height);
-            Assert.Equal(160, window.MinWidth);
-            Assert.Equal(120, window.MinHeight);
+            Assert.Equal(128, window.Width);
+            Assert.Equal(88, window.Height);
+            Assert.Equal(128, window.MinWidth);
+            Assert.Equal(88, window.MinHeight);
 
             screen.WorkArea = new DeviceRect(0, 0, 1200, 900);
             coordinator.ApplyOnOpen(window, new DeviceRect(600, 200, 30, 50));
@@ -279,6 +280,44 @@ public sealed class DialogueWindowPlacementTests
         && window.Left + window.Width > portrait.X
         && window.Top < portrait.Y + portrait.Height
         && window.Top + window.Height > portrait.Y;
+
+    [Fact]
+    public void Margin_small_workspace_keeps_sixteen_dip_reading_margins()
+    {
+        StaRun(() =>
+        {
+            var coordinator = new DialogueWindowPlacementCoordinator(new MemorySlotStore(),
+                new FixedScreenService(new DeviceRect(0, 0, 360, 420)));
+            var window = new Window { Width = 376, Height = 500, MinWidth = 320, MinHeight = 400 };
+            coordinator.ApplyOnOpen(window, new DeviceRect(140, 80, 180, 300));
+            Assert.Equal(328, window.Width);
+            Assert.Equal(388, window.Height);
+            Assert.Equal(16, window.Left);
+            Assert.Equal(16, window.Top);
+        });
+    }
+
+    [Fact]
+    public void Portrait_origin_in_secondary_taskbar_still_selects_the_overlapping_monitor()
+    {
+        StaRun(() =>
+        {
+            var screen = new DualScreenService();
+            var coordinator = new DialogueWindowPlacementCoordinator(new MemorySlotStore(), screen);
+            var window = new Window { Width=376, Height=500 };
+            coordinator.ApplyOnOpen(window, new DeviceRect(-1920, 100, 300, 600));
+            Assert.True(window.Left < 0);
+            Assert.True(window.Left * 1.25 >= -1840);
+            Assert.True((window.Left + window.Width) * 1.25 <= 0);
+        });
+    }
+
+    private sealed class DualScreenService : IScreenLayoutService
+    {
+        public IReadOnlyList<MonitorInfo> GetMonitors() =>
+            [new("primary",new DeviceRect(0,0,1920,1080),true),new("secondary",new DeviceRect(-1840,0,1840,1080),false)];
+        public Dpi2 GetDpi(string monitorId) => monitorId == "secondary" ? new(1.25,1.25) : new(1,1);
+    }
 
     private sealed class MemorySlotStore : IWindowPlacementStore
     {

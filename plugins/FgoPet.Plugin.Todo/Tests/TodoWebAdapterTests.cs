@@ -32,6 +32,28 @@ public sealed class TodoWebAdapterTests
     }
 
     [Fact]
+    public void Peek_projects_all_four_today_reasons_using_the_same_local_day()
+    {
+        var service = new TodoApplicationService(new Repository(), FixtureClock);
+        using var feed = new TodoChangeFeed(service);
+        var today = new DateOnly(2026, 9, 28);
+        var zone = TimeZoneInfo.CreateCustomTimeZone("margin", TimeSpan.FromHours(8), "margin", "margin");
+        var progress = service.Create("progress", null, TodoPriority.Normal, null);
+        service.Save(progress.Activate(FixtureClock.GetUtcNow()));
+        service.Create("due", null, TodoPriority.Normal, new DateTimeOffset(2026, 9, 27, 16, 30, 0, TimeSpan.Zero));
+        service.Create("overdue", null, TodoPriority.Normal, new DateTimeOffset(2026, 9, 27, 15, 59, 0, TimeSpan.Zero));
+        service.Create("added", null, TodoPriority.Normal, null);
+        service.Create("future", null, TodoPriority.Normal, new DateTimeOffset(2026, 9, 29, 0, 0, 0, TimeSpan.Zero));
+
+        var tasks = new TodoWebAdapter(service, feed).GetPeekSnapshot(today, zone).Tasks;
+        Assert.Equal(4, tasks.Count);
+        Assert.Equal("inProgress", tasks.Single(item => item.Title == "progress").Reason);
+        Assert.Equal("dueToday", tasks.Single(item => item.Title == "due").Reason);
+        Assert.Equal("overdue", tasks.Single(item => item.Title == "overdue").Reason);
+        Assert.Equal("addedToday", tasks.Single(item => item.Title == "added").Reason);
+    }
+
+    [Fact]
     public void Quick_add_writes_directly_while_a_model_proposal_waits_for_confirmation()
     {
         var service = new TodoApplicationService(new Repository(), FixtureClock);

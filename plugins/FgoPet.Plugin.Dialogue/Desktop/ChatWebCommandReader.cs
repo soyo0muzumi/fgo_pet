@@ -168,5 +168,6 @@ internal static class ChatWebCommandReader
         "hide" or "setExpanded" or "copyTurn" or "readTurn" or "openSource" or "openWorkspace"
         or "openFocus" or "openWorkspaceOverview" or "newWorkspaceItem"
         or "openPersonalizationSettings" or "openSpeechSettings" or "openModelSettings"
-        or "refreshProjects" or "selectProject" or "selectModel" or "removeContextChip";
+        or "refreshProjects" or "selectProject" or "selectModel" or "removeContextChip"
+        or "chooseWorkspace" or "clearWorkspace";
 }

@@ -58,11 +58,11 @@ public sealed class SettingsWindowIntegrationTests
 
             var texts = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
                 .Select(item => item.Text).ToArray();
-            Assert.Contains("设置", texts);
+            Assert.Contains(MarginStrings.Get("entry.settings"), texts);
             Assert.DoesNotContain(texts, text => text is "模型连接" or "从者库与设置");
 
             var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                .Single(item => item.Text == "设置");
+                .Single(item => item.Text == MarginStrings.Get("entry.settings"));
             settingsItem.PerformClick();
 
             Assert.True(requested);
@@ -95,11 +95,40 @@ public sealed class SettingsWindowIntegrationTests
                     .Where(item => item.Header is string)
                     .Select(item => (string)item.Header)
                     .ToArray();
-                Assert.Contains("设置", headers);
+                Assert.Contains(MarginStrings.Get("entry.settings"), headers);
+                Assert.Same(ui.PortraitMenu.FindResource("MarginContextMenu"), ui.PortraitMenu.Style);
+                Assert.All(ui.PortraitMenu.Items.OfType<MenuItem>(),
+                    action => Assert.Same(ui.PortraitMenu.FindResource("MarginContextAction"), action.Style));
+                Assert.Equal(214, ui.PortraitMenu.Width);
+                if (Environment.GetEnvironmentVariable("FGO_PET_ACCEPTANCE_ARTIFACTS") is { Length: > 0 } capture)
+                {
+                    window.Show();
+                    ui.PortraitMenu.PlacementTarget = window;
+                    ui.PortraitMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.RelativePoint;
+                    ui.PortraitMenu.HorizontalOffset = 16;
+                    ui.PortraitMenu.VerticalOffset = 16;
+                    ui.PortraitMenu.IsOpen = true;
+                    // Let the native popup paint on the desktop before CopyFromScreen.
+                    var painted = System.Diagnostics.Stopwatch.StartNew();
+                    while (painted.ElapsedMilliseconds < 250)
+                    {
+                        StaRunner.Pump(window.Dispatcher);
+                        System.Threading.Thread.Sleep(10);
+                    }
+                    ui.PortraitMenu.UpdateLayout();
+                    var popup = Assert.IsType<HwndSource>(PresentationSource.FromVisual(ui.PortraitMenu));
+                    Assert.True(ReadMenuBounds(popup.Handle, out var bounds));
+                    System.IO.Directory.CreateDirectory(capture);
+                    using var bitmap = new System.Drawing.Bitmap(bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
+                    using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+                        graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size);
+                    bitmap.Save(System.IO.Path.Combine(capture, "contextual-actions-native.png"), System.Drawing.Imaging.ImageFormat.Png);
+                    ui.PortraitMenu.IsOpen = false;
+                }
                 Assert.DoesNotContain(headers, text => text is "模型连接" or "从者库与设置");
 
                 var settingsItem = ui.PortraitMenu.Items.OfType<MenuItem>()
-                    .Single(item => (string)item.Header == "设置");
+                    .Single(item => (string)item.Header == MarginStrings.Get("entry.settings"));
                 settingsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
                 Assert.True(window.IsVisible);
@@ -138,7 +167,7 @@ public sealed class SettingsWindowIntegrationTests
             try
             {
                 var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "设置");
+                    .Single(item => item.Text == MarginStrings.Get("entry.settings"));
                 settingsItem.PerformClick();
 
                 Assert.True(window.IsVisible);
@@ -178,7 +207,7 @@ public sealed class SettingsWindowIntegrationTests
             {
                 ui.InitializeTray();
                 var showHideItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏");
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"));
 
                 showHideItem.PerformClick();
                 StaRunner.Pump(portrait.Dispatcher);
@@ -210,7 +239,7 @@ public sealed class SettingsWindowIntegrationTests
             {
                 ui.InitializeTray();
                 var showHideItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏");
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"));
 
                 var callback = Task.Run(showHideItem.PerformClick);
                 while (!callback.IsCompleted)
@@ -249,7 +278,7 @@ public sealed class SettingsWindowIntegrationTests
                 ui.InitializeTray();
 
                 tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏")
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"))
                     .PerformClick();
 
                 Assert.True(portrait.IsVisible);
@@ -286,7 +315,7 @@ public sealed class SettingsWindowIntegrationTests
                 ui.InitializeTray();
 
                 tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏")
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"))
                     .PerformClick();
                 StaRunner.Pump(portrait.Dispatcher);
 
@@ -400,6 +429,12 @@ public sealed class SettingsWindowIntegrationTests
         _ => { });
 
     private static void StaRun(Action action) => StaRunner.Run(action);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MenuBounds { public int Left, Top, Right, Bottom; }
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ReadMenuBounds(nint hwnd, out MenuBounds bounds);
 
     private static Task StaRun(Func<Task> action) => StaRunner.RunAsync(action);
 

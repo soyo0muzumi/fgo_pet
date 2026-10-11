@@ -1,72 +1,145 @@
+const english = {
+  "characters.busy": "Working…",
+  "characters.reload": "Reload",
+  "characters.catalog": "Character packages",
+  "characters.search": "Search characters",
+  "characters.searchHint": "Name or package ID",
+  "characters.chooseFile": "Choose local file",
+  "characters.noFile": "No file selected",
+  "characters.install": "Install",
+  "characters.scan": "Rescan",
+  "characters.empty": "No matching character packages.",
+  "characters.safety": "Only a selected local .fgopetpack file is installed after validation. An unverified source is not official or store certification. Package contents are not uploaded automatically.",
+  "characters.companion": "Back to Companion",
+  "characters.detail": "Character details",
+  "characters.backAria": "Back to characters",
+  "characters.back": "<span aria-hidden=\"true\">‹</span> Back",
+  "characters.preview": "Character preview",
+  "characters.removed": "This package is unavailable. Return to the catalog and rescan.",
+  "characters.sections": "Character detail sections",
+  "characters.looks": "Appearance",
+  "characters.addressSettings": "Address",
+  "characters.info": "Package information",
+  "characters.availableLooks": "Available appearances",
+  "characters.folder": "Open package folder",
+  "characters.useLook": "Use this appearance",
+  "characters.uninstall": "Uninstall this version",
+  "characters.addressHint": "Set how this character addresses you. Your profile name stays separate.",
+  "characters.addressSource": "Address source",
+  "characters.packageDefault": "Use package default",
+  "characters.customAddress": "Custom address",
+  "characters.custom": "Custom",
+  "characters.saveAddress": "Save address",
+  "characters.address": "Address",
+  "characters.id": "Package ID",
+  "characters.version": "Version",
+  "characters.source": "Source",
+  "characters.settings": "Package settings",
+  "characters.settingsHint": "These options are declared by the package. Save to apply them to this character.",
+  "characters.noSettings": "This package has no configurable options.",
+  "characters.saveSettings": "Save package settings",
+  "characters.failed": "The action did not complete. Try again.",
+  "characters.unnamed": "Unnamed character",
+  "characters.unknownVersion": "Unknown version",
+  "characters.active": "Currently in use",
+  "characters.embedded": "Built-in package",
+  "characters.installed": "Installed",
+  "characters.details": "View details",
+  "characters.look": "Appearance",
+  "characters.selected": "In use",
+  "characters.unavailable": "Package unavailable",
+  "characters.activePackage": "This character is currently in use",
+  "characters.inactivePackage": "This character is not active",
+  "characters.available": "Package available",
+  "characters.unavailableNow": "This package is unavailable",
+  "characters.unspecified": "Not specified",
+  "characters.notice": "Package notice",
+  "characters.actionFailed": "The package action failed. Check the current state and try again.",
+  "characters.refreshed": "The action did not complete. Current state was reloaded.",
+  "characters.refreshFailed": "The action and current state could not be confirmed. Try again.",
+  "characters.pendingRefreshed": "The action is incomplete. Current state was reloaded.",
+  "characters.pendingFailed": "The action is incomplete and current state could not be loaded. Try again.",
+  "characters.stateFailed": "Character state could not be loaded. Try again.",
+  "characters.styleFailed": "The page style could not be loaded. Reopen the page.",
+  "characters.catalogFailed": "Character packages could not be loaded. Try again.",
+  "characters.character": "Character",
+  "characters.thisPackage": "this package",
+  "characters.meta": "{version} · {count} appearances",
+  "characters.versionValue": "Version {version}",
+  "characters.previewName": "{name} preview",
+  "characters.defaultAddress": "Package default: {name}",
+  "characters.uninstallPrompt": "Uninstall {name}, version {version}?"
+};
+const t = (key, values = {}) => (english[key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] === undefined ? match : String(values[name]));
+
 const PAGE_ID = "RolePackages";
 const MAX_PREVIEW_LENGTH = 2_000_000;
 
 const MARKUP = `
   <div class="rp-page" data-role-packages-page data-state="loading">
     <div class="rp-feedback" aria-live="polite" aria-atomic="true">
-      <p data-busy hidden>正在处理…</p>
+      <p data-busy hidden>${t("characters.busy")}</p>
       <p data-status role="status" hidden></p>
       <p data-error role="alert" aria-live="assertive" hidden></p>
       <div class="rp-diagnostic" data-diagnostic hidden><strong data-diagnostic-heading></strong><p data-diagnostic-text></p></div>
-      <button class="rp-button" type="button" data-retry hidden>重试读取</button>
+      <button class="rp-button" type="button" data-retry hidden>${t("characters.reload")}</button>
     </div>
-    <section class="rp-catalog" data-route="catalog" aria-label="角色包目录">
+    <section class="rp-catalog" data-route="catalog" aria-label="${t("characters.catalog")}">
       <div class="rp-toolbar">
-        <label class="rp-search-label">搜索角色包<input type="search" data-catalog-search maxlength="256" autocomplete="off" placeholder="名称或包 ID"></label>
-        <button class="rp-button" type="button" data-select-file>选择本地文件</button>
-        <span class="rp-file-name" data-selected-file-name>未选择文件</span>
-        <button class="rp-button rp-primary" type="button" data-install-package disabled>安装</button>
-        <button class="rp-button" type="button" data-rescan>重新扫描</button>
+        <label class="rp-search-label">${t("characters.search")}<span class="rp-search-field"><input type="search" data-catalog-search maxlength="256" autocomplete="off" placeholder="${t("characters.searchHint")}"><button class="rp-button rp-file-picker" type="button" data-select-file aria-label="${t("characters.chooseFile")}" title="${t("characters.chooseFile")}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3Z"/></svg></button></span></label>
+        <span class="rp-file-name" data-selected-file-name>${t("characters.noFile")}</span>
+        <button class="rp-button rp-primary" type="button" data-install-package disabled>${t("characters.install")}</button>
+        <button class="rp-button" type="button" data-rescan>${t("characters.scan")}</button>
       </div>
       <p class="rp-scan-status" data-scan-status></p>
       <div class="rp-package-grid" data-package-list></div>
-      <p class="rp-empty" data-catalog-empty hidden>没有匹配的角色包。</p>
-      <p class="rp-safety-note">仅处理本机已选择的 .fgopetpack 文件；安装前会验证包声明、兼容版本和内容边界。来源未验证不代表官方或在线商店认证，角色包内容不会自动上传。</p>
-      <button class="rp-text-button" type="button" data-back-to-personalization>返回个性化设置</button>
+      <p class="rp-empty" data-catalog-empty hidden>${t("characters.empty")}</p>
+      <p class="rp-safety-note">${t("characters.safety")}</p>
+      <button class="rp-text-button" type="button" data-back-to-personalization>${t("characters.companion")}</button>
     </section>
-    <section class="rp-detail" data-route="detail" aria-label="角色包详情" hidden>
+    <section class="rp-detail" data-route="detail" aria-label="${t("characters.detail")}" hidden>
       <header class="rp-detail-header" data-detail-header>
-        <button class="rp-back-button" type="button" data-back-to-catalog aria-label="返回角色包目录">← 返回目录</button>
+        <button class="rp-back-button" type="button" data-back-to-catalog aria-label="${t("characters.backAria")}">${t("characters.back")}</button>
         <div class="rp-detail-title"><h2 data-detail-name></h2><p data-detail-version></p></div>
         <span class="rp-badge" data-detail-source></span>
-        <img class="rp-detail-preview" data-detail-preview alt="角色预览" hidden>
-        <p class="rp-detail-unavailable" data-detail-unavailable hidden>角色包已移除或当前无法读取，请返回目录重新扫描。</p>
+        <img class="rp-detail-preview" data-detail-preview alt="${t("characters.preview")}" hidden>
+        <p class="rp-detail-unavailable" data-detail-unavailable hidden>${t("characters.removed")}</p>
       </header>
-      <nav class="rp-tabs" aria-label="角色包详情分区">
-        <button type="button" data-section="appearance">立绘与外观</button>
-        <button type="button" data-section="address">称呼设置</button>
-        <button type="button" data-section="packageInfo">包信息</button>
+      <nav class="rp-tabs" aria-label="${t("characters.sections")}">
+        <button type="button" data-section="appearance">${t("characters.looks")}</button>
+        <button type="button" data-section="address">${t("characters.addressSettings")}</button>
+        <button type="button" data-section="packageInfo">${t("characters.info")}</button>
       </nav>
       <div class="rp-section-panel" data-section-panel="appearance">
         <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>可用外观</h3><p data-active-status></p></div><button class="rp-button" type="button" data-open-detail-folder>打开角色包文件夹</button></div>
+          <div class="rp-card-heading"><div><h3>${t("characters.availableLooks")}</h3><p data-active-status></p></div><button class="rp-button" type="button" data-open-detail-folder>${t("characters.folder")}</button></div>
           <div class="rp-appearance-list" data-appearance-list></div>
-          <div class="rp-action-row"><button class="rp-button rp-primary" type="button" data-activate-appearance>使用此外观</button><button class="rp-button rp-danger" type="button" data-uninstall-package>卸载此版本</button></div>
+          <div class="rp-action-row"><button class="rp-button rp-primary" type="button" data-activate-appearance>${t("characters.useLook")}</button><button class="rp-button rp-danger" type="button" data-uninstall-package>${t("characters.uninstall")}</button></div>
         </section>
       </div>
       <div class="rp-section-panel" data-section-panel="address" hidden>
         <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>称呼</h3><p>仅为此角色设置称呼，不影响用户资料显示名称。</p></div></div>
+          <div class="rp-card-heading"><div><h3>${t("characters.address")}</h3><p>${t("characters.addressHint")}</p></div></div>
           <p class="rp-default-address" data-address-default></p>
-          <fieldset class="rp-address-modes"><legend>称呼来源</legend>
-            <label><input type="radio" name="rp-address-mode" value="packageDefault" data-address-mode="packageDefault">使用角色包默认值</label>
-            <label><input type="radio" name="rp-address-mode" value="custom" data-address-mode="custom">自定义</label>
+          <fieldset class="rp-address-modes"><legend>${t("characters.addressSource")}</legend>
+            <label><input type="radio" name="rp-address-mode" value="packageDefault" data-address-mode="packageDefault">${t("characters.packageDefault")}</label>
+            <label><input type="radio" name="rp-address-mode" value="custom" data-address-mode="custom">${t("characters.custom")}</label>
           </fieldset>
-          <label class="rp-field-label">自定义称呼<input type="text" data-custom-address maxlength="256" autocomplete="off"></label>
+          <label class="rp-field-label">${t("characters.customAddress")}<input type="text" data-custom-address maxlength="256" autocomplete="off"></label>
           <p class="rp-inline-status" data-address-status></p>
-          <button class="rp-button rp-primary" type="button" data-save-address>保存称呼</button>
+          <button class="rp-button rp-primary" type="button" data-save-address>${t("characters.saveAddress")}</button>
         </section>
       </div>
       <div class="rp-section-panel" data-section-panel="packageInfo" hidden>
         <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>包信息</h3><p data-package-summary></p></div></div>
+          <div class="rp-card-heading"><div><h3>${t("characters.info")}</h3><p data-package-summary></p></div></div>
           <p class="rp-compatibility" data-compatibility></p>
-          <dl class="rp-info-list"><div><dt>包 ID</dt><dd data-package-id></dd></div><div><dt>版本</dt><dd data-info-version></dd></div><div><dt>来源</dt><dd data-info-source></dd></div></dl>
+          <dl class="rp-info-list"><div><dt>${t("characters.id")}</dt><dd data-package-id></dd></div><div><dt>${t("characters.version")}</dt><dd data-info-version></dd></div><div><dt>${t("characters.source")}</dt><dd data-info-source></dd></div></dl>
           <p class="rp-availability" data-availability></p>
-          <button class="rp-button" type="button" data-open-package-folder>打开角色包文件夹</button>
+          <button class="rp-button" type="button" data-open-package-folder>${t("characters.folder")}</button>
         </section>
         <p class="rp-notice" data-migration-notice hidden></p>
-        <section class="rp-card"><div class="rp-card-heading"><div><h3>角色包设置</h3><p>这些选项来自角色包声明；保存后对该角色包生效。</p></div></div><div class="rp-settings-list" data-package-settings></div><p class="rp-empty" data-package-settings-empty hidden>此角色包没有可配置项。</p><p class="rp-inline-status" data-package-settings-status></p><button class="rp-button" type="button" data-save-package-settings>保存角色包设置</button></section>
+        <section class="rp-card"><div class="rp-card-heading"><div><h3>${t("characters.settings")}</h3><p>${t("characters.settingsHint")}</p></div></div><div class="rp-settings-list" data-package-settings></div><p class="rp-empty" data-package-settings-empty hidden>${t("characters.noSettings")}</p><p class="rp-inline-status" data-package-settings-status></p><button class="rp-button" type="button" data-save-package-settings>${t("characters.saveSettings")}</button></section>
       </div>
     </section>
   </div>`;
@@ -179,7 +252,7 @@ export async function mount(container, context) {
     button.disabled = busyCount > 0 || readFailure || value;
   }
   function showError(message, isReadFailure = false) {
-    localError = message || "操作未能完成，请重试。";
+    localError = message || t("characters.failed");
     readFailure = Boolean(isReadFailure);
     text(error, localError);
     error.hidden = false;
@@ -196,7 +269,7 @@ export async function mount(container, context) {
   function updateImage(image, value, alt) {
     if (safePng(value)) {
       image.src = value;
-      image.alt = alt || "角色预览";
+      image.alt = alt || t("characters.preview");
       image.hidden = false;
     } else {
       image.removeAttribute("src");
@@ -207,7 +280,7 @@ export async function mount(container, context) {
     const state = value.catalog;
     if (!searchDirty && document.activeElement !== search) searchDraft = state.searchText;
     if (search.value !== searchDraft) search.value = searchDraft;
-    text(container.querySelector("[data-selected-file-name]"), state.selectedArchiveName || "未选择文件");
+    text(container.querySelector("[data-selected-file-name]"), state.selectedArchiveName || t("characters.noFile"));
     businessDisabled(container.querySelector("[data-install-package]"), !state.selectedArchiveName);
     text(container.querySelector("[data-scan-status]"), state.scanStatus || "");
     packageList.replaceChildren();
@@ -220,17 +293,17 @@ export async function mount(container, context) {
       previewWrap.dataset.packagePreview = "";
       const image = make("img", "rp-package-image");
       image.alt = "";
-      const fallback = make("span", "rp-package-fallback", "角色预览");
+      const fallback = make("span", "rp-package-fallback", t("characters.preview"));
       fallback.hidden = safePng(item.previewDataUrl);
       image.addEventListener("error", () => { fallback.hidden = false; }, { once: true });
       updateImage(image, item.previewDataUrl, "");
       previewWrap.append(image, fallback);
       const content = make("div", "rp-package-copy");
-      const heading = make("h3", "rp-package-name", item.displayName || "未命名角色包");
+      const heading = make("h3", "rp-package-name", item.displayName || t("characters.unnamed"));
       const badge = make("span", "rp-badge", item.sourceBadge || "");
-      const meta = make("p", "rp-package-meta", `${item.packageVersion || "未知版本"} · ${Number.isFinite(item.appearanceCount) ? item.appearanceCount : 0} 个外观`);
-      const state = make("p", item.isActive ? "rp-active-label" : "rp-package-state", item.isActive ? "当前正在使用" : item.isEmbedded ? "内置角色包" : "已安装");
-      const open = make("button", "rp-button rp-primary", "查看详情");
+      const meta = make("p", "rp-package-meta", t("characters.meta", { version: item.packageVersion || t("characters.unknownVersion"), count: Number.isFinite(item.appearanceCount) ? item.appearanceCount : 0 }));
+      const state = make("p", item.isActive ? "rp-active-label" : "rp-package-state", item.isActive ? t("characters.active") : item.isEmbedded ? t("characters.embedded") : t("characters.installed"));
+      const open = make("button", "rp-button rp-primary", t("characters.details"));
       open.type = "button";
       open.dataset.openPackage = "";
       content.append(heading, badge, meta, state, open);
@@ -257,8 +330,8 @@ export async function mount(container, context) {
       const selected = detail.selectedAppearance;
       radio.checked = record(selected) && selected.appearanceId === appearance.appearanceId && selected.packageVersion === appearance.packageVersion;
       const copy = make("span", "rp-appearance-copy");
-      copy.append(make("strong", "", appearance.display || appearance.appearanceId || "外观"));
-      if (appearance.isCurrent) copy.append(make("small", "rp-current-tag", "已选用"));
+      copy.append(make("strong", "", appearance.display || appearance.appearanceId || t("characters.look")));
+      if (appearance.isCurrent) copy.append(make("small", "rp-current-tag", t("characters.selected")));
       label.append(radio, copy);
       list.append(label);
     }
@@ -307,7 +380,7 @@ export async function mount(container, context) {
     catalog.hidden = value.route !== "catalog";
     detailRoute.hidden = value.route !== "detail";
     if (!detail) {
-      text(container.querySelector("[data-detail-name]"), "角色包暂不可用");
+      text(container.querySelector("[data-detail-name]"), t("characters.unavailable"));
       text(container.querySelector("[data-detail-version]"), "");
       text(container.querySelector("[data-detail-source]"), "");
       updateImage(container.querySelector("[data-detail-preview]"), null, "");
@@ -320,11 +393,11 @@ export async function mount(container, context) {
     }
     container.querySelector("[data-detail-unavailable]").hidden = true;
     for (const tab of container.querySelectorAll("[data-section]")) businessDisabled(tab, false);
-    text(container.querySelector("[data-detail-name]"), detail.displayName || "未命名角色包");
-    text(container.querySelector("[data-detail-version]"), detail.packageVersion ? `版本 ${detail.packageVersion}` : "");
+    text(container.querySelector("[data-detail-name]"), detail.displayName || t("characters.unnamed"));
+    text(container.querySelector("[data-detail-version]"), detail.packageVersion ? t("characters.versionValue", { version: detail.packageVersion }) : "");
     text(container.querySelector("[data-detail-source]"), detail.sourceBadge || "");
-    updateImage(container.querySelector("[data-detail-preview]"), detail.previewDataUrl, `${detail.displayName || "角色"}预览`);
-    text(container.querySelector("[data-active-status]"), detail.isActive ? "当前正在使用此角色包" : "尚未激活此角色包");
+    updateImage(container.querySelector("[data-detail-preview]"), detail.previewDataUrl, t("characters.previewName", { name: detail.displayName || t("characters.character") }));
+    text(container.querySelector("[data-active-status]"), detail.isActive ? t("characters.activePackage") : t("characters.inactivePackage"));
     renderAppearances(detail);
     const selected = record(detail.selectedAppearance) ? detail.selectedAppearance : null;
     businessDisabled(container.querySelector("[data-activate-appearance]"), !selected || !detail.isAvailable);
@@ -337,7 +410,7 @@ export async function mount(container, context) {
     text(container.querySelector("[data-section-panel=packageInfo] [data-package-id]"), detail.packageId || "");
     text(container.querySelector("[data-info-version]"), detail.packageVersion || "");
     text(container.querySelector("[data-info-source]"), detail.sourceBadge || "");
-    text(container.querySelector("[data-availability]"), detail.isAvailable ? "角色包可用" : detail.availabilityStatus || "此角色包当前不可用");
+    text(container.querySelector("[data-availability]"), detail.isAvailable ? t("characters.available") : detail.availabilityStatus || t("characters.unavailableNow"));
     const availability = container.querySelector("[data-availability]");
     availability.dataset.state = detail.isAvailable ? "available" : "unavailable";
     for (const tab of container.querySelectorAll("[data-section]")) {
@@ -346,7 +419,7 @@ export async function mount(container, context) {
       tab.classList.toggle("is-selected", active);
     }
     for (const pane of container.querySelectorAll("[data-section-panel]")) pane.hidden = pane.dataset.sectionPanel !== detail.section;
-    text(container.querySelector("[data-address-default]"), `角色包默认称呼：${detail.address?.defaultText || "未指定"}`);
+    text(container.querySelector("[data-address-default]"), t("characters.defaultAddress", { name: detail.address?.defaultText || t("characters.unspecified") }));
     const mode = addressDraft?.mode || (detail.address?.mode === "custom" ? "custom" : "packageDefault");
     for (const radio of container.querySelectorAll("[data-address-mode]")) radio.checked = radio.dataset.addressMode === mode;
     const addressInput = container.querySelector("[data-custom-address]");
@@ -363,17 +436,22 @@ export async function mount(container, context) {
     text(migration, detail.migrationNotice || "");
     migration.hidden = !detail.migrationNotice;
   }
+  let renderedRoute = null;
   function render(value = snapshot) {
     if (!value || disposed) return;
     text(status, "");
     status.hidden = true;
     if (record(value.diagnostic)) {
       diagnostic.hidden = false;
-      text(container.querySelector("[data-diagnostic-heading]"), value.diagnostic.heading || "角色包提示");
+      text(container.querySelector("[data-diagnostic-heading]"), value.diagnostic.heading || t("characters.notice"));
       text(container.querySelector("[data-diagnostic-text]"), value.diagnostic.text || "");
     } else diagnostic.hidden = true;
     if (value.route === "catalog") renderCatalog(value);
     else renderDetail(value);
+    if (renderedRoute !== value.route) {
+      renderedRoute = value.route;
+      context.onRouteChanged?.();
+    }
     if (!localError) retry.hidden = true;
     setBusy();
   }
@@ -407,7 +485,7 @@ export async function mount(container, context) {
     requestTail = operation.catch(() => {});
     try { return await operation; }
     catch (caught) {
-      if (!disposed && !signal?.aborted) showError("角色包操作失败。请检查当前状态后重试。");
+      if (!disposed && !signal?.aborted) showError(t("characters.actionFailed"));
       throw caught;
     } finally {
       busyCount = Math.max(0, busyCount - 1);
@@ -458,8 +536,8 @@ export async function mount(container, context) {
         refreshed = true;
       } catch { /* Keep the last authoritative snapshot and expose retry. */ }
       showError(refreshed
-        ? "操作未能完成，已刷新当前状态。"
-        : "操作未能完成，当前状态读取失败，请重试。", !refreshed);
+        ? t("characters.refreshed")
+        : t("characters.refreshFailed"), !refreshed);
       throw caught;
     }
   }
@@ -469,7 +547,7 @@ export async function mount(container, context) {
       if (!disposed && !signal?.aborted) {
         let refreshed = false;
         try { await enqueue("rolePackages.get"); refreshed = true; } catch { /* Retry remains available. */ }
-        showError(refreshed ? "尚未完成本次操作，已刷新当前状态。" : "尚未完成本次操作，当前状态读取失败，请重试。", !refreshed);
+        showError(refreshed ? t("characters.pendingRefreshed") : t("characters.pendingFailed"), !refreshed);
       }
       throw caught;
     }
@@ -585,7 +663,7 @@ export async function mount(container, context) {
       if (detail) safeAction(() => action("rolePackages.openFolder", { packageId: detail.packageId }));
     } else if (target.matches("[data-uninstall-package]")) {
       const selected = selectedAppearancePayload();
-      if (selected && window.confirm(`卸载“${currentDetail()?.displayName || "该角色包"}”的版本 ${selected.packageVersion}？`))
+      if (selected && window.confirm(t("characters.uninstallPrompt", { name: currentDetail()?.displayName || t("characters.thisPackage"), version: selected.packageVersion })))
         safeAction(() => action("rolePackages.uninstall", selected));
     } else if (target.matches("[data-save-address]")) {
       const detail = currentDetail();
@@ -599,7 +677,7 @@ export async function mount(container, context) {
         const value = await enqueue("rolePackages.get");
         accept(value);
       } catch (caught) {
-        showError("角色包状态读取失败，请重试。", true);
+        showError(t("characters.stateFailed"), true);
         throw caught;
       }
     });
@@ -622,6 +700,11 @@ export async function mount(container, context) {
     signal?.removeEventListener("abort", dispose);
     stylesheet.remove();
   };
+  dispose.goBack = async () => {
+    if (disposed || signal?.aborted || snapshot?.route !== "detail") return false;
+    await action("rolePackages.back");
+    return true;
+  };
   dispose.openItem = async packageId => {
     if (disposed || signal?.aborted) return;
     if (typeof packageId === "string" && currentDetail()?.packageId === packageId) return;
@@ -633,12 +716,12 @@ export async function mount(container, context) {
   if (signal?.aborted) dispose();
   const styleLoaded = await waitForStylesheet(stylesheet, signal);
   if (disposed) return dispose;
-  if (!styleLoaded) showError("角色包页面样式未能加载。请重新打开页面。");
+  if (!styleLoaded) showError(t("characters.styleFailed"));
   try {
     accept(await enqueue("rolePackages.get"));
     if (typeof context.itemId === "string") await dispose.openItem(context.itemId);
   } catch {
-    if (!disposed) showError("角色包目录读取失败，请重试。", true);
+    if (!disposed) showError(t("characters.catalogFailed"), true);
   }
   return dispose;
 }

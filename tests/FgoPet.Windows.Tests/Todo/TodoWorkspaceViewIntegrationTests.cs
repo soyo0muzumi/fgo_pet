@@ -18,6 +18,109 @@ namespace FgoPet.Windows.Tests.Todo;
 public sealed class TodoWorkspaceViewIntegrationTests
 {
     [Fact]
+    public void Margin_notebook_uses_paper_rows_and_keeps_quick_add_usable_when_narrow() => StaRun(() =>
+    {
+        var repository = new FakeTodoRepository();
+        repository.Items.Add(new TodoItem("margin-fixture", "Finish Margin review", "Synthetic notebook fixture",
+            TodoPriority.Normal, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            steps: new[] { new TodoStep("review-visual", "Review visual details", 0, true),
+                new TodoStep("review-behavior", "Verify window behavior", 1, false),
+                new TodoStep("review-report", "Record acceptance results", 2, false) }));
+        repository.Items.Insert(0, new TodoItem("margin-meeting", "Confirm Thursday review meeting room", null,
+            TodoPriority.Normal, DateTimeOffset.Now, DateTimeOffset.Now, DateTimeOffset.Now));
+        repository.Items.Add(new TodoItem("margin-books", "Return library books", null,
+            TodoPriority.Normal, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now.AddDays(-8), DateTimeOffset.Now));
+        repository.Items.Add(new TodoItem("margin-followup", "Resolve V3 migration follow-ups", null,
+            TodoPriority.Normal, null, DateTimeOffset.Now.AddDays(-3), DateTimeOffset.Now));
+        var view = ShowView(repository);
+        try
+        {
+            Assert.Equal("#FFFCFBF9", ((SolidColorBrush)view.Background).Color.ToString());
+            var title = Assert.IsType<TextBlock>(view.FindName("NotebookHeading"));
+            Assert.Equal(DateTime.Now.ToString("ddd, MMM d", System.Globalization.CultureInfo.GetCultureInfo("en-US")), title.Text);
+            Assert.Equal(15, title.FontSize);
+            Assert.Equal("4 remembered items", ((TextBlock)view.FindName("NotebookSummary")).Text);
+            Assert.Equal("Georgia", title.FontFamily.Source);
+            Assert.Contains(FindVisualChildren<TextBlock>(view), text => text.Text == "Due today");
+            Assert.Contains(FindVisualChildren<TextBlock>(view), text => text.Text == "Overdue");
+            var preview = GetRowExpander((ItemsControl)view.FindName("ActiveItems"), "margin-fixture");
+            Assert.False(preview.IsExpanded);
+            Assert.Contains(FindVisualChildren<TextBlock>(preview), text => text.IsVisible && text.Text == "Review visual details");
+            var completion = GetCompletionControl((ItemsControl)view.FindName("ActiveItems"), "margin-fixture");
+            Assert.Equal(15, completion.Width);
+            Assert.Equal(15, completion.Height);
+            Assert.Contains(FindVisualChildren<System.Windows.Shapes.Ellipse>(completion), circle => circle.StrokeThickness == 1);
+            CaptureMarginNotebook(view, "notebook-normal");
+            var row = GetRowExpander((ItemsControl)view.FindName("ActiveItems"), "margin-fixture");
+            row.IsExpanded = true;
+            view.UpdateLayout();
+            Assert.Contains(FindVisualChildren<CheckBox>(view), checkbox =>
+                System.Windows.Automation.AutomationProperties.GetName(checkbox) == "Complete item: Finish Margin review");
+            Assert.Contains(FindVisualChildren<CheckBox>(row), checkbox =>
+                System.Windows.Automation.AutomationProperties.GetName(checkbox) == "Completed step: Review visual details");
+            Assert.Contains(FindVisualChildren<CheckBox>(row), checkbox =>
+                System.Windows.Automation.AutomationProperties.GetName(checkbox) == "Incomplete step: Verify window behavior");
+            foreach (var button in FindVisualChildren<Button>(row).Where(button => button.Content is Geometry))
+            {
+                Assert.Equal(26, button.Width);
+                Assert.Equal(26, button.Height);
+                Assert.Equal(new Thickness(0), button.BorderThickness);
+                if (button.IsVisible)
+                {
+                    Assert.Equal(26, button.ActualWidth);
+                    Assert.Contains(FindVisualChildren<Grid>(button), grid => grid.Width == 12 && grid.Height == 12);
+                }
+            }
+            var rowTitle = FindVisualChildren<TextBlock>(row).Single(text => text.Text == "Finish Margin review");
+            Assert.Equal("Georgia", rowTitle.FontFamily.Source);
+            Assert.Equal(15.5, rowTitle.FontSize);
+            CaptureMarginNotebook(view, "notebook-expanded");
+            view.BeginAdd();
+            ((TextBox)view.FindName("TitleInput")).Text = "Synthetic notebook draft";
+            var window = Window.GetWindow(view);
+            window.Width = 320;
+            window.Height = 420;
+            window.UpdateLayout();
+            var save = (Button)view.FindName("SaveButton");
+            save.BringIntoView();
+            StaRunner.Pump(view.Dispatcher);
+            window.UpdateLayout();
+            Assert.True(save.IsEnabled);
+            var scroll = (ScrollViewer)view.FindName("TodoScrollViewer");
+            var origin = save.TransformToAncestor(scroll).Transform(new Point());
+            Assert.InRange(origin.X, 0, scroll.ActualWidth - save.ActualWidth);
+            Assert.InRange(origin.Y, 0, scroll.ActualHeight - save.ActualHeight);
+            CaptureMarginNotebook(view, "notebook-small-add");
+            row.IsExpanded = false;
+            var scrollTop = (ScrollViewer)view.FindName("TodoScrollViewer");
+            scrollTop.ScrollToTop();
+            window.UpdateLayout();
+            var previewText = FindVisualChildren<TextBlock>(row).First(text => text.Text == "Verify window behavior" && text.IsVisible);
+            previewText.Text = string.Join(" ", Enumerable.Repeat("Long synthetic step", 12));
+            window.UpdateLayout();
+            Assert.True(previewText.ActualHeight > 30);
+            Assert.True(previewText.ActualWidth <= scrollTop.ActualWidth);
+            CaptureMarginNotebook(view, "notebook-small-preview");
+        }
+        finally { CloseView(view); }
+    });
+
+    private static void CaptureMarginNotebook(FrameworkElement view, string scene)
+    {
+        if (Environment.GetEnvironmentVariable("FGO_PET_MARGIN_NOTEBOOK_CAPTURE_DIR") is not { Length: > 0 } directory) return;
+        Directory.CreateDirectory(directory);
+        File.AppendAllText(Path.Combine(directory, "capture.jsonl"), System.Text.Json.JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, request = "synthetic-notebook", stage = "wpf-render", scene, result = "started", desktopAcceptance = false, dpi = 96 }) + Environment.NewLine);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(view.ActualWidth),
+            (int)Math.Ceiling(view.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(view);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = File.Create(Path.Combine(directory, scene + "-wpf-render.png"));
+        encoder.Save(file);
+        File.AppendAllText(Path.Combine(directory, "capture.jsonl"), System.Text.Json.JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, request = "synthetic-notebook", stage = "wpf-render", scene, result = "captured", desktopAcceptance = false, dpi = 96 }) + Environment.NewLine);
+    }
+
+    [Fact]
     public Task Plugin_shutdown_from_a_background_thread_awaits_UI_cleanup() => StaRunner.RunAsync(async () =>
     {
         var repository = new FakeTodoRepository();
@@ -54,8 +157,8 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var editor = Assert.IsAssignableFrom<FrameworkElement>(view.FindName("QuickAddEditor"));
                 var add = Assert.IsType<Button>(view.FindName("AddTaskButton"));
                 Assert.Equal(Visibility.Collapsed, editor.Visibility);
-                Assert.IsAssignableFrom<Geometry>(add.Content);
-                Assert.Equal("添加任务", System.Windows.Automation.AutomationProperties.GetName(add));
+                Assert.Equal("Remember something…", add.Content);
+                Assert.Equal("Remember something", System.Windows.Automation.AutomationProperties.GetName(add));
 
                 view.BeginAdd();
 
@@ -63,7 +166,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.Same(view.FindName("TitleInput"), Keyboard.FocusedElement);
                 Assert.Equal(Visibility.Collapsed, Assert.IsAssignableFrom<FrameworkElement>(view.FindName("OptionalDescriptionPanel")).Visibility);
 
-                Click(view, "添加备注");
+                Click(view, "Add notes");
 
                 Assert.Equal(Visibility.Visible, Assert.IsAssignableFrom<FrameworkElement>(view.FindName("OptionalDescriptionPanel")).Visibility);
                 Assert.True(Assert.IsType<TextBox>(view.FindName("TitleInput")).IsVisible);
@@ -90,11 +193,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var complete = GetRowExpander(rows, "steps-complete");
 
                 Assert.DoesNotContain(FindVisualChildren<TextBlock>(empty), textBlock =>
-                    textBlock.Visibility == Visibility.Visible && textBlock.Text.Contains("步", StringComparison.Ordinal));
+                    textBlock.Visibility == Visibility.Visible && textBlock.Text.EndsWith(" steps", StringComparison.Ordinal));
                 Assert.Contains(FindVisualChildren<TextBlock>(partial), textBlock =>
-                    textBlock.Visibility == Visibility.Visible && textBlock.Text == "2 / 5 步");
+                    textBlock.Visibility == Visibility.Visible && textBlock.Text == "2 / 5 steps");
                 Assert.Contains(FindVisualChildren<TextBlock>(complete), textBlock =>
-                    textBlock.Visibility == Visibility.Visible && textBlock.Text == "5 / 5 步");
+                    textBlock.Visibility == Visibility.Visible && textBlock.Text == "5 / 5 steps");
 
                 partial.IsExpanded = true;
                 complete.IsExpanded = true;
@@ -164,7 +267,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 Assert.False(repository.Get(original.Id)!.Steps[0].IsCompleted);
                 Assert.False(step.IsChecked);
-                Assert.Contains("失败", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Steps could not be saved", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -248,7 +351,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 var input = GetStepTitleInput(row, original.Steps[1].Id);
                 input.Text = "检查发布";
-                GetStepActionButton(row, original.Steps[1].Id, "保存步骤编辑")
+                GetStepActionButton(row, original.Steps[1].Id, "Save step edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 var saved = repository.Get(original.Id)!;
@@ -283,13 +386,13 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 GetStepEditButton(row, original.Steps[0].Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 GetStepTitleInput(row, original.Steps[0].Id).Text = "丢弃的标题";
-                GetStepActionButton(row, original.Steps[0].Id, "取消步骤编辑")
+                GetStepActionButton(row, original.Steps[0].Id, "Cancel step edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
 
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Equal(original.Steps[0].Title, repository.Get(original.Id)!.Steps[0].Title);
-                Assert.Equal("编辑步骤", System.Windows.Automation.AutomationProperties.GetName(Assert.IsType<Button>(Keyboard.FocusedElement)));
+                Assert.Equal("Edit step", System.Windows.Automation.AutomationProperties.GetName(Assert.IsType<Button>(Keyboard.FocusedElement)));
             }
             finally { CloseView(view); }
         });
@@ -313,13 +416,13 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 PumpDispatcher();
                 var input = GetStepTitleInput(row, original.Steps[0].Id);
                 input.Text = "   ";
-                GetStepActionButton(row, original.Steps[0].Id, "保存步骤编辑")
+                GetStepActionButton(row, original.Steps[0].Id, "Save step edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Equal("   ", input.Text);
                 Assert.Equal(Visibility.Visible, input.Visibility);
-                Assert.Contains("请输入步骤标题", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Enter a step title", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -343,14 +446,14 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 PumpDispatcher();
                 var input = GetStepTitleInput(row, original.Steps[0].Id);
                 input.Text = "保留这个步骤草稿";
-                GetStepActionButton(row, original.Steps[0].Id, "保存步骤编辑")
+                GetStepActionButton(row, original.Steps[0].Id, "Save step edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Equal("保留这个步骤草稿", input.Text);
                 Assert.Equal(Visibility.Visible, input.Visibility);
                 Assert.Equal(original.Steps[0].Title, repository.Get(original.Id)!.Steps[0].Title);
-                Assert.Contains("步骤保存失败", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Steps could not be saved", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -400,10 +503,10 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var title = Assert.IsType<TextBox>(view.FindName("TitleInput"));
                 var description = Assert.IsType<TextBox>(view.FindName("DescriptionInput"));
                 title.Text = "Draft";
-                Click(view, "添加备注");
+                Click(view, "Add notes");
                 description.Text = "Private draft details";
 
-                Click(view, "取消");
+                Click(view, "Cancel");
 
                 Assert.Empty(repository.Items);
                 Assert.Equal(string.Empty, title.Text);
@@ -432,13 +535,13 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 view.UpdateLayout();
                 var add = GetAddStepButton(row);
 
-                Assert.Equal("添加步骤", System.Windows.Automation.AutomationProperties.GetName(add));
-                Assert.Equal("添加步骤", add.ToolTip);
+                Assert.Equal("Add step", System.Windows.Automation.AutomationProperties.GetName(add));
+                Assert.Equal("Add step", add.ToolTip);
                 add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 view.UpdateLayout();
                 var input = GetNewStepTitleInput(row);
                 input.Text = "准备发布";
-                GetAddStepActionButton(row, "保存步骤").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                GetAddStepActionButton(row, "Save step").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 var saved = repository.Get(original.Id)!;
                 var step = Assert.Single(saved.Steps);
@@ -470,7 +573,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 GetAddStepButton(row).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var input = GetNewStepTitleInput(row);
                 input.Text = "第 20 步";
-                GetAddStepActionButton(row, "保存步骤").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                GetAddStepActionButton(row, "Save step").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(20, repository.Get(original.Id)!.Steps.Count);
                 Assert.Equal(19, repository.Get(original.Id)!.Steps[^1].Order);
@@ -503,9 +606,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Single(FindVisualChildren<TextBox>(row).Where(textBox =>
-                    System.Windows.Automation.AutomationProperties.GetName(textBox) == "新步骤标题"));
+                    System.Windows.Automation.AutomationProperties.GetName(textBox) == "New step title"));
                 GetNewStepTitleInput(row).Text = "不会保存";
-                GetAddStepActionButton(row, "取消添加步骤").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                GetAddStepActionButton(row, "Cancel adding step").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Empty(repository.Get(original.Id)!.Steps);
                 Assert.Equal(0, repository.SaveCount);
@@ -532,13 +635,13 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 GetAddStepButton(row).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var input = GetNewStepTitleInput(row);
                 input.Text = "重试步骤";
-                GetAddStepActionButton(row, "保存步骤").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                GetAddStepActionButton(row, "Save step").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal("重试步骤", GetNewStepTitleInput(row).Text);
                 Assert.Empty(repository.Get(original.Id)!.Steps);
                 var firstAttemptId = Assert.Single(repository.LastAttempt!.Steps).Id;
                 repository.SaveFailure = null;
-                GetAddStepActionButton(row, "保存步骤").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                GetAddStepActionButton(row, "Save step").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 var saved = repository.Get(original.Id)!;
                 var step = Assert.Single(saved.Steps);
@@ -565,14 +668,14 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
                 var more = GetStepMoreButton(row, original.Steps[1].Id);
-                var delete = GetStepMenuItem(more, "删除步骤");
+                var delete = GetStepMenuItem(more, "Delete step");
                 delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 more.ContextMenu.IsOpen = false;
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Contains(FindVisualChildren<Button>(row), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "确认删除步骤");
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Confirm step deletion");
 
-                GetStepDeleteActionButton(row, original.Steps[1].Id, "确认删除步骤")
+                GetStepDeleteActionButton(row, original.Steps[1].Id, "Confirm step deletion")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 var saved = repository.Get(original.Id)!;
@@ -610,32 +713,32 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 view.UpdateLayout();
                 PumpDispatcher();
 
-                var complete = FindConfirmationButton(row, original.Id, "仍然完成");
-                var completeCancel = FindConfirmationButton(row, original.Id, "取消完成");
+                var complete = FindConfirmationButton(row, original.Id, "Complete anyway");
+                var completeCancel = FindConfirmationButton(row, original.Id, "Cancel completion");
                 Assert.Null(complete.ContentTemplate);
                 Assert.Equal(double.NaN, complete.Width);
                 Assert.Equal(32, complete.MinHeight);
                 Assert.Equal(new Thickness(10, 4, 10, 4), complete.Padding);
-                Assert.Contains(FindVisualChildren<TextBlock>(complete), text => text.Text == "仍然完成");
-                Assert.Contains(FindVisualChildren<TextBlock>(completeCancel), text => text.Text == "取消");
+                Assert.Contains(FindVisualChildren<TextBlock>(complete), text => text.Text == "Complete anyway");
+                Assert.Contains(FindVisualChildren<TextBlock>(completeCancel), text => text.Text == "Cancel");
                 Assert.Same(completeCancel, Keyboard.FocusedElement);
                 completeCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 var more = GetStepMoreButton(row, original.Steps[0].Id);
-                GetStepMenuItem(more, "删除步骤")
+                GetStepMenuItem(more, "Delete step")
                     .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 more.ContextMenu!.IsOpen = false;
                 view.UpdateLayout();
                 PumpDispatcher();
 
-                var delete = GetStepDeleteActionButton(row, original.Steps[0].Id, "确认删除步骤");
-                var deleteCancel = GetStepDeleteActionButton(row, original.Steps[0].Id, "取消删除步骤");
+                var delete = GetStepDeleteActionButton(row, original.Steps[0].Id, "Confirm step deletion");
+                var deleteCancel = GetStepDeleteActionButton(row, original.Steps[0].Id, "Cancel step deletion");
                 Assert.Null(delete.ContentTemplate);
                 Assert.Equal(double.NaN, delete.Width);
                 Assert.Equal(32, delete.MinHeight);
                 Assert.Equal(new Thickness(10, 4, 10, 4), delete.Padding);
-                Assert.Contains(FindVisualChildren<TextBlock>(delete), text => text.Text == "确认删除");
-                Assert.Contains(FindVisualChildren<TextBlock>(deleteCancel), text => text.Text == "取消");
+                Assert.Contains(FindVisualChildren<TextBlock>(delete), text => text.Text == "Confirm deletion");
+                Assert.Contains(FindVisualChildren<TextBlock>(deleteCancel), text => text.Text == "Cancel");
                 Assert.Same(deleteCancel, Keyboard.FocusedElement);
 
                 deleteCancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -664,7 +767,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 completion.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
                 view.UpdateLayout();
-                var cancel = FindConfirmationButton(row, original.Id, "取消完成");
+                var cancel = FindConfirmationButton(row, original.Id, "Cancel completion");
                 Keyboard.Focus(cancel);
                 var cancelEscape = CreateKeyEvent(view, Key.Escape);
                 cancel.RaiseEvent(cancelEscape);
@@ -678,7 +781,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 completion.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
                 view.UpdateLayout();
-                var confirm = FindConfirmationButton(row, original.Id, "仍然完成");
+                var confirm = FindConfirmationButton(row, original.Id, "Complete anyway");
                 Keyboard.Focus(confirm);
                 var confirmEscape = CreateKeyEvent(view, Key.Escape);
                 confirm.RaiseEvent(confirmEscape);
@@ -709,11 +812,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
                 var more = GetStepMoreButton(row, original.Steps[0].Id);
-                GetStepMenuItem(more, "删除步骤").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                GetStepMenuItem(more, "Delete step").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 more.ContextMenu!.IsOpen = false;
                 view.UpdateLayout();
 
-                var cancel = GetStepDeleteActionButton(row, original.Steps[0].Id, "取消删除步骤");
+                var cancel = GetStepDeleteActionButton(row, original.Steps[0].Id, "Cancel step deletion");
                 Keyboard.Focus(cancel);
                 var cancelEscape = CreateKeyEvent(view, Key.Escape);
                 cancel.RaiseEvent(cancelEscape);
@@ -724,10 +827,10 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Same(more, Keyboard.FocusedElement);
 
-                GetStepMenuItem(more, "删除步骤").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                GetStepMenuItem(more, "Delete step").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 more.ContextMenu!.IsOpen = false;
                 view.UpdateLayout();
-                var confirm = GetStepDeleteActionButton(row, original.Steps[0].Id, "确认删除步骤");
+                var confirm = GetStepDeleteActionButton(row, original.Steps[0].Id, "Confirm step deletion");
                 Keyboard.Focus(confirm);
                 var confirmEscape = CreateKeyEvent(view, Key.Escape);
                 confirm.RaiseEvent(confirmEscape);
@@ -761,9 +864,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
                 var more = GetStepMoreButton(row, original.Steps[0].Id);
-                GetStepMenuItem(more, "删除步骤")
+                GetStepMenuItem(more, "Delete step")
                     .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
-                GetStepDeleteActionButton(row, original.Steps[0].Id, "取消删除步骤")
+                GetStepDeleteActionButton(row, original.Steps[0].Id, "Cancel step deletion")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(0, repository.SaveCount);
 
@@ -799,7 +902,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
                 var middle = GetStepMoreButton(row, original.Steps[1].Id);
-                var up = GetStepMenuItem(middle, "上移步骤");
+                var up = GetStepMenuItem(middle, "Move step up");
                 Assert.True(up.IsEnabled);
                 up.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 middle.ContextMenu!.IsOpen = false;
@@ -812,9 +915,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.Equal(new[] { false, true, false }, saved.Steps.Select(step => step.IsCompleted));
 
                 var first = GetStepMoreButton(row, original.Steps[1].Id);
-                Assert.False(GetStepMenuItem(first, "上移步骤").IsEnabled);
+                Assert.False(GetStepMenuItem(first, "Move step up").IsEnabled);
                 var last = GetStepMoreButton(row, original.Steps[2].Id);
-                Assert.False(GetStepMenuItem(last, "下移步骤").IsEnabled);
+                Assert.False(GetStepMenuItem(last, "Move step down").IsEnabled);
             }
             finally { CloseView(view); }
         });
@@ -837,16 +940,16 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
                 var more = GetStepMoreButton(row, original.Steps[1].Id);
-                var up = GetStepMenuItem(more, "上移步骤");
+                var up = GetStepMenuItem(more, "Move step up");
                 Assert.True(up.IsEnabled);
                 up.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 Assert.Equal(new[] { original.Steps[0].Id, original.Steps[1].Id }, repository.Get(original.Id)!.Steps.Select(step => step.Id));
-                Assert.Contains("步骤保存失败", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Steps could not be saved", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
 
                 var activeRow = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), active.Id);
                 activeRow.IsExpanded = true;
                 view.UpdateLayout();
-                Assert.False(GetStepMenuItem(GetStepMoreButton(activeRow, active.Steps[1].Id), "上移步骤").IsEnabled);
+                Assert.False(GetStepMenuItem(GetStepMoreButton(activeRow, active.Steps[1].Id), "Move step up").IsEnabled);
             }
             finally { CloseView(view); }
         });
@@ -871,9 +974,9 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 view.UpdateLayout();
 
                 Assert.Equal(TodoStatus.Planned, repository.Get(original.Id)!.Status);
-                Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text.Contains("还有 1 步未完成", StringComparison.Ordinal));
+                Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text.Contains("Unfinished steps: 1", StringComparison.Ordinal));
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "取消完成" &&
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Cancel completion" &&
                     GetTaggedRowId(button.Tag) == original.Id)
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
@@ -901,7 +1004,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 GetParentCompletionControl(rows, original.Id).RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
                 view.UpdateLayout();
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "仍然完成" &&
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Complete anyway" &&
                     GetTaggedRowId(button.Tag) == original.Id)
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
@@ -934,16 +1037,16 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var title = Assert.IsType<TextBox>(view.FindName("TitleInput"));
                 var description = Assert.IsType<TextBox>(view.FindName("DescriptionInput"));
                 title.Text = "Keep me";
-                Click(view, "添加备注");
+                Click(view, "Add notes");
                 description.Text = "1. Keep every step";
 
-                Click(view, "保存");
+                Click(view, "Save");
 
                 Assert.Equal("Keep me", title.Text);
                 Assert.Equal("1. Keep every step", description.Text);
                 Assert.True(title.IsVisible);
                 Assert.Equal(Visibility.Visible, Assert.IsAssignableFrom<FrameworkElement>(view.FindName("OptionalDescriptionPanel")).Visibility);
-                Assert.Contains("输入已保留", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Your input is retained", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -959,10 +1062,10 @@ public sealed class TodoWorkspaceViewIntegrationTests
             try
             {
                 view.BeginAdd();
-                Click(view, "保存");
+                Click(view, "Save");
 
                 Assert.Empty(repository.Items);
-                Assert.Contains("请输入标题", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Enter a title", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -981,7 +1084,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var title = Assert.IsType<TextBox>(view.FindName("TitleInput"));
                 Assert.False(Assert.IsType<Button>(view.FindName("SaveButton")).IsEnabled);
                 title.Text = "Only once";
-                var save = FindVisualChildren<Button>(view).Single(button => Equals(button.Content, "保存"));
+                var save = FindVisualChildren<Button>(view).Single(button => Equals(button.Content, "Save"));
                 Assert.True(save.IsEnabled);
 
                 save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -990,7 +1093,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 Assert.Single(repository.Items);
                 Assert.Equal(1, repository.SaveCount);
-                Assert.Equal("已保存", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Equal("Saved", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
                 Assert.Equal(Visibility.Collapsed, Assert.IsAssignableFrom<FrameworkElement>(view.FindName("QuickAddEditor")).Visibility);
                 Assert.False(save.IsEnabled);
 
@@ -1001,7 +1104,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 Assert.Equal(2, repository.Items.Count);
                 Assert.Equal(2, repository.SaveCount);
-                Assert.Equal("已保存", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Equal("Saved", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -1020,7 +1123,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
             {
                 view.BeginAdd();
                 Assert.IsType<TextBox>(view.FindName("TitleInput")).Text = "Same title";
-                Click(view, "保存");
+                Click(view, "Save");
                 PumpDispatcher();
 
                 var created = repository.Items.Single(item => item.Id is not "same-1" and not "same-2");
@@ -1051,7 +1154,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 view.BeginAdd();
                 Assert.IsType<TextBox>(view.FindName("TitleInput")).Text = "Created at the end";
-                Click(view, "保存");
+                Click(view, "Save");
                 PumpDispatcher();
 
                 var created = repository.Items.Single(item => item.Title == "Created at the end");
@@ -1075,7 +1178,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
             {
                 view.BeginAdd();
                 Assert.IsType<TextBox>(view.FindName("TitleInput")).Text = "Queue target";
-                Click(view, "保存");
+                Click(view, "Save");
                 var created = repository.Items.Single(item => item.Title == "Queue target");
 
                 view.Refresh();
@@ -1100,18 +1203,18 @@ public sealed class TodoWorkspaceViewIntegrationTests
             {
                 view.FocusTodo("missing");
                 PumpDispatcher();
-                Assert.Contains("不存在", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("no longer exists", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
 
                 view.BeginAdd();
                 Assert.IsType<TextBox>(view.FindName("TitleInput")).Text = "Delete before focus";
-                Click(view, "保存");
+                Click(view, "Save");
                 var created = repository.Items.Single(item => item.Title == "Delete before focus");
                 repository.Items.RemoveAll(item => item.Id == created.Id);
                 view.Refresh();
                 PumpDispatcher();
 
                 Assert.DoesNotContain(FindVisualChildren<Border>(view), border => GetRowIsHighlighted(border.DataContext));
-                Assert.Contains("不存在", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("no longer exists", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -1137,7 +1240,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 view.BeginAdd();
                 title.Text = "Draft to cancel";
                 var description = Assert.IsType<TextBox>(view.FindName("DescriptionInput"));
-                Click(view, "添加备注");
+                Click(view, "Add notes");
                 description.Text = "Do not write";
                 view.RaiseEvent(CreateKeyEvent(view, Key.Escape));
 
@@ -1165,7 +1268,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var description = Assert.IsType<TextBox>(view.FindName("DescriptionInput"));
                 Assert.False(title.AcceptsReturn);
                 Assert.True(description.AcceptsReturn);
-                Click(view, "添加备注");
+                Click(view, "Add notes");
                 description.Focus();
 
                 var enter = CreateKeyEvent(view, Key.Enter);
@@ -1192,7 +1295,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var title = Assert.IsType<TextBox>(view.FindName("TitleInput"));
                 var description = Assert.IsType<TextBox>(view.FindName("DescriptionInput"));
                 title.Text = string.Concat(Enumerable.Repeat("中文任务", 80));
-                Click(view, "添加备注");
+                Click(view, "Add notes");
                 description.Text = string.Join("\n", Enumerable.Repeat("第一行备注，第二行仍可继续输入。", 20));
 
                 Assert.True(title.Text.Length > 100);
@@ -1242,10 +1345,10 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(rows, todo.Id);
                 GetParentCompletionControl(rows, todo.Id).RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
                 view.UpdateLayout();
-                Assert.Equal("仍然完成", FindConfirmationButton(row, "仍然完成").Content);
-                Assert.Equal("取消", FindConfirmationButton(row, "取消完成").Content);
-                Assert.Null(FindConfirmationButton(row, "仍然完成").ContentTemplate);
-                Assert.Null(FindConfirmationButton(row, "取消完成").ContentTemplate);
+                Assert.Equal("Complete anyway", FindConfirmationButton(row, "Complete anyway").Content);
+                Assert.Equal("Cancel", FindConfirmationButton(row, "Cancel completion").Content);
+                Assert.Null(FindConfirmationButton(row, "Complete anyway").ContentTemplate);
+                Assert.Null(FindConfirmationButton(row, "Cancel completion").ContentTemplate);
             }
             finally { CloseView(view); }
         });
@@ -1358,10 +1461,10 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 row.IsExpanded = true;
                 view.UpdateLayout();
 
-                Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text == "1 / 2 步");
+                Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text == "1 / 2 steps");
                 Assert.Equal(2, FindVisualChildren<CheckBox>(row).Count(IsStepCheckBox));
                 Assert.All(FindVisualChildren<Button>(row).Where(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) is "编辑步骤" or "更多步骤操作" or "添加步骤" or "编辑"),
+                    System.Windows.Automation.AutomationProperties.GetName(button) is "Edit step" or "More step actions" or "Add step" or "Edit"),
                     button => Assert.Equal(Visibility.Collapsed, button.Visibility));
                 Assert.True(GetParentCompletionControl(history, completed.Id).IsEnabled);
 
@@ -1373,11 +1476,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 reopened.IsExpanded = true;
                 view.UpdateLayout();
                 Assert.Contains(FindVisualChildren<Button>(reopened), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "编辑" && button.Visibility == Visibility.Visible);
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Edit" && button.Visibility == Visibility.Visible);
                 Assert.Contains(FindVisualChildren<Button>(reopened), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "添加步骤" && button.Visibility == Visibility.Visible);
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Add step" && button.Visibility == Visibility.Visible);
                 Assert.Contains(FindVisualChildren<Button>(reopened), button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "编辑步骤" && button.Visibility == Visibility.Visible);
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Edit step" && button.Visibility == Visibility.Visible);
             }
             finally { CloseView(view); }
         });
@@ -1403,8 +1506,8 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var stepItems = FindVisualChildren<ItemsControl>(row).Single(control => control.Name == "StepItems");
                 Assert.True(parentActions.TranslatePoint(new Point(0, 0), row).Y >= stepItems.TranslatePoint(new Point(0, stepItems.ActualHeight), row).Y);
                 Assert.Equal(Visibility.Collapsed, FindVisualChildren<TextBlock>(row).Single(text => text.Name == "DescriptionText").Visibility);
-                Assert.Equal("添加步骤", System.Windows.Automation.AutomationProperties.GetName(GetAddStepButton(row)));
-                Assert.Equal("添加任务", System.Windows.Automation.AutomationProperties.GetName(FindButton(view, "添加任务")));
+                Assert.Equal("Add step", System.Windows.Automation.AutomationProperties.GetName(GetAddStepButton(row)));
+                Assert.Equal("Remember something", System.Windows.Automation.AutomationProperties.GetName(FindButton(view, "Remember something")));
             }
             finally { CloseView(view); }
         });
@@ -1427,7 +1530,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 Assert.Single(rows.Items);
                 Assert.False(GetRowIsCompleted(rows.Items[0]));
                 Assert.Empty(Assert.IsType<ItemsControl>(view.FindName("CompletedItems")).Items);
-                Assert.Contains("保存失败", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Save failed", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -1478,15 +1581,15 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 view.UpdateLayout();
 
                 Assert.Contains(FindVisualChildren<TextBlock>(row), text => text.Text == "Readable details" && text.TextWrapping == TextWrapping.Wrap);
-                Assert.Contains(FindVisualChildren<Button>(row), button => System.Windows.Automation.AutomationProperties.GetName(button) == "复制任务说明");
-                Assert.Contains(FindVisualChildren<Button>(row), button => System.Windows.Automation.AutomationProperties.GetName(button) == "编辑");
-                var more = FindButton(row, "更多操作");
+                Assert.Contains(FindVisualChildren<Button>(row), button => System.Windows.Automation.AutomationProperties.GetName(button) == "Copy task details");
+                Assert.Contains(FindVisualChildren<Button>(row), button => System.Windows.Automation.AutomationProperties.GetName(button) == "Edit");
+                var more = FindButton(row, "More actions");
                 Assert.NotNull(more.ContextMenu);
                 more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 Assert.True(more.ContextMenu.IsOpen);
                 var delete = Assert.IsType<MenuItem>(Assert.Single(more.ContextMenu.Items));
-                Assert.Equal("删除待办", System.Windows.Automation.AutomationProperties.GetName(delete));
+                Assert.Equal("Delete remembered item", System.Windows.Automation.AutomationProperties.GetName(delete));
                 more.ContextMenu.IsOpen = false;
             }
             finally { CloseView(view); }
@@ -1514,7 +1617,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(rows, target.Id);
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
 
@@ -1525,7 +1628,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 editors[1].Text = "Updated remarks";
                 var offset = scroll.VerticalOffset;
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "保存编辑")
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Save edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal("Edited middle task", repository.Get(target.Id)!.Title);
@@ -1550,19 +1653,19 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), "edit-cancel");
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var editors = FindVisualChildren<TextBox>(row).Where(textBox => textBox.Tag is not null).ToArray();
                 editors[0].Text = "Discarded";
                 editors[1].Text = "Discarded remarks";
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "取消编辑")
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Cancel edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(0, repository.SaveCount);
                 Assert.Equal("Original", repository.Get("edit-cancel")!.Title);
-                Assert.Equal("已取消编辑", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Equal("Edit cancelled", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
                 Assert.Equal(Visibility.Collapsed,
                     FindVisualChildren<StackPanel>(row).Single(panel => panel.Name == "RowEditor").Visibility);
             }
@@ -1583,17 +1686,17 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), "edit-failure");
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var editors = FindVisualChildren<TextBox>(row).Where(textBox => textBox.Tag is not null).ToArray();
                 editors[0].Text = "Keep this draft";
                 editors[1].Text = "Keep these remarks";
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "保存编辑")
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Save edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-                Assert.Contains("保存失败", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Save failed", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
                 Assert.Equal("Keep this draft", editors[0].Text);
                 Assert.Equal("Keep these remarks", editors[1].Text);
                 Assert.Equal("Original", repository.Get("edit-failure")!.Title);
@@ -1616,7 +1719,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), original.Id);
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var editors = FindVisualChildren<TextBox>(row).Where(textBox => textBox.Tag is not null).ToArray();
@@ -1626,11 +1729,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 repository.Items[0] = external;
                 view.Refresh();
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "保存编辑")
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Save edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(external, repository.Get(original.Id));
-                Assert.Contains("变化或受保护", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("changed or is protected", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
                 Assert.Equal("Local draft", editors[0].Text);
             }
             finally { CloseView(view); }
@@ -1651,7 +1754,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), original.Id);
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var editors = FindVisualChildren<TextBox>(row).Where(textBox => textBox.Tag is not null).ToArray();
@@ -1660,11 +1763,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 repository.Items[0] = protectedTodo;
                 view.Refresh();
                 FindVisualChildren<Button>(row).Single(button =>
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "保存编辑")
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Save edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(protectedTodo, repository.Get(original.Id));
-                Assert.Contains("变化或受保护", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("changed or is protected", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
                 Assert.Equal("Must not overwrite", editors[0].Text);
             }
             finally { CloseView(view); }
@@ -1686,7 +1789,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var first = GetRowExpander(rows, "edit-one");
                 first.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(first, "编辑")
+                FindButton(first, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var editors = FindVisualChildren<TextBox>(first).Where(textBox => textBox.Tag is not null).ToArray();
@@ -1695,13 +1798,13 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var second = GetRowExpander(rows, "edit-two");
                 second.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(second, "编辑")
+                FindButton(second, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 view.BeginAdd();
 
                 Assert.Equal("Retained draft", editors[0].Text);
                 Assert.Equal(Visibility.Collapsed, Assert.IsAssignableFrom<FrameworkElement>(view.FindName("QuickAddEditor")).Visibility);
-                Assert.Contains("先保存或取消", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
+                Assert.Contains("Save or cancel", Assert.IsType<TextBlock>(view.FindName("StatusText")).Text);
             }
             finally { CloseView(view); }
         });
@@ -1720,11 +1823,11 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var row = GetRowExpander(Assert.IsType<ItemsControl>(view.FindName("ActiveItems")), "edit-long");
                 row.IsExpanded = true;
                 view.UpdateLayout();
-                FindButton(row, "编辑")
+                FindButton(row, "Edit")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 PumpDispatcher();
                 var description = FindVisualChildren<TextBox>(row).Single(textBox =>
-                    System.Windows.Automation.AutomationProperties.GetName(textBox) == "待办备注");
+                    System.Windows.Automation.AutomationProperties.GetName(textBox) == "Remembered item notes");
 
                 Assert.Equal(ScrollBarVisibility.Disabled, description.VerticalScrollBarVisibility);
                 Assert.Contains(FindVisualChildren<ScrollViewer>(view), scrollViewer => scrollViewer.VerticalScrollBarVisibility == ScrollBarVisibility.Auto);
@@ -1748,8 +1851,8 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
                 Assert.True(status.FontSize <= 14, $"feedback should be compact, actual font size: {status.FontSize}");
                 Assert.NotNull(undo.ContentTemplate);
-                Assert.Equal("撤销完成", ToolTipService.GetToolTip(undo));
-                Assert.Equal("撤销完成", System.Windows.Automation.AutomationProperties.GetName(undo));
+                Assert.Equal("Undo completion", ToolTipService.GetToolTip(undo));
+                Assert.Equal("Undo completion", System.Windows.Automation.AutomationProperties.GetName(undo));
             }
             finally { CloseView(view); }
         });
@@ -1772,7 +1875,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
                 var active = Assert.IsType<ItemsControl>(view.FindName("ActiveItems"));
                 var before = active.TransformToAncestor(scroll).Transform(new Point(0, 0)).Y;
                 var status = Assert.IsType<TextBlock>(view.FindName("StatusText"));
-                status.Text = "已完成";
+                status.Text = "Completed";
                 view.UpdateLayout();
                 var afterSuccess = active.TransformToAncestor(scroll).Transform(new Point(0, 0)).Y;
                 Assert.Equal(before, afterSuccess, precision: 1);
@@ -1863,12 +1966,12 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
     private static Button GetStepEditButton(Expander row, string id) =>
         FindVisualChildren<Button>(row).Single(button =>
-            System.Windows.Automation.AutomationProperties.GetName(button) == "编辑步骤" &&
+            System.Windows.Automation.AutomationProperties.GetName(button) == "Edit step" &&
             button.Tag?.GetType().GetProperty("Item")?.GetValue(button.Tag) is TodoStep step && step.Id == id);
 
     private static Button GetStepMoreButton(Expander row, string id) =>
         FindVisualChildren<Button>(row).Single(button =>
-            System.Windows.Automation.AutomationProperties.GetName(button) == "更多步骤操作" &&
+            System.Windows.Automation.AutomationProperties.GetName(button) == "More step actions" &&
             button.Tag?.GetType().GetProperty("Item")?.GetValue(button.Tag) is TodoStep step && step.Id == id);
 
     private static MenuItem GetStepMenuItem(Button more, string header)
@@ -1908,7 +2011,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
     private static Button GetAddStepButton(Expander row) =>
         FindVisualChildren<Button>(row).Single(button =>
-            System.Windows.Automation.AutomationProperties.GetName(button) == "添加步骤");
+            System.Windows.Automation.AutomationProperties.GetName(button) == "Add step");
 
     private static Button GetAddStepActionButton(Expander row, string name) =>
         FindVisualChildren<Button>(row).Single(button =>
@@ -1917,7 +2020,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
     private static TextBox GetNewStepTitleInput(Expander row) =>
         FindVisualChildren<TextBox>(row).Single(textBox =>
-            System.Windows.Automation.AutomationProperties.GetName(textBox) == "新步骤标题");
+            System.Windows.Automation.AutomationProperties.GetName(textBox) == "New step title");
 
     private static FrameworkElement GetNewStepEditor(Expander row) =>
         FindVisualChildren<StackPanel>(row).Single(panel =>
@@ -1925,7 +2028,7 @@ public sealed class TodoWorkspaceViewIntegrationTests
 
     private static TextBox GetStepTitleInput(Expander row, string id) =>
         FindVisualChildren<TextBox>(row).Single(textBox =>
-            System.Windows.Automation.AutomationProperties.GetName(textBox) == "步骤标题" &&
+            System.Windows.Automation.AutomationProperties.GetName(textBox) == "Step title" &&
             textBox.Tag?.GetType().GetProperty("Item")?.GetValue(textBox.Tag) is TodoStep step && step.Id == id);
 
     private static bool IsStepCheckBox(CheckBox checkBox) =>

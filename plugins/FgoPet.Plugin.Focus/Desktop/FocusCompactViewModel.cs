@@ -48,6 +48,8 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
         _activeServantId = servantId;
         OnPropertyChanged(nameof(ActiveServantId));
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(CanStartQuickFocus));
+        OnPropertyChanged(nameof(QuickStartDisabledReason));
         OnPropertyChanged(nameof(StartFocusDisabledReason));
     }
     /// <summary>Compact 计时面是否可见 —— 现算自权威源，不存镜像。</summary>
@@ -61,7 +63,7 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
 
     // Focus column: preset selection and custom integer fields
     [ObservableProperty]
-    private string _selectedPresetId = "builtin.25x4";
+    private string _selectedPresetId = "custom";
 
     [ObservableProperty]
     private string _customFocusMinutesText = "25";
@@ -70,7 +72,7 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
     private string _customBreakMinutesText = "5";
 
     [ObservableProperty]
-    private string _customCyclesText = "4";
+    private string _customCyclesText = "1";
 
     [ObservableProperty]
     private string _customFocusError = string.Empty;
@@ -87,10 +89,23 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
         || !string.IsNullOrEmpty(CustomBreakError)
         || !string.IsNullOrEmpty(CustomCyclesError);
 
-    public bool CanStartFocus =>
-        _focus is not null && !_disposed && !_stopping.IsCancellationRequested && !IsEditingCustomPreset
+    public bool CanStartQuickFocus =>
+        _focus is not null && !_disposed && !_stopping.IsCancellationRequested
         && Current.Session is { Status: FocusStatus.Idle or FocusStatus.Completed }
         && !string.IsNullOrEmpty(ActiveServantId);
+    public bool CanStartFocus => CanStartQuickFocus && !IsEditingCustomPreset;
+    public string? QuickStartDisabledReason => CanStartQuickFocus ? null : StartFocusDisabledReason;
+
+    public string FocusStateText => FocusStrings.Get(Current.Session.Status switch
+    {
+        FocusStatus.PausedFocus or FocusStatus.PausedBreak => "focus.paused",
+        FocusStatus.Breaking => "focus.breaking",
+        _ => "focus.running",
+    });
+    public string RemainingText => FocusStrings.Get("focus.remaining")
+        .Replace("{time}", FormattableString.Invariant($"{Current.Session.RemainingSeconds / 60:00}:{Current.Session.RemainingSeconds % 60:00}"), StringComparison.Ordinal);
+    public double RibbonRemainingPercent => 100 - ProgressPercent;
+    public string PauseResumeText => FocusStrings.Get(CanPause ? "focus.pause" : "focus.resume");
 
     /// <summary>Why "开始专注" is disabled, or null when it is enabled. Keeps any disabled primary action explainable.</summary>
     public string? StartFocusDisabledReason
@@ -100,31 +115,22 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
             var session = Current.Session;
             if (session is { Status: not FocusStatus.Idle and not FocusStatus.Completed })
             {
-                return $"当前专注处于 {DescribeFocusStatus(session.Status)}，请先恢复或退出后再开始新专注。";
+                return FocusStrings.Get("focus.alreadyActive").Replace("{state}", FocusStateText, StringComparison.Ordinal);
             }
 
             if (string.IsNullOrEmpty(ActiveServantId))
             {
-                return "请先在角色库导入并激活一个角色。";
+                return FocusStrings.Get("focus.chooseCharacter");
             }
 
             if (IsEditingCustomPreset)
             {
-                return "请先修正自定义专注/休息/轮次设置在允许范围内。";
+                return FocusStrings.Get("focus.invalidOptions");
             }
 
-            return null;
+            return _focus is null ? FocusStrings.Get("focus.unavailable") : null;
         }
     }
-
-    private static string DescribeFocusStatus(FocusStatus status) => status switch
-    {
-        FocusStatus.Focusing => "专注中",
-        FocusStatus.Breaking => "休息中",
-        FocusStatus.PausedFocus => "暂停（专注）",
-        FocusStatus.PausedBreak => "暂停（休息）",
-        _ => status.ToString(),
-    };
 
     public bool CanPause => Current.Session.Status == FocusStatus.Focusing || Current.Session.Status == FocusStatus.Breaking;
 
@@ -195,6 +201,17 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
         _focus.Start(preset, ActiveServantId);
     }
 
+    public void StartQuickFocus(int minutes)
+    {
+        if (minutes is not (10 or 25 or 50) || !CanOperate || IsActive) return;
+        SelectedPresetId = "custom";
+        CustomFocusMinutesText = minutes.ToString(CultureInfo.InvariantCulture);
+        CustomBreakMinutesText = "5";
+        CustomCyclesText = "1";
+        ValidateCustomFields();
+        StartFocus();
+    }
+
     public void PauseTimer() { if (CanOperate) _focus?.Pause(); }
 
     public void ResumeTimer() { if (CanOperate) _focus?.Resume(); }
@@ -229,7 +246,13 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
         var phaseSeconds = session.Phase == FocusPhase.Break ? session.BreakSeconds : session.FocusSeconds;
         var completedSeconds = Math.Max(session.PhaseElapsedSeconds, phaseSeconds - session.RemainingSeconds);
         ProgressPercent = phaseSeconds > 0 ? Math.Clamp(completedSeconds * 100.0 / phaseSeconds, 0, 100) : 0;
+        OnPropertyChanged(nameof(RibbonRemainingPercent));
+        OnPropertyChanged(nameof(FocusStateText));
+        OnPropertyChanged(nameof(RemainingText));
+        OnPropertyChanged(nameof(PauseResumeText));
         OnPropertyChanged(nameof(CanStartFocus));
+        OnPropertyChanged(nameof(CanStartQuickFocus));
+        OnPropertyChanged(nameof(QuickStartDisabledReason));
         OnPropertyChanged(nameof(StartFocusDisabledReason));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanResume));
@@ -282,11 +305,11 @@ public sealed partial class FocusCompactViewModel : ObservableObject, ICompactSu
     private void ValidateCustomFields()
     {
         CustomFocusError = TryParseBounded(CustomFocusMinutesText, 5, 180, out _)
-            ? string.Empty : "专注 5-180 分钟";
+            ? string.Empty : FocusStrings.Get("focus.durationRange");
         CustomBreakError = TryParseBounded(CustomBreakMinutesText, 1, 60, out _)
-            ? string.Empty : "休息 1-60 分钟";
+            ? string.Empty : FocusStrings.Get("focus.breakRange");
         CustomCyclesError = TryParseBounded(CustomCyclesText, 1, 12, out _)
-            ? string.Empty : "循环 1-12 次";
+            ? string.Empty : FocusStrings.Get("focus.cyclesRange");
         OnPropertyChanged(nameof(IsEditingCustomPreset));
         OnPropertyChanged(nameof(BlocksAutoCollapse));
         OnPropertyChanged(nameof(CanStartFocus));
