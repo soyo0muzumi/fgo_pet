@@ -108,14 +108,15 @@ public sealed class SettingsWebRootFactory
                     return result;
                 });
             host.Disposed += (_, _) => session.Dispose();
+            host.SetThemeVersion(1, MarginVisualResources.WebPalette);
             if (_theme is not null)
             {
                 var version = 1L;
                 EventHandler changed = (_, _) => host.SetThemeVersion(
-                    Interlocked.Increment(ref version), _theme.CaptureWebPalette());
+                    Interlocked.Increment(ref version), MarginVisualResources.WebPalette);
                 _theme.ThemeChanged += changed;
                 host.Disposed += (_, _) => _theme.ThemeChanged -= changed;
-                host.SetThemeVersion(version, _theme.CaptureWebPalette());
+                host.SetThemeVersion(version, MarginVisualResources.WebPalette);
             }
             return host;
         }

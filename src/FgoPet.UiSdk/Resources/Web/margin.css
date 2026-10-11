@@ -1,0 +1,37 @@
+/* Margin v5: frozen paper, type roles and reusable controls. */
+:root {
+  color-scheme: light;
+  --surface:#FBFAF8; --page:#FCFBF9; --paper:#FBFAF8; --paper-sunk:#F2F0EB; --paper-edge:#EDEAE4;
+  --text:#221F1B; --ink:#221F1B; --ink-2:#45403A; --muted:#6E6961; --faint:#9B958B;
+  --line:#E1DCD3; --rule:#E1DCD3; --rule-2:#CFC8BC;
+  --accent:#B2718B; --accent-soft:rgba(178,113,139,.14); --accent-line:rgba(178,113,139,.42);
+  --on-accent:#fff; --danger:#A85460; --ok:#5E7F63;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,"Microsoft YaHei UI","Noto Sans SC",sans-serif;
+  --voice:"Noto Serif SC","Source Han Serif SC","STSong","Yu Mincho",serif;
+  --num:"Cascadia Mono",Consolas,"Cascadia Code",monospace;
+  --shadow:0 18px 42px -20px rgba(24,20,16,.45),0 2px 7px rgba(24,20,16,.10);
+  font-family:var(--ui); font-size:14px;
+}
+body, button, input, textarea, select { font-family:var(--ui); }
+h1,h2,.role-name,.sidebar-heading { font-family:var(--voice); font-weight:400; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+button:disabled { cursor:default; opacity:.55; }
+.margin-select-native { position:absolute; width:1px!important; height:1px!important; opacity:0; pointer-events:none; }
+.margin-select-trigger {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; width:100%;
+  height:30px; padding:0 10px; border:1px solid var(--rule-2); border-radius:6px;
+  background:var(--paper); color:var(--ink); font:12.5px var(--ui); cursor:pointer;
+}
+.margin-select-trigger span:first-child { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.margin-select-trigger span:last-child { font-size:12px; }
+.margin-select-menu {
+  position:fixed; z-index:1000; margin:0; padding:4px; border:1px solid var(--rule-2);
+  border-radius:6px; background:var(--paper); box-shadow:var(--shadow); overflow:auto;
+}
+.margin-select-option { display:flex; justify-content:space-between; gap:12px; width:100%; padding:8px 10px;
+  border:0; border-radius:3px; background:none; color:var(--ink); text-align:left; font:13px var(--ui); }
+.margin-select-option[aria-selected="true"] { background:var(--accent-soft); }
+.margin-select-option:hover:not(:disabled) { background:var(--paper-sunk); }
+.back-arrow { font-size:1.45em; margin-right:2px; vertical-align:-.05em; }

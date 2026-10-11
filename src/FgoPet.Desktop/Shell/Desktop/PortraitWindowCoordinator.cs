@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -24,6 +25,18 @@ public sealed class PortraitWindowCoordinator : IDisposable
 {
     private const int WmNcHitTest = 0x0084;
     private const int WmDpiChanged = 0x02E0;
+    private const int WmHotkey = 0x0312;
+    private const int ChatHotkeyId = 0x4D47;
+    private bool _chatHotkeyRegistered;
+    private HwndSource? _shortcutSource;
+    public event Action? GeometryChanged;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint key);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(nint hwnd, int id);
     private const nint HtTransparent = -1;
     private const nint HtClient = 1;
 
@@ -94,6 +107,16 @@ public sealed class PortraitWindowCoordinator : IDisposable
         TryCenterInitialPortrait();
     }
 
+    internal void InitializeChatShortcut()
+    {
+        if (_shortcutSource is not null || _disposed) return;
+        _shortcutSource = new HwndSource(new HwndSourceParameters("FgoPet.Margin.ChatEntry")
+        { ParentWindow = new nint(-3), WindowStyle = 0, Width = 0, Height = 0 });
+        _shortcutSource.AddHook(OnWindowMessage);
+        _chatHotkeyRegistered = RegisterHotKey(_shortcutSource.Handle, ChatHotkeyId, 0x4003, 0x20);
+        if (!_chatHotkeyRegistered) System.Diagnostics.Trace.TraceWarning("MARGIN_CHAT_SHORTCUT_UNAVAILABLE");
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -101,6 +124,9 @@ public sealed class PortraitWindowCoordinator : IDisposable
         _controller.StateChanged -= OnControllerStateChanged;
         _window.AttachedPanel.PropertyChanged -= OnPanelPropertyChanged;
         _source?.RemoveHook(OnWindowMessage);
+        if (_chatHotkeyRegistered && _shortcutSource is not null) UnregisterHotKey(_shortcutSource.Handle, ChatHotkeyId);
+        _shortcutSource?.RemoveHook(OnWindowMessage);
+        _shortcutSource?.Dispose();
     }
 
     /// <summary>Current portrait pixel bounds on screen; used for dialogue placement.</summary>
@@ -110,9 +136,13 @@ public sealed class PortraitWindowCoordinator : IDisposable
         {
             var portrait = _window.PortraitScreenBounds;
             var dpi = IsValidDpi(_dpi) ? _dpi : new Dpi2(1.0, 1.0);
+            var offset = _window.PortraitHostOffset;
+            var origin = _source is not null
+                ? _window.PointToScreen(new Point(offset.X, offset.Y))
+                : new Point(portrait.X * dpi.X, portrait.Y * dpi.Y);
             return new DeviceRect(
-                (int)Math.Round(portrait.X * dpi.X),
-                (int)Math.Round(portrait.Y * dpi.Y),
+                (int)Math.Round(origin.X),
+                (int)Math.Round(origin.Y),
                 Math.Max(1, (int)Math.Round(portrait.Width * dpi.X)),
                 Math.Max(1, (int)Math.Round(portrait.Height * dpi.Y)));
         }
@@ -125,6 +155,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         var handle = new WindowInteropHelper(_window).Handle;
         _source = HwndSource.FromHwnd(handle);
         _source?.AddHook(OnWindowMessage);
+        InitializeChatShortcut();
         TryCenterInitialPortrait();
     }
 
@@ -132,7 +163,21 @@ public sealed class PortraitWindowCoordinator : IDisposable
     {
         switch (msg)
         {
+            case WmHotkey when wParam.ToInt32() == ChatHotkeyId:
+                _window.HandlePortraitClick();
+                handled = true;
+                break;
+            case 0x007E: // WM_DISPLAYCHANGE
+            case 0x001A: // WM_SETTINGCHANGE (including work area / taskbar)
+                _window.Dispatcher.BeginInvoke(new Action(ClampPortraitToWorkArea));
+                break;
             case WmNcHitTest:
+                var nativePoint = new Point((short)(lParam.ToInt64() & 0xFFFF), (short)((lParam.ToInt64() >> 16) & 0xFFFF));
+                if (_window.ManagementHitTest?.Invoke(nativePoint) == true)
+                {
+                    handled = true;
+                    return HtTransparent;
+                }
                 var state = _controller.CurrentFrame;
                 if (state is null)
                 {
@@ -167,6 +212,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         if (_controller.CurrentFrame is not null)
         {
             ArrangeAttachedPanel();
+            GeometryChanged?.Invoke();
         }
     }
 
@@ -222,12 +268,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
 
     internal void ClampPortraitToWorkArea()
     {
-        var portrait = _window.PortraitScreenBounds;
-        var device = new DeviceRect(
-            (int)Math.Round(portrait.X * _dpi.X),
-            (int)Math.Round(portrait.Y * _dpi.Y),
-            Math.Max(1, (int)Math.Round(portrait.Width * _dpi.X)),
-            Math.Max(1, (int)Math.Round(portrait.Height * _dpi.Y)));
+        var device = PortraitDeviceBounds;
         var monitor = SelectNearestMonitor(device, _screen.GetMonitors());
         if (monitor is null)
         {
@@ -237,6 +278,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         var clamped = ScreenLayout.ClampFullyVisible(device, monitor.WorkArea);
         _window.MovePortraitToDevice(new DevicePoint(clamped.X, clamped.Y), _dpi);
         ArrangeAttachedPanel();
+        GeometryChanged?.Invoke();
     }
 
     private static MonitorInfo? SelectNearestMonitor(DeviceRect portrait, IReadOnlyList<MonitorInfo> monitors) =>

@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const t = window.MarginSettingsI18n.t;
   const bridge = window.chrome && window.chrome.webview;
   const navigation = document.getElementById("settings-navigation");
   const search = document.getElementById("settings-search");
@@ -79,7 +80,7 @@
 
   function normalizedGroup(page) {
     const name = typeof page.group === "string" ? page.group.trim() : "";
-    return name || "其他";
+    return name || t("settings.other");
   }
 
   function matches(page, query) {
@@ -135,12 +136,12 @@
         item.type = "button";
         item.className = "navigation-item";
         item.dataset.pageId = String(page.id ?? "");
-        item.textContent = typeof page.title === "string" ? page.title : "未命名页面";
+        item.textContent = typeof page.title === "string" ? page.title : t("settings.untitled");
         const available = page.available === true && typeof page.module === "string" && modulePathPattern.test(page.module);
         item.disabled = !available;
         if (!available) {
           item.classList.add("is-unavailable");
-          const unavailableLabel = page.id === "AgentConnection" ? "暂未开放" : "暂不可用";
+          const unavailableLabel = page.id === "AgentConnection" ? t("settings.notAvailableYet") : t("settings.unavailable");
           item.title = unavailableLabel;
           item.setAttribute("aria-label", `${item.textContent}，${unavailableLabel}`);
           const marker = document.createElement("span");
@@ -160,7 +161,7 @@
     if (visibleCount === 0) {
       const empty = document.createElement("p");
       empty.className = "navigation-empty";
-      empty.textContent = "没有匹配的设置";
+      empty.textContent = t("settings.noMatches");
       navigation.append(empty);
     }
   }
@@ -181,7 +182,7 @@
           if (!closed && generation === routeGeneration && owner === activeCleanup) setStatus("");
         } catch {
           if (!closed && generation === routeGeneration && owner === activeCleanup)
-            setStatus("此项目暂时无法打开。", true);
+            setStatus(t("settings.itemUnavailable"), true);
         }
       }
       return;
@@ -190,9 +191,9 @@
     const restoreNavigationFocus = navigation.contains(document.activeElement);
     const generation = ++routeGeneration;
     cleanupActivePage();
-    title.textContent = typeof page.title === "string" ? page.title : "设置";
+    title.textContent = typeof page.title === "string" ? page.title : t("settings.title");
     description.textContent = typeof page.description === "string" ? page.description : "";
-    setStatus("正在打开页面…");
+    setStatus(t("settings.opening"));
     renderNavigation();
 
     try {
@@ -250,8 +251,8 @@
       if (closed || generation !== routeGeneration) return;
       cleanupActivePage();
       setStatus(error && error.message === "SETTINGS_PAGE_UNAVAILABLE"
-        ? "此设置页面暂不可用。"
-        : "页面打开失败，请切换页面后重试。", true);
+        ? t("settings.pageUnavailable")
+        : t("settings.openFailed"), true);
       renderNavigation();
       if (restoreNavigationFocus)
         Array.from(navigation.querySelectorAll(".navigation-item"))
@@ -269,8 +270,8 @@
   }
 
   if (!bridge) {
-    navigation.textContent = "此页面需要在 FGO Pet 中打开。";
-    setStatus("设置宿主不可用。", true);
+    navigation.textContent = t("settings.openInApp");
+    setStatus(t("settings.hostUnavailable"), true);
     search.disabled = true;
     return;
   }
@@ -331,10 +332,10 @@
         .sort((left, right) => (Number(left.order) || 0) - (Number(right.order) || 0)
           || String(left.title || "").localeCompare(String(right.title || ""), "zh-CN"))[0];
     if (initial) void navigateTo(initial, requestedHostItemId);
-    else setStatus("暂无可用的设置页面。", true);
+    else setStatus(t("settings.noPages"), true);
   }).catch(() => {
     if (closed) return;
     navigation.replaceChildren();
-    setStatus("设置目录读取失败，请重试。", true);
+    setStatus(t("settings.catalogFailed"), true);
   });
 })();

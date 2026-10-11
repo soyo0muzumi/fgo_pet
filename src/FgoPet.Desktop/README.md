@@ -28,6 +28,8 @@ Use `tests/FgoPet.Windows.Tests` for shell and lifecycle integration, `tests/Fgo
 
 ## Chat window
 
+The character click, contextual Chat action, tray Chat action and Ctrl+Alt+Space route to the same window. Closing hides it; reopening restores a minimized window and keeps its Web surface, draft and existing pending state. Character visibility is independent of Chat. The shell uses monitor work areas, a 16 DIP gap and margins, side flipping and physical HWND placement; management surfaces take input priority over an overlapping character.
+
 `DialogueWindow` hosts one Dialogue-owned Chat Web surface, consumes its published session factory, and retains the original shared conversation/window view models. `ChatWebSurfaceFactory` owns the isolated WebView profile, trusted origin, finite command policy and theme subscription. `ChatWebHostActions` maps permitted metadata and actions to existing native owners; workspace navigation opens a separate catalog-owned window and carries the actual workspace/item identity.
 
 Closing normally hides. Focus loss does not hide, hiding stops speech but does not stop generation, and real disposal detaches presentation subscriptions without disposing the shared conversation. Reopening from hidden places the window near the current portrait and clamps its actual dimensions to the work area; invoking an already-visible window only activates it. Size/expansion stays in the current process, and dialogue position is no longer persisted.

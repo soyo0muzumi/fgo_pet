@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using FgoPet.UiSdk;
 
 namespace FgoPet.App.Tray;
 
@@ -21,11 +22,12 @@ public sealed class TrayService : IDisposable
         };
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
-        menu.Items.Add("显示/隐藏", null, (_, _) => ShowHideRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("设置", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("打开角色包目录", null, (_, _) => OpenPackFolderRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add(MarginStrings.Get("entry.chat"), null, (_, _) => ChatRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add(MarginStrings.Get("entry.restore"), null, (_, _) => ShowHideRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add(MarginStrings.Get("entry.settings"), null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add(MarginStrings.Get("entry.packFolder"), null, (_, _) => OpenPackFolderRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add(MarginStrings.Get("entry.exit"), null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
         _icon.ContextMenuStrip = menu;
         _icon.DoubleClick += (_, _) => HandleDoubleClick();
     }
@@ -33,6 +35,7 @@ public sealed class TrayService : IDisposable
     internal System.Windows.Forms.ContextMenuStrip Menu => (System.Windows.Forms.ContextMenuStrip)_icon.ContextMenuStrip!;
 
     public event EventHandler? ShowHideRequested;
+    public event EventHandler? ChatRequested;
 
     public event EventHandler? RestoreRequested;
 

@@ -28,6 +28,34 @@ public sealed class ConversationOrchestratorTests : IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-phase3-orchestrator-{Guid.NewGuid():N}.db");
 
     [Fact]
+    public async Task Small_talk_and_followup_system_question_reach_normal_reply_with_existing_history()
+    {
+        var seed = CreateOrchestrator(new FakeProvider([new ChatStreamChunk("收到", IsComplete: true)]));
+        await seed.SendAsync("800100", "闲聊测试", default);
+        seed.StartNewConversation("800100");
+        await seed.SendAsync("800100", "界面验收测试", default);
+        seed.StartNewConversation("800100");
+
+        var auxiliary = new FakeProvider([new ChatStreamChunk(
+            """{"queries":[],"selected":[0,1],"ambiguous":true,"confidence":[0.99,0.99]}""", IsComplete: true, FinishReason: "stop")]);
+        var settings = new FakeSettings();
+        var recall = new ConversationRecallService(new SqliteConversationRecallRepository(TestRuntimeDatabase.Create(_databasePath)),
+            new FakeProviderResolver(auxiliary), settings, new ModelContextResolver(_ => auxiliary), new RequestTokenMeter());
+        var provider = new FakeProvider([new ChatStreamChunk("正常回应当前问题", IsComplete: true)]);
+        var orchestrator = CreateOrchestrator(provider, recall: recall);
+
+        foreach (var text in new[] { "今天好累呀", "为什么每次开头你都会问我是哪个对话呢？" })
+        {
+            var result = await orchestrator.SendAsync("800100", text, default);
+            Assert.Equal(ConversationSendStatus.Completed, result.Status);
+            var messages = CreateConversationRepository().LoadMessages(result.ConversationId, "800100");
+            Assert.Equal("正常回应当前问题", messages[^1].Text);
+            Assert.Contains(text, provider.LastRequest!.Messages[^1].Text);
+            Assert.Null(auxiliary.LastRequest);
+        }
+    }
+
+    [Fact]
     public async Task Validated_emotion_is_published_only_with_the_completed_reply()
     {
         var provider = new FakeProvider([new ChatStreamChunk("{\"text\":\"很好！\",\"emotion\":\"happy\"}", IsComplete: true)]);
@@ -947,7 +975,8 @@ public sealed class ConversationOrchestratorTests : IDisposable
         IConversationContentResolver? contentResolver = null,
         IMemorySettingsStore? memorySettings = null,
         IConversationMemory? conversationMemory = null,
-        ITodoDraftWorkflow? todoDrafts = null)
+        ITodoDraftWorkflow? todoDrafts = null,
+        IConversationRecall? recall = null)
     {
         var binding = new ContentBinding(
             new ContentContextKey("800100", "test-persona", "1.0.0", "casual", "2.1.0", "3.0.0"),
@@ -968,7 +997,7 @@ public sealed class ConversationOrchestratorTests : IDisposable
         return new ConversationOrchestrator(new FakeProviderResolver(provider),
             contentResolver ?? new FakeContentResolver(binding), conversations,
             new PromptComposer(), TimeProvider.System, settings: settings,
-            capabilities: FgoPet.Testing.ActivatedCapabilities.Create(plugins.ToArray()));
+            capabilities: FgoPet.Testing.ActivatedCapabilities.Create(plugins.ToArray()), recall: recall);
     }
 
     [Fact]

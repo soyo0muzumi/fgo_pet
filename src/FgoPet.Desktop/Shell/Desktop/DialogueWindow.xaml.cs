@@ -26,6 +26,7 @@ public partial class DialogueWindow : Window, IDisposable
     private WebView2SurfaceHost? _surface;
     private bool _disposed;
     internal Action? PresentationRequestedHandler { get; set; }
+    internal Action? LayoutRequestedHandler { get; set; }
     public event Action? Hidden;
 
     public DialogueWindow(DialogueWindowViewModel viewModel,
@@ -61,8 +62,8 @@ public partial class DialogueWindow : Window, IDisposable
     private void ShowFailure()
     {
         var stack = new StackPanel { Margin = new Thickness(24), VerticalAlignment = VerticalAlignment.Center };
-        stack.Children.Add(new TextBlock { Text = "聊天页面暂时无法打开。", TextWrapping = TextWrapping.Wrap });
-        var retry = new Button { Content = "重试", Margin = new Thickness(0, 16, 0, 0), IsEnabled = _factory is not null };
+        stack.Children.Add(new TextBlock { Text = MarginStrings.Get("chat.unavailable"), TextWrapping = TextWrapping.Wrap });
+        var retry = new Button { Content = MarginStrings.Get("action.retry"), Margin = new Thickness(0, 16, 0, 0), IsEnabled = _factory is not null };
         retry.Click += async (_, _) => { CreateSurface(); await InitializeSurfaceAsync(); };
         stack.Children.Add(retry); ChatSurface.Content = stack;
     }
@@ -80,7 +81,13 @@ public partial class DialogueWindow : Window, IDisposable
     {
         if (_disposed) return;
         if (PresentationRequestedHandler is { } present) present();
-        else { Show(); Activate(); }
+        else { RestorePresentation(); }
+    }
+    internal void RestorePresentation()
+    {
+        if (_disposed) return;
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Show(); Activate();
     }
     private void OnNavigationRequested(object? sender, MainNavigationTarget target)
     {
@@ -140,7 +147,8 @@ public partial class DialogueWindow : Window, IDisposable
     private void OnShutdown(object? sender, EventArgs args) => DisposePresentation();
     internal void SetExpanded(bool expanded)
     {
-        Width = expanded ? 940 : 480; Height = expanded ? 720 : 620;
+        Width = expanded ? 824 : 376; Height = expanded ? 740 : 500;
+        if (LayoutRequestedHandler is { } place) { place(); return; }
         var area = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).WorkingArea;
         var dpi = VisualTreeHelper.GetDpi(this);
         var width = Math.Min(Width, area.Width / dpi.DpiScaleX);
@@ -160,7 +168,7 @@ public partial class DialogueWindow : Window, IDisposable
         _viewModel.Conversation.PropertyChanged -= OnConversationChanged;
         Loaded -= OnLoaded; Closing -= OnClosing; IsVisibleChanged -= OnVisibleChanged;
         Activated -= OnActivated; Deactivated -= OnDeactivated; Closed -= OnClosed;
-        Dispatcher.ShutdownStarted -= OnShutdown; PresentationRequestedHandler = null;
+        Dispatcher.ShutdownStarted -= OnShutdown; PresentationRequestedHandler = null; LayoutRequestedHandler = null;
         _surface?.Dispose(); _actions.Dispose();
     }
     public void Dispose() { DisposePresentation(); if (IsLoaded && !Dispatcher.HasShutdownStarted) Close(); }

@@ -1,5 +1,7 @@
 # UI SDK
 
+`MarginVisualResources`, `MarginStrings` and `Resources/Web/` own the frozen Margin v5 paper palette, typography roles, native entry strings and generic select presentation. Chat and Settings consume these through the existing local asset and theme-event paths. Margin uses the frozen light paper palette; other surfaces retain their selected ThemeService palette. The select adapter leaves values, validation and change commands with the page owner.
+
 WPF workspace, settings, compact and portrait content contracts, shared controls and theme services. Owners construct content lazily; the shell owns windows, navigation, placement and container lifetime. Factories capture feature dependencies at composition and never receive the root service provider.
 
 `ICompactSurface` supplies generic activity and auto-collapse blocking; the content receives expansion through `ICompactSurfaceView`. The Focus owner implements its timer and editing inside that content. Portrait hosting consumes an immutable `IPortraitFrame` from `IPortraitSurface`, so geometry, rendering and hit testing use one published renderer state without exposing bitmap snapshots or native SDK details to the shell.

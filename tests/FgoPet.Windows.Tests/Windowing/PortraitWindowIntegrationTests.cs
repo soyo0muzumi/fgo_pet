@@ -187,6 +187,43 @@ public sealed class PortraitWindowIntegrationTests
         public bool IsHit(Point portraitLocalPoint) => true;
         public void ApplyDpi(Dpi2 dpi) { }
     }
+
+    [Fact]
+    public void User_hidden_character_stays_hidden_on_renderer_updates_and_tray_restores_same_window()
+    {
+        StaRun(() =>
+        {
+            var surface = new SamplePortraitSurface();
+            var portrait = new PortraitWindow();
+            using var coordinator = new PortraitWindowCoordinator(portrait,surface,new MemoryPlacementStore(),new FixedScreenService());
+            using var tray = new TrayService();
+            using var ui = new DesktopAppUi(tray,null!,new FgoPet.App.Settings.SettingsViewModel(),portrait,coordinator,
+                new WindowLifetime(),null!,surface);
+            ui.InitializeTray();
+            surface.RaiseChanged(); StaRunner.Pump();
+            Assert.True(portrait.IsVisible);
+            var view = portrait.PortraitContent;
+            ui.PortraitMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == MarginStrings.Get("entry.hide"))
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            surface.RaiseChanged(); StaRunner.Pump();
+            Assert.False(portrait.IsVisible);
+            tray.HandleDoubleClick();
+            Assert.True(portrait.IsVisible);
+            Assert.Same(view,portrait.PortraitContent);
+            Assert.Equal(1,surface.ViewsCreated);
+            portrait.Close();
+        });
+    }
+
+    private sealed class WindowLifetime : FgoPet.App.Lifetime.IAppLifetime
+    {
+        private Window? _window;
+        public bool IsPetVisible => _window?.IsVisible == true;
+        public void AttachPetWindow(Window window) => _window=window;
+        public void ShowOrHidePet() { if (_window?.IsVisible == true) _window.Hide(); else _window?.Show(); }
+        public void RequestNormalExit() { }
+        public void Shutdown(int exitCode) { }
+    }
     [Fact]
     public void PortraitWindow_mounts_panel_and_removes_it_from_layout_when_collapsed()
     {
@@ -756,16 +793,18 @@ public sealed class PortraitWindowIntegrationTests
 
                 coordinator.InitializePlacement();
 
-                var portrait = window.PortraitScreenBounds;
-                Assert.Equal(925, portrait.X, precision: 4);
-                Assert.Equal(450, portrait.Y, precision: 4);
+                // FixedScreenService is in device pixels, while this STA window uses
+                // the real desktop DPI. Validate placement in that same physical space.
+                var portrait = coordinator.PortraitDeviceBounds;
+                Assert.Equal(925, portrait.X);
+                Assert.Equal(450, portrait.Y);
 
                 window.MovePortraitToDevice(new DevicePoint(120, 180), new Dpi2(1, 1));
                 coordinator.InitializePlacement();
 
-                portrait = window.PortraitScreenBounds;
-                Assert.Equal(120, portrait.X, precision: 4);
-                Assert.Equal(180, portrait.Y, precision: 4);
+                portrait = coordinator.PortraitDeviceBounds;
+                Assert.Equal(120, portrait.X);
+                Assert.Equal(180, portrait.Y);
             }
             finally
             {

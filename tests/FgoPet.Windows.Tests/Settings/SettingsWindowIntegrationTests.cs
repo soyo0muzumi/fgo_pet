@@ -58,11 +58,11 @@ public sealed class SettingsWindowIntegrationTests
 
             var texts = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
                 .Select(item => item.Text).ToArray();
-            Assert.Contains("设置", texts);
+            Assert.Contains(MarginStrings.Get("entry.settings"), texts);
             Assert.DoesNotContain(texts, text => text is "模型连接" or "从者库与设置");
 
             var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                .Single(item => item.Text == "设置");
+                .Single(item => item.Text == MarginStrings.Get("entry.settings"));
             settingsItem.PerformClick();
 
             Assert.True(requested);
@@ -95,11 +95,11 @@ public sealed class SettingsWindowIntegrationTests
                     .Where(item => item.Header is string)
                     .Select(item => (string)item.Header)
                     .ToArray();
-                Assert.Contains("设置", headers);
+                Assert.Contains(MarginStrings.Get("entry.settings"), headers);
                 Assert.DoesNotContain(headers, text => text is "模型连接" or "从者库与设置");
 
                 var settingsItem = ui.PortraitMenu.Items.OfType<MenuItem>()
-                    .Single(item => (string)item.Header == "设置");
+                    .Single(item => (string)item.Header == MarginStrings.Get("entry.settings"));
                 settingsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
                 Assert.True(window.IsVisible);
@@ -138,7 +138,7 @@ public sealed class SettingsWindowIntegrationTests
             try
             {
                 var settingsItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "设置");
+                    .Single(item => item.Text == MarginStrings.Get("entry.settings"));
                 settingsItem.PerformClick();
 
                 Assert.True(window.IsVisible);
@@ -178,7 +178,7 @@ public sealed class SettingsWindowIntegrationTests
             {
                 ui.InitializeTray();
                 var showHideItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏");
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"));
 
                 showHideItem.PerformClick();
                 StaRunner.Pump(portrait.Dispatcher);
@@ -210,7 +210,7 @@ public sealed class SettingsWindowIntegrationTests
             {
                 ui.InitializeTray();
                 var showHideItem = tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏");
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"));
 
                 var callback = Task.Run(showHideItem.PerformClick);
                 while (!callback.IsCompleted)
@@ -249,7 +249,7 @@ public sealed class SettingsWindowIntegrationTests
                 ui.InitializeTray();
 
                 tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏")
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"))
                     .PerformClick();
 
                 Assert.True(portrait.IsVisible);
@@ -286,7 +286,7 @@ public sealed class SettingsWindowIntegrationTests
                 ui.InitializeTray();
 
                 tray.Menu.Items.Cast<System.Windows.Forms.ToolStripItem>()
-                    .Single(item => item.Text == "显示/隐藏")
+                    .Single(item => item.Text == MarginStrings.Get("entry.restore"))
                     .PerformClick();
                 StaRunner.Pump(portrait.Dispatcher);
 

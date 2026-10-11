@@ -41,6 +41,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private readonly ContextMenu _portraitMenu;
     private bool _initialized;
     private Task? _portraitRecovery;
+    private bool _portraitHiddenByUser;
 
     /// <summary>Compatibility overload for legacy tests; production composition uses the shared DialogueWindow.</summary>
     public DesktopAppUi(
@@ -118,6 +119,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             ?? (controller is null ? ((_, _) => Task.CompletedTask) : controller.ActivateAsync);
         _characterSettings = characterSettings;
         _portraitMenu = CreatePortraitMenu();
+        if (portrait is not null) portrait.ChatRequested += ShowDialogueWindow;
+        _tray.ChatRequested += OnTrayChatRequested;
         _tray.ShowHideRequested += OnTrayShowHideRequested;
         _tray.RestoreRequested += OnTrayRestoreRequested;
         _tray.SettingsRequested += (_, _) => ShowSettings();
@@ -130,6 +133,8 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         if (_dialogueWindow is not null && _dialogue is not null)
         {
             _dialogueWindow.PresentationRequestedHandler = ShowDialogueWindow;
+            if (dialoguePlacement is not null && coordinator is not null)
+                _dialogueWindow.LayoutRequestedHandler = OnGeometryChanged;
             _dialogue.SettingsRequested += OnDialogueSettingsRequested;
         }
     }
@@ -139,8 +144,21 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         if (_initialized) return;
         _initialized = true;
         _lifetime.AttachPetWindow(_portrait);
+        _coordinator.InitializeChatShortcut();
         _portrait.ContextMenu = _portraitMenu;
         _controller.StateChanged += OnPortraitStateChanged;
+        _portrait.ManagementHitTest = IsManagementHit;
+        _coordinator.GeometryChanged += OnGeometryChanged;
+        if (_dialogueWindow is not null)
+        {
+            _dialogueWindow.IsVisibleChanged += OnManagementVisibilityChanged;
+            _dialogueWindow.StateChanged += OnManagementStateChanged;
+        }
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.IsVisibleChanged += OnManagementVisibilityChanged;
+            _settingsWindow.StateChanged += OnManagementStateChanged;
+        }
     }
 
     public void ShowLibrary(string? offeredPackPath = null)
@@ -170,20 +188,16 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             _conversation.SetActiveServant(_attachedPanel.ActiveServantId);
         }
 
-        if (_dialogueWindow.Visibility == Visibility.Visible)
+        if (_dialogueWindow.IsVisible && _dialogueWindow.WindowState != WindowState.Minimized)
         {
             _dialogueWindow.Activate();
             return;
         }
 
-        if (_dialogueWindow.Owner is null && _portrait?.IsLoaded == true)
-        {
-            _dialogueWindow.Owner = _portrait;
-        }
-
-        _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
-        _dialogueWindow.Show();
-        _dialogueWindow.Activate();
+        // Independent native windows keep Chat restorable when the character is hidden.
+        if (_coordinator is not null) _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+        _dialogueWindow.RestorePresentation();
+        UpdateManagementPriority();
     }
 
     public void ShowSettings(SettingsSection? section = null)
@@ -203,12 +217,16 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
                 _settingsWindow.WindowState = WindowState.Normal;
             }
 
+            if (_coordinator is not null) _dialoguePlacement?.ApplyOnOpen(_settingsWindow, _coordinator.PortraitDeviceBounds);
+            UpdateManagementPriority();
             _settingsWindow.Activate();
             return;
         }
 
+        if (_coordinator is not null) _dialoguePlacement?.ApplyOnOpen(_settingsWindow, _coordinator.PortraitDeviceBounds);
         _settingsWindow.Show();
         _settingsWindow.Activate();
+        UpdateManagementPriority();
     }
 
     public ContextMenu PortraitMenu => _portraitMenu;
@@ -237,13 +255,31 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     public void Dispose()
     {
+        if (_portrait is not null) _portrait.ChatRequested -= ShowDialogueWindow;
+        _tray.ChatRequested -= OnTrayChatRequested;
+        if (_portrait is not null) _portrait.ManagementHitTest = null;
+        if (_coordinator is not null) _coordinator.GeometryChanged -= OnGeometryChanged;
+        if (_dialogueWindow is not null)
+        {
+            _dialogueWindow.IsVisibleChanged -= OnManagementVisibilityChanged;
+            _dialogueWindow.StateChanged -= OnManagementStateChanged;
+        }
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.IsVisibleChanged -= OnManagementVisibilityChanged;
+            _settingsWindow.StateChanged -= OnManagementStateChanged;
+        }
         _tray.ShowHideRequested -= OnTrayShowHideRequested;
         _tray.RestoreRequested -= OnTrayRestoreRequested;
-        _controller.StateChanged -= OnPortraitStateChanged;
+        if (_controller is not null) _controller.StateChanged -= OnPortraitStateChanged;
         if (_dialogue is not null)
         {
             _dialogue.SettingsRequested -= OnDialogueSettingsRequested;
-            if (_dialogueWindow is not null) _dialogueWindow.PresentationRequestedHandler = null;
+            if (_dialogueWindow is not null)
+            {
+                _dialogueWindow.PresentationRequestedHandler = null;
+                _dialogueWindow.LayoutRequestedHandler = null;
+            }
         }
         if (_attachedPanel is not null)
         {
@@ -260,11 +296,18 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     private ContextMenu CreatePortraitMenu()
     {
-        var menu = new ContextMenu();
-        menu.Items.Add(Item("设置", (_, _) => ShowSettings()));
-        menu.Items.Add(Item("隐藏", (_, _) => _lifetime.ShowOrHidePet()));
+        var menu = new ContextMenu
+        {
+            MaxWidth = 268, MaxHeight = 430,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 250, 248)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 31, 27)),
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 13,
+        };
+        menu.Items.Add(Item(MarginStrings.Get("entry.chat"), (_, _) => ShowDialogueWindow()));
+        menu.Items.Add(Item(MarginStrings.Get("entry.settings"), (_, _) => ShowSettings()));
+        menu.Items.Add(Item(MarginStrings.Get("entry.hide"), (_, _) => ToggleOwnedPortrait()));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("退出", (_, _) => Exit()));
+        menu.Items.Add(Item(MarginStrings.Get("entry.exit"), (_, _) => Exit()));
         return menu;
     }
 
@@ -284,7 +327,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private void OnPortraitStateChanged(object? sender, EventArgs e) =>
         _portrait.Dispatcher.BeginInvoke(() =>
         {
-            if (!_portrait.IsVisible)
+            if (!_portrait.IsVisible && !_portraitHiddenByUser)
             {
                 ShowPortrait();
             }
@@ -292,10 +335,32 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
 
     private void OnTrayRestoreRequested(object? sender, EventArgs e)
     {
-        if (!_lifetime.IsPetVisible)
-        {
-            _lifetime.ShowOrHidePet();
-        }
+        if (!_portrait.IsVisible) ToggleOwnedPortrait();
+        ShowDialogueWindow();
+    }
+
+    private void OnTrayChatRequested(object? sender, EventArgs e) => ShowDialogueWindow();
+
+    private void UpdateManagementPriority()
+    {
+        if (_portrait is null) return;
+        if (_dialogueWindow is not null) _dialogueWindow.Topmost = _portrait.Topmost;
+        if (_settingsWindow is not null) _settingsWindow.Topmost = _portrait.Topmost;
+    }
+
+    private void OnManagementVisibilityChanged(object sender, DependencyPropertyChangedEventArgs args) => UpdateManagementPriority();
+    private void OnManagementStateChanged(object? sender, EventArgs args) => UpdateManagementPriority();
+    private bool IsManagementHit(Point screenPoint) => Contains(_dialogueWindow, screenPoint) || Contains(_settingsWindow, screenPoint);
+    private static bool Contains(Window? window, Point screenPoint)
+    {
+        return TransientSurfacePlacement.ContainsScreenPoint(window, screenPoint);
+    }
+    private void OnGeometryChanged()
+    {
+        if (_dialogueWindow?.IsVisible == true && _dialogueWindow.WindowState != WindowState.Minimized)
+            _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+        if (_settingsWindow?.IsVisible == true && _settingsWindow.WindowState != WindowState.Minimized)
+            _dialoguePlacement?.ApplyOnOpen(_settingsWindow, _coordinator.PortraitDeviceBounds);
     }
 
     private void OnTrayShowHideRequested(object? sender, EventArgs e)
@@ -313,10 +378,12 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         if (_portrait.IsVisible)
         {
+            _portraitHiddenByUser = true;
             _portrait.Hide();
             return;
         }
 
+        _portraitHiddenByUser = false;
         if (_controller is null || _controller.CurrentFrame is not null || _characterSettings is null)
         {
             ShowPortrait();

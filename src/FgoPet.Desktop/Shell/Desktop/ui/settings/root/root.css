@@ -8,7 +8,7 @@
   --accent: #7050b8;
   --on-accent: #ffffff;
   --danger: #b44c5d;
-  --sidebar-width: 190px;
+  --sidebar-width: 212px;
   font: 14px "Segoe UI", "Microsoft YaHei UI", sans-serif;
   background: var(--surface);
   color: var(--text);
@@ -29,7 +29,7 @@ button:focus-visible, input:focus-visible, h1:focus-visible { outline: 2px solid
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
 }
 body.is-preview .settings-layout { height: auto; min-height: 0; flex: 1; }
 
@@ -117,7 +117,7 @@ body.is-preview .settings-layout { height: auto; min-height: 0; flex: 1; }
 .profile-button:disabled { opacity: .55; cursor: default; }
 .profile-button--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 
-@media (max-width: 560px) {
+@media (max-width: 650px) {
   :root { font-size: 13px; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .settings-sidebar {
@@ -152,3 +152,14 @@ body.is-preview .settings-layout { height: auto; min-height: 0; flex: 1; }
   .profile-actions { justify-content: flex-start; gap: 6px; }
   .profile-button { padding-right: 9px; padding-left: 9px; font-size: 12px; }
 }
+
+/* Margin styles only; navigation/catalog ownership is unchanged in batch one. */
+.settings-layout,.settings-main { background:var(--page); }
+.settings-sidebar { background:#F4F2EE; }
+.sidebar-heading,.page-heading h1 { font-family:var(--voice); font-weight:400; }
+.navigation-item { border-radius:6px; border:1px solid transparent; }
+.navigation-item[aria-current="page"] { background:var(--paper); border-color:var(--rule); border-left:2px solid var(--accent); color:var(--ink); font-weight:400; }
+.profile-panel { border-radius:6px; box-shadow:none; }
+.profile-button { min-height:0; padding:6px 15px; border-radius:3px; font:13px var(--ui); background:none; border-color:var(--rule-2); color:var(--ink-2); }
+.profile-button--primary { background:var(--accent); border-color:transparent; color:white; }
+.profile-button--primary:hover:not(:disabled) { filter:brightness(1.07); }

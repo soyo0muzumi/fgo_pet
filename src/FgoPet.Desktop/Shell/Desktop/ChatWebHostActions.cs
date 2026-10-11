@@ -37,7 +37,9 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         if (_avatarPath != _vm.SelectedServant?.PreviewSource)
         { _avatarPath = _vm.SelectedServant?.PreviewSource; _avatar = Avatar(_avatarPath); }
         var streaming = _vm.Conversation.IsStreaming;
-        return new(_vm.ActiveServantDisplayName, _avatar,
+        var roleName = _vm.SelectedServant is not null ? _vm.ActiveServantDisplayName
+            : MarginStrings.Get(string.IsNullOrWhiteSpace(_vm.Conversation.ActiveServantId) ? "chat.noCharacter" : "chat.currentCharacter");
+        return new(roleName, _avatar,
             _vm.ProjectSelection.Projects.Select(p => new ChatWebChoice(p.Id, p.Label,
                 p.Id == _vm.Conversation.SessionContext.ProjectId, !streaming)).ToArray(),
             _vm.ModelSelection.Models.Select(m => new ChatWebChoice(m.Id, m.DisplayName,

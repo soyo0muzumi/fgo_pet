@@ -1,13 +1,16 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; media-src 'none'">
-  <title>聊天 · FGO Pet</title>
+  <title>Chat · FGO Pet</title>
   <link rel="stylesheet" href="chat.css">
+  <link rel="stylesheet" href="margin.css">
+  <script defer src="margin-i18n.js"></script>
   <script defer src="chat.js"></script>
+  <script defer src="margin-select.js"></script>
 </head>
 <body>
   <svg class="icon-library" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -30,59 +33,59 @@
     <symbol id="icon-project" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
   </svg>
 
-  <main id="chat-window" class="chat-window" aria-label="聊天窗口">
+  <main id="chat-window" class="chat-window" aria-label="Chat window" data-i18n-aria-label="chat.chat.window">
     <header class="chat-header">
       <div class="role-avatar" id="role-avatar" aria-hidden="true">
         <img id="role-avatar-image" alt="" hidden>
-        <span id="role-avatar-fallback">聊</span>
+        <span id="role-avatar-fallback" data-i18n="chat.c">C</span>
       </div>
       <div class="role-identity">
-        <div class="role-name" id="role-name">聊天</div>
+        <div class="role-name" id="role-name" data-i18n="chat.chat">Chat</div>
         <div class="role-subtitle" id="role-subtitle">FGO Pet</div>
       </div>
-      <nav class="header-controls" aria-label="聊天操作">
-        <button class="icon-button" id="history-toggle" type="button" aria-label="历史对话" title="历史对话" aria-expanded="false">
+      <nav class="header-controls" aria-label="Chat actions" data-i18n-aria-label="chat.chat.actions">
+        <button class="icon-button" id="history-toggle" type="button" aria-label="Conversations" data-i18n-aria-label="chat.conversations" title="Conversations" data-i18n-title="chat.conversations" aria-expanded="false">
           <svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>
         </button>
-        <button class="icon-button" id="new-conversation" type="button" aria-label="新对话" title="新对话">
+        <button class="icon-button" id="new-conversation" type="button" aria-label="New conversation" data-i18n-aria-label="chat.new.conversation" title="New conversation" data-i18n-title="chat.new.conversation">
           <svg class="icon" aria-hidden="true"><use href="#icon-new"></use></svg>
         </button>
-        <button class="icon-button" id="expand-window" type="button" aria-label="展开窗口" title="展开窗口" aria-pressed="false">
+        <button class="icon-button" id="expand-window" type="button" aria-label="Expand window" data-i18n-aria-label="chat.expand.window" title="Expand window" data-i18n-title="chat.expand.window" aria-pressed="false">
           <svg class="icon" aria-hidden="true"><use href="#icon-expand"></use></svg>
         </button>
-        <button class="icon-button" id="hide-window" type="button" aria-label="收起聊天窗口" title="收起聊天窗口">
+        <button class="icon-button" id="hide-window" type="button" aria-label="Hide Chat" data-i18n-aria-label="chat.hide.chat" title="Hide Chat" data-i18n-title="chat.hide.chat">
           <svg class="icon" aria-hidden="true"><use href="#icon-hide"></use></svg>
         </button>
         <details class="more-menu" id="more-menu">
-          <summary class="icon-button" aria-label="更多操作" title="更多操作">
+          <summary class="icon-button" aria-label="More actions" data-i18n-aria-label="chat.more.actions" title="More actions" data-i18n-title="chat.more.actions">
             <svg class="icon" aria-hidden="true"><use href="#icon-more"></use></svg>
           </summary>
-          <div class="more-menu-items" id="more-actions" aria-label="更多操作"></div>
+          <div class="more-menu-items" id="more-actions" aria-label="More actions" data-i18n-aria-label="chat.more.actions"></div>
         </details>
       </nav>
     </header>
 
     <div class="chat-content" id="chat-content">
-      <button class="history-backdrop" id="history-backdrop" type="button" aria-label="关闭历史对话" hidden></button>
-      <aside class="history-panel" id="history-panel" aria-label="历史对话" hidden>
+      <button class="history-backdrop" id="history-backdrop" type="button" aria-label="Close conversations" data-i18n-aria-label="chat.close.conversations" hidden></button>
+      <aside class="history-panel" id="history-panel" aria-label="Conversations" data-i18n-aria-label="chat.conversations" hidden>
         <div class="history-heading">
-          <h2>历史对话</h2>
-          <button class="icon-button" id="history-close" type="button" aria-label="关闭历史对话" title="关闭历史对话">
+          <h2 data-i18n="chat.conversations">Conversations</h2>
+          <button class="icon-button" id="history-close" type="button" aria-label="Close conversations" data-i18n-aria-label="chat.close.conversations" title="Close conversations" data-i18n-title="chat.close.conversations">
             <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
           </button>
         </div>
-        <button class="history-new" id="history-new" type="button">＋ 新对话</button>
+        <button class="history-new" id="history-new" type="button" data-i18n="chat.new.conversation">+ New conversation</button>
         <label class="history-filter">
           <input id="history-current-project" type="checkbox">
-          <span>仅当前项目</span>
+          <span data-i18n="chat.current.project.only">Current project only</span>
         </label>
         <div class="history-status" id="history-status" role="status" aria-live="polite"></div>
-        <button class="history-more" id="history-retry" type="button" hidden>重新加载</button>
+        <button class="history-more" id="history-retry" type="button" hidden data-i18n="chat.reload">Reload</button>
         <div class="history-items" id="history-items"></div>
-        <button class="history-more" id="history-more" type="button" hidden>加载更多</button>
+        <button class="history-more" id="history-more" type="button" hidden data-i18n="chat.load.more">Load more</button>
       </aside>
 
-      <section class="chat-column" aria-label="当前对话">
+      <section class="chat-column" aria-label="Current conversation" data-i18n-aria-label="chat.current.conversation">
         <div class="conversation-meta" id="conversation-meta">
           <span class="provider-status" id="provider-status"></span>
           <span class="model-status" id="model-status"></span>
@@ -91,53 +94,53 @@
         <div class="conversation-error" id="conversation-error" role="alert" hidden></div>
         <div class="capability-notice" id="capability-notice" hidden>
           <span id="capability-notice-text"></span>
-          <button class="text-button" id="capability-retry" type="button" hidden>重试</button>
-          <button class="text-button" id="capability-settings" type="button" hidden>模型设置</button>
+          <button class="text-button" id="capability-retry" type="button" hidden data-i18n="chat.retry">Retry</button>
+          <button class="text-button" id="capability-settings" type="button" hidden data-i18n="chat.model.settings">Model settings</button>
         </div>
-        <div class="message-scroll" id="message-scroll" tabindex="0" aria-label="聊天消息">
+        <div class="message-scroll" id="message-scroll" tabindex="0" aria-label="Messages" data-i18n-aria-label="chat.messages">
           <div class="messages" id="messages" aria-live="polite" aria-relevant="additions text"></div>
-          <div class="empty-conversation" id="empty-conversation" hidden>开始一段新的对话</div>
+          <div class="empty-conversation" id="empty-conversation" hidden data-i18n="chat.start.a.conversation">Start a conversation</div>
         </div>
         <button class="jump-bottom" id="jump-bottom" type="button" hidden>
           <svg class="icon" aria-hidden="true"><use href="#icon-bottom"></use></svg>
-          有新内容 · 回到底部
+          <span data-i18n="chat.new.content.jump.to.bottom">New content · Jump to bottom</span>
         </button>
-        <section class="recalled-sources" id="recalled-sources" aria-label="召回来源" hidden>
-          <h2>参考来源</h2>
+        <section class="recalled-sources" id="recalled-sources" aria-label="Recalled sources" data-i18n-aria-label="chat.recalled.sources" hidden>
+          <h2 data-i18n="chat.sources">Sources</h2>
           <div id="source-items"></div>
         </section>
 
         <div class="composer-area">
-          <div class="context-chips" id="context-chips" aria-label="上下文"></div>
+          <div class="context-chips" id="context-chips" aria-label="Context" data-i18n-aria-label="chat.context"></div>
           <div class="composer-box">
-            <label class="visually-hidden" for="composer">聊天输入</label>
-            <textarea id="composer" rows="2" placeholder="说些什么……" spellcheck="true" aria-describedby="composer-error composer-hint" disabled></textarea>
+            <label class="visually-hidden" for="composer" data-i18n="chat.message">Message</label>
+            <textarea id="composer" rows="2" placeholder="Say something…" data-i18n-placeholder="chat.say.something" spellcheck="true" aria-describedby="composer-error composer-hint" disabled></textarea>
             <div class="composer-error" id="composer-error" role="alert" hidden></div>
             <div class="composer-footer">
-              <span class="composer-hint" id="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+              <span class="composer-hint" id="composer-hint" data-i18n="chat.enter.to.send.shift.enter.for.a.new.line">Enter to send · Shift + Enter for a new line</span>
               <span class="composer-count" id="composer-count" aria-live="polite"></span>
-              <button class="send-button" id="send-message" type="button" aria-label="发送" title="发送">
+              <button class="send-button" id="send-message" type="button" aria-label="Send" data-i18n-aria-label="chat.send" title="Send" data-i18n-title="chat.send">
                 <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
-                <span>发送</span>
+                <span data-i18n="chat.send">Send</span>
               </button>
-              <button class="send-button stop-button" id="stop-generation" type="button" aria-label="停止生成" title="停止生成" hidden>
+              <button class="send-button stop-button" id="stop-generation" type="button" aria-label="Stop generation" data-i18n-aria-label="chat.stop.generation" title="Stop generation" data-i18n-title="chat.stop.generation" hidden>
                 <svg class="icon" aria-hidden="true"><use href="#icon-stop"></use></svg>
-                <span>停止</span>
+                <span data-i18n="chat.stop">Stop</span>
               </button>
             </div>
           </div>
           <div class="selection-row">
             <label class="selection-control">
               <svg class="icon" aria-hidden="true"><use href="#icon-project"></use></svg>
-              <span class="visually-hidden">项目</span>
-              <select id="project-select" aria-label="选择项目"></select>
+              <span class="visually-hidden" data-i18n="chat.project">Project</span>
+              <select id="project-select" aria-label="Choose project" data-i18n-aria-label="chat.choose.project"></select>
             </label>
-            <button class="icon-button refresh-projects" id="refresh-projects" type="button" aria-label="刷新项目列表" title="刷新项目列表" hidden>
+            <button class="icon-button refresh-projects" id="refresh-projects" type="button" aria-label="Refresh projects" data-i18n-aria-label="chat.refresh.projects" title="Refresh projects" data-i18n-title="chat.refresh.projects" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
             </button>
             <label class="selection-control model-selection">
-              <span class="visually-hidden">模型</span>
-              <select id="model-select" aria-label="选择模型"></select>
+              <span class="visually-hidden" data-i18n="chat.model">Model</span>
+              <select id="model-select" aria-label="Choose model" data-i18n-aria-label="chat.choose.model"></select>
             </label>
           </div>
         </div>
@@ -145,7 +148,7 @@
     </div>
     <div id="page-status" class="page-status" role="status" aria-live="polite" hidden>
       <span id="page-status-text"></span>
-      <button id="page-retry" type="button" hidden>重新连接</button>
+      <button id="page-retry" type="button" hidden data-i18n="chat.reconnect">Reconnect</button>
     </div>
   </main>
 </body>

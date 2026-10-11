@@ -81,6 +81,8 @@
       <Link>Desktop\ui\settings\root\pages\model-connection.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="../../src/FgoPet.UiSdk/Resources/Web/*" Link="Desktop/ui/chat/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Desktop\ui\chat\margin-i18n.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\chat\index.html" Condition="Exists('Desktop\ui\chat\index.html')">
       <Link>Desktop\ui\chat\index.html</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

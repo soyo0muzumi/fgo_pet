@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using FgoPet.App.Panels;
+using FgoPet.App.Windowing;
 using FgoPet.Core.Geometry;
 using FgoPet.Core.Panels;
 
@@ -79,7 +80,14 @@ public partial class PortraitWindow : Window
 
     internal LogicalPoint PortraitHostOffset => new(_portraitOffsetX, _portraitOffsetY);
 
-    internal void HandlePortraitClick() => _panel.PortraitClick();
+    public event Action? ChatRequested;
+    internal Func<Point, bool>? ManagementHitTest { get; set; }
+
+    internal void HandlePortraitClick()
+    {
+        if (ChatRequested is { } open) open();
+        else _panel.PortraitClick();
+    }
 
     internal void HandleEscape()
     {
@@ -114,6 +122,9 @@ public partial class PortraitWindow : Window
     {
         Left = (location.X / dpi.X) - _portraitOffsetX;
         Top = (location.Y / dpi.Y) - _portraitOffsetY;
+        TransientSurfacePlacement.MoveNativeWindow(this, new DevicePoint(
+            location.X - (int)Math.Round(_portraitOffsetX * dpi.X),
+            location.Y - (int)Math.Round(_portraitOffsetY * dpi.Y)));
     }
 
     /// <summary>Loads a validated snapshot at the given window/portrait geometry.</summary>
