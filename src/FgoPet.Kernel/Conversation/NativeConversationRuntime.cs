@@ -109,7 +109,13 @@ public sealed class NativeConversationRuntime : IAsyncDisposable, IDisposable
             return new(result.Snapshot.Status == AgentRunStatus.Cancelled ? ConversationSendStatus.Cancelled
                 : ConversationSendStatus.Failed, identity.Scope.ConversationId,
                 SafeError: result.Snapshot.Status == AgentRunStatus.ExecutionUnknown
-                    ? "操作结果尚未确认，请先核对实际状态。" : "本次任务未完成，请重试。") { RunId = identity.RunId };
+                    ? "操作结果尚未确认，请先核对实际状态。"
+                    : result.Snapshot.ErrorCode switch
+                    {
+                        "MODEL_OUTPUT_LIMIT" => "本轮回复达到输出上限，未形成完整答复。请要求更简短的回答，或分段继续。",
+                        "RUN_BUDGET_EXCEEDED" => "本轮已达到运行预算上限，尚未完成。请缩小本次请求的范围或分段继续。",
+                        _ => "本次任务未完成，请重试。"
+                    }) { RunId = identity.RunId };
         }
         finally { registrations.TryRemove(identity.RunId, out _); }
     }

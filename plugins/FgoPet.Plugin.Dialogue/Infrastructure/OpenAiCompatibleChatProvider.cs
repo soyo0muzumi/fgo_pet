@@ -125,6 +125,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
             string? lastFinishReason = null;
+            // The local Buddy bridge emits nonzero call indexes (observed single calls
+            // at indexes 1 and 2). Treat those numbers as fragment keys,
+            // scoped to this response. Keep strict Native identity/argument validation.
+            Dictionary<int, int>? buddyIndexes = _baseUri.IsLoopback && ModelId == "buddy/deepseek-v4.1-flash"
+                ? new() : null;
             await foreach (var line in ReadLinesBoundedAsync(reader, cancellationToken))
             {
                 if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
@@ -177,6 +182,19 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                             : null;
                         reasoningDelta = ReadReasoningDelta(delta);
                         toolCallDeltas = ReadToolCallDeltas(delta);
+                        if (buddyIndexes is not null)
+                        {
+                            toolCallDeltas = toolCallDeltas.Select(call =>
+                            {
+                                if (!buddyIndexes.TryGetValue(call.Index, out var normalized))
+                                {
+                                    if (buddyIndexes.Count >= FgoPet.Kernel.Agent.ModelProtocol.MaxCalls)
+                                        throw new JsonException("Too many calls.");
+                                    buddyIndexes.Add(call.Index, normalized = buddyIndexes.Count);
+                                }
+                                return new ChatToolCallDelta(normalized, call.Id, call.Name, call.ArgumentsDelta);
+                            }).ToArray();
+                        }
                     }
                     else
                     {

@@ -196,7 +196,8 @@ public sealed record ConversationUpdate(
     int? DraftVersion = null,
     string? CreatedItemId = null,
     IReadOnlyList<HistoryHit>? HistorySources = null,
-    string? WorkspaceId = null);
+    string? WorkspaceId = null,
+    string? RequestId = null);
 
 public sealed record ChatRequest
 {

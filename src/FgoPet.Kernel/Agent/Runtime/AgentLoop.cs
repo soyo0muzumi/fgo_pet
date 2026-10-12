@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 
@@ -55,11 +56,39 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             await state.BeginStepAsync(token);
             var step = await environment.BuildAsync(state.Snapshot, session.Transcript, token);
             if (extensions is not null) step = await NativeAgentEnvironment.BuildAsync(extensions, session, step, token);
+            var finalOnly = state.Snapshot.Budget.ReserveFinalResponse
+                && (state.Snapshot.ModelRequests >= state.Snapshot.Budget.MaxModelRequests - 1
+                    || state.Snapshot.ToolCalls >= state.Snapshot.Budget.MaxToolCalls);
+            if (finalOnly) step = FinalEnvelope(step);
+            if (session.Model is IAgentRunPreparation preparation)
+            {
+                // Compact the actual final envelope, including fresh memory, host rules and tools.
+                // Per-step system blocks must not accumulate in the retained transcript.
+                step = await preparation.PrepareStepAsync(step, state, token);
+                fence.EnsureCurrent(state.Snapshot.Identity, token);
+                // Auxiliary summary calls spend the same budget and can consume the penultimate slot.
+                if (!finalOnly && state.Snapshot.Budget.ReserveFinalResponse
+                    && (state.Snapshot.ModelRequests >= state.Snapshot.Budget.MaxModelRequests - 1
+                        || state.Snapshot.ToolCalls >= state.Snapshot.Budget.MaxToolCalls))
+                {
+                    finalOnly = true;
+                    step = FinalEnvelope(step);
+                }
+                ModelProtocol.ValidateTranscript(step.Messages);
+                StepEnvironmentBuilder.CheckSize(step.Messages);
+                if (preparation.RetainsToolHistory && session.Model is IAgentModelInputBudget input
+                    && input.MeasureInputTokens(step) > input.InputTokenBudget)
+                    throw new AgentProtocolException("RUN_CONTEXT_TOO_LARGE");
+                var transientSystem = step.Messages.Where(message => message.Role == ModelMessageRole.System)
+                    .Except(session.Transcript).ToHashSet();
+                session.SetPreparedTranscript(step.Messages.Where(message => !transientSystem.Contains(message)).ToImmutableArray());
+            }
             var before = state.Snapshot.ModelRequests;
             var response = await session.Model!.ExecuteAsync(step, state, token);
             token.ThrowIfCancellationRequested();
             fence.EnsureCurrent(state.Snapshot.Identity, token);
             if (state.Snapshot.ModelRequests <= before) throw new AgentStateException("RUN_UNCHARGED_MODEL");
+            if (finalOnly && !response.IsFinal) throw new AgentProtocolException("MODEL_UNEXPECTED_TOOL_CALL");
             await state.AcceptResponseAsync(response, token);
             session.Append(response.AssistantMessage);
             if (response.IsFinal)
@@ -69,6 +98,15 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             }
         }
     }
+
+    private static StepEnvironment FinalEnvelope(StepEnvironment step) => step with
+    {
+        Tools = [],
+        Messages = step.Messages.Insert(0, new(ModelMessageRole.System,
+            "The remaining run budget is reserved for a final answer. No tools are available. " +
+            "Use only observations already received. State partial coverage and unread ranges when applicable; " +
+            "never imply a whole page or task was completed from partial observations. If evidence is insufficient, say so.", []))
+    };
 
     internal static void AppendObservation(AgentRunSession session, string callId, FgoPet.Extensibility.ToolResult result)
     {

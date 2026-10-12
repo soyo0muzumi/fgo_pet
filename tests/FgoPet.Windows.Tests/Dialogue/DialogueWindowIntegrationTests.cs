@@ -76,6 +76,50 @@ public sealed class DialogueWindowIntegrationTests
     });
 
     [Fact]
+    public void Compact_drag_strip_is_outside_interactive_chat_content_and_expanded_mode_uses_native_chrome() => StaRunner.Run(() =>
+    {
+        var vm = CreateViewModel();
+        using var window = new DialogueWindow(vm);
+        window.Show(); window.UpdateLayout();
+        var handle = Assert.IsType<Border>(window.FindName("ChatDragHandle"));
+        var surface = Assert.IsType<ContentControl>(window.FindName("ChatSurface"));
+        var handleTop = handle.TranslatePoint(new Point(0, 0), window);
+        var contentTop = surface.TranslatePoint(new Point(0, 0), window);
+        Assert.True(contentTop.Y >= handleTop.Y + handle.ActualHeight);
+        Assert.Same(handle, window.InputHitTest(handle.TranslatePoint(new Point(handle.ActualWidth / 2, 12), window)));
+        Assert.False(handle.IsAncestorOf(surface));
+        Assert.Equal(0, System.Windows.Shell.WindowChrome.GetWindowChrome(window).CaptionHeight);
+        window.SetExpanded(true);
+        Assert.Equal(Visibility.Collapsed, handle.Visibility);
+        Assert.Equal(WindowStyle.SingleBorderWindow, window.WindowStyle);
+        window.SetExpanded(false);
+        Assert.Equal(Visibility.Visible, handle.Visibility);
+        vm.Conversation.Dispose();
+    });
+
+    [Fact]
+    public void Queued_expression_from_completed_request_does_not_cross_a_new_send() => StaRunner.Run(() =>
+    {
+        var vm = CreateViewModel();
+        var identity = new FgoPet.App.Runtime.AppRuntime();
+        using var presentation = new FgoPet.Kernel.Companion.CompanionPresentation(identity);
+        identity.SetActiveRole(new("fixture", "default", "1", "mash"));
+        using var window = new DialogueWindow(vm, presentation: presentation);
+        window.Show();
+        var expression = (Action<FgoPet.Core.Portraits.ExpressionSemantic>)typeof(ConversationViewModel)
+            .GetField("ExpressionRequested", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(vm.Conversation)!;
+        vm.Conversation.IsStreaming = true;
+        vm.Conversation.IsStreaming = false;
+        expression(FgoPet.Core.Portraits.ExpressionSemantic.Shy); // A completed, UI callback still queued.
+        vm.Conversation.IsStreaming = true; // B admitted before A's callback runs.
+        StaRunner.Pump(); Assert.Null(presentation.Current);
+        vm.Conversation.IsStreaming = false;
+        expression(FgoPet.Core.Portraits.ExpressionSemantic.Happy);
+        StaRunner.Pump(); Assert.Equal(FgoPet.Core.Portraits.ExpressionSemantic.Happy, presentation.Current?.Expression);
+        vm.Conversation.Dispose();
+    });
+
+    [Fact]
     public void Host_metadata_refreshes_real_project_choices_and_preserves_saved_unavailable_project() => StaRunner.Run(() =>
     {
         var vm = CreateViewModel(projectCatalog: new SampleProjects());

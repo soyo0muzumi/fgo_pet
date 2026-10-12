@@ -38,6 +38,18 @@ internal static class TransientSurfacePlacement
             && point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
     }
 
+    internal static bool TryReadNativeBounds(Window window, out DeviceRect bounds)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle != 0 && GetWindowRect(handle, out var rect))
+        {
+            bounds = new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+            return bounds.Width > 0 && bounds.Height > 0;
+        }
+        bounds = default;
+        return false;
+    }
+
     internal static void ApplyNativeBounds(Window window, DeviceRect bounds)
     {
         var handle = new WindowInteropHelper(window).Handle;
@@ -57,10 +69,7 @@ internal static class TransientSurfacePlacement
     {
         if (!double.IsFinite(dpi.X) || dpi.X <= 0 || !double.IsFinite(dpi.Y) || dpi.Y <= 0)
             throw new ArgumentOutOfRangeException(nameof(dpi));
-        var marginX = Math.Min(Math.Max(0, (workArea.Width - 1) / 2), (int)Math.Round(marginDip * dpi.X));
-        var marginY = Math.Min(Math.Max(0, (workArea.Height - 1) / 2), (int)Math.Round(marginDip * dpi.Y));
-        workArea = new DeviceRect(workArea.X + marginX, workArea.Y + marginY,
-            workArea.Width - 2 * marginX, workArea.Height - 2 * marginY);
+        workArea = Inset(workArea, dpi, marginDip);
         var width = Math.Min(workArea.Width, Math.Max(1, (int)Math.Ceiling(widthDip * dpi.X)));
         var height = Math.Min(workArea.Height, Math.Max(1, (int)Math.Ceiling(heightDip * dpi.Y)));
         var gap = Math.Max(1, (int)Math.Round(16 * dpi.X));
@@ -70,4 +79,22 @@ internal static class TransientSurfacePlacement
             : left >= workArea.Left ? left : right;
         return ScreenLayout.ClampFullyVisible(new DeviceRect(x, anchor.Top, width, height), workArea);
     }
+
+    internal static DeviceRect Constrain(DeviceRect bounds, DeviceRect workArea, Dpi2 dpi,
+        double widthDip, double heightDip, double marginDip = 0)
+    {
+        workArea = Inset(workArea, dpi, marginDip);
+        var width = Math.Min(workArea.Width, Math.Max(1, (int)Math.Ceiling(widthDip * dpi.X)));
+        var height = Math.Min(workArea.Height, Math.Max(1, (int)Math.Ceiling(heightDip * dpi.Y)));
+        return ScreenLayout.ClampFullyVisible(new DeviceRect(bounds.X, bounds.Y, width, height), workArea);
+    }
+
+    private static DeviceRect Inset(DeviceRect workArea, Dpi2 dpi, double marginDip)
+    {
+        var marginX = Math.Min(Math.Max(0, (workArea.Width - 1) / 2), (int)Math.Round(marginDip * dpi.X));
+        var marginY = Math.Min(Math.Max(0, (workArea.Height - 1) / 2), (int)Math.Round(marginDip * dpi.Y));
+        return new DeviceRect(workArea.X + marginX, workArea.Y + marginY,
+            workArea.Width - 2 * marginX, workArea.Height - 2 * marginY);
+    }
+
 }

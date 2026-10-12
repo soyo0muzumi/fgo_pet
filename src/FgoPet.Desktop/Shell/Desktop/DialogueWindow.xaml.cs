@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using FgoPet.App.Settings;
 using FgoPet.Core.Panels;
@@ -25,6 +26,7 @@ public partial class DialogueWindow : Window, IDisposable
     private readonly CompanionPresentation? _presentation;
     private WebView2SurfaceHost? _surface;
     private bool _disposed;
+    private long _expressionGeneration;
     internal Action? PresentationRequestedHandler { get; set; }
     internal Action? LayoutRequestedHandler { get; set; }
     public event Action? Hidden;
@@ -107,17 +109,23 @@ public partial class DialogueWindow : Window, IDisposable
     private void OnConversationChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName != nameof(ConversationViewModel.IsStreaming)) return;
-        if (_viewModel.Conversation.IsStreaming) _viewModel.ModelSelection.BeginGeneration();
+        if (_viewModel.Conversation.IsStreaming)
+        {
+            Interlocked.Increment(ref _expressionGeneration);
+            _viewModel.ModelSelection.BeginGeneration();
+        }
         else _viewModel.ModelSelection.EndGeneration();
     }
     private void OnExpressionRequested(ExpressionSemantic semantic)
     {
+        var generation = Volatile.Read(ref _expressionGeneration);
         var role = _presentation?.ActiveRole;
         var conversation = _viewModel.Conversation.CurrentConversationId;
         var servant = _viewModel.Conversation.ActiveServantId;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (_disposed || role is null || _presentation is null || !ReferenceEquals(role, _presentation.ActiveRole)
+            if (_disposed || generation != Volatile.Read(ref _expressionGeneration)
+                || role is null || _presentation is null || !ReferenceEquals(role, _presentation.ActiveRole)
                 || conversation != _viewModel.Conversation.CurrentConversationId || servant != _viewModel.Conversation.ActiveServantId) return;
             _presentation.Apply(role, semantic);
         }));
@@ -146,8 +154,19 @@ public partial class DialogueWindow : Window, IDisposable
     private void OnDeactivated(object? sender, EventArgs args) => _viewModel.NotifyDeactivated();
     private void OnClosed(object? sender, EventArgs args) => DisposePresentation();
     private void OnShutdown(object? sender, EventArgs args) => DisposePresentation();
+    private void OnDragHandleMouseDown(object sender, MouseButtonEventArgs args)
+    {
+        // This handler belongs only to the native strip, outside the WebView's input and text.
+        args.Handled = true;
+        if (args.ChangedButton != MouseButton.Left || args.ButtonState != MouseButtonState.Pressed
+            || args.ClickCount != 1 || WindowState != WindowState.Normal) return;
+        DragMove();
+        LayoutRequestedHandler?.Invoke();
+    }
+
     internal void SetExpanded(bool expanded)
     {
+        ChatDragHandle.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
         WindowStyle = expanded ? WindowStyle.SingleBorderWindow : WindowStyle.None;
         System.Windows.Shell.WindowChrome.SetWindowChrome(this, expanded ? null : new System.Windows.Shell.WindowChrome
         { CaptionHeight = 0, CornerRadius = new CornerRadius(10), GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(6) });

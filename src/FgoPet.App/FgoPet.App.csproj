@@ -22,6 +22,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Workspace/FgoPet.Plugin.Workspace.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Shell/FgoPet.Plugin.Shell.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Documents/FgoPet.Plugin.Documents.csproj" />

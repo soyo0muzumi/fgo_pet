@@ -41,6 +41,9 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 
 - Select the pet controls to open chat and common actions.
 - The workspace sidebar provides chat, Todo, focus, and settings; chat history and new conversations are available in the chat header.
+- Sent messages appear on the right in content-sized bubbles; long text wraps within the available width.
+- Chat first opens beside the character. Drag the compact window's top grip to reposition it; hiding and reopening keeps that position for the current run. Character movement does not pull Chat along, and screen changes keep it within the available work area.
+- Chat uses one input card with editing above a fixed send/stop toolbar. Long drafts grow with available window space, then scroll internally; reading older messages keeps your place. Jump to bottom stays outside reply text, and empty context rows take no space. Copy remains keyboard accessible and confirms successful completion.
 - History shows conversation titles and local times, 50 conversations per page; use Load more for older conversations. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
 - Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. User Profile uses a WebView2 page backed by the existing settings service; other settings pages remain WPF. Returning to a page restores its own scroll position.
 - The system tray can show the pet, open settings, or exit the application.
@@ -58,6 +61,8 @@ New conversations can retrieve earlier messages from the same servant and projec
 
 Long conversations compact older complete exchanges while retaining recent raw messages and the current Todo draft. Compaction preserves the original history and survives restart and private backup restore. It also works when long-term memory is disabled. If compaction cannot safely fit the request, the input is retained and the app reports the problem.
 
+Native conversations can use the current system clock and reuse available tool evidence from the same conversation, role and project. Longer tool histories share the existing bounded compaction and retention rules; this is not unlimited archival. Each send permits up to 32 model requests and 64 tool calls, including summary work, with a final-response reservation. Browser access stays disabled until an explicit local grant and Chrome connection approval; the [Chrome integration guide](tools/integrations/chrome-browser/README.md) describes its read/open scope. Application-window discovery is not enabled in production.
+
 Long-term memory candidates show their evidence and scope and require approval. General servant preferences can be recalled across projects; project memories stay within that project. Corrections select an exact memory and version, and edits, disabling and deletion take effect on subsequent requests. Deleting a source conversation preserves approved memories and marks their source unavailable. Storage permits 200 approved items / 40,000 characters per servant, including disabled items; existing data is never evicted to make room. Budgeting, compaction and memory mechanisms draw on the pinned MIT sources in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
 ### Agent
@@ -68,6 +73,9 @@ Under **Settings → Capabilities → Agent Connection**, detect and approve a r
 
 Live2D characters support cursor attention, a gentle head hover reaction, chat Thinking,
 short emotion motions, idle sleep with click-to-wake, and audio-driven lip sync.
+Chat waiting uses an upward side glance; the text answer turns back toward you,
+nods once and keeps a closed-mouth expression.
+Completion or cancellation releases these offsets smoothly. Text alone does not drive lip sync.
 Model and motion data are supplied separately in character packs; available reactions depend on the pack.
 
 Under **Settings → Capabilities → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.

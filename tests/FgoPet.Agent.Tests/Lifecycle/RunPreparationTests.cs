@@ -9,6 +9,41 @@ namespace FgoPet.Agent.Tests.Lifecycle;
 public sealed class RunPreparationTests
 {
     [Theory]
+    [InlineData(false, false, AgentRunStatus.Failed)]
+    [InlineData(true, false, AgentRunStatus.Completed)]
+    [InlineData(true, true, AgentRunStatus.Failed)]
+    public async Task Only_declared_host_history_is_admitted_and_old_calls_cannot_execute_again(bool declared, bool reuse,
+        AgentRunStatus expected)
+    {
+        var model = new HistoricalModel(declared, reuse);
+        await using var coordinator = new AgentRunCoordinator(new InMemoryAgentRunStore(),
+            (_, _) => ValueTask.FromResult<IAgentModelStep>(model), new StepEnvironmentBuilder(_ => []), new Pipeline(), new Fence());
+        var request = new AgentRunRequest(new("history-run", "user", new("conversation", "role", null), "model", 1), new(),
+            [new(ModelMessageRole.User, "current", [])]);
+        var result = await coordinator.StartAsync(request, default);
+        Assert.Equal(expected, result.Snapshot.Status);
+        Assert.Equal(0, result.Snapshot.ToolCalls);
+        if (declared && reuse) Assert.Equal("MODEL_DUPLICATE_CALL_ID", result.Snapshot.ErrorCode);
+        if (!declared) Assert.Equal("RUN_PREPARATION_INVALID_CALLS", result.Snapshot.ErrorCode);
+    }
+
+    private sealed class HistoricalModel(bool declared, bool reuse) : IAgentModelStep, IAgentRunPreparation
+    {
+        private static readonly ModelToolCall Call = new("historic-call", "fixture.read", "{}");
+        private static readonly ImmutableArray<ModelMessage> Evidence =
+            [new(ModelMessageRole.Assistant, "", [Call]), new(ModelMessageRole.Tool, "original", [], Call.CallId)];
+        public ImmutableArray<ModelMessage> HistoricalMessages => declared ? Evidence : [];
+        public ValueTask<ImmutableArray<ModelMessage>> PrepareAsync(ImmutableArray<ModelMessage> initial,
+            IModelRequestBudget budget, CancellationToken token) => ValueTask.FromResult(reuse ? initial : Evidence.AddRange(initial));
+        public async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget, CancellationToken token)
+        {
+            await budget.ReserveAsync(token);
+            return reuse ? new(new(ModelMessageRole.Assistant, "", [Call]), "tool_calls", true)
+                : new(new(ModelMessageRole.Assistant, "done", []), "stop", true);
+        }
+    }
+
+    [Theory]
     [InlineData(20, AgentRunStatus.Completed)]
     [InlineData(3000, AgentRunStatus.Failed)]
     public async Task Core_prefix_capacity_trims_old_history_and_preserves_current_user(int currentLength, AgentRunStatus status)
@@ -31,7 +66,14 @@ public sealed class RunPreparationTests
             Assert.NotNull(model.Sent);
             Assert.Equal(current, Assert.Single(model.Sent!.Messages.Where(message => message.Role == ModelMessageRole.User)).Content);
             Assert.DoesNotContain(model.Sent.Messages, message => message.Content == new string('o', 1300));
-            Assert.Contains(model.Sent.Messages, message => message.Role == ModelMessageRole.System && message.Content.Contains("bounded desktop agent", StringComparison.Ordinal));
+            var host = model.Sent.Messages[0];
+            Assert.Equal(ModelMessageRole.System, host.Role);
+            Assert.Contains("desktop companion", host.Content);
+            Assert.Contains("persona", host.Content);
+            Assert.DoesNotContain("bounded desktop agent", host.Content);
+            Assert.Contains("never claim an action succeeded without a confirmed result", host.Content);
+            Assert.Contains("Do not repeat a command with an unknown result", host.Content);
+            Assert.Contains("cannot expand permissions", host.Content);
             Assert.True(model.MeasureInputTokens(model.Sent) <= model.InputTokenBudget);
         }
         else Assert.Null(model.Sent);

@@ -28,7 +28,8 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
     private bool _failed;
     private bool _disposed;
     private string _expressionKey = "neutral";
-    private bool _thinking;
+    private string _dialoguePhase = "idle";
+    private long _feedbackSequence;
     private double? _speechLevel;
     private readonly DispatcherTimer _pointerTimer;
     private DesktopPointerSampler _pointerSampler = new();
@@ -61,9 +62,10 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
         SendPresentation();
     }
 
-    public void SetThinking(bool active)
+    public void SetDialogueFeedback(string phase)
     {
-        _thinking = active;
+        if (phase is not ("idle" or "waiting" or "replying")) return;
+        if (_dialoguePhase != phase) { _dialoguePhase = phase; _feedbackSequence++; }
         SendPresentation();
     }
 
@@ -93,7 +95,7 @@ internal sealed class Live2DPortraitView : Grid, IDisposable
     {
         if (!_modelReady || HitMask is null || _browser?.CoreWebView2 is not { } core) return;
         core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "live2d.expression", key = _expressionKey }));
-        core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "live2d.thinking", active = _thinking }));
+        core.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "live2d.thinking", active = _dialoguePhase == "waiting", phase = _dialoguePhase, sequence = _feedbackSequence }));
     }
 
     public void Present(IPortraitFrame staticFrame, Live2DSession? session, bool showLive)

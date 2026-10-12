@@ -13,6 +13,57 @@ public sealed class NativeConversationRuntimeTests
     private static readonly ToolScope Scope = new("conversation", "role", "project");
 
     [Fact]
+    public async Task Truncated_provider_reply_explains_output_limit_without_delivery_or_replay()
+    {
+        await using var host = await RuntimeHost.CreateAsync();
+        await using var runtime = host.CreateRuntime();
+        var delivery = new DeliveryRecorder();
+        var model = new ScriptedAgentModelStep(Final("must not deliver"))
+        {
+            BeforeResponseAsync = (_, _) =>
+            {
+                var stream = new ModelStepAggregator(new ModelToolNameMap([]));
+                stream.Add(new("partial reply", true, "length"));
+                stream.Complete();
+                return ValueTask.CompletedTask;
+            }
+        };
+
+        var result = await runtime.StartAsync(Request("run-output-limit"), token => Model(model, token),
+            () => { }, delivery.DeliverAsync, default);
+
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        Assert.Contains("输出上限", result.SafeError);
+        Assert.Contains("简短", result.SafeError);
+        Assert.Empty(delivery.Results);
+        Assert.Single(model.Requests);
+        var checkpoint = (await host.Store.LoadAsync(result.RunId!, default))!;
+        Assert.Equal("MODEL_OUTPUT_LIMIT", checkpoint.Snapshot.ErrorCode);
+        Assert.Null(checkpoint.FinalText);
+    }
+
+    [Fact]
+    public async Task Exhausted_read_budget_does_not_claim_full_read_or_repeat_completed_tool()
+    {
+        var reader = new RecordingToolProvider("fixture.read");
+        await using var host = await RuntimeHost.CreateAsync(reader);
+        await using var runtime = host.CreateRuntime();
+        var delivery = new DeliveryRecorder();
+        var model = new ScriptedAgentModelStep(Call("first", "fixture.read", "{}"), Final("unreachable"));
+        var request = Request("run-read-budget") with { Budget = new RunBudget(maxModelRequests: 1) };
+
+        var result = await runtime.StartAsync(request, token => Model(model, token), () => { }, delivery.DeliverAsync, default);
+
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        Assert.Contains("运行预算", result.SafeError);
+        Assert.Contains("分段", result.SafeError);
+        Assert.Single(reader.Invocations);
+        Assert.Single(model.Requests);
+        Assert.Empty(delivery.Results);
+        Assert.Equal(AgentRunStatus.BudgetExceeded, (await host.Store.LoadAsync(result.RunId!, default))!.Snapshot.Status);
+    }
+
+    [Fact]
     public async Task Synchronous_disposal_fences_admission_and_async_shutdown_drains_waiting_run()
     {
         await using var host = await RuntimeHost.CreateAsync();

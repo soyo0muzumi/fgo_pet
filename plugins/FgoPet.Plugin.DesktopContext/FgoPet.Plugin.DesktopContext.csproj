@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="FgoPet.Capability.Tests" /><InternalsVisibleTo Include="FgoPet.App.Tests" /></ItemGroup>
+</Project>

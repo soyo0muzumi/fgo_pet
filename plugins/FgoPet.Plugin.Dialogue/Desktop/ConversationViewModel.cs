@@ -43,6 +43,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private bool _filterHistoryByProject = true;
     partial void OnFilterHistoryByProjectChanged(bool value) => LoadHistory();
     private bool _acceptRequestUpdates;
+    private string? _activeRequestId;
     private string _activeConversationId = string.Empty;
     // Composer drafts belong to a conversation and live only for this UI process.
     private readonly Dictionary<(string ServantId, string ConversationId), string> _conversationDrafts = new();
@@ -467,6 +468,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _pendingReasoning.Clear();
         IsStreaming = true;
         _acceptRequestUpdates = true;
+        var requestId = Guid.NewGuid();
+        _activeRequestId = "request-" + requestId.ToString("N");
         try
         {
             _lastUserMessage = text;
@@ -474,7 +477,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 servant,
                 text,
                 CancellationToken.None,
-                SessionContext.ToRequestContext());
+                SessionContext.ToRequestContext(), requestId);
             if (!IsCurrent()) return false;
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
@@ -500,9 +503,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         }
         finally
         {
-            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; }
+            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; _activeRequestId = null; }
         }
-        bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId;
+        bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId
+            && _activeRequestId == "request-" + requestId.ToString("N");
     }
 
     private void ApplyToolOutcome(CapabilityOutcome outcome, string? detail, string? structuredResponse)
@@ -658,7 +662,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void OnConversationUpdated(ConversationUpdate update)
     {
-        if (_disposed || !_acceptRequestUpdates) return;
+        if (_disposed || !_acceptRequestUpdates || update.RequestId != _activeRequestId) return;
         if (!string.IsNullOrWhiteSpace(update.ServantId)
             && !string.Equals(update.ServantId, ActiveServantId, StringComparison.Ordinal))
         {
@@ -903,6 +907,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     {
         _sessionGeneration++;
         _acceptRequestUpdates = false;
+        _activeRequestId = null;
         _orchestrator.CancelCurrent();
         IsStreaming = false;
         _lastUserMessage = null;

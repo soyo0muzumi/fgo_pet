@@ -66,6 +66,13 @@ internal sealed class AgentRunState : IModelRequestBudget, IToolExecutionIntent
         return current with { Snapshot = current.Snapshot with { Status = AgentRunStatus.Running } };
     }, [AgentEventKind.RunStarted], token);
 
+    internal void RegisterHistoricalCalls(ImmutableArray<ModelMessage> history)
+    {
+        if (history.IsDefaultOrEmpty) return;
+        ModelProtocol.ValidateTranscript(history);
+        foreach (var call in history.SelectMany(message => message.ToolCalls)) _acceptedCallIds.Add(call.CallId);
+    }
+
     public ValueTask BeginStepAsync(CancellationToken token) => CommitAsync(current =>
     {
         EnsureRunning(current);

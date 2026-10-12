@@ -22,12 +22,24 @@ public sealed class DialogueWindowPlacementCoordinator
     }
 
     /// <summary>Chooses and applies the window location before it is shown.</summary>
-    public void ApplyOnOpen(Window window, DeviceRect portraitDeviceBounds)
+    public void ApplyOnOpen(Window window, DeviceRect portraitDeviceBounds) =>
+        Apply(window, portraitDeviceBounds, retainPosition: false);
+
+    /// <summary>Places Chat beside the portrait once, then only constrains its current bounds.</summary>
+    public void ApplyChatOnOpen(Window window, DeviceRect portraitDeviceBounds) =>
+        Apply(window, portraitDeviceBounds, retainPosition: true);
+
+    private void Apply(Window window, DeviceRect portraitDeviceBounds, bool retainPosition)
     {
         ArgumentNullException.ThrowIfNull(window);
+        if (retainPosition && window.WindowState != WindowState.Normal) return;
 
+        _windowSizes.TryGetValue(window, out var previous);
+        var preserve = retainPosition && previous?.HasPlacement == true;
+        var anchor = preserve ? previous!.ReadBounds(window)
+            : portraitDeviceBounds;
         var monitors = _screen.GetMonitors();
-        var portraitMonitor = TransientSurfacePlacement.SelectMonitor(portraitDeviceBounds, monitors)
+        var portraitMonitor = TransientSurfacePlacement.SelectMonitor(anchor, monitors)
             ?? monitors.FirstOrDefault(candidate => candidate.IsPrimary)
             ?? monitors.FirstOrDefault();
         if (portraitMonitor is null)
@@ -44,17 +56,23 @@ public sealed class DialogueWindowPlacementCoordinator
         var size = _windowSizes.GetValue(window, current =>
         {
             var state = new WindowPlacementSize(current);
+            current.LocationChanged += (_, _) =>
+            {
+                if (!state.Applying && current.WindowState == WindowState.Normal && state.HasPlacement)
+                    state.NativeBounds = state.ReadBounds(current);
+            };
             current.SourceInitialized += (_, _) =>
             {
                 TransientSurfacePlacement.ApplyNativeBounds(current, state.NativeBounds);
                 HwndSource.FromHwnd(new WindowInteropHelper(current).Handle)?.AddHook(
                     (nint hwnd, int msg, nint wParam, nint lParam, ref bool handled) =>
                     {
-                        if (msg is 0x007E or 0x001A && current.IsVisible && !current.Dispatcher.HasShutdownStarted)
+                        if ((msg is 0x007E or 0x001A || msg == 0x02E0 && state.RetainPosition)
+                            && current.IsVisible && !current.Dispatcher.HasShutdownStarted)
                             current.Dispatcher.BeginInvoke(new Action(() =>
                             {
                                 if (current.IsVisible && current.WindowState != WindowState.Minimized)
-                                    ApplyOnOpen(current,state.Anchor);
+                                    Apply(current, state.Anchor, state.RetainPosition);
                             }));
                         return 0;
                     });
@@ -62,6 +80,7 @@ public sealed class DialogueWindowPlacementCoordinator
             return state;
         });
         size.Anchor = portraitDeviceBounds;
+        size.RetainPosition = retainPosition;
         size.ObserveCurrentSize(window);
         var workArea = portraitMonitor.WorkArea;
         if (workArea.Width <= 0 || workArea.Height <= 0
@@ -70,21 +89,30 @@ public sealed class DialogueWindowPlacementCoordinator
             return;
         }
 
-        var visible = TransientSurfacePlacement.Place(portraitDeviceBounds, workArea, portraitDpi,
-            Math.Max(size.RequestedWidth, size.OriginalMinWidth),
-            Math.Max(size.RequestedHeight, size.OriginalMinHeight), marginDip: 16);
+        var width = Math.Max(size.RequestedWidth, size.OriginalMinWidth);
+        var height = Math.Max(size.RequestedHeight, size.OriginalMinHeight);
+        var visible = preserve
+            ? TransientSurfacePlacement.Constrain(anchor, workArea, portraitDpi, width, height, marginDip: 16)
+            : TransientSurfacePlacement.Place(anchor, workArea, portraitDpi, width, height, marginDip: 16);
         var widthDip = visible.Width / portraitDpi.X;
         var heightDip = visible.Height / portraitDpi.Y;
-        window.MinWidth = Math.Min(size.OriginalMinWidth, widthDip);
-        window.MinHeight = Math.Min(size.OriginalMinHeight, heightDip);
-        window.Width = widthDip;
-        window.Height = heightDip;
-        size.RecordAppliedSize(widthDip, heightDip, window.MinWidth, window.MinHeight);
+        size.Applying = true;
+        try
+        {
+            window.MinWidth = Math.Min(size.OriginalMinWidth, widthDip);
+            window.MinHeight = Math.Min(size.OriginalMinHeight, heightDip);
+            window.Width = widthDip;
+            window.Height = heightDip;
+            size.RecordAppliedSize(widthDip, heightDip, window.MinWidth, window.MinHeight);
 
-        window.Left = visible.X / portraitDpi.X;
-        window.Top = visible.Y / portraitDpi.Y;
-        size.NativeBounds = visible;
-        TransientSurfacePlacement.ApplyNativeBounds(window, visible);
+            window.Left = visible.X / portraitDpi.X;
+            window.Top = visible.Y / portraitDpi.Y;
+            size.NativeBounds = visible;
+            TransientSurfacePlacement.ApplyNativeBounds(window, visible);
+            size.LastDpi = portraitDpi;
+            size.HasPlacement = true;
+        }
+        finally { size.Applying = false; }
     }
 
     /// <summary>Compatibility entry point; dialogue placement is intentionally not persisted.</summary>
@@ -100,6 +128,19 @@ public sealed class DialogueWindowPlacementCoordinator
     {
         public DeviceRect NativeBounds { get; set; }
         public DeviceRect Anchor { get; set; }
+        public bool RetainPosition { get; set; }
+        public bool HasPlacement { get; set; }
+        public bool Applying { get; set; }
+        public Dpi2 LastDpi { get; set; } = new(1, 1);
+
+        public DeviceRect ReadBounds(Window current)
+        {
+            if (current.WindowState != WindowState.Normal) return NativeBounds;
+            if (TransientSurfacePlacement.TryReadNativeBounds(current, out var bounds)) return bounds;
+            // Before an HWND exists, WPF coordinates use the last placement's target DPI.
+            return new DeviceRect((int)Math.Round(current.Left * LastDpi.X),
+                (int)Math.Round(current.Top * LastDpi.Y), NativeBounds.Width, NativeBounds.Height);
+        }
         private double _lastAppliedWidth = double.NaN;
         private double _lastAppliedHeight = double.NaN;
         private double _lastAppliedMinWidth = double.NaN;

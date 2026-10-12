@@ -58,6 +58,67 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         });
     }
 
+    public ValueTask<IReadOnlyList<AgentRunCheckpoint>> LoadConversationRunsAsync(ToolScope scope,
+        IReadOnlyCollection<string> rootMessageIds, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(rootMessageIds);
+        if (!Id(scope.ConversationId) || !Id(scope.RoleId) || scope.ProjectId is not null && !Id(scope.ProjectId))
+            throw new AgentStateException("RUN_INVALID_SCOPE");
+        if (rootMessageIds.Count == 0) return ValueTask.FromResult<IReadOnlyList<AgentRunCheckpoint>>([]);
+        return Safe<IReadOnlyList<AgentRunCheckpoint>>(() => {
+            using var connection = _database.Open();
+            using var transaction = connection.BeginTransaction(deferred: true);
+            var candidates = new List<(string Key, string Root)>();
+            using (var query = new SqliteCommand("""
+                SELECT r.run_key,r.root_message_id FROM agent_runs r
+                JOIN conversations c ON c.conversation_id=r.conversation_id
+                JOIN chat_messages m ON m.message_id=r.root_message_id AND m.conversation_id=c.conversation_id
+                WHERE r.conversation_id=$conversation AND r.role_id=$role AND r.project_id IS $project
+                  AND c.servant_id=$role AND c.project_id IS $project AND c.status='active'
+                  AND m.servant_id=$role AND m.role='user' AND m.status='completed'
+                  AND r.completed_at_utc IS NOT NULL
+                ORDER BY m.sequence,r.completed_at_utc,r.run_key LIMIT $limit
+                """, connection, transaction))
+            {
+                query.Parameters.AddWithValue("$conversation", scope.ConversationId);
+                query.Parameters.AddWithValue("$role", scope.RoleId);
+                query.Parameters.AddWithValue("$project", (object?)scope.ProjectId ?? DBNull.Value);
+                query.Parameters.AddWithValue("$limit", MaxRuns + 1);
+                using var reader = query.ExecuteReader();
+                while (reader.Read())
+                {
+                    token.ThrowIfCancellationRequested();
+                    candidates.Add((reader.GetString(0), reader.GetString(1)));
+                }
+            }
+            if (candidates.Count > MaxRuns) throw new AgentStateException("RUN_STATE_QUOTA_EXCEEDED");
+            // Bound allocation by retained runs, not by the caller's potentially long history.
+            // Scan every requested root so an older or later root is never silently truncated.
+            var availableRoots = candidates.Select(candidate => candidate.Root).ToHashSet(StringComparer.Ordinal);
+            var selectedRoots = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var root in rootMessageIds)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!Id(root)) throw new AgentStateException("RUN_INVALID_SCOPE");
+                if (availableRoots.Contains(root)) selectedRoots.Add(root);
+            }
+            var result = new List<AgentRunCheckpoint>();
+            foreach (var candidate in candidates)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!selectedRoots.Contains(candidate.Root)) continue;
+                var state = Read(connection, transaction, candidate.Key);
+                if (state is null || !state.Snapshot.IsTerminal || state.Snapshot.Identity.Scope != scope)
+                    throw new AgentStateException("RUN_STATE_UNREADABLE");
+                result.Add(state);
+            }
+            token.ThrowIfCancellationRequested();
+            return result;
+        });
+    }
+
     public ValueTask<bool> TryCreateAsync(AgentRunCheckpoint initial, ImmutableArray<AgentEvent> events, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();

@@ -6,6 +6,18 @@ namespace FgoPet.Agent.Tests.Protocol;
 
 public sealed class ModelStepAggregatorTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Output_limit_has_specific_failure_even_with_partial_tool_identity(bool partialTool)
+    {
+        var stream = new ModelStepAggregator(new ModelToolNameMap(["workspace.read"]));
+        if (partialTool) stream.Add(new("", ToolCallDelta: new(0, argumentsDelta: "{\"path\":")));
+        stream.Add(new("unfinished", true, "length"));
+
+        Assert.Equal("MODEL_OUTPUT_LIMIT", Assert.Throws<AgentProtocolException>(() => stream.Complete()).Code);
+    }
+
     [Fact]
     public void Interleaved_calls_are_ordered_and_resolved_only_against_offered_aliases()
     {

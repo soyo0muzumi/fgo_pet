@@ -67,8 +67,11 @@ public sealed class MarginWebIntegrationTests
             await Js("document.getElementById('clear-workspace').click()");
             await WaitUntil(async () => await Js("document.getElementById('workspace-selection').hidden") == "true");
             Assert.Null(workspace.Label);
-            Assert.Equal("\"rgb(178, 113, 139)\"", await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor"));
-            Assert.Contains("Noto Serif SC", await Js("getComputedStyle(document.getElementById('role-name')).fontFamily"));
+            Assert.Equal("true", await Js("document.getElementById('send-message').disabled"));
+            Assert.Equal("\"rgb(242, 240, 235)\"", await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor"));
+            // The disabled empty-input state is neutral; the enabled theme accent stays intact.
+            Assert.Equal("\"rgb(178, 113, 139)\"", await Js("(() => { const b=document.createElement('button');b.className='send send-button';document.body.append(b);const color=getComputedStyle(b).backgroundColor;b.remove();return color; })()"));
+            Assert.Contains("Segoe UI", await Js("getComputedStyle(document.getElementById('role-name')).fontFamily"));
             await WaitUntil(async () => await Js("document.querySelectorAll('#messages article').length === 2") == "true");
             Assert.Equal(WindowStyle.None, window.WindowStyle);
             Assert.Equal("true", await Js("document.querySelector('.sheet-top') !== null && document.querySelector('.chat-header') === null"));
@@ -157,6 +160,50 @@ public sealed class MarginWebIntegrationTests
             Assert.Empty(vm.Conversation.InputText);
             await WaitUntil(async () => await Js("document.querySelectorAll('#messages article').length === 0 && document.getElementById('composer').value === ''") == "true");
             Log("conversation.new","success");
+            vm.Conversation.Dispose();
+        }, TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public async Task Composer_grows_with_native_drafts_preserves_reading_and_stays_inside_small_window()
+    {
+        await StaRunner.RunAsync(async () =>
+        {
+            var vm = DialogueWindowIntegrationTests.CreateViewModel();
+            vm.Conversation.SetActiveServant("composer-fixture");
+            for (var i = 0; i < 20; i++)
+                vm.Conversation.Turns.Add(new($"synthetic-{i}", FgoPet.Core.Dialogue.ChatMessageRole.Assistant,
+                    $"Synthetic turn {i}\nEnglish and 中文\nOne more line for the reading anchor."));
+            var storage = Path.Combine(Path.GetTempPath(), "fgopet-composer-" + Guid.NewGuid().ToString("N"));
+            var factory = new ChatWebSurfaceFactory(new ChatWebSessionFactory(vm.Conversation), storage);
+            using var window = new DialogueWindow(vm, webFactory: factory);
+            window.Show();
+            var host = Assert.IsType<WebView2SurfaceHost>(((ContentControl)window.FindName("ChatSurface")).Content);
+            await WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
+            var web = Assert.IsType<Microsoft.Web.WebView2.Wpf.WebView2>(host.Children[0]);
+            async Task<string> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code);
+            await WaitUntil(async () => await Js("!document.getElementById('composer').disabled && document.querySelectorAll('#messages article').length === 20") == "true");
+            await WaitUntil(async () => await Js("document.getElementById('messages').getAnimations({subtree:true}).every(a => a.playState === 'finished')") == "true");
+            await Js("window.c=document.getElementById('composer');window.s=document.getElementById('message-scroll');s.scrollTo({top:450,behavior:'instant'})");
+            await Task.Delay(100);
+            await Js("window.readingTop=s.scrollTop;c.value='First line\\n第二行\\nThird line';c.dispatchEvent(new Event('input',{bubbles:true}))");
+            await WaitUntil(() => Task.FromResult(vm.Conversation.InputText == "First line\n第二行\nThird line"));
+            var measured = await Js("JSON.stringify({height:c.getBoundingClientRect().height,top:s.scrollTop,readingTop,viewport:innerHeight,windowWidth:innerWidth})");
+            Assert.True(await Js("c.getBoundingClientRect().height === 74 && Math.abs(s.scrollTop-readingTop) < 2") == "true", measured);
+            vm.Conversation.Turns[^1].Text += string.Concat(Enumerable.Repeat("\nSynthetic streamed line", 100));
+            await Task.Delay(100);
+            Assert.Equal("true", await Js("Math.abs(s.scrollTop-readingTop) < 2"));
+            await Js("c.value='Synthetic paste\\n'.repeat(40);c.dispatchEvent(new Event('input',{bubbles:true}))");
+            await WaitUntil(async () => await Js("c.getBoundingClientRect().height > 106 && c.scrollHeight > c.clientHeight") == "true");
+            window.Width = 328; window.Height = 388;
+            await WaitUntil(async () => await Js("c.getBoundingClientRect().height <= innerHeight*.55 && document.querySelector('.thread-viewport').getBoundingClientRect().height >= 72 && c.getBoundingClientRect().bottom <= innerHeight") == "true");
+            Assert.Equal("true", await Js("document.getElementById('jump-bottom').getBoundingClientRect().top >= s.getBoundingClientRect().bottom && document.getElementById('jump-bottom').getBoundingClientRect().bottom <= c.getBoundingClientRect().top && document.documentElement.scrollWidth <= innerWidth"));
+            // A host draft replacement must follow acknowledgement of local typing.
+            await WaitUntil(() => Task.FromResult(vm.Conversation.InputText == string.Concat(Enumerable.Repeat("Synthetic paste\n", 40))));
+            vm.Conversation.InputText = "Native restored\ndraft\n第三行";
+            await WaitUntil(async () => await Js("c.value.startsWith('Native restored') && c.getBoundingClientRect().height === 74") == "true");
+            vm.Conversation.InputText = "";
+            await WaitUntil(async () => await Js("c.value === '' && c.getBoundingClientRect().height === 34") == "true");
             vm.Conversation.Dispose();
         }, TimeSpan.FromSeconds(60));
     }

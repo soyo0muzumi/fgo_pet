@@ -135,7 +135,7 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
         {
             _dialogueWindow.PresentationRequestedHandler = ShowDialogueWindow;
             if (dialoguePlacement is not null && coordinator is not null)
-                _dialogueWindow.LayoutRequestedHandler = OnGeometryChanged;
+                _dialogueWindow.LayoutRequestedHandler = OnDialogueLayoutRequested;
             _dialogue.SettingsRequested += OnDialogueSettingsRequested;
         }
     }
@@ -195,8 +195,10 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
             return;
         }
 
+        // Restore the normal HWND bounds before measuring/clamping; minimized dimensions are not chat size.
+        if (_dialogueWindow.WindowState == WindowState.Minimized) _dialogueWindow.WindowState = WindowState.Normal;
         // Independent native windows keep Chat restorable when the character is hidden.
-        if (_coordinator is not null) _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+        if (_coordinator is not null) _dialoguePlacement?.ApplyChatOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
         _dialogueWindow.RestorePresentation();
         UpdateManagementPriority();
     }
@@ -382,10 +384,14 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     {
         return TransientSurfacePlacement.ContainsScreenPoint(window, screenPoint);
     }
+    private void OnDialogueLayoutRequested()
+    {
+        if (_dialogueWindow?.IsVisible == true && _dialogueWindow.WindowState == WindowState.Normal)
+            _dialoguePlacement?.ApplyChatOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+    }
     private void OnGeometryChanged()
     {
-        if (_dialogueWindow?.IsVisible == true && _dialogueWindow.WindowState != WindowState.Minimized)
-            _dialoguePlacement?.ApplyOnOpen(_dialogueWindow, _coordinator.PortraitDeviceBounds);
+        OnDialogueLayoutRequested();
         if (_settingsWindow?.IsVisible == true && _settingsWindow.WindowState != WindowState.Minimized)
             _dialoguePlacement?.ApplyOnOpen(_settingsWindow, _coordinator.PortraitDeviceBounds);
     }

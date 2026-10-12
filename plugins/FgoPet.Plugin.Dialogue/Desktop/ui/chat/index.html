@@ -22,6 +22,7 @@
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></symbol>
     <symbol id="icon-send" viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></symbol>
     <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
     <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
     <symbol id="icon-read" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
     <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
@@ -35,8 +36,8 @@
   <main id="chat-window" class="sheet" data-i18n-aria-label="chat.chat.window">
     <header class="sheet-top">
       <button id="history-toggle" class="today-line" type="button" aria-expanded="false" aria-controls="history-panel" data-i18n-aria-label="chat.conversations">
-        <span class="tl-k" data-i18n="chat.chat">Chat</span>
         <span class="tl-peek" id="role-name"></span>
+        <span class="tl-k" data-i18n="chat.chat">Chat</span>
         <svg class="tl-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
       </button>
       <nav class="sheet-ctl" data-i18n-aria-label="chat.chat.actions">
@@ -65,35 +66,43 @@
         <button id="history-more" type="button" class="link" hidden data-i18n="chat.load.more"></button>
       </aside>
       <section class="sheet-conversation" data-i18n-aria-label="chat.current.conversation">
-        <div id="message-scroll" class="thread" tabindex="0" data-i18n-aria-label="chat.messages">
-          <div id="messages" aria-live="polite" aria-relevant="additions text"></div>
-          <p id="empty-conversation" class="chat-empty" hidden data-i18n="chat.start.a.conversation"></p>
-          <details id="recalled-sources" class="sources" hidden><summary data-i18n="chat.sources"></summary><div id="source-items"></div></details>
+        <div class="thread-viewport">
+          <div id="message-scroll" class="thread" tabindex="0" data-i18n-aria-label="chat.messages">
+            <div id="messages" aria-live="polite" aria-relevant="additions text"></div>
+            <p id="empty-conversation" class="chat-empty" hidden data-i18n="chat.start.a.conversation"></p>
+            <details id="recalled-sources" class="sources" hidden><summary data-i18n="chat.sources"></summary><div id="source-items"></div></details>
+          </div>
+          <button id="jump-bottom" class="link jump-bottom" type="button" hidden data-i18n="chat.new.content.jump.to.bottom"></button>
         </div>
-        <button id="jump-bottom" class="link jump-bottom" type="button" hidden data-i18n="chat.new.content.jump.to.bottom"></button>
         <div id="conversation-status" class="act conversation-status" role="status" aria-live="polite" hidden></div>
         <div id="conversation-error" class="note fail" role="alert" hidden></div>
+        <div id="page-status" class="note fail" role="status" aria-live="polite" hidden><span id="page-status-text"></span><button id="page-retry" class="link" type="button" hidden data-i18n="chat.reconnect"></button></div>
         <div id="capability-notice" class="note unsure" hidden>
           <span id="capability-notice-text"></span>
           <div class="notice-actions"><button id="capability-retry" class="link" type="button" hidden data-i18n="chat.retry"></button><button id="capability-settings" class="link" type="button" hidden data-i18n="chat.model.settings"></button></div>
         </div>
-        <div class="context-bar">
+        <div id="context-bar" class="context-bar" hidden>
           <button id="choose-workspace" type="button" class="paper-control" hidden data-i18n-aria-label="chat.choose.workspace" data-i18n-title="chat.choose.workspace"><svg class="icon" aria-hidden="true"><use href="#icon-project"></use></svg></button>
           <span id="workspace-selection" class="workspace-selection" hidden><span data-i18n="chat.workspace"></span>: <span id="workspace-label"></span><button id="clear-workspace" class="chip-remove" type="button" data-i18n-aria-label="chat.clear.workspace" data-i18n-title="chat.clear.workspace">×</button></span>
           <div id="context-chips" class="context-chips" data-i18n-aria-label="chat.context"></div>
         </div>
-        <div class="composer">
+        <div class="composer" id="composer-card">
           <label class="visually-hidden" for="composer" data-i18n="chat.message"></label>
           <textarea id="composer" rows="1" data-i18n-placeholder="chat.say.something" data-i18n-aria-label="chat.message" aria-describedby="composer-hint composer-error" spellcheck="true" disabled></textarea>
-          <button id="send-message" type="button" class="send send-button" data-i18n-aria-label="chat.send" data-i18n-title="chat.send"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg></button>
-          <button id="stop-generation" class="stop" type="button" hidden data-i18n-aria-label="chat.stop.generation"><svg class="icon" aria-hidden="true"><use href="#icon-stop"></use></svg><span data-i18n="chat.stop"></span></button>
-          <span id="composer-hint" class="visually-hidden" data-i18n="chat.enter.to.send.shift.enter.for.a.new.line"></span>
-          <span id="composer-count" class="composer-count" aria-live="polite"></span>
           <div id="composer-error" class="composer-error" role="alert" hidden></div>
+          <div class="composer-toolbar">
+            <span id="composer-feedback" class="composer-feedback" role="status" aria-live="polite" aria-atomic="true"></span>
+            <span id="composer-count" class="composer-count" aria-live="polite"></span>
+            <div class="composer-submit">
+              <button id="send-message" type="button" class="send send-button" data-i18n-aria-label="chat.send"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg></button>
+              <button id="stop-generation" class="stop" type="button" hidden data-i18n-aria-label="chat.stop.generation"><svg class="icon" aria-hidden="true"><use href="#icon-stop"></use></svg></button>
+            </div>
+          </div>
+          <span id="composer-hint" class="visually-hidden" data-i18n="chat.enter.to.send.shift.enter.for.a.new.line"></span>
         </div>
       </section>
     </div>
-    <div id="page-status" class="note fail" role="status" aria-live="polite" hidden><span id="page-status-text"></span><button id="page-retry" class="link" type="button" hidden data-i18n="chat.reconnect"></button></div>
+    <div id="chat-tooltip" class="chat-tooltip" role="tooltip" hidden></div>
   </main>
 </body>
 </html>

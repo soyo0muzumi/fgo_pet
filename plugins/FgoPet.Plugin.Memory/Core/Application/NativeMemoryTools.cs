@@ -100,7 +100,10 @@ public static class NativeMemoryTools
                         continue;
                     }
 
-                    var candidate = new SearchItem(memory.MemoryId, memory.Version, text, memory.ProjectId);
+                    var source = memory.Source;
+                    var candidate = new SearchItem(memory.MemoryId, memory.Version, text, memory.ProjectId,
+                        (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString(), source?.OccurredAtUtc,
+                        source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable);
                     var preview = new SearchPayload(snapshot.Revision, [.. results, candidate], Truncated: true);
                     if (!Fits(preview))
                     {
@@ -201,6 +204,8 @@ public static class NativeMemoryTools
         { ExecutionState = ToolExecutionState.NotExecuted };
 
     private sealed record SearchArguments(string Query, int MaxItems, int MaxChars);
-    private sealed record SearchItem(string MemoryId, int Version, string Text, string? ProjectId);
+    private sealed record SearchItem(string MemoryId, int Version, string Text, string? ProjectId,
+        string SourceKind, DateTimeOffset? SourceOccurredAtUtc, string? SourceConversationId, string? SourceMessageId,
+        bool SourceAvailable, string Confirmation = "UserReviewed");
     private sealed record SearchPayload(long Revision, IReadOnlyList<SearchItem> Items, bool Truncated);
 }

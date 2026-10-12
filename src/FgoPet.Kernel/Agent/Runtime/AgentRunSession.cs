@@ -28,11 +28,16 @@ internal sealed class AgentRunSession(AgentRunState state, ImmutableArray<ModelM
         StepEnvironmentBuilder.CheckSize(next);
         Transcript = next;
     }
-    public void SetPreparedTranscript(ImmutableArray<ModelMessage> prepared)
+    public void SetPreparedTranscript(ImmutableArray<ModelMessage> prepared, ImmutableArray<ModelMessage> history = default)
     {
         ModelProtocol.ValidateTranscript(prepared);
         StepEnvironmentBuilder.CheckSize(prepared);
         var accepted = Transcript.SelectMany(message => message.ToolCalls).ToHashSet();
+        if (!history.IsDefaultOrEmpty)
+        {
+            ModelProtocol.ValidateTranscript(history);
+            accepted.UnionWith(history.SelectMany(message => message.ToolCalls));
+        }
         if (prepared.SelectMany(message => message.ToolCalls).Any(call => !accepted.Contains(call)))
             throw new AgentProtocolException("RUN_PREPARATION_INVALID_CALLS");
         Transcript = prepared;

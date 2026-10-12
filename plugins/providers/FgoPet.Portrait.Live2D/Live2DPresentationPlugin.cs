@@ -18,6 +18,8 @@ public sealed class Live2DPresentationPlugin(
     private bool _started;
     private bool _disposed;
     private string? _conversation;
+    private string? _requestId;
+    private long _generation;
     private ConversationOrchestrator? _conversations;
     public PluginManifest Manifest { get; } = new("firstparty.portrait-live2d", "1.0.0", 1, []);
     public PluginContributions Contributions => PluginContributions.Empty;
@@ -37,7 +39,18 @@ public sealed class Live2DPresentationPlugin(
 
     private void OnPresentation(CompanionPresentationState? state)
     {
-        if (state is null) { _conversation = null; return; }
+        if (state is null)
+        {
+            _conversation = null;
+            _requestId = null;
+            var generation = Interlocked.Increment(ref _generation);
+            Dispatch(() =>
+            {
+                if (generation == Volatile.Read(ref _generation) && _requestId is null)
+                    portrait.SetDialogueFeedback("idle");
+            });
+            return;
+        }
         Dispatch(() =>
         {
             if (presentation.IsCurrent(state) && portrait.MatchesRole(state.Role)) portrait.SetExpression(state.Expression);
@@ -47,26 +60,33 @@ public sealed class Live2DPresentationPlugin(
     private void OnConversation(ConversationUpdate update)
     {
         var role = presentation.ActiveRole;
-        if (role is null || update.ServantId != role.ServantId) return;
+        if (role is null || update.ServantId != role.ServantId || string.IsNullOrEmpty(update.RequestId)) return;
+        if (update.Type == ConversationUpdateType.UserMessagePersisted) _requestId = update.RequestId;
+        if (update.RequestId != _requestId) return;
+        var generation = update.Type == ConversationUpdateType.UserMessagePersisted
+            ? Interlocked.Increment(ref _generation) : Volatile.Read(ref _generation);
         Dispatch(() =>
         {
+            if (generation != Volatile.Read(ref _generation) || update.RequestId != _requestId) return;
             if (!ReferenceEquals(role, presentation.ActiveRole) || !portrait.MatchesRole(role)) return;
             if (update.Type == ConversationUpdateType.UserMessagePersisted)
             {
                 _conversation = update.ConversationId;
                 portrait.SetExpression(ExpressionSemantic.Neutral);
-                portrait.SetThinking(true);
+                portrait.SetDialogueFeedback("waiting");
             }
             else if (update.ConversationId == _conversation)
             {
                 var finished = update.Type is ConversationUpdateType.AssistantCompleted
                     or ConversationUpdateType.Cancelled or ConversationUpdateType.Failed;
-                var answering = update.Type == ConversationUpdateType.AssistantDelta
-                    || update.RequestStage == ConversationRequestStage.StreamingAnswer;
-                if (finished || answering) portrait.SetThinking(false);
+                var answering = update.Type == ConversationUpdateType.AssistantDelta && !string.IsNullOrWhiteSpace(update.TextDelta)
+                    || update.Type == ConversationUpdateType.RequestStage
+                        && update.RequestStage == ConversationRequestStage.StreamingAnswer;
+                if (finished) portrait.SetDialogueFeedback("idle");
+                else if (answering) portrait.SetDialogueFeedback("replying");
                 if (update.Type == ConversationUpdateType.AssistantCompleted && update.Expression is { } expression)
                     portrait.SetExpression(expression);
-                if (finished) _conversation = null;
+                if (finished) { _conversation = null; _requestId = null; }
             }
         });
     }
@@ -89,5 +109,7 @@ public sealed class Live2DPresentationPlugin(
         presentation.Changed -= OnPresentation;
         if (_conversations is not null) _conversations.Updated -= OnConversation;
         _conversation = null;
+        _requestId = null;
+        Interlocked.Increment(ref _generation);
     }
 }

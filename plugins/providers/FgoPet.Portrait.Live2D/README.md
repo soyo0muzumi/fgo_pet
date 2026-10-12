@@ -38,10 +38,29 @@ alignment. Static fallback and its hit testing use the same bottom alignment.
 `Live2DPresentationPlugin` projects the existing active-role presentation and chat
 updates onto private renderer messages. It resolves the chat orchestrator at plugin
 start, after the plugin catalog exists. Queued updates recheck active-role identity;
-role replacement and plugin disposal reject stale work. Thinking starts when the user
-message is persisted and ends when the answer streams, completes, fails or is cancelled.
+role replacement and plugin disposal reject stale work. New requests invalidate older
+already-queued chat callbacks. The private `live2d.thinking` message includes a validated
+`phase` (`idle`, `waiting`, `replying`) and monotonic `sequence`; stale renderer messages
+are rejected and repeated phases do not restart the reply nod. Waiting begins when the
+user message is persisted. Non-empty answer text or `StreamingAnswer` starts replying;
+reasoning-only/empty deltas keep waiting. Completion, failure and cancellation release
+the offsets smoothly. Each admitted send carries an immutable RequestId through every
+request event. The projection rejects a mismatched/missing identity before queueing and
+again on the dispatcher, including old events arriving after a new send in the same
+conversation. Role replacement clears the identity and settles feedback; completion,
+failure, cancellation and disposal invalidate the request. The native window's separate
+semantic-expression bridge also invalidates queued expressions when a new send starts.
 
-`Runtime/desktop-state.mjs` owns Thinking → Sleep → semantic expression priority.
+`Runtime/desktop-state.mjs` gives chat feedback priority over legacy Thinking, Sleep
+and semantic expressions. Waiting uses an upward side glance through head X/Y/Z,
+eye X/Y and modest body X offsets. Replying returns toward the viewer, adds one
+1.8-second nod independent of token rate, then holds an attentive closed-mouth
+expression through eye-smile and mouth-form parameters. Only parameters present in
+the model are touched; hand and mouth-opening parameters remain unowned. All offsets
+release smoothly and are not saved into the motion base. Gaze yields while the head
+offsets are active. The reference Mash pose uses its supplied Thinking head/eye
+direction with bounded amplitude; the full motion's hand channels are not replayed.
+The legacy unsequenced Thinking message remains available for existing motion probes.
 Named motions play once. `Thinking` and `Sleep` hold their final parameter pose until
 the state changes; `Shy`, `Concerned` and `Surprised` smoothly return to default
 parameters after completion (approximately 0.4-second recovery time constant). Sad uses Concerned; Happy and
@@ -80,5 +99,7 @@ The runtime probe checks actual SDK rendering, left/right parameter response, id
 attention, head-hover/alpha rejection, upward-looking headroom and Tap ownership/recovery using a locally supplied model with a TapBody
 motion. With named state motions it also verifies held Thinking, blush and its gradual recovery, idle sleep,
 closed eyes, click wake, procedural smile and speech sound/silence/stop/stale-frame
-handling. Its hooks exist only in the served test copy. Automated tests do not establish
+handling. It also checks chat waiting/reply/cancellation, unchanged hand parameters,
+silent mouth, stale sequence rejection and repeated-packet behavior, saving a model-only
+video and state screenshots. Its hooks exist only in the served test copy. Automated tests do not establish
 physical multi-monitor DPI, click-through or perceived naturalness acceptance.

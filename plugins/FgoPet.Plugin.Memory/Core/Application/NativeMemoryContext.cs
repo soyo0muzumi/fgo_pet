@@ -132,7 +132,10 @@ public sealed class NativeMemoryContext : IAgentContextProvider
                     continue;
                 }
 
-                var candidate = new MemoryContextItem(memory.MemoryId, memory.Version, memory.Text, memory.ProjectId);
+                var source = memory.Source;
+                var candidate = new MemoryContextItem(memory.MemoryId, memory.Version, memory.Text, memory.ProjectId,
+                    (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString(), source?.OccurredAtUtc,
+                    source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable);
                 var preview = new MemoryContextPayload(snapshot.Revision, [.. items, candidate], Truncated: true);
                 if (!Fits(preview))
                 {
@@ -171,6 +174,8 @@ public sealed class NativeMemoryContext : IAgentContextProvider
     private IReadOnlyList<AgentContextBlock> Unavailable() =>
         [new AgentContextBlock(Id, AgentContextKind.Data, "MEMORY_UNAVAILABLE", 1000)];
 
-    private sealed record MemoryContextItem(string MemoryId, int Version, string Text, string? ProjectId);
+    private sealed record MemoryContextItem(string MemoryId, int Version, string Text, string? ProjectId,
+        string SourceKind, DateTimeOffset? SourceOccurredAtUtc, string? SourceConversationId, string? SourceMessageId,
+        bool SourceAvailable, string Confirmation = "UserReviewed");
     private sealed record MemoryContextPayload(long Revision, IReadOnlyList<MemoryContextItem> Memories, bool Truncated);
 }

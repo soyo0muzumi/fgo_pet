@@ -10,6 +10,40 @@ namespace FgoPet.Infrastructure.Tests.Providers;
 
 public sealed class OpenAiCompatibleChatProviderTests
 {
+    [Theory]
+    [InlineData("http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash", 0)]
+    [InlineData("https://proxy.test/v1", "buddy/deepseek-v4.1-flash", 2)]
+    [InlineData("http://127.0.0.1:8326/v1", "other-model", 2)]
+    public async Task Local_buddy_indexes_are_scoped_to_each_response_and_keep_fragments_together(string endpoint, string model, int expected)
+    {
+        var handler = new RecordingHandler(_ => StreamResponse(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":2,\"id\":\"a\",\"function\":{\"name\":\"first\",\"arguments\":\"{\"}}]}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":5,\"id\":\"b\",\"function\":{\"name\":\"second\",\"arguments\":\"{}\"}},{\"index\":2,\"function\":{\"arguments\":\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n"));
+        var provider = new OpenAiCompatibleChatProvider("custom-openai-compatible", new Uri(endpoint), model,
+            new FakeCredentialReader("fixture"), new HttpClient(handler));
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var chunks = await StreamAll(provider, BuildToolRequest());
+            var calls = chunks.Where(c => c.ToolCallDelta is not null).Select(c => c.ToolCallDelta!).ToArray();
+            Assert.Equal(new[] { expected, expected == 0 ? 1 : 5, expected }, calls.Select(c => c.Index));
+            Assert.Equal(new[] { "a", "b", null }, calls.Select(c => c.Id));
+            Assert.Equal(new[] { "{", "{}", "}" }, calls.Select(c => c.ArgumentsDelta));
+        }
+    }
+
+    [Fact]
+    public async Task Local_buddy_rejects_excess_calls_without_merging_identities()
+    {
+        var body = string.Concat(Enumerable.Range(0, 17).Select(i =>
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":" + (i * 2) +
+            ",\"id\":\"call" + i + "\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}}]}}]}\n\n"));
+        var provider = new OpenAiCompatibleChatProvider("custom-openai-compatible", new Uri("http://127.0.0.1:8326/v1"),
+            "buddy/deepseek-v4.1-flash", new FakeCredentialReader("fixture"),
+            new HttpClient(new RecordingHandler(_ => StreamResponse(body + "data: [DONE]\n\n"))));
+        var error = await Assert.ThrowsAsync<ProviderRequestException>(() => StreamAll(provider, BuildToolRequest()));
+        Assert.Equal(ProviderFailureCategory.InvalidResponse, error.Category);
+    }
+
     [Fact]
     public async Task All_calls_in_a_single_delta_are_emitted_in_order()
     {

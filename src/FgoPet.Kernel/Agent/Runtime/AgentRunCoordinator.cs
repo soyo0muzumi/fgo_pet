@@ -61,7 +61,12 @@ public sealed class AgentRunCoordinator : IAsyncDisposable
                     session.Model = await _models(identity, linked.Token);
                     _fence.EnsureCurrent(identity, linked.Token);
                     if (session.Model is IAgentRunPreparation preparation)
-                        session.SetPreparedTranscript(await preparation.PrepareAsync(session.Transcript, state, linked.Token));
+                    {
+                        var prepared = await preparation.PrepareAsync(session.Transcript, state, linked.Token);
+                        _fence.EnsureCurrent(identity, linked.Token);
+                        session.SetPreparedTranscript(prepared, preparation.HistoricalMessages);
+                        state.RegisterHistoricalCalls(preparation.HistoricalMessages);
+                    }
                     _fence.EnsureCurrent(identity, linked.Token);
                     await _loop.AdvanceAsync(session, linked.Token);
                     return Result(state);

@@ -15,6 +15,10 @@
   let draftTimer = 0;
   let draftQueue = Promise.resolve();
   let submitInProgress = false;
+  let stopInProgress = false;
+  let copyFeedback = null;
+  let copyTimer = 0;
+  let tooltipTarget = null;
   let deferDraftWrites = false;
   let composing = false;
   let hideAfterSubmit = false;
@@ -57,8 +61,12 @@
     jumpBottom: $("jump-bottom"),
     sources: $("recalled-sources"),
     sourceItems: $("source-items"),
+    contextBar: $("context-bar"),
     chips: $("context-chips"),
     composer: $("composer"),
+    composerCard: $("composer-card"),
+    composerFeedback: $("composer-feedback"),
+    tooltip: $("chat-tooltip"),
     composerError: $("composer-error"),
     composerCount: $("composer-count"),
     send: $("send-message"),
@@ -233,6 +241,7 @@
       el.scroll.scrollTo({ top: el.scroll.scrollTop + rect.top - box.top - anchor.offset, behavior: "instant" });
     }
     followingLatest = false;
+    el.jumpBottom.hidden = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
   }
 
   function applyCommandSnapshot(snapshot, expectedIdentityKey, allowIdentityChange = false) {
@@ -274,6 +283,11 @@
         draftCache.delete(previousKey);
       }
     }
+    if (previousKey !== incomingKey) {
+      if (copyTimer) window.clearTimeout(copyTimer);
+      copyFeedback = null;
+      hideTooltip();
+    }
     state = snapshot;
     lastIdentityKey = incomingKey;
     lastVersion = snapshot.version;
@@ -284,6 +298,7 @@
 
     syncComposerFromSnapshot(snapshot, previousKey !== incomingKey);
     renderSnapshot(snapshot);
+    fitComposer();
     // Restore after this render's layout read, before another user scroll can occur.
     // A deferred frame could replay a stale anchor over newer user interaction.
     restoreAnchor(preservedAnchor);
@@ -398,8 +413,14 @@
       record.reasoning.details.hidden = true;
     }
 
+    const copyHadFocus = record.copyButton && document.activeElement === record.copyButton;
     record.actions.replaceChildren();
-    if (turn.canCopy) record.actions.append(makeButton("turn-action turn-copy", t("chat.copy.message"), "copy", "copyTurn", turn.id));
+    if (turn.canCopy) {
+      record.copyButton ||= makeButton("turn-action turn-copy", t("chat.copy.message"), "copy", "copyTurn", turn.id, t("chat.copy"));
+      applyCopyFeedback(record.copyButton, turn.id);
+      record.actions.append(record.copyButton);
+      if (copyHadFocus) record.copyButton.focus({ preventScroll:true });
+    }
     if (turn.canReadAloud) {
       const speechLabel = window.MarginI18n.speechText(turn.speechActionText) || t("chat.read.aloud");
       const readButton = makeButton("turn-action", speechLabel, "read", "readTurn", turn.id, speechLabel);
@@ -661,12 +682,12 @@
     const actions = presentation.actions || {};
     const canOpenModelSettings = actions.canOpenModelSettings === true || conversation.canOpenModelSettings === true;
     el.capabilitySettings.hidden = !(conversation.configurationRequired === true && canOpenModelSettings);
-    el.stop.hidden = conversation.canStop !== true;
-    el.send.hidden = conversation.canStop === true;
+
     renderMessages(snapshot);
     renderSources(conversation);
     renderContextChips(conversation);
     renderChoices(snapshot);
+    el.contextBar.hidden = el.chooseWorkspace.hidden && el.workspaceSelection.hidden && el.chips.childElementCount === 0;
     renderHistory(snapshot);
     renderMoreActions(snapshot);
     updateComposerControls();
@@ -678,18 +699,33 @@
     el.composer.setAttribute("aria-invalid", String(Boolean(text)));
   }
 
+  function composerCanSend() {
+    const text = el.composer.value;
+    const conversation = state && state.conversation;
+    const serverText = state?.draft?.text || "";
+    const localReady = Boolean(text.trim() && text !== serverText && conversation && conversation.configurationRequired !== true);
+    return Boolean(conversation && (conversation.canSend || localReady) && text.trim()
+      && text.length <= maxMessageChars && !conversation.isStreaming && !submitInProgress && !stopInProgress);
+  }
+
   function updateComposerControls() {
     const text = el.composer.value;
     const overLimit = text.length > maxMessageChars;
     const conversation = state && state.conversation;
-    const serverDraftText = state && state.draft && typeof state.draft.text === "string" ? state.draft.text : "";
-    const localDraftReady = Boolean(text.trim() && text !== serverDraftText && conversation && conversation.configurationRequired !== true);
-    const canSend = Boolean(conversation && conversation.canSend) || localDraftReady;
+
     const streaming = Boolean(state && state.conversation && state.conversation.isStreaming);
     el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("en-US")} / ${maxMessageChars.toLocaleString("en-US")}` : "";
     el.composer.disabled = !state;
-    el.send.disabled = !canSend || streaming || overLimit || !text.trim() || submitInProgress;
-    el.stop.disabled = !state || !state.conversation || state.conversation.canStop !== true;
+    el.send.hidden = streaming;
+    el.stop.hidden = !streaming;
+    el.send.disabled = !composerCanSend();
+    el.stop.disabled = !streaming || conversation.canStop !== true || stopInProgress;
+    el.send.setAttribute("aria-label", submitInProgress ? t("chat.sending") : t("chat.send"));
+    el.stop.setAttribute("aria-label", stopInProgress ? t("chat.stopping") : t("chat.stop.generation"));
+    el.send.setAttribute("aria-busy", String(submitInProgress));
+    el.stop.setAttribute("aria-busy", String(stopInProgress));
+    setText(el.composerFeedback, submitInProgress ? t("chat.sending") : stopInProgress ? t("chat.stopping") : copyFeedback?.status === "copied" ? t("chat.copied") : copyFeedback?.status === "pending" ? t("chat.copying") : "");
+    if (tooltipTarget && (tooltipTarget.hidden || tooltipTarget.disabled)) hideTooltip();
     if (el.newConversation) el.newConversation.disabled = !state || streaming;
     el.historyNew.disabled = !state || streaming;
     if (overLimit) showComposerError(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}));
@@ -763,7 +799,7 @@
   }
 
   async function submitMessage() {
-    if (submitInProgress || !state || !state.conversation || state.conversation.isStreaming === true) return;
+    if (!composerCanSend()) return;
     const text = el.composer.value;
     if (!text.trim()) return;
     const serverDraftText = state.draft && typeof state.draft.text === "string" ? state.draft.text : "";
@@ -821,9 +857,12 @@
     try {
       const result = await post("chat.host", payload);
       if (result.snapshot) applyCommandSnapshot(result.snapshot, expected, false);
+      if (identityOf(state) !== expected) return false;
       setPageStatus("");
+      return true;
     } catch (error) {
       if (identityOf(state) === expected) setPageStatus(safeErrorText(error.message));
+      return false;
     }
   }
 
@@ -887,12 +926,39 @@
     await commandWithSnapshot(type, payload, false).catch(() => {});
   }
 
+  // Grow into available space while reserving a readable thread and fixed toolbar.
+  // Round the cap to complete text lines; host window geometry remains unchanged.
+  function fitComposer() {
+    const style = getComputedStyle(el.composer);
+    const minimum = parseFloat(style.minHeight) || 34;
+    const section = el.composerCard.closest(".sheet-conversation");
+    const cardStyle = getComputedStyle(el.composerCard);
+    const chrome = el.composerCard.getBoundingClientRect().height - el.composer.getBoundingClientRect().height
+      + parseFloat(cardStyle.marginTop) + parseFloat(cardStyle.marginBottom);
+    const other = Array.from(section.children).filter(node => node !== el.composerCard && !node.classList.contains("thread-viewport"))
+      .reduce((height, node) => height + node.getBoundingClientRect().height, 0);
+    const reserve = Math.min(160, Math.max(72, section.clientHeight * .25));
+    const available = Math.max(minimum, Math.min(section.clientHeight * .55, section.clientHeight - chrome - other - reserve));
+    const lineHeight = parseFloat(style.lineHeight);
+    const maximum = minimum + Math.floor((available - minimum) / lineHeight) * lineHeight;
+    el.composer.style.maxHeight = `${maximum}px`;
+    const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const previousScroll = el.composer.scrollTop;
+    el.composer.style.height = `${minimum}px`;
+    el.composer.style.height = `${Math.min(maximum, Math.max(minimum, el.composer.scrollHeight + borders))}px`;
+    el.composer.scrollTop = previousScroll;
+  }
+
   function onInput() {
+    const anchor = currentAnchor();
     localDraftRevision = Math.max(localDraftRevision, Number(state && state.draft && state.draft.revision) || 0) + 1;
     const identityKey = identityOf(state);
     if (identityKey) draftCache.set(identityKey, { text: el.composer.value, revision: localDraftRevision });
     if (el.composer.value.length <= maxMessageChars) showComposerError("");
     updateComposerControls();
+    fitComposer();
+    restoreAnchor(anchor);
+    saveAnchor();
     scheduleDraftWrite();
   }
 
@@ -907,6 +973,10 @@
       el.expand.title = expanded ? t("chat.compact.window") : t("chat.expand.window");
       el.expand.querySelector("use").setAttribute("href", expanded ? "#icon-collapse" : "#icon-expand");
       if (el.historyPanel.hidden === false) el.historyBackdrop.hidden = expanded;
+      const anchor = followingLatest ? null : readSavedAnchor(state);
+      fitComposer();
+      restoreAnchor(anchor);
+      saveAnchor();
     });
   }
 
@@ -921,12 +991,72 @@
     });
   }
 
+  function hideTooltip() {
+    if (tooltipTarget) {
+      const ids = (tooltipTarget.getAttribute("aria-describedby") || "").split(" ").filter(id => id && id !== "chat-tooltip");
+      if (ids.length) tooltipTarget.setAttribute("aria-describedby", ids.join(" "));
+      else tooltipTarget.removeAttribute("aria-describedby");
+    }
+    tooltipTarget = null;
+    el.tooltip.hidden = true;
+  }
+
+  function showTooltip(button) {
+    if (button.disabled || button.hidden) return;
+    hideTooltip();
+    tooltipTarget = button;
+    el.tooltip.textContent = button.getAttribute("aria-label") || "";
+    el.tooltip.hidden = false;
+    const root = el.window.getBoundingClientRect(), target = button.getBoundingClientRect();
+    el.tooltip.style.left = `${Math.max(8, Math.min(root.width - el.tooltip.offsetWidth - 8, target.right - root.left - el.tooltip.offsetWidth))}px`;
+    el.tooltip.style.top = `${Math.max(4, target.top - root.top - el.tooltip.offsetHeight - 6)}px`;
+    button.setAttribute("aria-describedby", [button.getAttribute("aria-describedby"), "chat-tooltip"].filter(Boolean).join(" "));
+  }
+
+  function applyCopyFeedback(button, id) {
+    const current = copyFeedback && copyFeedback.identity === identityOf(state) && copyFeedback.targetId === id;
+    const copied = current && copyFeedback.status === "copied";
+    const pendingCopy = current && copyFeedback.status === "pending";
+    // Keep keyboard focus on this command while its acknowledgement is pending.
+    // copyTurn rejects repeated activation; busy is distinct from unavailable.
+    button.setAttribute("aria-busy", String(Boolean(pendingCopy)));
+    button.classList.toggle("is-copied", Boolean(copied));
+    button.setAttribute("aria-label", copied ? t("chat.copied") : pendingCopy ? t("chat.copying") : t("chat.copy.message"));
+    button.removeAttribute("title");
+    if (tooltipTarget === button) el.tooltip.textContent = button.getAttribute("aria-label");
+    button.querySelector("use").setAttribute("href", copied ? "#icon-check" : "#icon-copy");
+    setText(button.querySelector(".turn-action-text"), copied ? t("chat.copied") : pendingCopy ? t("chat.copying") : t("chat.copy"));
+  }
+
+  function refreshCopyFeedback() {
+    for (const [id, record] of turnNodes) if (record.copyButton) applyCopyFeedback(record.copyButton, id);
+    updateComposerControls();
+  }
+
+  async function copyTurn(targetId) {
+    if (!state || !targetId || copyFeedback?.status === "pending") return;
+    if (copyTimer) window.clearTimeout(copyTimer);
+    const feedback = { targetId, identity:identityOf(state), status:"pending" };
+    copyFeedback = feedback;
+    refreshCopyFeedback();
+    const succeeded = await hostAction("copyTurn", { targetId });
+    if (copyFeedback !== feedback || identityOf(state) !== feedback.identity) return;
+    if (!succeeded) { copyFeedback = null; refreshCopyFeedback(); return; }
+    feedback.status = "copied";
+    refreshCopyFeedback();
+    copyTimer = window.setTimeout(() => {
+      if (copyFeedback === feedback) { copyFeedback = null; refreshCopyFeedback(); }
+      copyTimer = 0;
+    }, 2500);
+  }
+
   async function handleAction(action, targetId) {
     if (action === "openHistory" || action === "requestDelete" || action === "confirmDelete" || action === "cancelDelete") {
       await historyOperation(action, targetId);
       return;
     }
-    const targetActions = new Set(["copyTurn", "readTurn", "openSource", "openWorkspace", "removeContextChip"]);
+    if (action === "copyTurn") { await copyTurn(targetId); return; }
+    const targetActions = new Set(["readTurn", "openSource", "openWorkspace", "removeContextChip"]);
     const extras = targetActions.has(action) ? { targetId } : {};
     await hostAction(action, extras);
   }
@@ -942,8 +1072,13 @@
       void submitMessage();
     });
     el.send.addEventListener("click", () => { void submitMessage(); });
-    el.stop.addEventListener("click", () => {
-      if (state) void commandWithSnapshot("chat.stop", identityPayload(state), false).catch(() => {});
+    el.stop.addEventListener("click", async () => {
+      if (!state?.conversation?.isStreaming || state.conversation.canStop !== true || stopInProgress) return;
+      stopInProgress = true;
+      updateComposerControls();
+      try { await commandWithSnapshot("chat.stop", identityPayload(state), false); }
+      catch { /* commandWithSnapshot presents the safe error. */ }
+      finally { stopInProgress = false; updateComposerControls(); }
     });
     el.newConversation = $("new-conversation");
     el.newConversation.addEventListener("click", () => {
@@ -971,16 +1106,16 @@
     el.capabilitySettings.addEventListener("click", () => { void hostAction("openModelSettings"); });
     el.model.addEventListener("change", () => { if (el.model.value) void hostAction("selectModel", { targetId: el.model.value }); });
     el.jumpBottom.addEventListener("click", () => {
-      el.scroll.scrollTop = el.scroll.scrollHeight;
-      followingLatest = true;
-      el.jumpBottom.hidden = true;
+      // Instant restoration avoids intermediate smooth-scroll events disabling
+      // following just as new reply content arrives.
+      restoreAnchor(null);
       saveAnchor();
       el.composer.focus();
     });
     el.scroll.addEventListener("scroll", onScroll, { passive: true });
     el.messages.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
-      if (!button) return;
+      if (!button || button.disabled) return;
       const action = button.dataset.action;
       const targetId = button.dataset.targetId;
       if (action === "openSpeechSettings") { void hostAction("openSpeechSettings"); return; }
@@ -1007,6 +1142,7 @@
     });
     document.addEventListener("keydown", event => {
       if (event.key !== "Escape" || event.isComposing || composing) return;
+      if (!el.tooltip.hidden) { event.preventDefault(); hideTooltip(); return; }
       if (!el.historyPanel.hidden) {
         event.preventDefault();
         setHistoryOpen(false, false);
@@ -1026,7 +1162,16 @@
       event.preventDefault();
       void hideWindow();
     });
+    const tooltipSelector = ".composer-toolbar button,.turn-copy";
+    document.addEventListener("pointerover", event => { const button = event.target.closest(tooltipSelector); if (button) showTooltip(button); });
+    document.addEventListener("pointerout", event => { if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget)) hideTooltip(); });
+    document.addEventListener("focusin", event => { const button = event.target.closest(tooltipSelector); if (button) showTooltip(button); });
+    document.addEventListener("focusout", event => { if (event.target === tooltipTarget) hideTooltip(); });
     window.addEventListener("resize", resizeState, { passive: true });
+    // Includes history/sidebar changes and notices, not only native window resize.
+    const layoutObserver = new ResizeObserver(resizeState);
+    layoutObserver.observe(el.scroll);
+    layoutObserver.observe(el.composer);
     document.addEventListener("visibilitychange", () => {
       if (!state) return;
       if (document.visibilityState === "hidden") {
@@ -1040,6 +1185,8 @@
       void refreshSnapshot();
     });
     window.addEventListener("pagehide", () => {
+      layoutObserver.disconnect();
+      if (copyTimer) window.clearTimeout(copyTimer);
       if (draftTimer) window.clearTimeout(draftTimer);
       saveAnchor();
       if (state && el.composer.value.length <= maxMessageChars) {

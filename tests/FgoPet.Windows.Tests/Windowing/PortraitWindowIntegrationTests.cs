@@ -30,6 +30,9 @@ namespace FgoPet.Windows.Tests.Windowing;
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessage(nint hwnd, int message, nint wParam, nint lParam);
+
     [Theory]
     [InlineData(1.0, false)]
     [InlineData(1.5, false)]
@@ -267,6 +270,71 @@ public sealed class PortraitWindowIntegrationTests
             Assert.Same(view,portrait.PortraitContent);
             Assert.Equal(1,surface.ViewsCreated);
             portrait.Close();
+        });
+    }
+
+    [Fact]
+    public void Chat_entry_retains_native_position_and_draft_after_portrait_move_hide_and_minimize()
+    {
+        StaRun(() =>
+        {
+            var vm = FgoPet.Windows.Tests.Dialogue.DialogueWindowIntegrationTests.CreateViewModel();
+            using var chat = new FgoPet.App.Dialogue.DialogueWindow(vm);
+            var surface = new SamplePortraitSurface();
+            var portrait = new PortraitWindow();
+            var screen = new WindowsScreenLayoutService();
+            var store = new MemoryPlacementStore();
+            using var coordinator = new PortraitWindowCoordinator(portrait, surface, store, screen);
+            using var tray = new TrayService();
+            using var ui = new DesktopAppUi(tray, null!, new FgoPet.App.Settings.SettingsViewModel(), portrait,
+                coordinator, new WindowLifetime(), null!, surface, dialogueWindow: chat, dialogue: vm,
+                dialoguePlacement: new DialogueWindowPlacementCoordinator(store, screen));
+            var capture = Environment.GetEnvironmentVariable("FGO_PET_ACCEPTANCE_ARTIFACTS");
+            var correlation = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Guid.NewGuid().ToByteArray()))[..12];
+            void Log(string stage, string result)
+            {
+                if (string.IsNullOrWhiteSpace(capture)) return;
+                Directory.CreateDirectory(capture);
+                File.AppendAllText(Path.Combine(capture, "placement-native.jsonl"), JsonSerializer.Serialize(new
+                { timestamp = DateTimeOffset.UtcNow, correlation, stage, result,
+                    state = chat.WindowState.ToString(), width = chat.Width, height = chat.Height }) + Environment.NewLine);
+            }
+            ui.InitializeTray(); ui.ShowPortrait(); Log("entry.dispatch", "requested");
+            portrait.HandlePortraitClick(); StaRunner.Pump();
+            Log("chat.open", "success");
+            vm.Conversation.InputText = "retained positioned draft";
+            var content = ((ContentControl)chat.FindName("ChatSurface")).Content;
+            chat.Left = 80; chat.Top = 80; StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var selected));
+            portrait.Left += 300; coordinator.ClampPortraitToWorkArea(); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var afterMove));
+            Assert.Equal(selected, afterMove); Log("portrait.move", "chat-retained");
+            chat.Close(); portrait.HandlePortraitClick(); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var reopened));
+            Assert.Equal(selected, reopened); Log("chat.reopen", "retained");
+            chat.WindowState = WindowState.Minimized; StaRunner.Pump();
+            Log("chat.minimized", "ready");
+            ui.ShowDialogueWindow(); StaRunner.Pump(); Log("chat.restore", "returned");
+            Assert.Equal(WindowState.Normal, chat.WindowState);
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var restored));
+            Assert.Equal(selected, restored);
+            chat.SetExpanded(true); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var expanded));
+            Assert.Equal(selected.X, expanded.X); Assert.Equal(selected.Y, expanded.Y);
+            chat.SetExpanded(false); StaRunner.Pump();
+            Assert.Same(content, ((ContentControl)chat.FindName("ChatSurface")).Content);
+            Assert.Equal("retained positioned draft", vm.Conversation.InputText);
+            Assert.False(portrait.IsAttachedPanelVisible);
+            // Deliver the OS notification only to this isolated fixture; do not change display settings.
+            chat.Left = -10000; chat.Top = -10000; StaRunner.Pump();
+            SendMessage(new System.Windows.Interop.WindowInteropHelper(chat).Handle, 0x007E, 0, 0);
+            StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var recovered));
+            var monitor = TransientSurfacePlacement.SelectMonitor(recovered, screen.GetMonitors())!;
+            Assert.True(recovered.Left >= monitor.WorkArea.Left && recovered.Top >= monitor.WorkArea.Top);
+            Assert.True(recovered.Right <= monitor.WorkArea.Right && recovered.Bottom <= monitor.WorkArea.Bottom);
+            Log("display.notification", "recovered"); Log("flow.completed", "success");
+            portrait.Close(); vm.Conversation.Dispose();
         });
     }
 

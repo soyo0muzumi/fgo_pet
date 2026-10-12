@@ -2,6 +2,8 @@
 
 ## Ownership
 
+Native conversation history can query existing terminal protected run checkpoints by exact role/project/conversation and user-message IDs. This read path reuses the existing schema, encryption, retention and quotas; no tool data is copied into semantic chat messages. Kernel projects those records into subsequent same-conversation requests and includes them in the existing summary flow. Missing/pruned checkpoints cannot be reconstructed; this is bounded execution retention, not a permanent external-content archive.
+
 Dialogue owns HTTP provider adapters and wire policy, conversation SQLite repositories, model connection settings, and conversation presentation. The provider-neutral conversation engine, prompt assembly/budgets, recall and summary use cases compile in pure .NET Kernel. The existing `FgoPet.Dialogue` assembly still combines its concrete provider/storage implementation and WPF presentation.
 
 Kernel publishes conversation/request/context contracts and typed provider failures, and coordinates turn admission, persistence and bounded model calls against those contracts. Dialogue preserves their established namespaces and uses Kernel context lifetime to reject stale requests and commits. Original messages remain authoritative; summaries and search projections are rebuildable.
@@ -36,6 +38,8 @@ Accepted finals retain their source Run against terminal retention. Stale pendin
 
 ## Validation and remaining boundaries
 
+The loopback `buddy/deepseek-v4.1-flash` adapter maps provider tool indexes to response-local call indexes in first-seen order, preserving fragment grouping. Native identity, argument, completion and call-count validation remains authoritative. Other model routes keep their original indexes.
+
 Run relevant Core contract, App conversation/prompt, Infrastructure provider/SQLite and Windows dialogue/settings tests. Prompt/budget and context lifetime changes also require the affected EndToEnd checks and the evaluated architecture gate. These suites and browser fixtures are regression checks, not product Chat/UI, real-provider or device acceptance.
 
 The concrete provider/WPF conversation presentation mix remains to be narrowed. Dialogue has no Character, Speech or HostContracts project reference; window integration belongs to Shell. Legacy Core/Infrastructure aggregation is retired; that does not by itself complete generic hosting or long-file decomposition.
@@ -44,6 +48,8 @@ The concrete provider/WPF conversation presentation mix remains to be narrowed. 
 
 `AddChatWebPresentation` publishes `IChatWebSessionFactory` through `FgoPet.Dialogue.Contracts`. Each lightweight session projects the existing shared `ConversationViewModel`; disposing the projection never disposes or cancels that owner. `IChatWebHostActions` supplies bounded role/selector metadata and finite native presentation actions. Draft revisions and live session/role/conversation identities reject stale commands; model and history strings render as plain text in `Desktop/ui/chat`.
 
+`ConversationViewModel` allocates a fresh request GUID before each send and accepts only matching `ConversationUpdate.RequestId` events. Kernel owns the request identity contract; queued portrait consumers must check it again when applying an update. A Chat Web command's transport request ID is separate from the model-send identity. Uncorrelated events are not accepted as current streaming feedback.
+
 `IChatWorkspaceSelection` owns the in-memory local directory authorization selected through the host's native picker. Empty Chat binds its pending selection synchronously on first persisted user message, before native tool dispatch. Hiding or minimizing preserves the grant; new conversation, role/project changes, history navigation, explicit removal and disposal revoke it. Streaming forbids selection/removal. The Web bridge accepts no directory path; it publishes only a bounded directory label. Existing tool approval and file-access guards remain authoritative.
 
 The adapter schedules generation without waiting for provider completion, so stop remains independently executable. The original provider, storage, history, capability and speech rules remain authoritative. App `ChatWebSessionTests` exercise these bridge boundaries; Shell Windows tests and actual-module browser fixtures exercise presentation separately.
@@ -51,3 +57,9 @@ The adapter schedules generation without waiting for provider completion, so sto
 Model connection settings use `ModelConnectionWebPage` over the existing connection view model. The old ModelConnectionPage XAML is removed; catalog registration retains metadata only.
 
 The Margin settings detail uses English localization keys and the shared paper controls. Endpoint, token limits and reasoning visibility are disclosed under Advanced configuration; this is presentation state only. Save, connection testing, draft validation and immediate key clearing retain the existing owner commands. Known owner feedback is mapped to English keys in the page only; unknown service content and names remain literal text. Keys are write-only and omitted from navigation state. `MarginServiceSettingsWebTests` checks the production page with synthetic data, narrow-window scrolling and command dispatch; real provider and desktop acceptance remain separate.
+
+The Chat composer uses an editor above a fixed send/stop toolbar. Its height is bounded by available conversation space (at most 55% before reserving room for notices, the toolbar and the reading area), rounded to complete text lines; longer drafts scroll internally. Input, authoritative draft replacement and layout changes share the same sizing path. The reading anchor survives composer/layout changes; latest-follow mode remains explicit. Jump to bottom occupies its own row below the message scroller. Empty context rows are hidden while available workspace actions and valid selections remain visible. Send and Enter share the same availability check; pending send/stop commands reject repeated activation while editing remains available. Copy shows a transient confirmation only after a successful host acknowledgement and preserves keyboard focus; errors stay in the conversation notice area. Hover, pressed, focus-visible and disabled states use existing Margin tokens; tooltips support pointer/focus activation and Escape dismissal. Native window geometry remains owned by Shell.
+
+`node tests/chat_composer_probe.cjs <playwright-module> <ignored-output-dir> [no-preference|reduce]` exercises production Chat and shared UiSdk assets in installed Edge with a synthetic host. It covers bounded input, draft restore, send/stop/resend, reading anchors, streaming, narrow/sidebar layouts and content-sized user bubbles (CJK, multiline text, long URLs/identifiers and plain-text code fences); it does not establish physical IME or real-provider acceptance. `MarginWebIntegrationTests` also checks multiline drafts and reading position through the native WebView2 bridge.
+
+Conversation sends allocate a RequestId before calling the orchestrator. UI updates must match that identity as well as the active role/conversation; session invalidation and completed send cleanup discard it. The native expression bridge preserves the public expression event and rejects queued expressions after a subsequent send starts.

@@ -45,8 +45,9 @@ public sealed partial class ConversationOrchestrator
             ? connection with { ToolsSupported = true } : null))));
 
     private async Task<ConversationSendResult> SendNativeAsync(ContentBinding binding, ChatMessage user,
-        ToolScope scope, ConversationRequestContext? context, CancellationToken token)
+        ToolScope scope, ConversationRequestContext? context, Action<ConversationUpdate> publish, CancellationToken token)
     {
+        void Publish(ConversationUpdate update) => publish(update);
         var sourceReader = new ConversationSourceReader(_conversations);
         var source = sourceReader.Read(scope, user.MessageId, ConversationSourceKind.User);
         var query = new ProtectedQueryReference(user.MessageId, source.Fingerprint);
@@ -54,7 +55,8 @@ public sealed partial class ConversationOrchestrator
             NativeModelRevision(), _lifetime.Generation);
         void CheckCurrent()
         {
-            if (_nativeScopeCurrent?.Invoke(scope) == false || _lifetime.Generation != identity.AuthorizationRevision || NativeModelRevision() != identity.ModelRevision
+            if (identity is null || sourceReader is null || source is null
+                || _nativeScopeCurrent?.Invoke(scope) == false || _lifetime.Generation != identity.AuthorizationRevision || NativeModelRevision() != identity.ModelRevision
                 || !sourceReader.IsCurrent(source) || _conversations.GetConversation(scope.ConversationId, scope.RoleId)?.IsArchived != false
                 || _conversations.ReadState(ActiveConversationStateKey(scope.RoleId)) != scope.ConversationId)
                 throw new AgentStateException("RUN_SCOPE_CHANGED");
@@ -67,10 +69,45 @@ public sealed partial class ConversationOrchestrator
         preparationLease.CheckCurrent(); CheckCurrent();
         if (recalled.Status == RecallStatus.Ambiguous)
             return preparationLease.Commit(() => PersistLocalReply(scope.ConversationId, scope.RoleId, binding.Context,
-                recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None));
+                recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None, Publish));
         var preparedTurn = (ConversationModelTurn)await ConversationModelTurn.CreateAgentStepAsync(_providerResolver,
             _settings, _contextResolver, _tokenMeter, Publish, CancelCurrent, scope.RoleId, scope.ConversationId, token);
+        preparedTurn.RetainsToolHistory = true;
+        preparedTurn.NativeRequestDiagnostics = (environment, budget) =>
+            ConversationContextDiagnostics.Record(_logger, identity.RunId,
+                budget is AgentRunState state ? state.Snapshot.StepNumber : 0,
+                "dispatch", environment, preparedTurn.MeasureInputTokens);
         preparationLease.CheckCurrent(); CheckCurrent();
+        var rawHistory = (_contextStore?.Read(semanticScope, scope.ConversationId).UncoveredMessages
+            ?? _conversations.LoadMessages(scope.ConversationId, scope.RoleId))
+            .Where(message => message.MessageId != user.MessageId).ToArray();
+        var historicalRuns = await _agentRuns!.LoadConversationRunsAsync(scope,
+            rawHistory.Where(message => message.Role == ChatMessageRole.User).Select(message => message.MessageId).ToArray(), token);
+        preparationLease.CheckCurrent(); CheckCurrent();
+        var historicalMessages = NativeConversationHistory.Project(rawHistory, historicalRuns);
+        var toolSources = NativeConversationHistory.DescribeTools(historicalRuns);
+
+        CompactionCallBudget SummaryCalls(IModelRequestBudget budget) => new(budget,
+            budget is AgentRunState state ? Math.Clamp(state.Snapshot.Budget.MaxModelRequests - state.Snapshot.ModelRequests - 1, 0, 3) : 3);
+
+        async ValueTask<StepEnvironment> CompactStep(StepEnvironment step, IModelRequestBudget budget, CancellationToken cancellation)
+        {
+            CheckCurrent();
+            var model = preparedTurn ?? throw new AgentStateException("RUN_HOST_CLOSED");
+            var number = budget is AgentRunState state ? state.Snapshot.StepNumber : 0;
+            ConversationContextDiagnostics.Record(_logger, identity.RunId, number, "before_compact", step, model.MeasureInputTokens);
+            if (_summaries is null) return step;
+            int Measure(ImmutableArray<ModelMessage> messages) => model.MeasureInputTokens(step with { Messages = messages });
+            if (Measure(step.Messages) >= CompactionPlanner.TriggerTokens(model.Budget))
+                Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
+                    RequestStage: ConversationRequestStage.Compacting));
+            var compacted = await _summaries.TryCompactNativeAsync(step.Messages, model.Provider, model.Route, model.Budget,
+                Measure, scope.RoleId, scope.ConversationId, SummaryCalls(budget), cancellation);
+            CheckCurrent(); model.EnsureCurrent(cancellation);
+            var result = step with { Messages = compacted };
+            ConversationContextDiagnostics.Record(_logger, identity.RunId, number, "after_compact", result, model.MeasureInputTokens);
+            return result;
+        }
         ValueTask<IAgentModelStep> CreateModel(CancellationToken cancellation)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -83,15 +120,29 @@ public sealed partial class ConversationOrchestrator
                 var sources = recalled.Sources.Where(hit => _conversations.IsCurrentSource(semanticScope, hit)).ToArray();
                 if (sources.Length != recalled.Sources.Count) recalled = new(RecallStatus.Unavailable, sources);
                 var persona = binding.Persona ?? FallbackPersona(binding.Context);
+                ImmutableArray<ModelMessage> Project(ComposedPrompt prompt, IReadOnlyList<ChatMessage> messages)
+                {
+                    var history = messages.Where(message => message.MessageId != user.MessageId).ToArray();
+                    var count = history.Count(message => message.Status == ChatMessageStatus.Completed);
+                    // PromptComposer places semantic history and the current user last.
+                    var prefix = prompt.Messages.Take(prompt.Messages.Count - count - 1)
+                        .Select(message => new ModelMessage(ModelMessageRole.System, message.Text, []));
+                    return prefix.Concat(NativeConversationHistory.Project(history, historicalRuns))
+                        .Append(new(ModelMessageRole.User, prompt.Messages[^1].Text, [])).ToImmutableArray();
+                }
                 ComposedPrompt Compose(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
                 {
                     lease.CheckCurrent(); CheckCurrent(); model.EnsureCurrent(lease.Token);
                     var currentSources = sources.Where(hit => _conversations.IsCurrentSource(semanticScope, hit)).ToArray();
-                    return _composer.Compose(new PromptContext(binding.Context, persona, binding.Knowledge,
+                    var composed = _composer.Compose(new PromptContext(binding.Context, persona, binding.Knowledge,
                         [], string.Empty, messages.Where(message => message.Status == ChatMessageStatus.Completed && message.MessageId != user.MessageId)
                             .Select(message => new PromptMessage(message.Role, message.Text)).ToArray(), user.Text, context,
                         null, currentSources, currentSources.Length == sources.Length ? recalled.Status : RecallStatus.Unavailable, summary),
                         model.Route, model.Budget, nativeAgent: true);
+                    var input = model.MeasureInputTokens(new(Project(composed, messages), []));
+                    return new(composed.ContentContext, composed.Messages,
+                        new(input, TokenCountKind.Estimated, composed.Usage.Fingerprint), composed.Status,
+                        composed.MaxOutputTokens, input <= model.Budget.InputTokens);
                 }
                 var snapshot = _contextStore?.Read(semanticScope, scope.ConversationId);
                 var prompt = Compose(snapshot?.Summary, snapshot?.UncoveredMessages ?? _conversations.LoadMessages(scope.ConversationId, scope.RoleId));
@@ -101,21 +152,20 @@ public sealed partial class ConversationOrchestrator
                         RequestStage: ConversationRequestStage.Compacting));
                     await _summaries.TryCompactAsync(snapshot, model.Provider, model.Route, model.Budget,
                         prompt.Usage.InputTokens, Compose, lease, () => { CheckCurrent(); model.EnsureCurrent(lease.Token); },
-                        new CompactionCallBudget(budget), lease.Token);
+                        SummaryCalls(budget), lease.Token, toolSources);
                     snapshot = _contextStore!.Read(semanticScope, scope.ConversationId);
                     prompt = Compose(snapshot.Summary, snapshot.UncoveredMessages);
                 }
-                if (!prompt.FitsBudget) throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
+                var projected = Project(prompt, snapshot?.UncoveredMessages ?? rawHistory);
+                var compacted = await CompactStep(new(projected, []), budget, lease.Token);
+                lease.CheckCurrent(); CheckCurrent();
+                if (model.MeasureInputTokens(compacted) > model.Budget.InputTokens)
+                    throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
                 Publish(new(ConversationUpdateType.HistorySources, scope.ConversationId, ServantId: scope.RoleId,
                     HistorySources: sources.Where(hit => prompt.Messages.Any(message => message.Text.Contains(
                         $"recalled:{hit.Anchor.ConversationId}:{hit.Anchor.MessageId}", StringComparison.Ordinal))).ToArray()));
-                return prompt.Messages.Select(message => new ModelMessage(message.Role switch
-                {
-                    ChatMessageRole.System => ModelMessageRole.System,
-                    ChatMessageRole.User => ModelMessageRole.User,
-                    _ => ModelMessageRole.Assistant,
-                }, message.Text, [])).ToImmutableArray();
-            }));
+                return compacted.Messages;
+            }, historicalMessages, CompactStep));
         }
         async ValueTask<ConversationSendResult> Deliver(AgentRunResult result, CancellationToken cancellation)
         {
@@ -158,7 +208,9 @@ public sealed partial class ConversationOrchestrator
                 RequestStage: ConversationRequestStage.Completed));
             return new(ConversationSendStatus.Completed, scope.ConversationId, delivery.Assistant.MessageId);
         }
-        var result = await _nativeRuntime!.StartAsync(new(identity, new RunBudget(), [new(ModelMessageRole.User, user.Text, [])], query),
+        var result = await _nativeRuntime!.StartAsync(new(identity,
+            new RunBudget(maxModelRequests: 32, maxToolCalls: 64, reserveFinalResponse: true),
+            [new(ModelMessageRole.User, user.Text, [])], query),
             CreateModel, CheckCurrent, Deliver, token);
         if (result.Status is ConversationSendStatus.Failed or ConversationSendStatus.Cancelled)
         {
@@ -171,14 +223,20 @@ public sealed partial class ConversationOrchestrator
     }
 
     private sealed class PreparedModel(ConversationModelTurn model,
-        Func<IModelRequestBudget, CancellationToken, ValueTask<ImmutableArray<ModelMessage>>> prepare)
+        Func<IModelRequestBudget, CancellationToken, ValueTask<ImmutableArray<ModelMessage>>> prepare,
+        ImmutableArray<ModelMessage> history,
+        Func<StepEnvironment, IModelRequestBudget, CancellationToken, ValueTask<StepEnvironment>> compact)
         : IAgentModelStep, IAgentModelInputBudget, IAgentRunPreparation
     {
+        public ImmutableArray<ModelMessage> HistoricalMessages => history;
+        public bool RetainsToolHistory => true;
         public int InputTokenBudget => model.InputTokenBudget;
         public int MeasureInputTokens(StepEnvironment environment) => model.MeasureInputTokens(environment);
         public ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget, CancellationToken token) =>
             model.ExecuteAsync(environment, budget, token);
         public ValueTask<ImmutableArray<ModelMessage>> PrepareAsync(ImmutableArray<ModelMessage> initialMessages,
             IModelRequestBudget budget, CancellationToken token) => prepare(budget, token);
+        public ValueTask<StepEnvironment> PrepareStepAsync(StepEnvironment environment, IModelRequestBudget budget,
+            CancellationToken token) => compact(environment, budget, token);
     }
 }

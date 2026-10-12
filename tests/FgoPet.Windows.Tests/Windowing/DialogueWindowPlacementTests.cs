@@ -312,6 +312,79 @@ public sealed class DialogueWindowPlacementTests
         });
     }
 
+    [Fact]
+    public void Chat_retains_position_after_first_open_and_user_move_but_other_surfaces_still_follow()
+    {
+        StaRun(() =>
+        {
+            var store = new MemorySlotStore();
+            var coordinator = new DialogueWindowPlacementCoordinator(store, new FixedScreenService());
+            var chat = new Window { Width = 376, Height = 500 };
+            var settings = new Window { Width = 480, Height = 600 };
+            var portrait = new DeviceRect(100, 100, 180, 450);
+            coordinator.ApplyChatOnOpen(chat, portrait);
+            var initial = new Point(chat.Left, chat.Top);
+            coordinator.ApplyChatOnOpen(chat, new DeviceRect(1000, 300, 180, 450));
+            Assert.Equal(initial, new Point(chat.Left, chat.Top));
+            chat.Left = 72; chat.Top = 96;
+            coordinator.ApplyChatOnOpen(chat, new DeviceRect(1000, 300, 180, 450));
+            Assert.Equal(new Point(72, 96), new Point(chat.Left, chat.Top));
+            coordinator.ApplyOnOpen(settings, portrait);
+            var before = settings.Left;
+            coordinator.ApplyOnOpen(settings, new DeviceRect(1000, 300, 180, 450));
+            Assert.NotEqual(before, settings.Left);
+            coordinator.SaveOnClose(chat);
+            Assert.Null(store.Dialogue); Assert.Null(store.Portrait);
+        });
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void Retained_chat_recovers_after_display_removal_dpi_change_and_small_work_area(double scale)
+    {
+        StaRun(() =>
+        {
+            var screen = new SwitchableScreenService(new DeviceRect(-1920, 0, 1920, 1080));
+            var coordinator = new DialogueWindowPlacementCoordinator(new MemorySlotStore(), screen);
+            var window = new Window { Width = 376, Height = 500, MinWidth = 240, MinHeight = 240 };
+            var portrait = new DeviceRect(-1500, 300, 180, 450);
+            coordinator.ApplyChatOnOpen(window, portrait);
+            window.Left = -1800; window.Top = 200;
+            screen.WorkArea = new DeviceRect(0, 0, 640, 480);
+            screen.Dpi = new(scale, scale);
+            coordinator.ApplyChatOnOpen(window, portrait);
+            Assert.InRange(window.Left * scale, 0, 640 - window.Width * scale);
+            Assert.InRange(window.Top * scale, 0, 480 - window.Height * scale);
+            Assert.True(window.MinHeight <= window.Height);
+            screen.WorkArea = new DeviceRect(0, 0, 2000, 1400);
+            coordinator.ApplyChatOnOpen(window, portrait);
+            Assert.Equal(376, window.Width); Assert.Equal(500, window.Height);
+            Assert.Equal(240, window.MinHeight);
+            window.Width = 824; window.Height = 740;
+            coordinator.ApplyChatOnOpen(window, portrait);
+            Assert.True((window.Left + window.Width) * scale <= 2000);
+            Assert.True((window.Top + window.Height) * scale <= 1400);
+        });
+    }
+
+    [Fact]
+    public void Retained_chat_uses_its_own_monitor_instead_of_the_portraits_monitor()
+    {
+        StaRun(() =>
+        {
+            var coordinator = new DialogueWindowPlacementCoordinator(new MemorySlotStore(), new DualScreenService());
+            var window = new Window { Width = 376, Height = 500 };
+            coordinator.ApplyChatOnOpen(window, new DeviceRect(-1600, 100, 180, 450));
+            var initial = new Point(window.Left, window.Top);
+            coordinator.ApplyChatOnOpen(window, new DeviceRect(900, 100, 180, 450));
+            Assert.Equal(initial, new Point(window.Left, window.Top));
+            Assert.True(window.Left < 0);
+        });
+    }
+
     private sealed class DualScreenService : IScreenLayoutService
     {
         public IReadOnlyList<MonitorInfo> GetMonitors() =>
@@ -358,8 +431,9 @@ public sealed class DialogueWindowPlacementTests
     private sealed class SwitchableScreenService(DeviceRect initialWorkArea) : IScreenLayoutService
     {
         public DeviceRect WorkArea { get; set; } = initialWorkArea;
+        public Dpi2 Dpi { get; set; } = new(1, 1);
         public IReadOnlyList<MonitorInfo> GetMonitors() => [new MonitorInfo("display", WorkArea, true)];
-        public Dpi2 GetDpi(string monitorId) => new(1, 1);
+        public Dpi2 GetDpi(string monitorId) => Dpi;
     }
 
     private static void StaRun(Action action) => StaRunner.Run(action);

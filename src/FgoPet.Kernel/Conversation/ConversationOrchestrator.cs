@@ -92,10 +92,14 @@ public sealed partial class ConversationOrchestrator
         string servantId,
         string userText,
         CancellationToken cancellationToken,
-        ConversationRequestContext? requestContext = null)
+        ConversationRequestContext? requestContext = null,
+        Guid? requestId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(userText);
+        // Capture the identity in callbacks; never stamp late events with mutable current-request state.
+        var correlation = "request-" + (requestId ?? Guid.NewGuid()).ToString("N");
+        void Publish(ConversationUpdate update) => this.Publish(update with { RequestId = correlation });
         using var lease = _lifetime.Acquire(cancellationToken);
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(lease.Token);
         lock (_gate)
@@ -155,11 +159,11 @@ public sealed partial class ConversationOrchestrator
             var local = lease.Commit(() => _capabilities?.TryHandleInput(capabilityScope, userText));
             if (local?.Reply is { } localReply)
                 return lease.Commit(() => PersistLocalReply(conversationId, servantId, contentContext,
-                    localReply, local.Outcome, local.CreatedItemId, local.WorkspaceId));
+                    localReply, local.Outcome, Publish, local.CreatedItemId, local.WorkspaceId));
             if (_nativeRuntime is not null)
             {
                 stage = "执行原生任务";
-                return await SendNativeAsync(binding, userMessage, capabilityScope, requestContext, requestCancellation.Token);
+                return await SendNativeAsync(binding, userMessage, capabilityScope, requestContext, Publish, requestCancellation.Token);
             }
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
@@ -171,7 +175,7 @@ public sealed partial class ConversationOrchestrator
             session.EnsureCurrent(requestCancellation.Token);
             if (recalled.Status == RecallStatus.Ambiguous)
                 return lease.Commit(() => PersistLocalReply(conversationId, servantId, contentContext,
-                    recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None));
+                    recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None, Publish));
             var sources = recalled.Sources.Where(source => _conversations.IsCurrentSource(scope, source)).ToArray();
             if (sources.Length != recalled.Sources.Count) recalled = new(RecallStatus.Unavailable, sources);
             ComposedPrompt ComposeCurrent(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
@@ -443,6 +447,7 @@ public sealed partial class ConversationOrchestrator
         ContentContextKey? context,
         string reply,
         CapabilityOutcome outcome,
+        Action<ConversationUpdate> publish,
         string? createdItemId = null, string? workspaceId = null)
     {
         var messageId = "message-" + Guid.NewGuid().ToString("N");
@@ -456,10 +461,10 @@ public sealed partial class ConversationOrchestrator
             _time.GetUtcNow(),
             context ?? throw new InvalidOperationException("Conversation context is unavailable."),
             _conversations.LoadMessages(conversationId, servantId).Count + 1));
-        Publish(new ConversationUpdate(ConversationUpdateType.AssistantDelta, conversationId, messageId, reply, ServantId: servantId));
-        Publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, messageId, reply,
+        publish(new ConversationUpdate(ConversationUpdateType.AssistantDelta, conversationId, messageId, reply, ServantId: servantId));
+        publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, messageId, reply,
             ServantId: servantId, ToolOutcome: outcome, CreatedItemId: createdItemId, WorkspaceId: workspaceId));
-        Publish(new ConversationUpdate(ConversationUpdateType.RequestStage, conversationId, RequestStage: ConversationRequestStage.Completed, ServantId: servantId));
+        publish(new ConversationUpdate(ConversationUpdateType.RequestStage, conversationId, RequestStage: ConversationRequestStage.Completed, ServantId: servantId));
         return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, messageId);
     }
 

@@ -41,11 +41,19 @@ public sealed class Live2DProviderTests
             plugin.StartAsync(default).GetAwaiter().GetResult();
             // Inject events through the real subscribed delegate, without network or persistence.
             var updated = typeof(ConversationOrchestrator).GetField("Updated", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            void Emit(ConversationUpdateType type, string turn = "turn", ExpressionSemantic? expression = null) =>
+            var sequence = 0;
+            var request = "";
+            void Emit(ConversationUpdateType type, string turn = "turn", ExpressionSemantic? expression = null,
+                string? text = null, string? reasoning = null, ConversationRequestStage? stage = null)
+            {
+                if (type == ConversationUpdateType.UserMessagePersisted) request = "request-" + ++sequence;
                 ((Action<ConversationUpdate>)updated.GetValue(conversations)!).Invoke(
-                    new(type, turn, ServantId: "mash", Expression: expression));
-            bool Thinking() => (bool)typeof(Live2DPortraitController)
-                .GetField("_thinking", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(portrait)!;
+                    new(type, turn, TextDelta: text, ReasoningDelta: reasoning,
+                        RequestStage: stage, ServantId: "mash", Expression: expression, RequestId: request));
+            }
+            string Phase() => (string)typeof(Live2DPortraitController)
+                .GetField("_dialoguePhase", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(portrait)!;
+            bool Thinking() => Phase() == "waiting";
             void Drain()
             {
                 var frame = new DispatcherFrame();
@@ -55,15 +63,111 @@ public sealed class Live2DProviderTests
 
             Emit(ConversationUpdateType.UserMessagePersisted); Drain(); Assert.True(Thinking());
             Emit(ConversationUpdateType.AssistantCompleted, "other"); Drain(); Assert.True(Thinking());
-            Emit(ConversationUpdateType.AssistantDelta); Drain(); Assert.False(Thinking());
+            Emit(ConversationUpdateType.AssistantDelta, reasoning: "synthetic reasoning");
+            Drain(); Assert.True(Thinking());
+            Emit(ConversationUpdateType.AssistantDelta, text: ""); Drain(); Assert.True(Thinking());
+            Emit(ConversationUpdateType.AssistantDelta, text: "synthetic answer"); Drain(); Assert.Equal("replying", Phase());
             Emit(ConversationUpdateType.AssistantCompleted, expression: ExpressionSemantic.Shy);
-            Drain(); Assert.Equal(ExpressionSemantic.Shy, fallback.Semantic);
+            Drain(); Assert.Equal("idle", Phase()); Assert.Equal(ExpressionSemantic.Shy, fallback.Semantic);
+
+            foreach (var ending in new[] { ConversationUpdateType.Cancelled, ConversationUpdateType.Failed })
+            {
+                Emit(ConversationUpdateType.UserMessagePersisted); Drain(); Assert.True(Thinking());
+                Emit(ending); Drain(); Assert.Equal("idle", Phase());
+                Emit(ConversationUpdateType.AssistantDelta, text: "late answer");
+                Emit(ConversationUpdateType.AssistantCompleted, expression: ExpressionSemantic.Shy);
+                Drain(); Assert.Equal("idle", Phase()); Assert.Equal(ExpressionSemantic.Neutral, fallback.Semantic);
+            }
+            Emit(ConversationUpdateType.UserMessagePersisted); Drain(); Assert.True(Thinking());
+            Emit(ConversationUpdateType.RequestStage, stage: ConversationRequestStage.StreamingAnswer);
+            Drain(); Assert.Equal("replying", Phase());
+            Emit(ConversationUpdateType.Cancelled); Drain();
+
+            // A newer admitted request invalidates an old completion already queued on the dispatcher.
+            Emit(ConversationUpdateType.UserMessagePersisted); Drain();
+            fallback.Expressions.Clear();
+            Emit(ConversationUpdateType.AssistantCompleted, expression: ExpressionSemantic.Shy);
+            Emit(ConversationUpdateType.UserMessagePersisted);
+            Drain(); Assert.True(Thinking()); Assert.DoesNotContain(ExpressionSemantic.Shy, fallback.Expressions);
+            Emit(ConversationUpdateType.Cancelled); Drain(); Assert.Equal("idle", Phase());
 
             Emit(ConversationUpdateType.UserMessagePersisted);
             identity.SetActiveRole(new ActiveRoleState("pkg", "casual", "1.0.0", "mash"));
             Drain(); Assert.False(Thinking());
             Emit(ConversationUpdateType.UserMessagePersisted);
             plugin.Dispose(); Drain(); Assert.False(Thinking());
+        });
+    }
+
+    [Theory]
+    [InlineData(false, ConversationUpdateType.AssistantCompleted)]
+    [InlineData(false, ConversationUpdateType.Cancelled)]
+    [InlineData(false, ConversationUpdateType.Failed)]
+    [InlineData(true, ConversationUpdateType.AssistantCompleted)]
+    [InlineData(true, ConversationUpdateType.Cancelled)]
+    [InlineData(true, ConversationUpdateType.Failed)]
+    public void Late_previous_request_cannot_change_new_feedback(bool queuedBeforeB, ConversationUpdateType ending)
+    {
+        StaTest.Run(() =>
+        {
+            using var services = new ServiceCollection().AddFgoPet([]).BuildServiceProvider();
+            var conversations = services.GetRequiredService<ConversationOrchestrator>();
+            var identity = new AppRuntime();
+            using var presentation = new CompanionPresentation(identity);
+            var fallback = new StaticSurface();
+            using var portrait = new Live2DPortraitController(fallback, new EmptyRepository(),
+                Path.GetTempPath(), Path.GetTempPath(), Path.GetTempPath());
+            portrait.ActivateAsync(new PortraitSelection("pkg", "casual", "1.0.0"), default).GetAwaiter().GetResult();
+            identity.SetActiveRole(new ActiveRoleState("pkg", "casual", "1.0.0", "mash"));
+            using var plugin = new Live2DPresentationPlugin(presentation, () => conversations, portrait);
+            plugin.StartAsync(default).GetAwaiter().GetResult();
+            var observer = (Action<ConversationUpdate>)typeof(ConversationOrchestrator)
+                .GetField("Updated", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(conversations)!;
+            void Emit(ConversationUpdateType type, string? request, string? text = null,
+                string turn = "same-conversation", string? reasoning = null, ExpressionSemantic? expression = null) =>
+                observer(new(type, turn, TextDelta: text, ReasoningDelta: reasoning,
+                    ServantId: "mash", Expression: expression, RequestId: request));
+            void Drain()
+            {
+                var frame = new DispatcherFrame();
+                Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () => frame.Continue = false);
+                Dispatcher.PushFrame(frame);
+            }
+            string Phase() => (string)typeof(Live2DPortraitController)
+                .GetField("_dialoguePhase", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(portrait)!;
+
+            Emit(ConversationUpdateType.UserMessagePersisted, "A"); Drain(); Assert.Equal("waiting", Phase());
+            if (queuedBeforeB)
+            {
+                Emit(ConversationUpdateType.AssistantDelta, "A", "queued old answer");
+                Emit(ConversationUpdateType.AssistantCompleted, "A", expression: ExpressionSemantic.Happy);
+                Emit(ConversationUpdateType.Cancelled, "A");
+            }
+            else { Emit(ConversationUpdateType.Cancelled, "A"); Drain(); Assert.Equal("idle", Phase()); }
+            Emit(ConversationUpdateType.UserMessagePersisted, "B"); Drain(); Assert.Equal("waiting", Phase());
+            foreach (var stale in new[] { ConversationUpdateType.AssistantDelta,
+                ConversationUpdateType.AssistantCompleted, ConversationUpdateType.Cancelled, ConversationUpdateType.Failed })
+            {
+                Emit(stale, "A", "late old answer", expression: ExpressionSemantic.Happy);
+                Drain(); Assert.Equal("waiting", Phase()); Assert.Equal(ExpressionSemantic.Neutral, fallback.Semantic);
+            }
+            Emit(ConversationUpdateType.AssistantDelta, null, "missing identity");
+            Emit(ConversationUpdateType.AssistantDelta, "B", " ");
+            Emit(ConversationUpdateType.AssistantDelta, "B", reasoning: "synthetic reasoning");
+            Drain(); Assert.Equal("waiting", Phase());
+            Emit(ConversationUpdateType.AssistantDelta, "B", "current answer"); Drain(); Assert.Equal("replying", Phase());
+            Emit(ConversationUpdateType.Cancelled, "A"); Drain(); Assert.Equal("replying", Phase());
+            Emit(ending, "B"); Drain(); Assert.Equal("idle", Phase());
+
+            Emit(ConversationUpdateType.UserMessagePersisted, "C", turn: "new-conversation"); Drain();
+            Emit(ConversationUpdateType.Cancelled, "B"); Drain(); Assert.Equal("waiting", Phase());
+            identity.SetActiveRole(new ActiveRoleState("pkg", "casual", "1.0.0", "mash"));
+            Drain(); Assert.Equal("idle", Phase());
+            Emit(ConversationUpdateType.AssistantDelta, "C", "old role answer", turn: "new-conversation");
+            Drain(); Assert.Equal("idle", Phase());
+            Emit(ConversationUpdateType.UserMessagePersisted, "D");
+            plugin.Dispose(); Drain(); Assert.Equal("idle", Phase());
+            Emit(ConversationUpdateType.UserMessagePersisted, "E"); Drain(); Assert.Equal("idle", Phase());
         });
     }
 
@@ -310,6 +414,7 @@ public sealed class Live2DProviderTests
         public event EventHandler? StateChanged;
         public IPortraitFrame? CurrentFrame { get; private set; }
         public ExpressionSemantic Semantic { get; private set; }
+        public List<ExpressionSemantic> Expressions { get; } = [];
         public double Scale { get; private set; }
         public int Activations { get; private set; }
         public FrameworkElement CreateView() => throw new NotSupportedException();
@@ -321,7 +426,7 @@ public sealed class Live2DProviderTests
             StateChanged?.Invoke(this, EventArgs.Empty);
             return Task.CompletedTask;
         }
-        public void SetExpression(ExpressionSemantic semantic) { Semantic = semantic; StateChanged?.Invoke(this, EventArgs.Empty); }
+        public void SetExpression(ExpressionSemantic semantic) { Expressions.Add(semantic); Semantic = semantic; StateChanged?.Invoke(this, EventArgs.Empty); }
         public void SetScale(double scale) { Scale = scale; StateChanged?.Invoke(this, EventArgs.Empty); }
         public void ApplyDpi(Dpi2 dpi) { }
     }

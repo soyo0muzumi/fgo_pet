@@ -442,8 +442,10 @@ public sealed class ConversationOrchestratorTests : IDisposable
         Assert.Empty(repository.Items);
     }
 
-    [Fact]
-    public async Task Long_multi_proposal_edits_send_every_proposal_field_and_current_version()
+    [Theory]
+    [InlineData(32768, true)]
+    [InlineData(8192, false)]
+    public async Task Long_multi_proposal_edits_send_every_proposal_field_and_current_version(int contextWindow, bool fits)
     {
         var title = "first-" + new string('a', 490);
         var second = "second-" + new string('b', 480);
@@ -457,16 +459,30 @@ public sealed class ConversationOrchestratorTests : IDisposable
             new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: "tool_calls"),
         ]);
         var repository = new RecordingTodoRepository();
-        var orchestrator = CreateOrchestrator(provider, new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System)));
+        var proposals = new TodoProposalService(new TodoApplicationService(repository, TimeProvider.System));
+        var orchestrator = CreateOrchestrator(provider, proposals,
+            settings: new FakeSettings(contextWindow, supportsTools: false));
         Assert.Equal(ConversationSendStatus.Completed, (await orchestrator.SendAsync("800100", "准备两个计划", CancellationToken.None)).Status);
+        var firstRequest = provider.LastRequest;
 
         var result = await orchestrator.SendAsync("800100", "把第二项改到后天", CancellationToken.None);
 
+        Assert.Empty(repository.Items);
+        if (!fits)
+        {
+            Assert.Equal(ConversationSendStatus.Failed, result.Status);
+            Assert.Contains("超出模型可用上下文", result.SafeError);
+            Assert.Same(firstRequest, provider.LastRequest);
+            Assert.NotNull(proposals.Drafts.GetPromptState(result.ConversationId, "800100"));
+            return;
+        }
+        Assert.True(result.Status == ConversationSendStatus.Completed, $"Status={result.Status}; SafeError={result.SafeError}");
         Assert.Equal(ConversationSendStatus.Completed, result.Status);
         var prompt = string.Join("\n", provider.LastRequest!.Messages.Select(message => message.Text));
         foreach (var expected in new[] { title, second, "first description", "second description", "first step", "second step", "2026-10-02", "第 1 版" })
             Assert.Contains(expected, prompt);
-        Assert.Empty(repository.Items);
+        Assert.Contains(provider.LastRequest.Messages, message =>
+            message.Text == PromptInjectionGuard.WrapPersona("servant_core", "认真陪伴用户。"));
     }
 
     [Theory]
@@ -1127,11 +1143,12 @@ public sealed class ConversationOrchestratorTests : IDisposable
         }
     }
 
-    private sealed class FakeSettings : IDialogueSettingsStore
+    private sealed class FakeSettings(int? contextWindow = null, bool supportsTools = true) : IDialogueSettingsStore
     {
         public DialogueSettings Load() => DialogueSettings.Defaults with
         {
-            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model"),
+            ModelConnection = new ModelConnectionSettings("test", "https://example.test/v1", "test-model",
+                toolsSupported: supportsTools, contextWindowOverride: contextWindow),
         };
 
         public void Save(DialogueSettings settings)

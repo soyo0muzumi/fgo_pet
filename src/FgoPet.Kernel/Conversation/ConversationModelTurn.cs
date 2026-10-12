@@ -27,6 +27,8 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
     private string? _agentServantId;
     private string? _agentConversationId;
     public bool ToolsFallbackUsed { get; private set; }
+    internal bool RetainsToolHistory { get; set; }
+    internal Action<StepEnvironment, IModelRequestBudget>? NativeRequestDiagnostics { get; set; }
     public bool ContextCompactionRetryUsed { get; set; }
     public bool CanRecoverContextLimit => !ContextCompactionRetryUsed && PrimaryAttempts < MaxPrimaryAttempts && !SawOutput;
     public int InputTokenBudget => Budget.InputTokens;
@@ -122,6 +124,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
             var request = BuildRequest();
             while (_tokenMeter.Measure(Route, request).InputTokens > Budget.InputTokens)
             {
+                if (RetainsToolHistory) throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
                 messages = RemoveOldestCompleteGroup(messages);
                 request = BuildRequest();
             }
@@ -137,6 +140,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
             var accepted = false;
             try
             {
+                NativeRequestDiagnostics?.Invoke(new(messages, withTools ? environment.Tools : []), budget);
                 PublishNativeStage(ConversationRequestStage.RequestStarted);
                 await foreach (var chunk in Provider.StreamAsync(request, token))
                 {
@@ -163,7 +167,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
                     MarkToolsUnsupported();
                     continue;
                 }
-                if (error.Category == ProviderFailureCategory.ContextLimitExceeded && CanRecoverContextLimit)
+                if (error.Category == ProviderFailureCategory.ContextLimitExceeded && CanRecoverContextLimit && !RetainsToolHistory)
                 {
                     ContextCompactionRetryUsed = true;
                     messages = RemoveOldestCompleteGroup(messages);

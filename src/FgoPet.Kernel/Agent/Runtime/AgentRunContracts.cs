@@ -82,6 +82,13 @@ public sealed record ToolExecutionOutcome(ToolExecutionOutcomeKind Kind, ToolRes
 public interface IAgentRunStore
 {
     ValueTask<AgentRunCheckpoint?> LoadAsync(string runId, CancellationToken token);
+    /// <summary>Retained terminal runs for an active conversation and the selected root messages.</summary>
+    ValueTask<IReadOnlyList<AgentRunCheckpoint>> LoadConversationRunsAsync(ToolScope scope,
+        IReadOnlyCollection<string> rootMessageIds, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IReadOnlyList<AgentRunCheckpoint>>([]);
+    }
     ValueTask<bool> TryCreateAsync(AgentRunCheckpoint initial, ImmutableArray<AgentEvent> events, CancellationToken token);
     ValueTask<bool> TryCommitAsync(AgentRunCheckpoint next, long expectedRevision,
         ImmutableArray<AgentEvent> events, CancellationToken token);

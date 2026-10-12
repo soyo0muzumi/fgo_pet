@@ -38,13 +38,13 @@ public sealed class ServiceRegistrationTests
         Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
             provider.GetRequiredService<IWorkspaceAuthorizationManager>());
         Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
-        Assert.Equal(new[] { "documents", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "shell", "workspace" },
+        Assert.Equal(new[] { "browser", "desktop-context", "documents", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
         var readTools = provider.GetRequiredService<ConversationCapabilityRouter>().Tools;
-        Assert.Equal(new[] { "document.read", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
+        Assert.Equal(new[] { "browser.open", "browser.read", "browser.tabs", "context.time", "document.read", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
             readTools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal));
         Assert.All(readTools, tool => Assert.Equal(ToolEffect.ReadOnly, tool.Effect));
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);

@@ -332,6 +332,74 @@ const server = http.createServer((request, response) => {
     }
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ left, right, idle, hover, tap, errors }, null, 2));
+
+    // Record only the model canvas with synthetic events; no desktop or audio is captured.
+    await page.evaluate(() => {
+      const source = document.querySelector('canvas');
+      const video = document.createElement('canvas'); video.width = 531; video.height = 675;
+      const context = video.getContext('2d');
+      window.__clipLabel = 'Idle - no audio'; window.__clipActive = true;
+      const draw = () => {
+        if (!window.__clipActive) return;
+        context.fillStyle = '#f3efeb'; context.fillRect(0, 0, 531, 675);
+        context.drawImage(source, 0, 0, 531, 675);
+        context.fillStyle = '#332d2a'; context.font = '14px sans-serif'; context.fillText(window.__clipLabel, 12, 24);
+        requestAnimationFrame(draw);
+      };
+      draw();
+      const stream = video.captureStream(30), chunks = [];
+      window.__clipRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      window.__clipRecorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      window.__clipResult = new Promise(resolve => {
+        window.__clipRecorder.onstop = async () => {
+          window.__clipActive = false; stream.getTracks().forEach(track => track.stop());
+          const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer());
+          let result = ''; for (const byte of bytes) result += String.fromCharCode(byte);
+          resolve(btoa(result));
+        };
+      });
+      window.__clipRecorder.start();
+      window.__receive({ data: { type: 'live2d.expression', key: 'neutral' } });
+      window.__receive({ data: { type: 'live2d.speech', active: false, level: 0 } });
+    });
+    const phase = async (phase, sequence, label) => page.evaluate(({phase,sequence,label}) => {
+      window.__clipLabel = label;
+      window.__receive({data:{type:'live2d.thinking',active:phase==='waiting',phase,sequence}});
+    }, {phase,sequence,label});
+    const feedback = async () => page.evaluate(() => {
+      const state = window.__probe.state;
+      const core = window.__probe.delegate.getInstance()._subdelegates[0].getLive2DManager()._models[0].getModel().getModel();
+      const values = Object.fromEntries(['Param', 'ParamHandRT', 'ParamMouthOpenY'].map(id=>[id,core.parameters.values[core.parameters.ids.indexOf(id)]]));
+      return {phase:state.phase,sequence:state.sequence,headX:state.feedbackHeadX,headY:state.feedbackHeadY,headZ:state.feedbackHeadZ,body:state.feedbackBodyX,eyeY:state.feedbackEyeY,...values};
+    });
+    await phase('idle',1,'Idle - no audio'); await page.waitForTimeout(1000);
+    await phase('waiting',2,'Waiting - upward side glance, no audio'); await page.waitForTimeout(2000);
+    const waiting = await feedback();
+    assert.equal(waiting.phase,'waiting'); assert.ok(waiting.headY>6 && waiting.headY<=18);
+    assert.ok(waiting.headX>10 && waiting.headX<=24 && waiting.eyeY>.3);
+    assert.ok(waiting.headZ < -8 && waiting.headZ>=-18 && Math.abs(waiting.body)<=2.5);
+    assert.ok(Math.abs(waiting.Param)<.03 && Math.abs(waiting.ParamHandRT)<.03 && waiting.ParamMouthOpenY<.01);
+    await page.screenshot({path:path.join(output,'chat-waiting.png'),omitBackground:true});
+    await phase('replying',3,'Text reply - one gentle nod, no audio'); await page.waitForTimeout(700);
+    const replying = await feedback(); assert.equal(replying.phase,'replying'); assert.ok(replying.headY<-.5);
+    for(let i=0;i<5;i++) await phase('replying',3,'Text reply - repeated packets do not restart');
+    await page.screenshot({path:path.join(output,'chat-replying.png'),omitBackground:true});
+    await page.waitForTimeout(2400);
+    const settledReply=await feedback(); assert.ok(settledReply.headY>=0 && settledReply.headY<=4);
+    await page.waitForTimeout(500); assert.ok(Math.abs((await feedback()).headY-settledReply.headY)<.05);
+    await phase('waiting',4,'Next request - waiting'); await page.waitForTimeout(900);
+    await phase('idle',5,'Cancelled - smooth return'); await page.waitForTimeout(2200);
+    const cancelled = await feedback(); assert.equal(cancelled.phase,'idle'); assert.ok(Math.abs(cancelled.headY)<.02);
+    await phase('replying',3,'Late reply packet - ignored after cancellation'); await page.waitForTimeout(600);
+    const stale = await feedback(); assert.equal(stale.phase,'idle'); assert.equal(stale.sequence,5);
+    assert.ok(stale.ParamMouthOpenY<.01 && Math.abs(stale.Param)<.03 && Math.abs(stale.ParamHandRT)<.03);
+    await page.screenshot({path:path.join(output,'chat-cancelled.png'),omitBackground:true});
+    const clip = await page.evaluate(async()=>{window.__clipRecorder.stop();return await window.__clipResult;});
+    fs.writeFileSync(path.join(output,'chat-feedback.webm'),Buffer.from(clip,'base64'));
+    fs.writeFileSync(path.join(output,'chat-feedback.json'),JSON.stringify({waiting,replying,cancelled,stale},null,2));
+    assert.deepEqual(errors, []);
+    record('chat.feedback','bounded-no-hand-or-mouth-restart-and-cancel-guard-passed');
+
     record('result', 'passed');
   } catch (error) {
     if (page) console.error(await page.evaluate(() => {

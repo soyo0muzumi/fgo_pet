@@ -2,6 +2,18 @@
   "schemaVersion": 1,
   "projects": [
     {
+      "path": "plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj",
+      "module": "desktop-context",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj",
+      "module": "browser",
+      "layer": "application",
+      "role": "production"
+    },
+    {
       "path": "plugins/FgoPet.Plugin.Documents/Parser/FgoPet.DocumentParser.csproj",
       "module": "documents",
       "layer": "application",
@@ -433,6 +445,8 @@
     {
       "id": "capabilities-to-neutral-contracts",
       "fromModules": [
+        "desktop-context",
+        "browser",
         "shell",
         "documents",
         "workspace",
@@ -541,7 +555,9 @@
         "documents",
         "workspace",
         "shell",
-        "skills"
+        "skills",
+        "browser",
+        "desktop-context"
       ],
       "toLayers": [
         "host",

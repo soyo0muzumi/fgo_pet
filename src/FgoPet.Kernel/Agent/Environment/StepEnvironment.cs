@@ -13,8 +13,13 @@ public interface IAgentModelStep
 /// <summary>Owner preparation may compact semantic history; every provider attempt uses the same durable Run budget.</summary>
 public interface IAgentRunPreparation
 {
+    // Only the trusted host preparation supplies historical evidence, never model output.
+    ImmutableArray<ModelMessage> HistoricalMessages => [];
+    bool RetainsToolHistory => false;
     ValueTask<ImmutableArray<ModelMessage>> PrepareAsync(ImmutableArray<ModelMessage> initialMessages,
         IModelRequestBudget budget, CancellationToken token);
+    ValueTask<StepEnvironment> PrepareStepAsync(StepEnvironment environment, IModelRequestBudget budget,
+        CancellationToken token) => ValueTask.FromResult(environment);
 }
 /// <summary>Exact current provider envelope measurement, including schemas and output reservation.</summary>
 public interface IAgentModelInputBudget

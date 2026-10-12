@@ -25,7 +25,7 @@ public sealed class Live2DPortraitController : IPortraitBackend, IPortraitSurfac
     private bool _disposed;
     private PortraitSelection? _selection;
     private ExpressionSemantic _expression;
-    private bool _thinking;
+    private string _dialoguePhase = "idle";
     private double? _speechLevel;
 
     public Live2DPortraitController(
@@ -59,7 +59,7 @@ public sealed class Live2DPortraitController : IPortraitBackend, IPortraitSurfac
         view.Failed += OnViewFailed;
         _view = view;
         view.SetExpression(ExpressionSemanticKeys.Key(_expression));
-        view.SetThinking(_thinking);
+        view.SetDialogueFeedback(_dialoguePhase);
         view.SetSpeechLevel(_speechLevel);
         return view;
     }
@@ -72,10 +72,10 @@ public sealed class Live2DPortraitController : IPortraitBackend, IPortraitSurfac
         if (version != Volatile.Read(ref _version)) return;
         _selection = selection;
         _expression = ExpressionSemantic.Neutral;
-        _thinking = false;
+        _dialoguePhase = "idle";
         _speechLevel = null;
         _view?.SetExpression("neutral");
-        _view?.SetThinking(false);
+        _view?.SetDialogueFeedback("idle");
         _view?.SetSpeechLevel(null);
 
         Live2DSession? next = null;
@@ -114,10 +114,11 @@ public sealed class Live2DPortraitController : IPortraitBackend, IPortraitSurfac
         _view?.SetExpression(ExpressionSemanticKeys.Key(semantic));
     }
 
-    internal void SetThinking(bool active)
+    internal void SetDialogueFeedback(string phase)
     {
-        _thinking = active;
-        _view?.SetThinking(active);
+        if (_disposed || phase is not ("idle" or "waiting" or "replying")) return;
+        _dialoguePhase = phase;
+        _view?.SetDialogueFeedback(phase);
     }
 
     public void SetSpeechLevel(double? level)
