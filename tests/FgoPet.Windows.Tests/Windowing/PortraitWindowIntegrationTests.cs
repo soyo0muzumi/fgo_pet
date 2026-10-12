@@ -273,8 +273,10 @@ public sealed class PortraitWindowIntegrationTests
         });
     }
 
-    [Fact]
-    public void Chat_entry_retains_native_position_and_draft_after_portrait_move_hide_and_minimize()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Chat_entry_retains_native_position_and_draft_after_portrait_move_hide_and_minimize(bool constrainedWorkArea)
     {
         StaRun(() =>
         {
@@ -282,7 +284,9 @@ public sealed class PortraitWindowIntegrationTests
             using var chat = new FgoPet.App.Dialogue.DialogueWindow(vm);
             var surface = new SamplePortraitSurface();
             var portrait = new PortraitWindow();
-            var screen = new WindowsScreenLayoutService();
+            IScreenLayoutService screen = constrainedWorkArea
+                ? new ConstrainedNativeScreenService()
+                : new WindowsScreenLayoutService();
             var store = new MemoryPlacementStore();
             using var coordinator = new PortraitWindowCoordinator(portrait, surface, store, screen);
             using var tray = new TrayService();
@@ -295,9 +299,27 @@ public sealed class PortraitWindowIntegrationTests
             {
                 if (string.IsNullOrWhiteSpace(capture)) return;
                 Directory.CreateDirectory(capture);
+                TransientSurfacePlacement.TryReadNativeBounds(chat, out var bounds);
                 File.AppendAllText(Path.Combine(capture, "placement-native.jsonl"), JsonSerializer.Serialize(new
-                { timestamp = DateTimeOffset.UtcNow, correlation, stage, result,
+                { timestamp = DateTimeOffset.UtcNow, correlation, stage, result, constrainedWorkArea, bounds,
+                    workAreas = screen.GetMonitors().Select(item => item.WorkArea),
                     state = chat.WindowState.ToString(), width = chat.Width, height = chat.Height }) + Environment.NewLine);
+            }
+            void AssertConstrainedBounds(DeviceRect before, DeviceRect after, double widthDip, double heightDip)
+            {
+                var monitor = TransientSurfacePlacement.SelectMonitor(before, screen.GetMonitors())!;
+                var dpi = screen.GetDpi(monitor.Id);
+                var area = monitor.WorkArea;
+                var marginX = (int)Math.Round(16 * dpi.X);
+                var marginY = (int)Math.Round(16 * dpi.Y);
+                var width = Math.Min((int)Math.Ceiling(widthDip * dpi.X), area.Width - 2 * marginX);
+                var height = Math.Min((int)Math.Ceiling(heightDip * dpi.Y), area.Height - 2 * marginY);
+                // Retain each coordinate when the requested size fits; otherwise move only enough
+                // to fit inside the work area with the existing 16 DIP margin. Check size as well.
+                var expected = new DeviceRect(
+                    Math.Clamp(before.X, area.Left + marginX, area.Right - marginX - width),
+                    Math.Clamp(before.Y, area.Top + marginY, area.Bottom - marginY - height), width, height);
+                Assert.Equal(expected, after);
             }
             ui.InitializeTray(); ui.ShowPortrait(); Log("entry.dispatch", "requested");
             portrait.HandlePortraitClick(); StaRunner.Pump();
@@ -320,8 +342,12 @@ public sealed class PortraitWindowIntegrationTests
             Assert.Equal(selected, restored);
             chat.SetExpanded(true); StaRunner.Pump();
             Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var expanded));
-            Assert.Equal(selected.X, expanded.X); Assert.Equal(selected.Y, expanded.Y);
+            AssertConstrainedBounds(selected, expanded, 824, 740);
+            Log("chat.expand", "constrained");
             chat.SetExpanded(false); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var compact));
+            AssertConstrainedBounds(expanded, compact, 376, 500);
+            Log("chat.collapse", "constrained");
             Assert.Same(content, ((ContentControl)chat.FindName("ChatSurface")).Content);
             Assert.Equal("retained positioned draft", vm.Conversation.InputText);
             Assert.False(portrait.IsAttachedPanelVisible);
@@ -336,6 +362,23 @@ public sealed class PortraitWindowIntegrationTests
             Log("display.notification", "recovered"); Log("flow.completed", "success");
             portrait.Close(); vm.Conversation.Dispose();
         });
+    }
+
+    // Keep real monitor identities and DPI for HWND placement; only the reported work area is smaller.
+    // This reproduces a constrained runner without changing the user's display settings.
+    private sealed class ConstrainedNativeScreenService : IScreenLayoutService
+    {
+        private readonly WindowsScreenLayoutService _native = new();
+
+        public IReadOnlyList<MonitorInfo> GetMonitors() => _native.GetMonitors().Select(monitor =>
+        {
+            var dpi = GetDpi(monitor.Id);
+            return monitor with { WorkArea = new DeviceRect(monitor.WorkArea.X, monitor.WorkArea.Y,
+                Math.Min(monitor.WorkArea.Width, (int)Math.Floor(800 * dpi.X)),
+                Math.Min(monitor.WorkArea.Height, (int)Math.Floor(600 * dpi.Y))) };
+        }).ToArray();
+
+        public Dpi2 GetDpi(string monitorId) => _native.GetDpi(monitorId);
     }
 
     private sealed class WindowLifetime : FgoPet.App.Lifetime.IAppLifetime
