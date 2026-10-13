@@ -6,6 +6,7 @@ Platform provides business-neutral contracts and shared persistence primitives.
 
 - `FgoPet.Platform.Contracts` owns cross-cutting value types and interfaces, including runtime event, settings document, geometry, and window placement contracts.
 - `FgoPet.Platform.Storage` owns SQLite runtime database access and migrations, atomic JSON storage, settings documents, and JSON window-placement persistence.
+- `RuntimeDatabase` uses private-cache connections with WAL, foreign keys and a bounded busy timeout. Connections that fail during initialization are disposed before the error reaches the caller.
 - `RuntimeDatabaseMigrator.MigrateModule` applies ordered module-owned scripts and version records in one transaction, independently of the platform schema version. Business schemas stay with their feature owners.
 - `FgoPet.Platform.Windows` owns Windows Credential Manager, monitor-layout and protected-state implementations without WPF. The compatibility credential interfaces keep their namespaces in Platform.Contracts. `IProtectedStateProtector` is the business-neutral protected-state port.
 

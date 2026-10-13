@@ -17,9 +17,10 @@ public sealed class RuntimeDatabase
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
+            // WAL provides concurrency without shared-cache schema/table locks.
+            Cache = SqliteCacheMode.Private,
         };
-        // Preserve the existing pool identity for normal runtime connections.
+        // Keep pooling enabled for normal runtime connections.
         // Only temporary validation databases opt out of pooling explicitly.
         if (!pooling) builder.Pooling = false;
         _connectionString = builder.ToString();
@@ -36,11 +37,20 @@ public sealed class RuntimeDatabase
         }
 
         var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        Execute(connection, "PRAGMA foreign_keys=ON");
-        Execute(connection, "PRAGMA journal_mode=WAL");
-        Execute(connection, "PRAGMA busy_timeout=5000");
-        return connection;
+        try
+        {
+            connection.Open();
+            Execute(connection, "PRAGMA foreign_keys=ON");
+            Execute(connection, "PRAGMA journal_mode=WAL");
+            Execute(connection, "PRAGMA busy_timeout=5000");
+            return connection;
+        }
+        catch
+        {
+            // The caller cannot dispose a connection that Open never returned.
+            connection.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
