@@ -91,6 +91,7 @@ public sealed class PrivateBackupRestoreService
     private readonly IArtPackageRepository? _packageRepository;
     private readonly BackupPackageReferencesCodec _packageCodec = new();
     private readonly Action<string>? _safeLog;
+    private readonly IReadOnlyList<FgoPet.Core.Dialogue.IDerivedConversationData> _derivedData;
 
     internal static string RecoveryMarkerPath(string storageRoot) => Path.Combine(storageRoot, ".restore-recovery-required.json");
 
@@ -106,7 +107,8 @@ public sealed class PrivateBackupRestoreService
         IBackupStateSwapper? swapper = null,
         Func<CancellationToken, Task>? startupSelfCheck = null,
         IArtPackageRepository? packageRepository = null,
-        Action<string>? safeLog = null)
+        Action<string>? safeLog = null,
+        IEnumerable<FgoPet.Core.Dialogue.IDerivedConversationData>? derivedData = null)
     {
         _currentDatabase = currentDatabase ?? throw new ArgumentNullException(nameof(currentDatabase));
         _settingsDocument = settingsDocument ?? throw new ArgumentNullException(nameof(settingsDocument));
@@ -120,6 +122,7 @@ public sealed class PrivateBackupRestoreService
         _startupSelfCheck = startupSelfCheck;
         _packageRepository = packageRepository;
         _safeLog = safeLog;
+        _derivedData = derivedData?.ToArray() ?? [];
     }
 
     public async Task<BackupRestoreResult> RestoreAsync(string backupPath, CancellationToken cancellationToken)
@@ -157,6 +160,7 @@ public sealed class PrivateBackupRestoreService
             _safeLog?.Invoke("restore.maintenance.entered");
 
             BackupDatabaseNormalizer.Normalize(new RuntimeDatabase(validated.RuntimeDatabasePath, pooling: false), _clock.GetUtcNow());
+            foreach (var participant in _derivedData) participant.NormalizeRestoredCopy(validated.RuntimeDatabasePath);
             SqliteConnection.ClearAllPools();
 
             var rollbackArchive = Path.Combine(_storageRoot, "restore-rollback.fgopetbackup");

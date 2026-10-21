@@ -90,6 +90,22 @@ public sealed class ToolExecutionPipelineTests
     }
 
     [Fact]
+    public async Task A_fresh_read_call_gets_a_new_host_key_and_cannot_reuse_a_key_from_arguments()
+    {
+        using var host = new Host();
+        await host.StartAsync();
+        await host.Pipeline.AdvanceAsync(host.Request(), host.Intent, default);
+        var first = Assert.Single(host.Provider.Invocations).ExecutionContext!.IdempotencyKey;
+        var retry = host.Request(JsonSerializer.Serialize(new { idempotencyKey = first })) with
+        {
+            Call = host.Request().Call with { CallId = "fresh-call", ArgumentsJson = JsonSerializer.Serialize(new { idempotencyKey = first }) }
+        };
+        await host.Pipeline.AdvanceAsync(retry, host.Intent, default);
+        Assert.Equal(2, host.Provider.Invocations.Count);
+        Assert.NotEqual(first, host.Provider.Invocations[1].ExecutionContext!.IdempotencyKey);
+    }
+
+    [Fact]
     public async Task Invocation_waits_for_intent_to_finish_and_stopped_plugins_cannot_run()
     {
         using var host = new Host();

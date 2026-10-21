@@ -33,22 +33,32 @@ public sealed class SqliteConversationRecallRepository(RuntimeDatabase database)
         query = string.Concat((query ?? string.Empty).Trim().EnumerateRunes().Take(128).Select(rune => rune.ToString()));
         if (string.IsNullOrWhiteSpace(query)) return Browse(scope, excludedConversationId, Math.Min(limit, 10));
         var shortQuery = query.EnumerateRunes().Count() < 3;
-        var sql = shortQuery ? $"""
+        var maxHits = Math.Clamp(limit, 1, 20);
+        var literalSql = $"""
             WITH recent AS (SELECT conversation_id FROM conversations WHERE servant_id=$servant AND project_id IS $project
                 AND conversation_id<>$excluded ORDER BY updated_at_utc DESC,conversation_id DESC LIMIT 10),
             bounded AS (SELECT m.rowid FROM chat_messages m JOIN conversations c ON c.conversation_id=m.conversation_id
                 WHERE {ScopeWhere} AND c.conversation_id IN (SELECT conversation_id FROM recent)
                 ORDER BY c.updated_at_utc DESC,c.conversation_id DESC,m.sequence DESC LIMIT 200)
             SELECT {Projection} FROM bounded b JOIN chat_messages m ON m.rowid=b.rowid JOIN conversations c ON c.conversation_id=m.conversation_id
-            WHERE instr(m.text,$query)>0 ORDER BY c.updated_at_utc DESC,c.conversation_id DESC,m.sequence DESC LIMIT $limit
-            """ : $"""
+            WHERE {(shortQuery ? string.Empty : "instr(m.text,char(0))>0 AND")} instr(m.text,$query)>0
+            ORDER BY c.updated_at_utc DESC,c.conversation_id DESC,m.sequence DESC LIMIT $limit
+            """;
+        var sql = shortQuery ? literalSql : $"""
             SELECT {Projection} FROM chat_message_search f JOIN chat_messages m ON m.rowid=f.rowid
             JOIN conversations c ON c.conversation_id=m.conversation_id
             WHERE {ScopeWhere} AND chat_message_search MATCH $query
             ORDER BY bm25(chat_message_search),c.updated_at_utc DESC,c.conversation_id DESC,m.sequence DESC LIMIT $limit
             """;
-        var hits = Query(scope, excludedConversationId, sql, Math.Clamp(limit, 1, 20),
+        var hits = Query(scope, excludedConversationId, sql, maxHits,
             shortQuery ? query : "\"" + query.Replace("\"", "\"\"") + "\"");
+        if (!shortQuery)
+        {
+            // Trigram indexing stops at NUL. Supplement it with the existing bounded
+            // literal window, including when FTS has other hits; originals stay unchanged.
+            hits = hits.Concat(Query(scope, excludedConversationId, literalSql, maxHits, query))
+                .DistinctBy(hit => hit.Anchor).Take(maxHits).ToArray();
+        }
         var conversations = hits.Select(hit => hit.Anchor.ConversationId).Distinct().Take(5).ToHashSet();
         return hits.Where(hit => conversations.Contains(hit.Anchor.ConversationId)).ToArray();
     }

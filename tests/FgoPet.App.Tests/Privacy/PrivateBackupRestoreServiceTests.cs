@@ -8,6 +8,10 @@ using FgoPet.App.Privacy;
 using FgoPet.Character.Settings;
 using FgoPet.Core.Agents;
 using FgoPet.Core.Backup;
+using FgoPet.Core.Dialogue;
+using FgoPet.Extensibility;
+using FgoPet.Understanding;
+using FgoPet.Understanding.Contracts;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Backup;
@@ -15,6 +19,7 @@ using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Settings;
 using FgoPet.SettingsHost;
+using FgoPet.Tests.Diagnostics;
 using FgoPet.Work.Execution.Settings;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -309,7 +314,8 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
         IBackupStateSwapper? swapper = null,
         IApplicationSettingsDocument? settingsDocument = null,
         IAppMaintenanceCoordinator? maintenance = null,
-        Action<string>? safeLog = null)
+        Action<string>? safeLog = null,
+        IEnumerable<IDerivedConversationData>? derivedData = null)
     {
         settingsDocument ??= current.Settings;
         var packages = new JsonPackIndexStore(current.Root);
@@ -330,7 +336,181 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
             current.Root,
             new FixedTimeProvider(DateTimeOffset.Parse("2026-09-02T01:02:03Z")),
             swapper,
-            safeLog: safeLog);
+            safeLog: safeLog, derivedData: derivedData);
+    }
+
+    [Fact]
+    public async Task Restore_resets_understanding_grants_and_merges_current_deletion_tombstones_in_staging()
+    {
+        var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
+        var source = CreateState(_sourceRoot, "source-row", "source-user", AgentExecutionStatus.Completed);
+        var root = new ConversationSourceSnapshot(new("c", "mash", null), "u", new('A', 64), DateTimeOffset.UtcNow, ConversationSourceKind.User, null);
+        var scope = new ConversationScope("mash", null);
+        var sourceOwner = new UnderstandingService(source.Database, new UnderstandingSources());
+        var currentOwner = new UnderstandingService(current.Database, new UnderstandingSources());
+        foreach (var owner in new[] { sourceOwner, currentOwner })
+        {
+            owner.Configure(scope, 0, new(UnderstandingMode.Proposals, ReadSources: true, SaveCandidates: true, UseInDialogue: true));
+            owner.Apply(owner.Begin(scope, "batch", [root]), [new("deleted-derived", UnderstandingDomain.User, UnderstandingKind.Interpretation,
+                "user", "synthetic derived", "only fixture", [root])]);
+        }
+        currentOwner.Review(scope, "delete", "deleted-derived", 1, UnderstandingAction.Delete);
+        var path = Path.Combine(_root, "understanding.fgopetbackup"); await CreateBackupAsync(source, path);
+        var runtime = new FakeAgentRuntime();
+        var restored = await CreateRestoreService(current, runtime, derivedData: [currentOwner]).RestoreAsync(path, default);
+        Assert.Equal(BackupRestoreStatus.Restored, restored.Status); Assert.Equal(0, runtime.DispatchCount);
+        var reopened = new UnderstandingService(current.Database, new UnderstandingSources());
+        Assert.Empty(reopened.List(scope, true)); Assert.Empty(reopened.List(scope, false));
+        Assert.Equal(new UnderstandingPolicy(), reopened.State(scope).Policy);
+    }
+    [Theory]
+    [InlineData("normalizer-fails")]
+    [InlineData("cancel-before-swap")]
+    [InlineData("swap-fails")]
+    [InlineData("cancel-after-swap")]
+    [InlineData("rollback-fails")]
+    [InlineData("move-swap-fails")]
+    [InlineData("cancel-after-atomic-move")]
+    public async Task Understanding_participant_preserves_live_state_or_recovery_boundary_on_restore_failure(string fault)
+    {
+        var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
+        var source = CreateState(_sourceRoot, "source-row", "source-user", AgentExecutionStatus.Completed);
+        var scope = new ConversationScope("mash", null);
+        UnderstandingService Seed(State state, string id)
+        {
+            var owner = new UnderstandingService(state.Database, new UnderstandingSources());
+            owner.Configure(scope, 0, new(UnderstandingMode.Proposals, ReadSources: true, SaveCandidates: true, UseInDialogue: true));
+            var root = new ConversationSourceSnapshot(new("c", "mash", null), "u", new('A', 64), DateTimeOffset.UtcNow, ConversationSourceKind.User, null);
+            owner.Apply(owner.Begin(scope, "batch", [root]), [new(id, UnderstandingDomain.User, UnderstandingKind.Interpretation,
+                "user", "synthetic-" + id, "only this fixture", [root])]);
+            owner.Review(scope, "approve", id, 1, UnderstandingAction.Approve);
+            return owner;
+        }
+        var currentOwner = Seed(current, "current-derived"); Seed(source, "backup-derived");
+        var expectedState = currentOwner.State(scope);
+        var settingsBefore = File.ReadAllBytes(current.Settings.Location);
+        var path = Path.Combine(_root, "participant-fault.fgopetbackup"); await CreateBackupAsync(source, path);
+        using var cts = new CancellationTokenSource();
+        string? normalizedDirectory = null;
+        var probe = new UnderstandingRestoreProbe(currentOwner, staging =>
+        {
+            normalizedDirectory = Path.GetDirectoryName(staging);
+            Assert.NotEqual(Path.GetFullPath(current.Database.DatabasePath), Path.GetFullPath(staging));
+            var staged = new UnderstandingService(new RuntimeDatabase(staging, pooling: false), new UnderstandingSources());
+            Assert.Equal(new UnderstandingPolicy(), staged.State(scope).Policy);
+            if (fault == "normalizer-fails") throw new IOException("synthetic participant failure");
+            if (fault == "cancel-before-swap") cts.Cancel();
+        });
+        IBackupStateSwapper? swapper = fault switch
+        {
+            "swap-fails" => new PartiallyFailingSwap(),
+            "cancel-after-swap" => new CancelAfterDatabaseSwap(cts),
+            "rollback-fails" => new RollbackBlockingSwap(),
+            "move-swap-fails" => new MoveDatabaseThenFail(),
+            "cancel-after-atomic-move" => new CancelAfterAtomicMove(cts),
+            _ => null,
+        };
+        var runtime = new FakeAgentRuntime();
+        var restore = CreateRestoreService(current, runtime, swapper, derivedData: [probe]);
+        if (fault == "cancel-before-swap")
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => restore.RestoreAsync(path, cts.Token));
+        else
+        {
+            var result = await restore.RestoreAsync(path, cts.Token);
+            var expected = fault == "normalizer-fails" ? BackupRestoreStatus.Rejected :
+                fault == "rollback-fails" ? BackupRestoreStatus.RecoveryRequired : BackupRestoreStatus.RolledBack;
+            Assert.Equal(expected, result.Status);
+        }
+        Assert.Equal(1, probe.Calls); Assert.Equal(0, runtime.DispatchCount);
+        if (fault == "rollback-fails")
+        {
+            Assert.True(File.Exists(PrivateBackupRestoreService.RecoveryMarkerPath(current.Root)));
+            Assert.Single(Directory.GetDirectories(current.Root, "*.rollback"));
+            Assert.Equal(BackupRestoreStatus.RecoveryRequired, (await restore.RestoreAsync(path, default)).Status);
+            Assert.Equal(1, probe.Calls);
+        }
+        else
+        {
+            var reopened = new UnderstandingService(current.Database, new UnderstandingSources());
+            Assert.Equal(expectedState, reopened.State(scope));
+            Assert.Equal("current-derived", Assert.Single(reopened.Query(scope, "").Items).Id);
+            Assert.Equal(settingsBefore, File.ReadAllBytes(current.Settings.Location));
+            Assert.False(File.Exists(PrivateBackupRestoreService.RecoveryMarkerPath(current.Root)));
+            var remainingStaging = Directory.GetDirectories(current.Root, "*.staging");
+            if (remainingStaging.Length != 0)
+                Console.WriteLine("H1_STAGING_METADATA_ONLY " + JsonSerializer.Serialize(new
+                {
+                    fault, directoryCount = remainingStaging.Length,
+                    directoryKinds = remainingStaging.Select(p => Path.GetFileName(p).StartsWith(".restore-", StringComparison.Ordinal) ? "restore" : "other").ToArray(),
+                    normalizedRestoreStageRemains = remainingStaging.Any(p => string.Equals(p, normalizedDirectory, StringComparison.OrdinalIgnoreCase)),
+                    rollbackBackupStageRemains = remainingStaging.Any(p => Path.GetFileName(p).StartsWith(".restore-rollback.fgopetbackup.", StringComparison.Ordinal)),
+                    files = remainingStaging.SelectMany(p => Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories))
+                        .Select(p => new { extension = Path.GetExtension(p), bytes = new FileInfo(p).Length,
+                            attributes = File.GetAttributes(p).ToString(), exclusiveRead = CanReadExclusively(p) }).ToArray(),
+                }));
+            Assert.Empty(remainingStaging);
+        }
+    }
+
+    [Fact] public async Task H1_backup_staging_cleanup_control_without_understanding()
+    {
+        var current = CreateState(_currentRoot, "old-row", "old-user", AgentExecutionStatus.Completed);
+        await CreateBackupAsync(current, Path.Combine(current.Root, "restore-rollback.fgopetbackup"));
+        var directories = Directory.GetDirectories(current.Root, ".restore-rollback.fgopetbackup.*.staging");
+        var files = directories.SelectMany(p => Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories)).ToArray();
+        var lockedBeforePoolClear = files.Count(p => !CanReadExclusively(p));
+        SqliteConnection.ClearAllPools();
+        Console.WriteLine("H1_BACKUP_BASELINE_METADATA_ONLY " + JsonSerializer.Serialize(new
+        {
+            understandingParticipants = 0, directoryCount = directories.Length, fileCount = files.Length,
+            lockedBeforePoolClear, lockedAfterPoolClear = files.Count(p => !CanReadExclusively(p)),
+        }));
+        Assert.Empty(directories);
+    }
+
+    private static bool CanReadExclusively(string path)
+    {
+        try { using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None); return true; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private sealed class UnderstandingRestoreProbe(UnderstandingService owner, Action<string> afterNormalize) : IDerivedConversationData
+    {
+        public int Calls;
+        public void NormalizeRestoredCopy(string path) { Calls++; owner.NormalizeRestoredCopy(path); afterNormalize(path); }
+        public void ForgetConversation(string conversationId, string roleId) => owner.ForgetConversation(conversationId, roleId);
+        public void ForgetAll() => owner.ForgetAll();
+        public JsonElement Export() => owner.Export();
+    }
+    private sealed class CancelAfterDatabaseSwap(CancellationTokenSource cancellation) : IBackupStateSwapper
+    {
+        public Task SwapAsync(BackupStateSwapContext context, CancellationToken token)
+        {
+            File.Copy(context.StagedDatabasePath, context.CurrentDatabasePath, overwrite: true);
+            cancellation.Cancel(); token.ThrowIfCancellationRequested(); return Task.CompletedTask;
+        }
+    }
+    private sealed class MoveDatabaseThenFail : IBackupStateSwapper
+    {
+        public Task SwapAsync(BackupStateSwapContext context, CancellationToken token)
+        {
+            File.Move(context.StagedDatabasePath, context.CurrentDatabasePath, overwrite: true);
+            throw new IOException("synthetic failure after production-style database move");
+        }
+    }
+    private sealed class CancelAfterAtomicMove(CancellationTokenSource cancellation) : IBackupStateSwapper
+    {
+        public async Task SwapAsync(BackupStateSwapContext context, CancellationToken token)
+        {
+            await new AtomicBackupStateSwapper().SwapAsync(context, token);
+            cancellation.Cancel(); token.ThrowIfCancellationRequested();
+        }
+    }
+    private sealed class UnderstandingSources : IConversationSourceReader
+    {
+        public ConversationSourceSnapshot Read(ToolScope scope, string messageId, ConversationSourceKind kind) => throw new NotSupportedException();
+        public bool IsCurrent(ConversationSourceSnapshot source) => true;
     }
 
     private sealed class RollbackBlockingSwap : IBackupStateSwapper
@@ -377,10 +557,21 @@ public sealed class PrivateBackupRestoreServiceTests : IDisposable
             remoteTaskId: remoteTaskId));
 
         var settings = new ApplicationSettingsCoordinator(new JsonSettingsDocumentStore(root));
-        ((ICharacterSettingsStore)settings).Save(CharacterSettings.Defaults with
+        var settingsPath = Path.Combine(root, "settings.json");
+        SyntheticFileOperationDiagnostics.Record("FGO_PET_PRIVATE_RESTORE_DIAGNOSTICS", "initial_settings_save", "before", settingsPath + ".tmp", settingsPath);
+        try
         {
-            UserProfile = new UserProfile(userName),
-        });
+            ((ICharacterSettingsStore)settings).Save(CharacterSettings.Defaults with
+            {
+                UserProfile = new UserProfile(userName),
+            });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            SyntheticFileOperationDiagnostics.Record("FGO_PET_PRIVATE_RESTORE_DIAGNOSTICS", "initial_settings_save", "failed", settingsPath + ".tmp", settingsPath, error);
+            throw;
+        }
+        SyntheticFileOperationDiagnostics.Record("FGO_PET_PRIVATE_RESTORE_DIAGNOSTICS", "initial_settings_save", "completed", settingsPath + ".tmp", settingsPath);
         ((IWorkExecutionSettingsStore)settings).Save(WorkExecutionSettings.Defaults with
         {
             AgentConnection = new AgentConnectionSettings(Enabled: status == AgentExecutionStatus.Active),

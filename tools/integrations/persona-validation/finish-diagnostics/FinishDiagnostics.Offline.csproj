@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>FgoPet.App.Tests</AssemblyName>
+    <StartupObject>FgoPet.App.Tests.Dialogue.FinishDiagnosticsEntry</StartupObject>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <FrozenTestRuntime Condition="'$(FrozenTestRuntime)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\tests\FgoPet.App.Tests\bin\Release\net8.0-windows10.0.17763.0</FrozenTestRuntime>
+  </PropertyGroup>
+  <!-- 只引用已冻结产物；没有 ProjectReference，也没有真实请求入口。 -->
+  <ItemGroup>
+    <Reference Include="$(FrozenTestRuntime)\*.dll" Exclude="$(FrozenTestRuntime)\FgoPet.App.Tests.dll" />
+    <Compile Include="../../../../tests/FgoPet.App.Tests/**/*.cs" Exclude="../../../../tests/FgoPet.App.Tests/obj/**;../../../../tests/FgoPet.App.Tests/bin/**" />
+    <Compile Include="../../../../tests/Shared/ActivatedCapabilities.cs" />
+    <Compile Include="../../../../tests/Shared/TestStateIsolation.cs" />
+    <Compile Include="../../../../tests/Shared/SyntheticFileOperationDiagnostics.cs" />
+    <Compile Include="../P2BatchProvider.cs" />
+    <Compile Include="../P2ResponseDiagnostics.cs" />
+    <Compile Include="../../understanding-review-validation/ReviewPipelineProbe.cs" />
+    <Compile Include="../../understanding-review-validation/ReviewModelExchangeProbe.cs" />
+    <Compile Include="../../understanding-review-validation/ReviewDispatchProbe.cs" />
+    <None Include="$(FrozenTestRuntime)\runtimes\win-x64\native\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

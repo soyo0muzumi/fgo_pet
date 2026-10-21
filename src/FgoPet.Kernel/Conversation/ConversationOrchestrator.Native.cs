@@ -21,6 +21,8 @@ public sealed partial class ConversationOrchestrator
 
     public ValueTask<AgentInteractionSnapshot?> GetAgentInteractionAsync(string runId, ToolScope scope, CancellationToken token) =>
         _nativeRuntime?.GetInteractionAsync(runId, scope, token) ?? ValueTask.FromResult<AgentInteractionSnapshot?>(null);
+    public ValueTask<bool> CancelAgentRunAsync(string runId, ToolScope scope, CancellationToken token) =>
+        _nativeRuntime?.CancelAsync(runId, scope, token) ?? ValueTask.FromResult(false);
     public Task<ConversationSendResult> ResumeAgentInputAsync(UserInputReply reply, ToolScope scope, CancellationToken token) =>
         ResumeNativeAsync(cancellation => _nativeRuntime!.ResumeInputAsync(reply, scope, cancellation), token);
     public Task<ConversationSendResult> ResumeAgentApprovalAsync(ApprovalReply reply, ToolScope scope, CancellationToken token) =>
@@ -55,8 +57,15 @@ public sealed partial class ConversationOrchestrator
             NativeModelRevision(), _lifetime.Generation);
         void CheckCurrent()
         {
+            token.ThrowIfCancellationRequested();
+            if (identity is not null && NativeModelRevision() != identity.ModelRevision)
+            {
+                // Match ConversationModelTurn.EnsureCurrent regardless of which fence observes the change first.
+                CancelCurrent();
+                throw new OperationCanceledException("Model connection changed.", token);
+            }
             if (identity is null || sourceReader is null || source is null
-                || _nativeScopeCurrent?.Invoke(scope) == false || _lifetime.Generation != identity.AuthorizationRevision || NativeModelRevision() != identity.ModelRevision
+                || _nativeScopeCurrent?.Invoke(scope) == false || _lifetime.Generation != identity.AuthorizationRevision
                 || !sourceReader.IsCurrent(source) || _conversations.GetConversation(scope.ConversationId, scope.RoleId)?.IsArchived != false
                 || _conversations.ReadState(ActiveConversationStateKey(scope.RoleId)) != scope.ConversationId)
                 throw new AgentStateException("RUN_SCOPE_CHANGED");
@@ -76,7 +85,7 @@ public sealed partial class ConversationOrchestrator
         preparedTurn.NativeRequestDiagnostics = (environment, budget) =>
             ConversationContextDiagnostics.Record(_logger, identity.RunId,
                 budget is AgentRunState state ? state.Snapshot.StepNumber : 0,
-                "dispatch", environment, preparedTurn.MeasureInputTokens);
+                "dispatch", environment, preparedTurn.MeasureProjectedInputTokens);
         preparationLease.CheckCurrent(); CheckCurrent();
         var rawHistory = (_contextStore?.Read(semanticScope, scope.ConversationId).UncoveredMessages
             ?? _conversations.LoadMessages(scope.ConversationId, scope.RoleId))
@@ -112,6 +121,7 @@ public sealed partial class ConversationOrchestrator
         {
             cancellation.ThrowIfCancellationRequested();
             var model = preparedTurn;
+            model.NativeRequestPreparation = PreparedModel.PrepareRequest;
             return ValueTask.FromResult<IAgentModelStep>(new PreparedModel(model, async (budget, prepareToken) =>
             {
                 using var lease = _lifetime.Acquire(prepareToken);
@@ -120,29 +130,32 @@ public sealed partial class ConversationOrchestrator
                 var sources = recalled.Sources.Where(hit => _conversations.IsCurrentSource(semanticScope, hit)).ToArray();
                 if (sources.Length != recalled.Sources.Count) recalled = new(RecallStatus.Unavailable, sources);
                 var persona = binding.Persona ?? FallbackPersona(binding.Context);
-                ImmutableArray<ModelMessage> Project(ComposedPrompt prompt, IReadOnlyList<ChatMessage> messages)
+                ImmutableArray<ModelMessage> Project(IReadOnlyList<PromptMessage> prompt, IReadOnlyList<ChatMessage> messages)
                 {
                     var history = messages.Where(message => message.MessageId != user.MessageId).ToArray();
-                    var count = history.Count(message => message.Status == ChatMessageStatus.Completed);
-                    // PromptComposer places semantic history and the current user last.
-                    var prefix = prompt.Messages.Take(prompt.Messages.Count - count - 1)
+                    // Native history is wrapped and measured through its own protocol exactly once.
+                    var prefix = prompt.Take(prompt.Count - 1)
                         .Select(message => new ModelMessage(ModelMessageRole.System, message.Text, []));
                     return prefix.Concat(NativeConversationHistory.Project(history, historicalRuns))
-                        .Append(new(ModelMessageRole.User, prompt.Messages[^1].Text, [])).ToImmutableArray();
+                        .Append(new(ModelMessageRole.User, prompt[^1].Text, [])).ToImmutableArray();
                 }
                 ComposedPrompt Compose(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
                 {
                     lease.CheckCurrent(); CheckCurrent(); model.EnsureCurrent(lease.Token);
                     var currentSources = sources.Where(hit => _conversations.IsCurrentSource(semanticScope, hit)).ToArray();
-                    var composed = _composer.Compose(new PromptContext(binding.Context, persona, binding.Knowledge,
-                        [], string.Empty, messages.Where(message => message.Status == ChatMessageStatus.Completed && message.MessageId != user.MessageId)
-                            .Select(message => new PromptMessage(message.Role, message.Text)).ToArray(), user.Text, context,
+                    return _composer.ComposeNative(new PromptContext(binding.Context, persona, binding.Knowledge,
+                        [], string.Empty, [], user.Text, context,
                         null, currentSources, currentSources.Length == sources.Length ? recalled.Status : RecallStatus.Unavailable, summary),
-                        model.Route, model.Budget, nativeAgent: true);
-                    var input = model.MeasureInputTokens(new(Project(composed, messages), []));
-                    return new(composed.ContentContext, composed.Messages,
-                        new(input, TokenCountKind.Estimated, composed.Usage.Fingerprint), composed.Status,
-                        composed.MaxOutputTokens, input <= model.Budget.InputTokens);
+                        model.Route, model.Budget, value =>
+                        {
+                            var projected = Project(value, messages);
+                            // These mandatory rules are inserted by the runtime after preparation.
+                            // Reserve them while selecting optional background, without duplicating them in history.
+                            var measured = projected.Insert(0, new(ModelMessageRole.System, NativeAgentEnvironment.CorePrompt, []));
+                            var input = model.MeasureInputTokens(new(measured, _nativeRuntime!.GetPreparationTools(scope)));
+                            var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { model.Route, Messages = measured })));
+                            return new(input, TokenCountKind.Estimated, fingerprint);
+                        });
                 }
                 var snapshot = _contextStore?.Read(semanticScope, scope.ConversationId);
                 var prompt = Compose(snapshot?.Summary, snapshot?.UncoveredMessages ?? _conversations.LoadMessages(scope.ConversationId, scope.RoleId));
@@ -156,7 +169,7 @@ public sealed partial class ConversationOrchestrator
                     snapshot = _contextStore!.Read(semanticScope, scope.ConversationId);
                     prompt = Compose(snapshot.Summary, snapshot.UncoveredMessages);
                 }
-                var projected = Project(prompt, snapshot?.UncoveredMessages ?? rawHistory);
+                var projected = Project(prompt.Messages, snapshot?.UncoveredMessages ?? rawHistory);
                 var compacted = await CompactStep(new(projected, []), budget, lease.Token);
                 lease.CheckCurrent(); CheckCurrent();
                 if (model.MeasureInputTokens(compacted) > model.Budget.InputTokens)
@@ -165,7 +178,9 @@ public sealed partial class ConversationOrchestrator
                     HistorySources: sources.Where(hit => prompt.Messages.Any(message => message.Text.Contains(
                         $"recalled:{hit.Anchor.ConversationId}:{hit.Anchor.MessageId}", StringComparison.Ordinal))).ToArray()));
                 return compacted.Messages;
-            }, historicalMessages, CompactStep));
+            }, historicalMessages, CompactStep, user.Text, CheckCurrent, () => _logger?.LogWarning(
+                new EventId(4103, "NativeFinalFormatRepair"), "Native final repair run={RunHash} code={ErrorCode}",
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity.RunId))), "MODEL_INVALID_FINAL")));
         }
         async ValueTask<ConversationSendResult> Deliver(AgentRunResult result, CancellationToken cancellation)
         {
@@ -176,7 +191,8 @@ public sealed partial class ConversationOrchestrator
             if (checkpoint.Snapshot.Status != AgentRunStatus.Completed || checkpoint.Snapshot.Identity != identity
                 || checkpoint.FinalDeliveryId is null || checkpoint.FinalText is null)
                 throw new AgentStateException("RUN_FINAL_INVALID");
-            var output = StructuredOutputValidator.Validate(checkpoint.FinalText, ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+            var output = StructuredOutputValidator.ValidateFinalEnvelope(checkpoint.FinalText,
+                ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), user.Text);
             var accepted = new AcceptedAgentFinal(identity, checkpoint.FinalDeliveryId, query, binding.Context,
                 output, _time.GetUtcNow(), checkpoint.ResolvedInputs);
             var delivery = lease.Commit(() =>
@@ -225,15 +241,78 @@ public sealed partial class ConversationOrchestrator
     private sealed class PreparedModel(ConversationModelTurn model,
         Func<IModelRequestBudget, CancellationToken, ValueTask<ImmutableArray<ModelMessage>>> prepare,
         ImmutableArray<ModelMessage> history,
-        Func<StepEnvironment, IModelRequestBudget, CancellationToken, ValueTask<StepEnvironment>> compact)
+        Func<StepEnvironment, IModelRequestBudget, CancellationToken, ValueTask<StepEnvironment>> compact,
+        string userText, Action checkCurrent, Action reportFormatRepair)
         : IAgentModelStep, IAgentModelInputBudget, IAgentRunPreparation
     {
         public ImmutableArray<ModelMessage> HistoricalMessages => history;
         public bool RetainsToolHistory => true;
+        public string FinalOutputInstructions => StructuredOutputValidator.FinalStepInstructions;
         public int InputTokenBudget => model.InputTokenBudget;
         public int MeasureInputTokens(StepEnvironment environment) => model.MeasureInputTokens(environment);
-        public ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget, CancellationToken token) =>
-            model.ExecuteAsync(environment, budget, token);
+        public async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget, CancellationToken token)
+        {
+            var response = await model.ExecuteAsync(environment, budget, token);
+            if (model.LastRequestKind == ModelStepKind.Tools)
+            {
+                if (response.IsFinal) throw new AgentProtocolException("MODEL_EXPECTED_FINALIZE");
+                NativeFinalization.Validate(response);
+                return response;
+            }
+            if (!response.IsFinal) throw new AgentProtocolException("MODEL_UNEXPECTED_TOOL_CALL");
+            if (ValidFinal(response)) return response;
+            checkCurrent();
+            reportFormatRepair();
+            // A format-only retry cannot execute or replay business calls. The same durable budget,
+            // cancellation, connection and input limits apply before another provider request.
+            var repair = environment with
+            {
+                Tools = [],
+                Messages = environment.Messages.Add(response.AssistantMessage).Add(new(ModelMessageRole.System,
+                    "The final answer failed JSON validation. Correct its format once: return a complete JSON object with text and emotion. " +
+                    "Escape quotes and control characters. Preserve the answer, source attribution and uncertainty; do not invent facts or actions. " +
+                    "No tools are available; do not request or repeat any tool call.", []))
+            };
+            var corrected = await model.ExecuteAsync(repair, budget, token);
+            checkCurrent();
+            if (!corrected.IsFinal || !ValidFinal(corrected)) throw new AgentProtocolException("MODEL_INVALID_FINAL");
+            return corrected;
+        }
+        internal static StepEnvironment PrepareRequest(StepEnvironment environment)
+        {
+            var kind = environment.Kind == ModelStepKind.FinalOutput || environment.Tools.IsEmpty
+                ? ModelStepKind.FinalOutput : ModelStepKind.Tools;
+            var messages = ImmutableArray.CreateBuilder<ModelMessage>();
+            for (var index = 0; index < environment.Messages.Length; index++)
+            {
+                var message = environment.Messages[index];
+                // The durable control receipt carries no business evidence. Do not spend final
+                // context on it; keep every business call/result and the run journal intact.
+                if (kind == ModelStepKind.FinalOutput && message.Role == ModelMessageRole.Assistant
+                    && message.ToolCalls is [{ IsResolved: true, Name: NativeFinalization.Name } call]
+                    && index + 1 < environment.Messages.Length && environment.Messages[index + 1] is
+                        { Role: ModelMessageRole.Tool } result && result.ToolCallId == call.CallId)
+                { index++; continue; }
+                if (message.Role != ModelMessageRole.System || message.Content != StructuredOutputValidator.FinalStepInstructions
+                    && message.Content != NativeFinalization.Instructions) messages.Add(message);
+            }
+            return environment with
+            {
+                Kind = kind, Tools = kind == ModelStepKind.FinalOutput ? [] : environment.Tools,
+                Messages = messages.ToImmutable().Add(new(ModelMessageRole.System, kind == ModelStepKind.FinalOutput
+                    ? StructuredOutputValidator.FinalStepInstructions : NativeFinalization.Instructions, []))
+            };
+        }
+        private bool ValidFinal(ModelStepResponse response)
+        {
+            try
+            {
+                _ = StructuredOutputValidator.ValidateFinalEnvelope(response.AssistantMessage.Content,
+                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), userText);
+                return true;
+            }
+            catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
+        }
         public ValueTask<ImmutableArray<ModelMessage>> PrepareAsync(ImmutableArray<ModelMessage> initialMessages,
             IModelRequestBudget budget, CancellationToken token) => prepare(budget, token);
         public ValueTask<StepEnvironment> PrepareStepAsync(StepEnvironment environment, IModelRequestBudget budget,

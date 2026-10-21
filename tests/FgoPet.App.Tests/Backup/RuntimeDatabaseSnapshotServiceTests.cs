@@ -1,4 +1,5 @@
 using System.IO;
+using FgoPet.Core.Backup;
 using FgoPet.Infrastructure.Backup;
 using FgoPet.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -6,6 +7,7 @@ using Xunit;
 
 namespace FgoPet.Infrastructure.Tests.Backup;
 
+[Collection("Backup temporary file isolation")]
 public sealed class RuntimeDatabaseSnapshotServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-snapshot-source-{Guid.NewGuid():N}.db");
@@ -38,6 +40,52 @@ public sealed class RuntimeDatabaseSnapshotServiceTests : IDisposable
         Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, Scalar<long>(snapshot, "SELECT MAX(version) FROM schema_migrations"));
         Assert.Equal("remote-1", Scalar<string>(snapshot, "SELECT remote_task_id FROM agent_executions WHERE execution_id='execution-1'"));
         Assert.Equal(1L, Scalar<long>(snapshot, "SELECT COUNT(*) FROM focus_presets WHERE preset_id='short'"));
+    }
+
+    [Fact]
+    public async Task Completed_snapshot_can_be_exclusively_opened_and_deleted_without_clearing_pools()
+    {
+        var database = CreateDatabase();
+
+        await new RuntimeDatabaseSnapshotService(database).CreateAsync(_snapshotPath, CancellationToken.None);
+
+        using (var snapshot = File.Open(_snapshotPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.True(snapshot.Length > 0);
+        }
+        File.Delete(_snapshotPath);
+        Assert.False(File.Exists(_snapshotPath));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Failure_after_validation_preserves_error_and_removes_temporary_snapshot(bool canceled)
+    {
+        var database = CreateDatabase();
+        using var cancellation = new CancellationTokenSource();
+        Exception failure = canceled
+            ? new OperationCanceledException(cancellation.Token)
+            : new IOException("synthetic snapshot completion failure");
+        var service = new RuntimeDatabaseSnapshotService(database, _ =>
+        {
+            if (canceled) cancellation.Cancel();
+            throw failure;
+        });
+
+        var actual = await Record.ExceptionAsync(() => service.CreateAsync(_snapshotPath, cancellation.Token));
+
+        if (canceled)
+            Assert.Same(failure, actual);
+        else
+        {
+            var wrapped = Assert.IsType<BackupException>(actual);
+            Assert.Equal(BackupFailureCode.DatabaseInvalid, wrapped.Code);
+            Assert.Same(failure, wrapped.InnerException);
+        }
+        Assert.False(File.Exists(_snapshotPath));
+        Assert.False(File.Exists(_snapshotPath + "-wal"));
+        Assert.False(File.Exists(_snapshotPath + "-shm"));
     }
 
     [Fact]
@@ -85,4 +133,9 @@ public sealed class RuntimeDatabaseSnapshotServiceTests : IDisposable
         command.CommandText = sql;
         command.ExecuteNonQuery();
     }
+}
+
+[CollectionDefinition("Backup temporary file isolation", DisableParallelization = true)]
+public sealed class BackupTemporaryFileIsolationCollection
+{
 }

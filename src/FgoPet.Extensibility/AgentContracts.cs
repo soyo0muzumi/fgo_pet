@@ -37,7 +37,7 @@ public interface ISkillProvider
 public enum AgentContextKind { Data, Instruction }
 /// <summary>Source is a resource ID under the registered plugin, never an authority or a local path.</summary>
 public sealed record AgentContextBlock(string Source, AgentContextKind Kind, string Content, int Priority,
-    int? BudgetHint = null);
+    int? BudgetHint = null, bool Whole = false);
 public sealed record ProtectedQueryReference(string UserMessageId, string Fingerprint);
 /// <summary>Trusted host resolves a validated original user message privately; the reference carries no query text.</summary>
 public interface IAgentQueryResolver

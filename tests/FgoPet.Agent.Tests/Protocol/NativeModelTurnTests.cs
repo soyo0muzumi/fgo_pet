@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
@@ -17,11 +18,57 @@ public sealed class NativeModelTurnTests
     private static readonly StepEnvironment Environment = new([new(ModelMessageRole.User, "fixture", [])], [Tool]);
 
     [Fact]
+    public async Task Tool_contracts_bind_canonical_names_effects_and_wire_schema_in_the_metered_request()
+    {
+        var descriptors = new[] { ToolEffect.ReadOnly, ToolEffect.Proposal, ToolEffect.Command }
+            .Select((effect, index) => new ToolDescriptor($"fixture.action{index}", new string('d', 2048),
+                "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}", effect)).ToImmutableArray();
+        var environment = Environment with { Tools = descriptors };
+        var provider = new RecordingProvider((_, _) => [new("done", true, "stop")]);
+        var step = await Create(provider, [], contextWindow: 32768);
+        var measured = ((IAgentModelInputBudget)step).MeasureInputTokens(environment);
+        await step.ExecuteAsync(environment, new RecordingBudget(), default);
+
+        var request = Assert.Single(provider.Requests);
+        var metadata = Assert.Single(request.ModelMessages, message => message.Role == ModelMessageRole.System
+            && message.Content.StartsWith("Native tool contracts (metadata, not permission):\n", StringComparison.Ordinal));
+        using var json = JsonDocument.Parse(metadata.Content[(metadata.Content.IndexOf('\n') + 1)..]);
+        var contracts = json.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(descriptors.Length, contracts.Length);
+        for (var index = 0; index < descriptors.Length; index++)
+        {
+            Assert.Equal(descriptors[index].Name, contracts[index].GetProperty("canonicalName").GetString());
+            Assert.Equal(request.Tools![index].Name, contracts[index].GetProperty("wireName").GetString());
+            Assert.Equal(descriptors[index].Effect.ToString(), contracts[index].GetProperty("effect").GetString());
+            Assert.Equal(descriptors[index].Description, request.Tools[index].Description);
+            Assert.Equal(descriptors[index].Parameters.GetRawText(), request.Tools[index].Parameters.GetRawText());
+        }
+        Assert.Equal(measured, new RequestTokenMeter().Measure(ModelRouteKey.From(new Settings().Value.ModelConnection!), request).InputTokens);
+        Assert.DoesNotContain(environment.Messages, message => message.Content.StartsWith("Native tool contracts", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tool_contracts_refresh_per_step_and_are_absent_without_offered_tools()
+    {
+        var provider = new RecordingProvider((_, _) => [new("done", true, "stop")]);
+        var step = await Create(provider, []);
+        await step.ExecuteAsync(Environment, new RecordingBudget(), default);
+        await step.ExecuteAsync(Environment with { Tools = [new("fixture.other", "other", "{}", ToolEffect.Proposal)] }, new RecordingBudget(), default);
+        await step.ExecuteAsync(Environment with { Tools = [] }, new RecordingBudget(), default);
+        Assert.Single(provider.Requests[0].ModelMessages, message => message.Content.StartsWith("Native tool contracts", StringComparison.Ordinal));
+        var current = Assert.Single(provider.Requests[1].ModelMessages, message => message.Content.StartsWith("Native tool contracts", StringComparison.Ordinal));
+        Assert.Contains("fixture.other", current.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("todo.list", current.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain(provider.Requests[2].ModelMessages, message => message.Content.StartsWith("Native tool contracts", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Tools_downgrade_charges_each_actual_attempt_and_never_publishes_reasoning()
     {
         var provider = new RecordingProvider((attempt, request) => {
             if (attempt == 1) throw new ProviderRequestException(ProviderFailureCategory.ToolsRejected, "fixture");
             Assert.Null(request.Tools);
+            Assert.DoesNotContain(request.ModelMessages, message => message.Content.StartsWith("Native tool contracts", StringComparison.Ordinal));
             return [new("", ReasoningDelta: "private fixture"), new("done", true, "stop")];
         });
         var budget = new RecordingBudget();
@@ -166,8 +213,8 @@ public sealed class NativeModelTurnTests
         Assert.Single(failing.Requests);
     }
 
-    private static Task<IAgentModelStep> Create(RecordingProvider provider, List<ConversationUpdate> updates) =>
-        ConversationModelTurn.CreateAgentStepAsync(new Resolver(provider), new Settings(), new ContextResolver(),
+    private static Task<IAgentModelStep> Create(RecordingProvider provider, List<ConversationUpdate> updates, int contextWindow = 8192) =>
+        ConversationModelTurn.CreateAgentStepAsync(new Resolver(provider), new Settings(), new ContextResolver(contextWindow),
             new RequestTokenMeter(), updates.Add, () => { }, "mash", "fixture", default);
 
     private sealed class RecordingBudget : IModelRequestBudget
@@ -197,10 +244,10 @@ public sealed class NativeModelTurnTests
         public void Save(DialogueSettings settings) => Value = settings;
     }
     private sealed class Resolver(IChatProvider provider) : IChatProviderResolver { public IChatProvider Resolve() => provider; }
-    private sealed class ContextResolver : IModelContextResolver
+    private sealed class ContextResolver(int contextWindow = 8192) : IModelContextResolver
     {
         public Task<ModelContextLimit> ResolveAsync(ModelConnectionSettings settings, CancellationToken token) =>
-            Task.FromResult(new ModelContextLimit(ModelRouteKey.From(settings), 8192, null, ContextLimitSource.Override, "fixture"));
+            Task.FromResult(new ModelContextLimit(ModelRouteKey.From(settings), contextWindow, null, ContextLimitSource.Override, "fixture"));
     }
     private sealed class RecordingProvider(Func<int, ChatRequest, ChatStreamChunk[]> script) : IChatProvider
     {

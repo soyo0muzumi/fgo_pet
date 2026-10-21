@@ -14,6 +14,8 @@ public sealed record WebSurfaceCommandResult(bool Success, object? Payload = nul
 /// <summary>Hosts trusted local assets behind a restricted origin and typed command handler.</summary>
 public sealed class WebView2SurfaceHost : Grid, IDisposable
 {
+    // Temporary acceptance diagnostics; no browser content or local paths are recorded. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource OperationTiming = new("FgoPet.TestTiming.WebSurface");
     private static readonly JsonSerializerOptions MessageJson = CreateMessageJson();
     private readonly WebSurfacePolicy _policy;
     private readonly string _assetsDirectory;
@@ -133,22 +135,29 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
         }
         if (_disposed) return;
         _disposed = true;
-        _lifetime.Cancel();
-        Loaded -= OnLoaded;
-        Unloaded -= OnUnloaded;
-        DetachCoreHandlers();
+        using (OperationTiming.StartActivity("web_surface.cancel_lifetime"))
+            _lifetime.Cancel();
+        using (OperationTiming.StartActivity("web_surface.detach_handlers"))
+        {
+            Loaded -= OnLoaded;
+            Unloaded -= OnUnloaded;
+            DetachCoreHandlers();
+        }
         try
         {
-            _webView.Dispose();
+            using (OperationTiming.StartActivity("web_surface.dispose_webview"))
+                _webView.Dispose();
         }
         catch (Exception)
         {
             // A crashed or already torn-down browser process can make disposal throw; a closing
             // window must never surface that exception to the shell.
         }
-        _lifetime.Dispose();
+        using (OperationTiming.StartActivity("web_surface.dispose_lifetime"))
+            _lifetime.Dispose();
         State = WebSurfaceState.Closed;
-        Disposed?.Invoke(this, EventArgs.Empty);
+        using (OperationTiming.StartActivity("web_surface.notify_disposed"))
+            Disposed?.Invoke(this, EventArgs.Empty);
     }
 
     private void DetachCoreHandlers()

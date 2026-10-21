@@ -72,6 +72,8 @@
     <Compile Include="Infrastructure/SqliteAgentRunStore.cs" />
     <Compile Include="Infrastructure/SqliteAgentFinalDeliveryStore.cs" />
     <Compile Include="Application/NativeAgentLifecyclePlugin.cs" />
+    <Compile Include="Application/ExperienceToolsPlugin.cs" />
+    <Compile Include="Application/ConversationScopeAuthority.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- 前端资源由并行前端 agent 持有；此处仅按既定路径挂载到受控 root/pages。 -->
@@ -107,7 +109,10 @@
     <Compile Include="Infrastructure/SqliteContentBindingRepository.cs" />
     <Compile Include="Infrastructure/SqliteConversationRepository.cs" />
     <Compile Include="Infrastructure/ChatRequestPayloadWriter.cs" />
+    <Compile Include="Infrastructure/LocalReferenceRequestTokenMeter.cs" />
     <Compile Include="Infrastructure/SqliteConversationRecallRepository.cs" />
+    <Compile Include="Infrastructure/SqliteExperienceSourceReader.cs" />
+    <Compile Include="Infrastructure/SqliteExperienceTimeline.cs" />
     <Compile Include="Infrastructure/SqliteConversationContextStore.cs" />
     <Compile Include="Infrastructure/ProviderConversationSummarizer.cs" />
   </ItemGroup>

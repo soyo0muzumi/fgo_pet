@@ -18,6 +18,8 @@ internal sealed class SystemClipboardWriter : IClipboardWriter
 /// <summary>One Web chat surface over the original shared conversation.</summary>
 public partial class DialogueWindow : Window, IDisposable
 {
+    // Temporary acceptance diagnostics, observed only by the target test. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource OperationTiming = new("FgoPet.TestTiming.DialogueWindow");
     private readonly DialogueWindowViewModel _viewModel;
     private readonly ChatWebSurfaceFactory? _factory;
     private readonly ChatWebHostActions _actions;
@@ -184,15 +186,31 @@ public partial class DialogueWindow : Window, IDisposable
     private void DisposePresentation()
     {
         if (_disposed) return; _disposed = true;
-        _viewModel.StopSpeech();
-        _viewModel.OpenRequested -= OnOpenRequested; _viewModel.NavigationRequested -= OnNavigationRequested;
-        _viewModel.Conversation.NewWorkspaceItemRequested -= OnNewWorkspaceItem;
-        _viewModel.Conversation.ExpressionRequested -= OnExpressionRequested;
-        _viewModel.Conversation.PropertyChanged -= OnConversationChanged;
-        Loaded -= OnLoaded; Closing -= OnClosing; IsVisibleChanged -= OnVisibleChanged;
-        Activated -= OnActivated; Deactivated -= OnDeactivated; Closed -= OnClosed;
-        Dispatcher.ShutdownStarted -= OnShutdown; PresentationRequestedHandler = null; LayoutRequestedHandler = null;
-        _surface?.Dispose(); _actions.Dispose();
+        using (OperationTiming.StartActivity("dialogue.window.stop_speech"))
+            _viewModel.StopSpeech();
+        using (OperationTiming.StartActivity("dialogue.window.unsubscribe_view_model"))
+        {
+            _viewModel.OpenRequested -= OnOpenRequested; _viewModel.NavigationRequested -= OnNavigationRequested;
+            _viewModel.Conversation.NewWorkspaceItemRequested -= OnNewWorkspaceItem;
+            _viewModel.Conversation.ExpressionRequested -= OnExpressionRequested;
+            _viewModel.Conversation.PropertyChanged -= OnConversationChanged;
+        }
+        using (OperationTiming.StartActivity("dialogue.window.unsubscribe_window"))
+        {
+            Loaded -= OnLoaded; Closing -= OnClosing; IsVisibleChanged -= OnVisibleChanged;
+            Activated -= OnActivated; Deactivated -= OnDeactivated; Closed -= OnClosed;
+            Dispatcher.ShutdownStarted -= OnShutdown; PresentationRequestedHandler = null; LayoutRequestedHandler = null;
+        }
+        using (OperationTiming.StartActivity("dialogue.window.dispose_surface"))
+            _surface?.Dispose();
+        using (OperationTiming.StartActivity("dialogue.window.dispose_actions"))
+            _actions.Dispose();
     }
-    public void Dispose() { DisposePresentation(); if (IsLoaded && !Dispatcher.HasShutdownStarted) Close(); }
+    public void Dispose()
+    {
+        using (OperationTiming.StartActivity("dialogue.window.dispose_presentation"))
+            DisposePresentation();
+        using (OperationTiming.StartActivity("dialogue.window.close_if_loaded"))
+            if (IsLoaded && !Dispatcher.HasShutdownStarted) Close();
+    }
 }

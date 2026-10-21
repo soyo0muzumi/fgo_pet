@@ -25,9 +25,11 @@ public sealed class ChatProviderFactory
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    public IChatProvider Create(ModelConnectionSettings settings) => Create(settings, apiKeyOverride: null);
+    public IChatProvider Create(ModelConnectionSettings settings) => Create(settings, apiKeyOverride: null, dispatchGate: null);
 
-    public IChatProvider Create(ModelConnectionSettings settings, string? apiKeyOverride)
+    public IChatProvider Create(ModelConnectionSettings settings, string? apiKeyOverride) => Create(settings, apiKeyOverride, dispatchGate: null);
+
+    public IChatProvider Create(ModelConnectionSettings settings, string? apiKeyOverride, IChatDispatchGate? dispatchGate)
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (!Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var baseUri))
@@ -44,7 +46,7 @@ public sealed class ChatProviderFactory
             baseUri,
             settings.ModelId,
             credentialReader,
-            _httpClient);
+            _httpClient, dispatchGate, ModelRouteKey.From(settings));
     }
 
     private sealed class InlineCredentialReader(string secret) : ICredentialReader
@@ -81,6 +83,8 @@ public sealed class ConfiguredChatProviderResolver : IChatProviderResolver
     }
 
     public IChatProvider Resolve(ModelConnectionSettings settings) => _factory.Create(settings);
+    public IChatProvider Resolve(ModelConnectionSettings settings, IChatDispatchGate dispatchGate) =>
+        _factory.Create(settings, apiKeyOverride: null, dispatchGate);
 }
 
 }

@@ -98,10 +98,15 @@ public sealed class AgentContextAssembler(PluginCatalog catalog, PluginRuntime r
             var projected = block.Kind == AgentContextKind.Instruction
                 ? "可信指导来源：" + source + "\n" + block.Content
                 : PromptInjectionGuard.Wrap(source, block.Content);
+            // Compaction cannot make an optional whole block fit when that block alone exceeds
+            // the complete task input allowance. Keep mandatory instructions and tool schemas intact.
+            if(deferInputBudget&&block.Kind==AgentContextKind.Data&&block.Whole&&!item.IsMarker&&
+                Measure([new(ModelMessageRole.System,projected,[])])>request.InputTokenBudget)continue;
             if (!Fits(projected))
             {
                 if (deferInputBudget) throw TooLarge();
                 if (block.Kind == AgentContextKind.Instruction || item.IsMarker) throw TooLarge();
+                if (block.Whole) continue;
                 projected = TruncateData(source, block.Content, Fits);
             }
             context.Add(new(ModelMessageRole.System, projected, []));

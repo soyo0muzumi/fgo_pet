@@ -19,8 +19,25 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             {
                 var call = state.CurrentCall().Call;
                 await state.ReserveToolAsync(token);
+                var load = extensions?.Skills is null ? null : state.Checkpoint.Calls.FirstOrDefault(
+                    item => item.Call.IsResolved && item.Call.Name == "skill.load");
+                if (load is not null && call.CallId != load.Call.CallId)
+                {
+                    // The whole batch was chosen before this load's instructions reached the model.
+                    // Close sibling calls without execution; the next model step must reconsider them.
+                    var deferred = await state.DeferForSkillLoadAsync(token);
+                    AppendObservation(session, call.CallId, deferred);
+                    if (state.Checkpoint.NextCallIndex == state.Checkpoint.Calls.Length) await state.StepCompletedAsync(token);
+                    continue;
+                }
                 ToolExecutionOutcome outcome;
-                if (call.Name == "skill.load" && call.IsResolved && extensions?.Skills is not null)
+                if (call.Name == NativeFinalization.Name && call.IsResolved
+                    && session.Model is IAgentRunPreparation { FinalOutputInstructions: not null })
+                {
+                    await state.CommitStartedAsync(NativeFinalization.Tool, token);
+                    outcome = NativeFinalization.Result();
+                }
+                else if (call.Name == "skill.load" && call.IsResolved && extensions?.Skills is not null)
                     outcome = await NativeAgentEnvironment.LoadAsync(extensions.Skills, session, call, token);
                 else if (call.Name == "user.ask" && call.IsResolved && extensions?.Questions is not null)
                 {
@@ -53,6 +70,8 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
                 if (state.Checkpoint.NextCallIndex == state.Checkpoint.Calls.Length) await state.StepCompletedAsync(token);
                 continue;
             }
+            var hasOutputContract = session.Model is IAgentRunPreparation { FinalOutputInstructions: not null };
+            var finalized = hasOutputContract && NativeFinalization.Completed(state.Checkpoint);
             await state.BeginStepAsync(token);
             var step = await environment.BuildAsync(state.Snapshot, session.Transcript, token);
             if (extensions is not null) step = await NativeAgentEnvironment.BuildAsync(extensions, session, step, token);
@@ -60,6 +79,8 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
                 && (state.Snapshot.ModelRequests >= state.Snapshot.Budget.MaxModelRequests - 1
                     || state.Snapshot.ToolCalls >= state.Snapshot.Budget.MaxToolCalls);
             if (finalOnly) step = FinalEnvelope(step);
+            else if (hasOutputContract && (finalized || step.Tools.IsEmpty))
+                step = step with { Kind = ModelStepKind.FinalOutput, Tools = [] };
             if (session.Model is IAgentRunPreparation preparation)
             {
                 // Compact the actual final envelope, including fresh memory, host rules and tools.
@@ -89,6 +110,7 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             fence.EnsureCurrent(state.Snapshot.Identity, token);
             if (state.Snapshot.ModelRequests <= before) throw new AgentStateException("RUN_UNCHARGED_MODEL");
             if (finalOnly && !response.IsFinal) throw new AgentProtocolException("MODEL_UNEXPECTED_TOOL_CALL");
+            if (hasOutputContract) NativeFinalization.Validate(response);
             await state.AcceptResponseAsync(response, token);
             session.Append(response.AssistantMessage);
             if (response.IsFinal)
@@ -101,7 +123,7 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
 
     private static StepEnvironment FinalEnvelope(StepEnvironment step) => step with
     {
-        Tools = [],
+        Tools = [], Kind = ModelStepKind.FinalOutput,
         Messages = step.Messages.Insert(0, new(ModelMessageRole.System,
             "The remaining run budget is reserved for a final answer. No tools are available. " +
             "Use only observations already received. State partial coverage and unread ranges when applicable; " +
@@ -110,8 +132,19 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
 
     internal static void AppendObservation(AgentRunSession session, string callId, FgoPet.Extensibility.ToolResult result)
     {
-        var observation = JsonSerializer.Serialize(new { success = result.Success, payload = result.Payload,
-            errorCode = result.ErrorCode, executionState = result.ExecutionState?.ToString() }, ObservationJson);
+        // This call has already been persisted, including denial/defer/resume outcomes.
+        // Never infer its recorded Effect from payload, current registry or another call.
+        var checkpoint = session.State.Checkpoint;
+        var call = checkpoint.Calls.Single(item => item.Call.CallId == callId);
+        var identity = checkpoint.Snapshot.Identity;
+        var observation = JsonSerializer.Serialize(new
+        {
+            // ToolCallId and the paired assistant call already identify the call/name in this run.
+            metadata = new { sourceKind = "current_execution", runId = identity.RunId,
+                toolEffect = call.Effect?.ToString(), callStatus = call.Status.ToString() },
+            success = result.Success, payload = result.Payload,
+            errorCode = result.ErrorCode, executionState = result.ExecutionState?.ToString()
+        }, ObservationJson);
         session.Append(new(ModelMessageRole.Tool, observation, [], callId));
     }
 }

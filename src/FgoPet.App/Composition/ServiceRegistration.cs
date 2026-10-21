@@ -61,11 +61,14 @@ using FgoPet.UiSdk;
 using FgoPet.Extensibility;
 using FgoPet.Plugin.Content;
 using FgoPet.Character.Presentation;
+using FgoPet.Understanding.Desktop;
 
 namespace FgoPet.App.Bootstrap;
 
 public static class ServiceRegistration
 {
+    // Temporary acceptance diagnostics; no listener is installed by the application. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource ShellTiming = new("FgoPet.TestTiming.SettingsFactory");
     public static IServiceCollection AddFgoPet(this IServiceCollection services, string[] args, Func<Task>? normalExit = null, bool includeTodo = true, bool includeFocus = true, bool includeMemory = true, bool includeSpeech = true, bool includeIndexTts = true, bool includeAgentBackend = true)
     {
         var paths = AppPaths.ForCurrentUser();
@@ -80,6 +83,7 @@ public static class ServiceRegistration
             provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
             provider.GetRequiredService<IMemoryRecall>()),
             provider => () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection)
+        .AddUnderstandingCapability()
         .AddSingleton(TimeProvider.System)
         .AddLogging(builder => builder.AddDebug())
         .AddSingleton<TextWriter>(Console.Out)
@@ -207,10 +211,16 @@ public static class ServiceRegistration
             paths.StorageRoot, provider.GetRequiredService<ThemeService>()))
         .AddSingleton<SettingsWindow>(provider =>
         {
-            provider.InitializeMemoryContext();
-            return new SettingsWindow(
-                provider.GetRequiredService<SettingsViewModel>(),
-                provider.GetRequiredService<SettingsWebRootFactory>());
+            using (ShellTiming.StartActivity("settings.factory.initialize_memory_context"))
+                provider.InitializeMemoryContext();
+            SettingsViewModel viewModel;
+            using (ShellTiming.StartActivity("settings.factory.resolve_view_model"))
+                viewModel = provider.GetRequiredService<SettingsViewModel>();
+            SettingsWebRootFactory webFactory;
+            using (ShellTiming.StartActivity("settings.factory.resolve_web_root_factory"))
+                webFactory = provider.GetRequiredService<SettingsWebRootFactory>();
+            using (ShellTiming.StartActivity("settings.factory.construct_window"))
+                return new SettingsWindow(viewModel, webFactory);
         })
         .AddSingleton<UserDataExportService>()
         .AddSingleton<IUserDataExporter>(provider => provider.GetRequiredService<UserDataExportService>())
@@ -229,7 +239,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             packageRepository: provider.GetRequiredService<IArtPackageRepository>(),
             safeLog: eventName => provider.GetRequiredService<ILogger<PrivateBackupRestoreService>>()
-                .LogInformation("{BackupEvent}", eventName)))
+                .LogInformation("{BackupEvent}", eventName),
+            derivedData: provider.GetServices<IDerivedConversationData>()))
         .AddSingleton<IPrivacyFilePicker, WpfPrivacyFilePicker>()
         .AddSingleton<ISettingsWebPage>(provider => new PrivacyWebPage(
             provider.GetRequiredService<MemoryViewModel>(),

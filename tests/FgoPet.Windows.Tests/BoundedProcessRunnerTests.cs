@@ -63,14 +63,58 @@ public sealed class BoundedProcessRunnerTests
     [Fact]
     public async Task Timeout_terminates_normal_descendants_in_the_job()
     {
-        var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
-        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("Start-Sleep -Seconds 30"));
-        var command = "$child = Start-Process -FilePath '" + executable + "' -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','" + encoded + "' -WindowStyle Hidden -PassThru; [Console]::Write($child.Id); Start-Sleep -Seconds 30";
-        var result = await new WindowsBoundedProcessRunner().RunAsync(Request(command) with { Timeout = TimeSpan.FromSeconds(2) }, default);
+        var request = TreeRequest("parent");
+        var result = await new WindowsBoundedProcessRunner().RunAsync(request, default);
+        var phases = TreeMetadata(request, result);
         Assert.Equal(BoundedProcessExit.TimedOut, result.Exit);
+        Assert.Contains("parent_ready", phases);
+        Assert.Contains("child_started", phases);
         Assert.True(int.TryParse(result.StandardOutput, out var childId));
         try { using var child = System.Diagnostics.Process.GetProcessById(childId); Assert.True(child.HasExited); }
         catch (ArgumentException) { /* The exact synthetic child is no longer in the process table. */ }
+    }
+
+    [Fact]
+    public async Task Timeout_before_fixture_child_creation_does_not_fabricate_descendant_evidence()
+    {
+        var request = TreeRequest("delayed-parent");
+        var result = await new WindowsBoundedProcessRunner().RunAsync(request, default);
+        var phases = TreeMetadata(request, result);
+        Assert.Equal(BoundedProcessExit.TimedOut, result.Exit);
+        Assert.Contains("parent_ready", phases);
+        Assert.DoesNotContain("child_started", phases);
+        Assert.False(int.TryParse(result.StandardOutput, out _));
+    }
+
+    private static BoundedProcessRequest TreeRequest(string scenario)
+    {
+        var configured = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        var host = !string.IsNullOrWhiteSpace(configured) && Path.IsPathFullyQualified(configured) && File.Exists(configured)
+            ? configured : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "dotnet.exe");
+        var correlation = Guid.NewGuid().ToString("N");
+        return new(host, [typeof(BoundedProcessRunnerTests).Assembly.Location, "--bounded-process-fixture", scenario, correlation],
+            Path.GetTempPath(), TimeSpan.FromSeconds(2)) { Correlation = correlation[..24].ToUpperInvariant() };
+    }
+    private static string[] TreeMetadata(BoundedProcessRequest request, BoundedProcessResult result)
+    {
+        var phases = new List<string>();
+        foreach (var line in result.StandardError.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(line);
+                var root = json.RootElement;
+                if (root.TryGetProperty("correlation", out var c) && c.GetString() == request.Correlation &&
+                    root.TryGetProperty("phase", out var p) && p.GetString() is "parent_ready" or "child_started" or "child_ready")
+                    phases.Add(p.GetString()!);
+            }
+            catch (System.Text.Json.JsonException) { /* Never copy terminal output into diagnostics. */ }
+        }
+        Console.WriteLine("BOUNDED_TREE_FIXTURE_METADATA_ONLY " + System.Text.Json.JsonSerializer.Serialize(new {
+            atUtc = DateTimeOffset.UtcNow, request.Correlation, deadlineSeconds = request.Timeout.TotalSeconds,
+            result.Started, exit = result.Exit.ToString(), result.Truncated, result.ErrorCode,
+            stdoutCharacters = result.StandardOutput.Length, phases }));
+        return phases.ToArray();
     }
 
     [Fact]

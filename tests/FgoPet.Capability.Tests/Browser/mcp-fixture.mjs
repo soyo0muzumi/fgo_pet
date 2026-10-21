@@ -24,7 +24,8 @@ input.on('line', line => {
     }
     const safeFlags = ['--autoConnect', '--experimental-structured-content', '--no-usage-statistics', '--no-performance-crux',
       '--javascript-evaluation=false', '--file-navigations=false'].every(flag => process.argv.includes(flag))
-      && process.env.CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY === '1';
+      && process.env.CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY === '1'
+      && process.env.CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS === '1';
     const profileIndex = process.argv.indexOf('--user-data-dir');
     const explicitProfile = profileIndex >= 0 && process.argv[profileIndex + 1] === request.params.arguments.expectedDirectory;
     reply(request.id, { sequence, safeFlags, explicitProfile });

@@ -36,14 +36,20 @@ public sealed class RelayOutputBoundaryTests
         Enqueue(router, grant, "task-1");
         var name = "slow-reader-" + Guid.NewGuid().ToString("N");
         var app = new AppPipeServer(router, name, registration, operationTimeout: TimeSpan.FromMilliseconds(150));
+        var request = ProtocolEnvelope.Create("blocked", "status_check", new { include_events = true });
+        var requestBytes = Encoding.UTF8.GetBytes(request.ToJson() + "\n");
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var serving = app.RunAsync(lifetime.Token);
         try
         {
             await using var blocked = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await blocked.ConnectAsync(lifetime.Token);
-            var request = ProtocolEnvelope.Create("blocked", "status_check", new { include_events = true });
-            await blocked.WriteAsync(Encoding.UTF8.GetBytes(request.ToJson() + "\n"), lifetime.Token);
+            // This fixture targets a client that sends but never reads. Do not spend the server's
+            // 150 ms read budget on caller-context scheduling or first-use serialization.
+            await Task.Factory.StartNew(() =>
+            {
+                blocked.Connect(5000); // Same five-second fixture lifetime as the async connection.
+                blocked.Write(requestBytes);
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).WaitAsync(lifetime.Token);
             var next = new JsonLinePipeClient(name, TimeSpan.FromSeconds(2));
             var response = await next.SendAsync(ProtocolEnvelope.Create("next", "connection_test", new { }), lifetime.Token);
             Assert.True(ProtocolEnvelope.Parse(response).DeserializePayload<RelayConnectionTestResponse>().RelayOnline);

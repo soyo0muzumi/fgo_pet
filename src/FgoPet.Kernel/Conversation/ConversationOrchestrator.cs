@@ -17,6 +17,8 @@ public interface IChatProviderResolver
 {
     IChatProvider Resolve();
     IChatProvider Resolve(ModelConnectionSettings settings) => Resolve();
+    IChatProvider Resolve(ModelConnectionSettings settings, IChatDispatchGate dispatchGate) =>
+        throw new InvalidOperationException("MODEL_DISPATCH_GATE_UNSUPPORTED");
 }
 
 public interface IConversationContentResolver
@@ -168,7 +170,7 @@ public sealed partial class ConversationOrchestrator
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
             var session = await ConversationModelTurn.CreateAsync(_providerResolver, _settings, _contextResolver, _tokenMeter,
-                _capabilities, Publish, CancelCurrent, requestCancellation.Token);
+                _capabilities, Publish, CancelCurrent, requestCancellation.Token, logger: _logger);
             var recalled = _recall is null ? new ConversationRecallResult(RecallStatus.Empty, []) :
                 await _recall.RetrieveAsync(scope, conversationId, userText, requestCancellation.Token);
             lease.CheckCurrent();
@@ -246,28 +248,62 @@ public sealed partial class ConversationOrchestrator
             }
             var (responseText, aggregatedCall, sawToolCalls, toolsOffered) = streamed;
             ConversationContributionResult? contribution = null;
-            if (aggregatedCall is not null)
+            while (true)
             {
-                if (aggregatedCall.TooManyCalls)
-                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "模型同时调用了多个工具调用。");
-                else if (string.IsNullOrWhiteSpace(aggregatedCall.CallId))
-                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用缺少 call_id。");
-                else if (aggregatedCall.TryGetArguments(out var arguments) && _capabilities is not null)
+                if (aggregatedCall is { } call)
                 {
-                    var result = await lease.Commit(() => _capabilities.InvokeAsync(aggregatedCall.Name,
-                        new(capabilityScope, arguments), requestCancellation.Token));
-                    lease.CheckCurrent();
-                    contribution = result.Conversation ?? new(result.Success ? CapabilityOutcome.None : CapabilityOutcome.InvalidToolCall,
-                        Detail: result.ErrorCode == "TOOL_UNAVAILABLE" ? "模型调用了未知的工具。" : result.Success ? null : "工具调用无法解析。");
+                    if (call.TooManyCalls)
+                    {
+                        var readBatch = session.GetOrdinaryReadBatch();
+                        if (readBatch.IsEmpty || _capabilities is null)
+                            contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "模型同时调用了多个工具调用。");
+                        else
+                        {
+                            var results = new List<ToolResult>(readBatch.Length);
+                            // Validate the complete batch first; sequential reads keep the existing execution concurrency.
+                            foreach (var read in readBatch)
+                            {
+                                if (!read.TryGetArguments(out var readArguments)) throw new InvalidOperationException("MODEL_INVALID_READ_CALL");
+                                results.Add(await lease.Commit(() => _capabilities.InvokeAsync(read.Name,
+                                    new(capabilityScope, readArguments), requestCancellation.Token)));
+                                lease.CheckCurrent();
+                            }
+                            (responseText, aggregatedCall, sawToolCalls, toolsOffered) = await session.ContinueReadsAsync(
+                                prompt, readBatch, responseText.ToString(), results, requestCancellation.Token);
+                            lease.CheckCurrent();
+                            continue;
+                        }
+                    }
+                    else if (string.IsNullOrWhiteSpace(call.CallId))
+                        contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用缺少 call_id。");
+                    else if (call.TryGetArguments(out var arguments) && arguments.ValueKind == System.Text.Json.JsonValueKind.Object && _capabilities is not null)
+                    {
+                        var descriptor = _capabilities.Tools.FirstOrDefault(tool => tool.Name == call.Name);
+                        if (descriptor?.Effect == ToolEffect.ReadOnly)
+                            session.ValidateOrdinaryReadCall(call, responseText.ToString());
+                        var result = await lease.Commit(() => _capabilities.InvokeAsync(call.Name,
+                            new(capabilityScope, arguments), requestCancellation.Token));
+                        lease.CheckCurrent();
+                        if (descriptor?.Effect == ToolEffect.ReadOnly && result.Conversation is null)
+                        {
+                            (responseText, aggregatedCall, sawToolCalls, toolsOffered) = await session.ContinueReadAsync(
+                                prompt, call, responseText.ToString(), result, requestCancellation.Token);
+                            lease.CheckCurrent();
+                            continue;
+                        }
+                        contribution = result.Conversation ?? new(result.Success ? CapabilityOutcome.None : CapabilityOutcome.InvalidToolCall,
+                            Detail: result.ErrorCode == "TOOL_UNAVAILABLE" ? "模型调用了未知的工具。" : result.Success ? null : "工具调用无法解析。");
+                    }
+                    else contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具参数不是有效的 JSON 对象。");
                 }
-                else contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具参数不是有效的 JSON 对象。");
+                else if (sawToolCalls)
+                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用未完整返回。");
+                else if (toolsOffered)
+                    contribution = new(CapabilityOutcome.NoProposal);
+                else
+                    contribution = lease.Commit(() => _capabilities?.TryInterpretReply(capabilityScope, responseText.ToString()));
+                break;
             }
-            else if (sawToolCalls)
-                contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用未完整返回。");
-            else if (toolsOffered)
-                contribution = new(CapabilityOutcome.NoProposal);
-            else
-                contribution = lease.Commit(() => _capabilities?.TryInterpretReply(capabilityScope, responseText.ToString()));
 
             var rawText = responseText.ToString();
             // Tool-call turns carry the reply in tool arguments, not in message
@@ -276,7 +312,7 @@ public sealed partial class ConversationOrchestrator
                 ? new ValidatedChatOutput(rawText, ExpressionSemantic.Neutral, null, null)
                 : StructuredOutputValidator.Validate(
                     rawText,
-                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), userText);
             if (contribution?.Reply is { } capabilityReply)
                 output = output with { Text = capabilityReply };
             // ChatMessage requires non-empty text for a Completed message; a

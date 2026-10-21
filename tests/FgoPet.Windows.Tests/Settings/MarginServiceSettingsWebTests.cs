@@ -80,6 +80,8 @@ public sealed class MarginServiceSettingsWebTests
                 window.Show();
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
+                if (Environment.GetEnvironmentVariable("FGO_PET_SERVICE_TIMING_DIAGNOSTICS") == "1")
+                    await InstallTimingTrace(web, prefix);
                 await Ready(web, prefix);
                 Assert.Equal(pageId == "Speech" ? "Save voice settings" : "Save",
                     await Text(web, "document.querySelector('[data-save]').textContent"));
@@ -105,7 +107,7 @@ public sealed class MarginServiceSettingsWebTests
                 var providerId = prefix + "-provider";
                 await Wait(async () => await Script(web, $"!!document.getElementById('{providerId}').nextElementSibling?.classList.contains('margin-select-trigger')") == "true");
                 await Script(web, $"document.getElementById('{providerId}').nextElementSibling.click()");
-                await Wait(async () => await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden]) .margin-select-option').length >= 2") == "true");
+                await Wait(async () => await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden]) .margin-select-option').length >= 2") == "true", web, "provider-menu-open");
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden]) [aria-selected=true]').length"));
                 await Capture(web, prefix + "-dropdown");
                 await Script(web, "document.querySelector('.margin-select-menu:not([hidden]) .margin-select-option').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
@@ -192,12 +194,34 @@ public sealed class MarginServiceSettingsWebTests
     private static Task<string> Script(WebView2 web, string script) => web.CoreWebView2.ExecuteScriptAsync(script);
     private static async Task<string> Text(WebView2 web, string script) =>
         JsonSerializer.Deserialize<string>(await Script(web, script)) ?? "";
-    private static async Task Wait(Func<Task<bool>> condition)
+    private static async Task Wait(Func<Task<bool>> condition, WebView2? diagnosticWeb = null, string stage = "")
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         while (!await condition() && DateTime.UtcNow < deadline) await Task.Delay(25);
-        Assert.True(await condition(), "The offline service page did not settle.");
+        var settled = await condition();
+        var diagnostic = "";
+        if (!settled && diagnosticWeb is not null)
+            diagnostic = await Script(diagnosticWeb, "JSON.stringify({stage:'provider-menu-open',at:performance.now(),width:innerWidth,height:innerHeight,scrollY,menu:document.querySelectorAll('.margin-select-menu').length,traces:window.__serviceTiming||[]})");
+        Assert.True(settled, "The offline service page did not settle. " + stage + " " + diagnostic);
     }
+    private static Task<string> InstallTimingTrace(WebView2 web, string prefix) => Script(web, """
+        (() => {
+          const events=window.__serviceTiming=[];
+          const select=document.querySelector('select[data-field]');
+          function record(stage) {
+            if(events.length>=32)events.shift();
+            events.push({at:performance.now(),stage,width:innerWidth,height:innerHeight,scrollY,
+              disabled:select?.disabled,triggerDisabled:select?.nextElementSibling?.disabled,
+              options:select?.options.length,menu:document.querySelectorAll('.margin-select-menu').length});
+          }
+          window.addEventListener('resize',()=>record('resize'));
+          document.addEventListener('scroll',()=>record('scroll'),true);
+          if(select)new MutationObserver(()=>record('select-mutation')).observe(select,{attributes:true,childList:true,subtree:true});
+          new MutationObserver(changes=>{if(changes.some(c=>[...c.addedNodes,...c.removedNodes].some(n=>n.classList?.contains('margin-select-menu'))))record('menu-mutation');})
+            .observe(document.body,{childList:true});
+          record('trace-installed');return true;
+        })()
+        """);
     private static async Task Capture(WebView2 web, string scene)
     {
         if (Environment.GetEnvironmentVariable("FGO_PET_MARGIN_SERVICE_CAPTURE_DIR") is not { Length: > 0 } directory) return;

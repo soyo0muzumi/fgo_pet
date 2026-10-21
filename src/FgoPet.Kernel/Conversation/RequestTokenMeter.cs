@@ -73,8 +73,9 @@ public static class ChatRequestInputEnvelope
         };
         if (request.Tools is { Count: > 0 })
         {
+            var names = new ModelToolNameMap(request.Tools.Select(tool => tool.Name));
             payload["tools"] = request.Tools.Select(tool => new {
-                type = tool.Type, function = new { name = tool.Name, description = tool.Description, parameters = tool.Parameters }
+                type = tool.Type, function = new { name = names.ToWireName(tool.Name), description = tool.Description, parameters = tool.Parameters }
             });
             payload["tool_choice"] = request.ToolChoice ?? "auto";
         }
@@ -96,7 +97,22 @@ public static class ChatRequestInputEnvelope
                     }
                 });
             if (message.Role == ModelMessageRole.Tool) projected["tool_call_id"] = message.ToolCallId;
+            if (TransientToolReasoning.Read(message) is { } reasoning) projected["reasoning_content"] = reasoning;
             return projected;
         });
     }
+}
+
+// Weak, request-lifetime transport state; normal ModelMessage serialization and persistent stores cannot include it.
+internal static class TransientToolReasoning
+{
+    private sealed record Value(string Text);
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ModelMessage, Value> Values = new();
+    internal static void Attach(ModelMessage message, string text)
+    {
+        if (Encoding.UTF8.GetByteCount(text) > ModelProtocol.MaxContentBytes)
+            throw new AgentProtocolException("MODEL_REASONING_TOO_LARGE");
+        Values.Add(message, new(text));
+    }
+    internal static string? Read(ModelMessage message) => Values.TryGetValue(message, out var value) ? value.Text : null;
 }

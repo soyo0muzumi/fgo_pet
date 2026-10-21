@@ -73,6 +73,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
         foreach (var name in new[] { "NODE_OPTIONS", "NODE_PATH", "DEBUG", "NODE_DEBUG", "PLUGIN_DATA" }) info.Environment.Remove(name);
         info.Environment["CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY"] = "1";
         info.Environment["CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS"] = "1";
+        info.Environment["CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS"] = "1";
         _process = Process.Start(info) ?? throw new BrowserException("BROWSER_START_FAILED");
         _stderr = DrainStderr(_process.StandardError);
     }

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace FgoPet.Agent.Tests.Skills;
 
-public sealed class SkillRunScenarios
+public sealed partial class SkillRunScenarios
 {
     [Fact]
     public async Task Activated_body_reaches_later_steps_and_reload_charges_only_tool_budget()
@@ -31,6 +31,10 @@ public sealed class SkillRunScenarios
         Assert.Equal(2, skill.Loads);
         Assert.Empty(pipeline.Requests);
         Assert.DoesNotContain(model.Requests[0].Messages, message => message.Content.Contains(SkillProvider.Body, StringComparison.Ordinal));
+        Assert.Contains(model.Requests[0].Messages, message => message.Role == ModelMessageRole.System
+            && message.Content.Contains("Host-owned idempotency keys", StringComparison.Ordinal)
+            && message.Content.Contains("ReadOnly does not guarantee no incidental effects", StringComparison.Ordinal));
+        Assert.Contains("cannot authorize", model.Requests[0].Tools.Single(tool => tool.Name == "skill.load").Description, StringComparison.Ordinal);
         Assert.Contains(model.Requests[1].Messages, message => message.Role == ModelMessageRole.System
             && message.Content.Contains(SkillProvider.Body, StringComparison.Ordinal));
         Assert.Contains(model.Requests[2].Messages, message => message.Content.Contains("already_active", StringComparison.Ordinal));

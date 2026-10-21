@@ -8,6 +8,7 @@
   const requestTimeoutMs = 20000;
   const pending = new Map();
   const turnNodes = new Map();
+  let inputCard = null;
   const draftCache = new Map();
   const acceptedDrafts = new Map();
   let requestSerial = 0;
@@ -94,6 +95,9 @@
       case "CHAT_DRAFT_TOO_LONG": return t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")});
       case "CHAT_NOT_AVAILABLE": return t("chat.this.action.is.currently.unavailable");
       case "CHAT_COMMAND_INVALID": return t("chat.the.action.could.not.be.completed.try.again");
+      case "CHAT_INPUT_STALE": return t("chat.input.changed");
+      case "CHAT_INPUT_EXPIRED": return t("chat.input.expired");
+      case "CHAT_INPUT_INVALID": return t("chat.input.complete");
       default: return t("chat.chat.could.not.complete.this.action.try.again.later");
     }
   }
@@ -196,15 +200,24 @@
     if (message.type === "chat.snapshot") applySnapshot(message.payload, "event");
   }
 
+  function anchorContentTop(node) {
+    // Entry transforms are visual motion; only layout positions belong in the reading anchor.
+    const layoutTop = element => {
+      let top = 0;
+      for (let current = element; current; current = current.offsetParent) top += current.offsetTop;
+      return top;
+    };
+    return layoutTop(node) - layoutTop(el.scroll);
+  }
+
   function currentAnchor() {
-    const scrollBox = el.scroll.getBoundingClientRect();
     const atBottom = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
     if (atBottom) return { atBottom: true, turnId: "", offset: 0 };
     let anchor = null;
     for (const child of el.messages.children) {
-      const rect = child.getBoundingClientRect();
-      if (rect.bottom > scrollBox.top + 1) {
-        anchor = { atBottom: false, turnId: child.dataset.turnId || "", offset: rect.top - scrollBox.top };
+      const top = anchorContentTop(child) - el.scroll.scrollTop;
+      if (top + child.offsetHeight > 1) {
+        anchor = { atBottom: false, turnId: child.dataset.turnId || "", offset: top };
         break;
       }
     }
@@ -236,9 +249,7 @@
     }
     const node = anchor.turnId ? turnNodes.get(anchor.turnId)?.article : null;
     if (node && node.isConnected) {
-      const box = el.scroll.getBoundingClientRect();
-      const rect = node.getBoundingClientRect();
-      el.scroll.scrollTo({ top: el.scroll.scrollTop + rect.top - box.top - anchor.offset, behavior: "instant" });
+      el.scroll.scrollTo({ top: anchorContentTop(node) - anchor.offset, behavior: "instant" });
     }
     followingLatest = false;
     el.jumpBottom.hidden = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
@@ -454,6 +465,8 @@
       wanted.add(turn.id);
       ordered.push(renderTurn(turn, snapshot.conversation));
     }
+    const questionCard = renderInputCard(snapshot.conversation);
+    if (questionCard) ordered.push(questionCard);
     for (const [id, record] of turnNodes) {
       if (!wanted.has(id)) {
         record.article.remove();
@@ -467,6 +480,101 @@
       if (current !== node) el.messages.insertBefore(node, current || null);
     });
     el.empty.hidden = turns.length > 0;
+  }
+
+  function inputKey(input) {
+    return input ? `${identityOf(state)}\u0000${input.runId}\u0000${input.requestId}\u0000${input.revision}` : "";
+  }
+
+  function renderInputCard(conversation) {
+    const input = conversation && conversation.pendingInput;
+    if (!input || !Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 3) {
+      inputCard?.article.remove(); inputCard = null; return null;
+    }
+    const key = inputKey(input);
+    if (!inputCard || inputCard.key !== key) {
+      inputCard?.article.remove();
+      const article = document.createElement("section");
+      article.id = "user-input-card"; article.className = "turn her user-input-card";
+      article.setAttribute("aria-label", t("chat.input.title"));
+      const heading = document.createElement("div"); heading.className = "who";
+      setText(heading, t("chat.input.title")); article.append(heading);
+      const fields = [];
+      for (const question of input.questions) {
+        const field = document.createElement("fieldset"); field.className = "input-question";
+        field.dataset.questionId = question.id;
+        const legend = document.createElement("legend"); setText(legend, question.text); field.append(legend);
+        const options = [];
+        for (const [index, label] of (question.options || []).entries()) {
+          const option = document.createElement("input");
+          option.type = question.allowMultiple ? "checkbox" : "radio";
+          option.name = `answer-${input.requestId}-${question.id}`; option.value = String(index);
+          const optionLabel = document.createElement("label"); optionLabel.className = "input-option";
+          optionLabel.append(option, document.createTextNode(label)); field.append(optionLabel); options.push(option);
+        }
+        const textLabel = document.createElement("label"); textLabel.className = "input-text-label";
+        setText(textLabel, t(options.length ? "chat.input.detail" : "chat.input.answer"));
+        const textarea = document.createElement("textarea"); textarea.rows = 2; textarea.maxLength = maxMessageChars;
+        textarea.className = "input-answer"; textarea.setAttribute("aria-label", textLabel.textContent);
+        textLabel.append(textarea); field.append(textLabel); article.append(field);
+        fields.push({ id:question.id, options, textarea, labels:question.options || [] });
+      }
+      const error = document.createElement("div"); error.className = "input-error"; error.setAttribute("role", "alert"); error.hidden = true;
+      const actions = document.createElement("div"); actions.className = "turn-actions input-actions";
+      const submit = makeButton("btn primary", t("chat.input.submit"), null, "inputSubmit", undefined, t("chat.input.submit")); submit.id = "user-input-submit";
+      const cancel = makeButton("btn ghost", t("chat.cancel"), null, "inputCancel", undefined, t("chat.cancel")); cancel.id = "user-input-cancel";
+      actions.append(submit, cancel); article.append(error, actions);
+      inputCard = { key, article, fields, error, submit, cancel, busy:false, input };
+    }
+    inputCard.input = input;
+    if (input.errorText) { setText(inputCard.error, input.errorText); inputCard.error.hidden = false; }
+    updateInputControls(inputCard);
+    return inputCard.article;
+  }
+
+  function updateInputControls(card) {
+    const expiresAt = Date.parse(card.input.expiresAt);
+    const expired = !Number.isFinite(expiresAt) || Date.now() >= expiresAt;
+    const busy = card.busy || card.input.isSubmitting === true;
+    for (const field of card.fields) {
+      field.textarea.disabled = busy || expired;
+      for (const option of field.options) option.disabled = busy || expired;
+    }
+    card.submit.disabled = busy || expired; card.cancel.disabled = busy;
+    card.article.setAttribute("aria-busy", String(busy));
+    if (expired) { setText(card.error, t("chat.input.expired")); card.error.hidden = false; }
+  }
+
+  async function submitInputAnswer(cancel) {
+    const card = inputCard;
+    if (!card || card.busy || card.input.isSubmitting || card.key !== inputKey(state?.conversation?.pendingInput)) return;
+    updateInputControls(card);
+    if (!cancel && card.submit.disabled) return;
+    const payload = { runId:card.input.runId, requestId:card.input.requestId, revision:card.input.revision };
+    if (!cancel) {
+      let total = 0;
+      payload.answers = card.fields.map(field => {
+        const selectedOptionIndices = field.options.flatMap((option, index) => option.checked ? [index] : []);
+        const text = field.textarea.value.trim() ? field.textarea.value : null;
+        total += (text?.length || 0) + selectedOptionIndices.reduce((sum, index) => sum + field.labels[index].length, 0);
+        return { questionId:field.id, selectedOptionIndices, text };
+      });
+      if (total > maxMessageChars || payload.answers.some(answer => !answer.selectedOptionIndices.length && !answer.text)) {
+        setText(card.error, t(total > maxMessageChars ? "chat.input.limit" : "chat.input.complete")); card.error.hidden = false; return;
+      }
+    }
+    const identity = identityOf(state);
+    card.busy = true; card.error.hidden = true; updateInputControls(card);
+    try {
+      const result = await post(cancel ? "chat.input.cancel" : "chat.input.answer", appendIdentity(payload));
+      if (result.snapshot) applyCommandSnapshot(result.snapshot, identity, false);
+    } catch (error) {
+      if (inputCard === card && identityOf(state) === identity) {
+        setText(card.error, safeErrorText(error.message)); card.error.hidden = false;
+      }
+    } finally {
+      if (inputCard === card) { card.busy = false; updateInputControls(card); }
+    }
   }
 
   function renderSources(conversation) {
@@ -705,7 +813,7 @@
     const serverText = state?.draft?.text || "";
     const localReady = Boolean(text.trim() && text !== serverText && conversation && conversation.configurationRequired !== true);
     return Boolean(conversation && (conversation.canSend || localReady) && text.trim()
-      && text.length <= maxMessageChars && !conversation.isStreaming && !submitInProgress && !stopInProgress);
+      && text.length <= maxMessageChars && !conversation.isStreaming && !conversation.hasPendingRun && !submitInProgress && !stopInProgress);
   }
 
   function updateComposerControls() {
@@ -714,12 +822,13 @@
     const conversation = state && state.conversation;
 
     const streaming = Boolean(state && state.conversation && state.conversation.isStreaming);
+    const stoppable = streaming || Boolean(conversation?.hasPendingRun);
     el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("en-US")} / ${maxMessageChars.toLocaleString("en-US")}` : "";
     el.composer.disabled = !state;
-    el.send.hidden = streaming;
-    el.stop.hidden = !streaming;
+    el.send.hidden = stoppable;
+    el.stop.hidden = !stoppable;
     el.send.disabled = !composerCanSend();
-    el.stop.disabled = !streaming || conversation.canStop !== true || stopInProgress;
+    el.stop.disabled = !stoppable || conversation.canStop !== true || stopInProgress;
     el.send.setAttribute("aria-label", submitInProgress ? t("chat.sending") : t("chat.send"));
     el.stop.setAttribute("aria-label", stopInProgress ? t("chat.stopping") : t("chat.stop.generation"));
     el.send.setAttribute("aria-busy", String(submitInProgress));
@@ -733,7 +842,7 @@
       if (el.composerError.textContent.includes(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}))) showComposerError("");
     }
     const disableSelections = streaming;
-    el.model.disabled = disableSelections || el.model.options.length === 0;
+    el.model.disabled = disableSelections || conversation?.hasPendingRun === true || el.model.options.length === 0;
   }
 
   function scheduleDraftWrite() {
@@ -981,13 +1090,13 @@
   }
 
   function onScroll() {
+    // Preserve the new reading intent before an already queued resize frame can restore the old one.
+    followingLatest = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
+    saveAnchor();
     if (scrollFrame) return;
     scrollFrame = requestAnimationFrame(() => {
       scrollFrame = 0;
-      const atBottom = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
-      followingLatest = atBottom;
-      el.jumpBottom.hidden = atBottom;
-      saveAnchor();
+      el.jumpBottom.hidden = followingLatest;
     });
   }
 
@@ -1073,7 +1182,7 @@
     });
     el.send.addEventListener("click", () => { void submitMessage(); });
     el.stop.addEventListener("click", async () => {
-      if (!state?.conversation?.isStreaming || state.conversation.canStop !== true || stopInProgress) return;
+      if (!(state?.conversation?.isStreaming || state?.conversation?.hasPendingRun) || state.conversation.canStop !== true || stopInProgress) return;
       stopInProgress = true;
       updateComposerControls();
       try { await commandWithSnapshot("chat.stop", identityPayload(state), false); }
@@ -1117,6 +1226,7 @@
       const button = event.target.closest("button[data-action]");
       if (!button || button.disabled) return;
       const action = button.dataset.action;
+      if (action === "inputSubmit" || action === "inputCancel") { void submitInputAnswer(action === "inputCancel"); return; }
       const targetId = button.dataset.targetId;
       if (action === "openSpeechSettings") { void hostAction("openSpeechSettings"); return; }
       void handleAction(action, targetId);

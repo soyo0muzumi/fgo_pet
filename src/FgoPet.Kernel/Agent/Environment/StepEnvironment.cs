@@ -3,7 +3,11 @@ using FgoPet.Extensibility;
 
 namespace FgoPet.Kernel.Agent;
 
-public sealed record StepEnvironment(ImmutableArray<ModelMessage> Messages, ImmutableArray<ToolDescriptor> Tools);
+public enum ModelStepKind { Tools, FinalOutput }
+public sealed record StepEnvironment(ImmutableArray<ModelMessage> Messages, ImmutableArray<ToolDescriptor> Tools)
+{
+    public ModelStepKind Kind { get; init; }
+}
 
 public interface IAgentModelStep
 {
@@ -16,6 +20,8 @@ public interface IAgentRunPreparation
     // Only the trusted host preparation supplies historical evidence, never model output.
     ImmutableArray<ModelMessage> HistoricalMessages => [];
     bool RetainsToolHistory => false;
+    // Opt-in host protocol: tool steps hand off without answer text before final generation.
+    string? FinalOutputInstructions => null;
     ValueTask<ImmutableArray<ModelMessage>> PrepareAsync(ImmutableArray<ModelMessage> initialMessages,
         IModelRequestBudget budget, CancellationToken token);
     ValueTask<StepEnvironment> PrepareStepAsync(StepEnvironment environment, IModelRequestBudget budget,

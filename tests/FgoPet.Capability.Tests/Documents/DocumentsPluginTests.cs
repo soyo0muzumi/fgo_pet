@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using FgoPet.Extensibility;
 using FgoPet.Platform.Processes;
-using FgoPet.Platform.Windows.Processes;
 using FgoPet.Plugin.Documents;
 using FgoPet.Plugin.Workspace;
 using Xunit;
@@ -18,11 +17,11 @@ public sealed class DocumentsPluginTests
     {
         using var workspace = new WorkspaceFixture();
         var pdfPath = workspace.Write("pages.pdf", CreatePdf("first-page", "second-page"));
-        var helper = ParserPath;
+        var (runner, helper) = ParserTimingDiagnostics.Create(ParserPath);
         Assert.True(File.Exists(helper));
         Assert.Contains("Apache License", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "licenses", "PdfPig-LICENSE.txt")));
 
-        var tool = CreateTool(workspace, new WindowsBoundedProcessRunner(), helper);
+        var tool = CreateTool(workspace, runner, helper);
         var first = await Invoke(tool, workspace, new { path = "pages.pdf", limit = 5 });
         Assert.True(first.Success, first.ErrorCode);
         Assert.Equal("first", first.Payload.GetProperty("content").GetString());
@@ -59,7 +58,8 @@ public sealed class DocumentsPluginTests
         workspace.Write("empty.pdf", CreatePdf(string.Empty));
         workspace.Write("corrupt.pdf", Encoding.ASCII.GetBytes("%PDF-1.4\nnot a PDF body"));
         workspace.Write("single.pdf", CreatePdf("one page"));
-        var tool = CreateTool(workspace, new WindowsBoundedProcessRunner(), ParserPath);
+        var (runner, helper) = ParserTimingDiagnostics.Create(ParserPath);
+        var tool = CreateTool(workspace, runner, helper);
 
         Assert.Equal("DOCUMENT_NO_TEXT", (await Invoke(tool, workspace, new { path = "empty.pdf" })).ErrorCode);
         Assert.Equal("DOCUMENT_INVALID", (await Invoke(tool, workspace, new { path = "corrupt.pdf" })).ErrorCode);

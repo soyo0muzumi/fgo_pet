@@ -4,17 +4,45 @@ using System.Text;
 using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
+using FgoPet.Core.Dialogue;
 using FgoPet.Kernel.Agent;
 using Microsoft.Extensions.Logging;
 
 namespace FgoPet.App.Dialogue;
 
-/// <summary>Debug-only projection accounting. Never emits prompt bodies, raw identifiers or exception details.</summary>
+/// <summary>Safe projection accounting and budget rejection metadata. Never emits content, raw identifiers or exception details.</summary>
 internal static class ConversationContextDiagnostics
 {
     private static readonly string[] Categories = ["persona", "history", "summary", "memory", "tools", "other"];
     private const string NativeMemorySource = "firstparty.memory:confirmed-memory:confirmed-memory";
     private const int MaxReferences = 64;
+
+    internal static void RecordInputBudgetRejection(ILogger? logger, string phase, TokenMeasurement measurement,
+        int inputTokenLimit, int messageCount, int toolCount, int nextPrimaryAttempt)
+    {
+        try
+        {
+            if (logger?.IsEnabled(LogLevel.Warning) != true) return;
+            var safePhase = phase is "ordinary_initial" or "ordinary_read_continuation" ? phase : "other";
+            var requestHash = measurement.Fingerprint is { Length: 64 } fingerprint && fingerprint.All(Uri.IsHexDigit)
+                ? fingerprint : "unavailable";
+            var countKind = measurement.Kind switch
+            {
+                TokenCountKind.Estimated => "estimated",
+                TokenCountKind.ProviderUsage => "provider_usage",
+                TokenCountKind.LocalReferenceEstimate => "local_reference_estimate",
+                _ => "unavailable"
+            };
+            logger.LogWarning(new EventId(4103, "ConversationInputBudgetRejected"),
+                "Input rejected {TimestampUtc:O} phase={Phase} code={ErrorCode} input={MeasuredInputTokens} limit={InputTokenLimit} kind={CountKind} messages={MessageCount} tools={ToolCount} nextAttempt={NextPrimaryAttempt} request={RequestHash}",
+                DateTimeOffset.UtcNow, safePhase, "DIALOGUE_INPUT_BUDGET_EXCEEDED", measurement.InputTokens, inputTokenLimit,
+                countKind, messageCount, toolCount, nextPrimaryAttempt, requestHash);
+        }
+        catch (Exception)
+        {
+            // A failing diagnostic sink cannot bypass the guard or expose its private exception.
+        }
+    }
 
     internal static void Record(ILogger? logger, string runId, int step, string phase,
         StepEnvironment environment, Func<StepEnvironment, int> measure)

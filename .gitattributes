@@ -1,2 +1,5 @@
 # SHA-256 manifests cover these fixture bytes exactly; keep checkout line endings stable.
 tests/fixtures/packs/** text eol=lf
+
+# Source pack JSON is hashed as bytes too; Windows checkouts must preserve those bytes.
+content/packs/**/*.json text eol=lf

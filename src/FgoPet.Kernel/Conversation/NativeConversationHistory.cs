@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -8,7 +7,7 @@ using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
-/// <summary>Projects protected historical executions as observations, never as new work to execute.</summary>
+/// <summary>Attaches historical execution evidence to its source turn, never as current tool protocol.</summary>
 internal static class NativeConversationHistory
 {
     private static readonly JsonSerializerOptions Json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -24,20 +23,35 @@ internal static class NativeConversationHistory
             var text = message.Status == ChatMessageStatus.Completed ? message.Text
                 : $"[历史请求未完成：{message.Status}；以下文字不是完成或执行成功的回执。]\n{message.Text}";
             var role = message.Role == ChatMessageRole.Assistant ? ModelMessageRole.Assistant : ModelMessageRole.User;
-            result.Add(new(role, PromptInjectionGuard.Wrap($"history/source:{message.MessageId}:{message.Role}", text), []));
-            if (message.Role != ChatMessageRole.User) continue;
-            foreach (var run in historical.Where(run => run.Snapshot.Identity.RootUserMessageId == message.MessageId
-                && run.Snapshot.Identity.Scope.ConversationId == message.ConversationId
-                && run.Snapshot.Identity.Scope.RoleId == message.ServantId))
+            var content = PromptInjectionGuard.Wrap($"history/source:{message.MessageId}:{message.Role}", text);
+            if (message.Role == ChatMessageRole.User)
             {
-                foreach (var group in Groups(run))
+                var evidence = SerializeTools(historical.Where(run => run.Snapshot.Identity.RootUserMessageId == message.MessageId
+                    && run.Snapshot.Identity.Scope.ConversationId == message.ConversationId
+                    && run.Snapshot.Identity.Scope.RoleId == message.ServantId));
+                if (evidence != "[]")
                 {
-                    var calls = group.Calls.Select(call => call.Call with { CallId = HistoricalId(run, call.Call.CallId) }).ToImmutableArray();
-                    result.Add(new(ModelMessageRole.Assistant, string.Empty, calls));
-                    foreach (var call in group.Calls)
-                        result.Add(new(ModelMessageRole.Tool, FormatObservation(call, run), [], HistoricalId(run, call.Call.CallId)));
+                    var source = $"historical_execution:{message.MessageId}";
+                    var combined = content + "\n" + PromptInjectionGuard.Wrap(source + ":0", evidence);
+                    if (Encoding.UTF8.GetByteCount(combined) <= ModelProtocol.MaxContentBytes) content = combined;
+                    else
+                    {
+                        // Keep the original turn, then contiguous data fragments with source/offset.
+                        // As in summary input, split by position only. Even worst-case XML escaping
+                        // of 16K UTF-16 units stays below the unchanged 128 KiB message limit.
+                        result.Add(new(role, content, []));
+                        for (var offset = 0; offset < evidence.Length;)
+                        {
+                            var length = Math.Min(16_000, evidence.Length - offset);
+                            if (offset + length < evidence.Length && char.IsHighSurrogate(evidence[offset + length - 1])) length--;
+                            result.Add(new(role, PromptInjectionGuard.Wrap($"{source}:{offset}", evidence.Substring(offset, length)), []));
+                            offset += length;
+                        }
+                        continue;
+                    }
                 }
             }
+            result.Add(new(role, content, []));
         }
         var projection = result.ToImmutable();
         if (!projection.IsEmpty) ModelProtocol.ValidateTranscript(projection);
@@ -47,9 +61,13 @@ internal static class NativeConversationHistory
     /// <summary>The caller must scope the run set; these raw records are untrusted summarizer input.</summary>
     internal static IReadOnlyDictionary<string, string> DescribeTools(IReadOnlyList<AgentRunCheckpoint> runs) =>
         OrderedRuns(runs).GroupBy(run => run.Snapshot.Identity.RootUserMessageId, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => JsonSerializer.Serialize(group.SelectMany(run => Groups(run)
-                .SelectMany(step => step.Calls.Select(call => new
+            .ToDictionary(group => group.Key, group => SerializeTools(group), StringComparer.Ordinal);
+
+    private static string SerializeTools(IEnumerable<AgentRunCheckpoint> runs) =>
+        JsonSerializer.Serialize(runs.SelectMany(run => Groups(run)
+                .SelectMany(step => step.Calls.Where(call => call.Call.Name != NativeFinalization.Name).Select(call => new
                 {
+                    sourceKind = "historical_execution",
                     runId = run.Snapshot.Identity.RunId,
                     sourceRootMessageId = run.Snapshot.Identity.RootUserMessageId,
                     stepNumber = step.StepNumber,
@@ -57,18 +75,20 @@ internal static class NativeConversationHistory
                     name = call.Call.Name,
                     argumentsJson = call.Call.ArgumentsJson,
                     observation = JsonSerializer.Deserialize<JsonElement>(FormatObservation(call, run))
-                }))), Json), StringComparer.Ordinal);
+                }))), Json);
 
     internal static string FormatObservation(AgentCallCheckpoint call, AgentRunCheckpoint run) => JsonSerializer.Serialize(new
     {
         metadata = new
         {
+            approvalEvidence = "NotIncludedInThisProjection",
             historicalStatus = call.Status.ToString(),
+            toolEffect = call.Effect?.ToString(),
             runStatus = run.Snapshot.Status.ToString(),
             sourceRootMessageId = run.Snapshot.Identity.RootUserMessageId,
             runId = run.Snapshot.Identity.RunId,
-            startedAtUtc = run.Snapshot.StartedAt,
-            completedAtUtc = run.Snapshot.CompletedAt
+            startedAtUtc = run.Snapshot.StartedAt.ToUniversalTime(),
+            completedAtUtc = run.Snapshot.CompletedAt?.ToUniversalTime()
         },
         noObservation = call.Result is null,
         success = call.Result?.Success ?? false,
@@ -94,6 +114,4 @@ internal static class NativeConversationHistory
         }
     }
 
-    private static string HistoricalId(AgentRunCheckpoint run, string callId) => "hist_" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new[] { run.Snapshot.Identity.RunId, callId }))));
 }

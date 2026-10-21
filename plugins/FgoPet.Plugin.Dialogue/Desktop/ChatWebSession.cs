@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using FgoPet.Core.Dialogue;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.UiSdk;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
@@ -119,6 +120,13 @@ internal sealed class ChatWebSession : IChatWebSession
                 return Success(BuildSnapshot());
             case "chat.retryCapability":
                 return StartGeneration(_conversation.RetryCapabilityCommand, cancellationToken);
+            case "chat.input.answer":
+                return _conversation.TryAnswerInput(new UserInputReply(command.RunId!, command.InputRequestId!,
+                    command.Revision!.Value, command.Answers), out var answerError)
+                    ? Success(BuildSnapshot()) : Failure(answerError);
+            case "chat.input.cancel":
+                return _conversation.TryCancelInput(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var cancelError)
+                    ? Success(BuildSnapshot()) : Failure(cancelError);
             case "chat.host":
                 return await HandleHostActionAsync(command, cancellationToken);
             default:
@@ -353,7 +361,14 @@ internal sealed class ChatWebSession : IChatWebSession
             new ChatWebProjectContext(Safe(_conversation.SessionContext.ProjectId, 128),
                 Safe(_conversation.SessionContext.ProjectLabel, 160)),
             chips,
-            sources);
+            sources)
+        {
+            HasPendingRun = _conversation.HasPendingRun,
+            PendingInput = _conversation.PendingInput is { } input ? new ChatWebUserInput(
+                input.Binding.Identity.RunId, input.Binding.RequestId, input.Binding.WaitingRevision, input.Binding.ExpiresAt,
+                input.Questions.Select(question => new ChatWebQuestion(question.Id, question.Text, question.Options, question.AllowMultiple)).ToArray(),
+                _conversation.IsInputSubmitting, Safe(_conversation.InputErrorText, 512)) : null,
+        };
         var historyItems = _conversation.History.GroupBy(item => item.ConversationId, StringComparer.Ordinal)
             .Where(group => group.Count() == 1).Select(group => group.First())
             .Select(item => new ChatWebHistoryItem(

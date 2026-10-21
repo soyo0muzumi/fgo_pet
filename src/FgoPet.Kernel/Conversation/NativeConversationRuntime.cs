@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using FgoPet.Core.Dialogue;
 using FgoPet.Extensibility;
 using FgoPet.Kernel.Agent;
@@ -15,6 +16,8 @@ public sealed class NativeConversationRuntime : IAsyncDisposable, IDisposable
     private readonly AgentRunCoordinator coordinator;
     private readonly Fence fence;
     private readonly Func<bool> admissionAvailable;
+    private readonly ToolRegistry tools;
+    private readonly NativeAgentExtensions extensions;
     private int closed;
     private readonly ConcurrentDictionary<string, Task> cancellations = new(StringComparer.Ordinal);
 
@@ -22,11 +25,17 @@ public sealed class NativeConversationRuntime : IAsyncDisposable, IDisposable
         TimeProvider? time = null, IToolPolicy? policy = null, Func<bool>? admissionAvailable = null)
     {
         this.admissionAvailable = admissionAvailable ?? (() => true);
+        this.tools = tools;
+        this.extensions = extensions;
         fence = new(registrations);
         coordinator = new(store, (identity, token) => Get(identity).Model(token),
             new StepEnvironmentBuilder(tools.GetTools), new ScopedPipeline(tools, fence, policy, extensions.Approvals),
             fence, time, extensions);
     }
+    // Admission is still rechecked per step; this view only reserves input space before optional context selection.
+    internal ImmutableArray<ToolDescriptor> GetPreparationTools(ToolScope scope) =>
+        NativeAgentEnvironment.AddHostTools(extensions, tools.GetTools(scope), finalOutput: true);
+
     public async ValueTask<ConversationSendResult> StartAsync(AgentRunRequest request,
         Func<CancellationToken, ValueTask<IAgentModelStep>> model, Action checkCurrent,
         Func<AgentRunResult, CancellationToken, ValueTask<ConversationSendResult>> deliver, CancellationToken token)

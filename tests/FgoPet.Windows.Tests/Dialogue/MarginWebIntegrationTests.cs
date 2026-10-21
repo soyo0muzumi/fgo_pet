@@ -208,10 +208,40 @@ public sealed class MarginWebIntegrationTests
         }, TimeSpan.FromSeconds(60));
     }
 
-    private static async Task WaitUntil(Func<Task<bool>> condition)
+    internal static async Task WaitUntil(Func<Task<bool>> condition,
+        [System.Runtime.CompilerServices.CallerMemberName] string member = "",
+        [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
     {
         var end=DateTime.UtcNow.AddSeconds(15);
-        while (!await condition() && DateTime.UtcNow < end) await Task.Delay(30);
-        Assert.True(await condition(), "Margin Web surface did not settle.");
+        var watch=System.Diagnostics.Stopwatch.StartNew();
+        var correlation=Guid.NewGuid().ToString("N")[..16];
+        var callsite=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(member+":"+line)))[..16];
+        var samples=0; var transientPairs=0; var settled=false; var outcome="condition_fault";
+        void Log(string phase)
+        {
+            try { Console.WriteLine("MARGIN_WAIT_METADATA_ONLY "+JsonSerializer.Serialize(new {
+                atUtc=DateTimeOffset.UtcNow, correlation, callsite, phase, outcome,
+                elapsedMs=watch.Elapsed.TotalMilliseconds, deadlineSeconds=15, samples, transientPairs })); }
+            catch (Exception) { /* Test diagnostics cannot replace a condition or assertion failure. */ }
+        }
+        Log("input_received");
+        try
+        {
+            while (true)
+            {
+                samples++;
+                if (await condition())
+                {
+                    samples++;
+                    if (await condition()) { settled=true; outcome="settled"; break; }
+                    transientPairs++; // A resize between the two samples must keep waiting, not fail early.
+                }
+                if (DateTime.UtcNow >= end) { outcome="deadline"; break; }
+                await Task.Delay(30);
+            }
+            Assert.True(settled, "Margin Web surface did not settle.");
+        }
+        finally { Log("result"); }
     }
 }

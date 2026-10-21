@@ -1,0 +1,12 @@
+.understanding-page { display: grid; gap: 1rem; max-width: 62rem; line-height: 1.6; }
+.understanding-page form, .understanding-page article { display: grid; gap: .65rem; padding: 1rem; border: 1px solid var(--border-color, #8886); border-radius: .6rem; }
+.understanding-page label { display: block; }
+.understanding-page nav { display: flex; flex-wrap: wrap; gap: .6rem; }
+.understanding-page button, .understanding-page select, .understanding-page textarea { font: inherit; color: inherit; background: var(--surface-color, transparent); border: 1px solid var(--border-color, #888); padding: .45rem .7rem; border-radius: .3rem; }
+.understanding-page button { cursor: pointer; }
+.understanding-page button:focus-visible, .understanding-page textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.understanding-page [aria-pressed="true"] { font-weight: bold; }
+.understanding-page article p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.understanding-page textarea { width: 100%; box-sizing: border-box; min-height: 4rem; }
+.understanding-page [role="alert"] { color: var(--error-color, #b32020); }
+@media (prefers-reduced-motion: reduce) { .understanding-page * { animation: none; transition: none; } }

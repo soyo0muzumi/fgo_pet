@@ -372,7 +372,6 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         foreach (var suffix in new[] { string.Empty, "-wal", "-shm" })
         {
             var file = _path + suffix;
@@ -382,7 +381,8 @@ public sealed class SqliteAgentRepositoryTests : IDisposable
 
     private RuntimeDatabase CreateDatabase()
     {
-        var database = new RuntimeDatabase(_path);
+        // This fixture owns a short-lived file; do not retain its handles or clear other tests' pools.
+        var database = new RuntimeDatabase(_path, pooling: false);
         new RuntimeDatabaseMigrator(database).Migrate();
         return database;
     }

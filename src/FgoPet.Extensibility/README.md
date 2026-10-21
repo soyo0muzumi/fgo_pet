@@ -6,6 +6,8 @@ The catalog validates IDs, API/version compatibility, dependency order and dupli
 
 Native agent contributions include typed `ISkillProvider`, `IAgentContextProvider` and `IAgentRunObserver` providers. The immutable catalog captures their descriptors and ownership once; context providers declare whether their blocks may be treated as trusted instructions, and observers receive sanitized run metadata rather than content-bearing request or response DTOs.
 
+An optional `AgentContextBlock.Whole` flag preserves a data entry as one unit under input pressure; the Native assembler may omit it instead of shortening its conditions or correction. Existing data providers retain their previous default behavior. `ConversationSourceSnapshot.SourceRevision` is an optional owner-validated revision alongside the original fingerprint; zero denotes legacy/unattested revisions and does not grant source access or imply read coverage.
+
 Canonical tool IDs accept bounded dotted segments as well as existing underscore names. Provider wire aliases belong to the model adapter. Optional `ToolInvocation.ExecutionContext` carries host-generated run, step, call and idempotency identity. Optional `ToolResult.ExecutionState` distinguishes proven command commitment, non-execution and uncertainty; these fields preserve existing constructor compatibility and grant no authority.
 
 There is no WPF, database, service locator, external plugin loader, hot reload or security sandbox in this assembly. Stateful provider instances remain owned by their plugin; catalog metadata is captured once.

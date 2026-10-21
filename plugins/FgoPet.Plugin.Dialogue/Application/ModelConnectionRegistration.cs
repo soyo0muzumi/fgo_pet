@@ -41,9 +41,10 @@ public static class ModelConnectionRegistration
         .AddSingleton<ToolRegistry>()
         .AddSingleton<SkillRegistry>()
         .AddSingleton<AgentContextAssembler>()
+        .AddSingleton(provider => new UserInputBroker(provider.GetRequiredService<TimeProvider>()))
         .AddSingleton(provider => new NativeConversationRuntime(provider.GetRequiredService<IAgentRunStore>(),
             provider.GetRequiredService<ToolRegistry>(), new(provider.GetRequiredService<SkillRegistry>(),
-                provider.GetRequiredService<AgentContextAssembler>()), provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<AgentContextAssembler>(), provider.GetRequiredService<UserInputBroker>()), provider.GetRequiredService<TimeProvider>(),
             admissionAvailable: () => provider.GetRequiredService<NativeAgentAvailability>().IsReady))
         .AddSingleton<IFgoPetPlugin>(provider => new NativeAgentLifecyclePlugin(
             () => provider.GetRequiredService<SqliteAgentRunStore>(), () => provider.GetRequiredService<IAgentFinalDeliveryStore>(),
@@ -51,6 +52,25 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<IConversationReader>(), provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<NativeAgentAvailability>(), provider.GetRequiredService<ILogger<NativeAgentLifecyclePlugin>>()))
         .AddSingleton<IConversationRecallRepository, SqliteConversationRecallRepository>()
+        .AddSingleton<IExperienceSourceReader, SqliteExperienceSourceReader>()
+        .AddSingleton<IExperienceTimeline, SqliteExperienceTimeline>()
+        .AddSingleton<IConversationScopeAuthority>(provider => new ConversationScopeAuthority(
+            () => provider.GetRequiredService<ConversationViewModel>(), provider.GetRequiredService<FgoPet.App.Runtime.AppRuntime>(),
+            provider.GetRequiredService<SqliteConversationRepository>()))
+        .AddSingleton<IFgoPetPlugin>(provider => new ExperienceToolsPlugin(
+            provider.GetRequiredService<IConversationRecallRepository>(),
+            provider.GetRequiredService<IExperienceSourceReader>(),
+            scope =>
+            {
+                if (provider.GetService<FgoPet.App.Runtime.AppRuntime>()?.ActiveRole?.ServantId != scope.RoleId) return false;
+                var repository = provider.GetRequiredService<SqliteConversationRepository>();
+                var conversation = repository.GetConversation(scope.ConversationId, scope.RoleId);
+                return conversation is { IsArchived: false } && conversation.ProjectId == scope.ProjectId
+                    && repository.ReadState($"LastActiveConversationId:{scope.RoleId}") == scope.ConversationId;
+            }, provider.GetRequiredService<TimeProvider>(),
+            notification => provider.GetRequiredService<ILogger<ExperienceToolsPlugin>>().LogInformation(
+                "Experience read {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.TimestampUtc,
+                notification.Correlation, notification.Stage, notification.ErrorCode)))
         .AddSingleton<IConversationRecall, ConversationRecallService>()
         .AddSingleton<IConversationContextStore, SqliteConversationContextStore>()
         .AddSingleton<IConversationSummarizer, ProviderConversationSummarizer>()
@@ -79,7 +99,7 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
-            provider.GetRequiredService<IConversationHistoryQuery>()));
+            provider.GetRequiredService<IConversationHistoryQuery>(), provider.GetRequiredService<TimeProvider>()));
     }
 
     public static IServiceCollection AddModelConnectionSettings(this IServiceCollection services)

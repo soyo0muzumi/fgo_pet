@@ -81,7 +81,8 @@ public sealed class RunPreparationTests
     private sealed class CapacityModel : IAgentModelStep, IAgentModelInputBudget
     {
         public StepEnvironment? Sent { get; private set; }
-        public int InputTokenBudget => 2000;
+        // Character-count fixture: fit the host prefix, but not the old history or the 3000-character current turn.
+        public int InputTokenBudget => NativeAgentEnvironment.CorePrompt.Length + 1000;
         public int MeasureInputTokens(StepEnvironment environment) => environment.Messages.Sum(message => message.Content.Length + 12);
         public async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget, CancellationToken token)
         {

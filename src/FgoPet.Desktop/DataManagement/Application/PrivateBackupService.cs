@@ -188,6 +188,7 @@ public sealed class PrivateBackupService
             {
                 DataSource = tempPath,
                 Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+                Pooling = false,
             }.ToString());
             connection.Open();
             return RuntimeDatabaseMigrator.ReadVersion(connection);

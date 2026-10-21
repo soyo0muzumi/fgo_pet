@@ -51,9 +51,25 @@ public sealed class ShellToolTests
     public async Task Real_Powershell_returns_unicode_bounded_output_and_null_exit_on_timeout()
     {
         using var f = new WorkspaceAccessGuardTests.Fixture();
-        var tool = new ShellPlugin(f.Guard, new WindowsBoundedProcessRunner()).Contributions.Tools.Single();
+        IBoundedProcessRunner runner = Environment.GetEnvironmentVariable("FGO_PET_SHELL_STAGE_DIAGNOSTICS") == "1"
+            ? new StagedSyntheticRunner() : new WindowsBoundedProcessRunner();
+        var tool = new ShellPlugin(f.Guard, runner).Contributions.Tools.Single();
         var result = await Invoke(tool, f.Scope, new { command = "[Console]::Write('你好🌟')", timeoutSeconds = 5 });
-        Assert.True(result.Success);
+        // Safe outcome metadata is constructed after the bounded operation; no output text or command is logged.
+        var outcome = JsonSerializer.Serialize(new {
+            stage = "unicode_result", result.ErrorCode, executionState = result.ExecutionState?.ToString(),
+            status = result.Payload.TryGetProperty("status", out var status) ? status.GetString() : null,
+            elapsedMilliseconds = result.Payload.TryGetProperty("elapsedMilliseconds", out var elapsed) ? (long?)elapsed.GetInt64() : null,
+            exitCode = result.Payload.TryGetProperty("exitCode", out var code) && code.ValueKind == JsonValueKind.Number ? (int?)code.GetInt32() : null,
+            stdoutCharacters = result.Payload.TryGetProperty("stdout", out var stdout) ? stdout.GetString()?.Length : null,
+            stderrCharacters = result.Payload.TryGetProperty("stderr", out var stderr) ? stderr.GetString()?.Length : null,
+            syntheticStages = ReadSyntheticStages(result.Payload), stopwatchFrequency = System.Diagnostics.Stopwatch.Frequency,
+            modulePreparationProgress = result.Payload.TryGetProperty("stderr", out var stageOutput) &&
+                (stageOutput.GetString() ?? "").Contains("Preparing modules for first use", StringComparison.OrdinalIgnoreCase),
+        });
+        if (Environment.GetEnvironmentVariable("FGO_PET_SHELL_STAGE_DIAGNOSTICS") == "1")
+            Console.WriteLine("SHELL_STAGE_METADATA_ONLY " + outcome);
+        Assert.True(result.Success, outcome);
         Assert.Equal("你好🌟", result.Payload.GetProperty("stdout").GetString());
         result = await Invoke(tool, f.Scope, new { command = "Start-Sleep -Seconds 30", timeoutSeconds = 1 });
         Assert.Equal(ToolExecutionState.Unknown, result.ExecutionState);
@@ -63,6 +79,38 @@ public sealed class ShellToolTests
     private static ValueTask<ToolResult> Invoke(IToolProvider tool, ToolScope scope, object arguments) =>
         tool.InvokeAsync(new(scope, JsonSerializer.SerializeToElement(arguments)) { ExecutionContext = new("run", 1, "call", new string('A', 64)) {
             ResourceAuthorization = ((IToolResourceAuthorizationProvider)tool).GetAuthorization(scope) } }, default);
+    private sealed class StagedSyntheticRunner : IBoundedProcessRunner
+    {
+        private readonly WindowsBoundedProcessRunner inner = new();
+        public ValueTask<BoundedProcessResult> RunAsync(BoundedProcessRequest request, CancellationToken token)
+        {
+            const string prefix = "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); ";
+            var script = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(request.Arguments[^1]));
+            if (!script.StartsWith(prefix, StringComparison.Ordinal)) throw new InvalidOperationException("SYNTHETIC_SHELL_PREFIX_CHANGED");
+            var staged = "[Console]::Error.WriteLine('P4_ENGINE_ENTERED:' + [System.Diagnostics.Stopwatch]::GetTimestamp()); " + prefix +
+                "[Console]::Error.WriteLine('P4_ENCODING_READY:' + [System.Diagnostics.Stopwatch]::GetTimestamp()); " + script[prefix.Length..] +
+                "; [Console]::Error.WriteLine('P4_COMMAND_DONE:' + [System.Diagnostics.Stopwatch]::GetTimestamp());";
+            var arguments = request.Arguments.SetItem(request.Arguments.Length - 1,
+                Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(staged)));
+            return inner.RunAsync(request with { Arguments = arguments }, token);
+        }
+    }
+    private sealed record SyntheticStage(string Stage, long Tick);
+    private static SyntheticStage[] ReadSyntheticStages(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("stderr", out var value)) return [];
+        var stages = new List<SyntheticStage>();
+        foreach (var line in (value.GetString() ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = line.IndexOf(':');
+            if (separator < 0) continue;
+            var stage = line[..separator];
+            if (stage is not ("P4_ENGINE_ENTERED" or "P4_ENCODING_READY" or "P4_COMMAND_DONE")) continue;
+            if (long.TryParse(line[(separator + 1)..], System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var tick)) stages.Add(new(stage, tick));
+        }
+        return stages.ToArray();
+    }
     private sealed class RecordingRunner : IBoundedProcessRunner
     {
         public int Calls { get; private set; }

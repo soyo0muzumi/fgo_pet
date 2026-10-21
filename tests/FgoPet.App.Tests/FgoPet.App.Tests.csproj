@@ -6,9 +6,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Keep xUnit/VSTest discovery; explicit fixture arguments run the isolated lifetime host. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Shared/ActivatedCapabilities.cs" />
+    <Compile Include="../Shared/TestStateIsolation.cs" />
+    <Compile Include="../Shared/SyntheticFileOperationDiagnostics.cs" />
+    <Compile Include="../../tools/integrations/persona-validation/P2BatchProvider.cs" Link="PersonaValidation/P2BatchProvider.cs" />
+    <Compile Include="../../tools/integrations/persona-validation/P2ResponseDiagnostics.cs" Link="PersonaValidation/P2ResponseDiagnostics.cs" />
+    <Compile Include="../../tools/integrations/understanding-review-validation/ReviewPipelineProbe.cs" Link="UnderstandingValidation/ReviewPipelineProbe.cs" />
+    <Compile Include="../../tools/integrations/understanding-review-validation/ReviewModelExchangeProbe.cs" Link="UnderstandingValidation/ReviewModelExchangeProbe.cs" />
+    <Compile Include="../../tools/integrations/understanding-review-validation/ReviewDispatchProbe.cs" Link="UnderstandingValidation/ReviewDispatchProbe.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="xunit" Version="2.8.1" />

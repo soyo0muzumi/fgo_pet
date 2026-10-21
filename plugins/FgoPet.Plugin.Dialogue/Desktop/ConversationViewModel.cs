@@ -1,4 +1,5 @@
 using FgoPet.Extensibility;
+using FgoPet.Kernel.Agent;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
@@ -58,17 +59,30 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     public event Action<FgoPet.Core.Portraits.ExpressionSemantic>? ExpressionRequested;
     private long _thinkingStartedTicks;
     private System.Timers.Timer? _thinkingTimer;
+    private readonly TimeProvider _time;
+    private readonly UserInputBroker _inputValidator;
+    private string? _waitingRunId;
+    private ToolScope? _waitingScope;
+    private long _waitingGeneration;
+    private CancellationTokenSource? _inputExpiryCancellation;
+    internal UserInputRequest? PendingInput { get; private set; }
+    internal bool IsInputSubmitting { get; private set; }
+    internal string InputErrorText { get; private set; } = string.Empty;
+    public bool HasPendingRun => _waitingRunId is not null;
 
     public ConversationViewModel(
         ConversationOrchestrator orchestrator,
         IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
-        IConversationHistoryQuery? history = null)
+        IConversationHistoryQuery? history = null,
+        TimeProvider? time = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _modelConnection = modelConnection;
         _history = history ?? orchestrator.HistoryQuery;
+        _time = time ?? TimeProvider.System;
+        _inputValidator = new UserInputBroker(_time);
         _modelAuthority = modelConnection is null ? null : new DialogueModelConnectionSource(modelConnection);
         if (_modelConnection is not null)
         {
@@ -83,10 +97,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _configurationRequired = model is null;
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         SendOrStopCommand = new AsyncRelayCommand(SendOrStopAsync, () => CanSendOrStop);
-        StopCommand = new RelayCommand(Stop, () => IsStreaming);
+        StopCommand = new RelayCommand(Stop, () => CanStop);
         NewConversationCommand = new RelayCommand(NewConversation);
         OpenSettingsCommand = new RelayCommand(OpenSettings);
-        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => !IsStreaming && !_configurationRequired && !string.IsNullOrWhiteSpace(_lastUserMessage) && !string.IsNullOrWhiteSpace(ActiveServantId));
+        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => CanSendBase);
         NewWorkspaceItemCommand = new RelayCommand(() => NewWorkspaceItemRequested?.Invoke());
         RetryHistoryCommand = new RelayCommand(LoadHistory);
         LoadMoreHistoryCommand = new RelayCommand(() => LoadHistoryPage(append: true), () => HasMoreHistory && !IsHistoryLoading && !_disposed);
@@ -172,20 +186,20 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         || ErrorText.Contains("模型 API Key", StringComparison.Ordinal)
         || ErrorText.Contains("无法连接模型服务", StringComparison.Ordinal)
         || ErrorText.Contains("对话服务暂时不可用", StringComparison.Ordinal);
-    public bool CanSend => !_disposed && !IsStreaming
+    public bool CanSend => !_disposed && !IsStreaming && !HasPendingRun
         && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(InputText);
 
-    public bool CanStop => IsStreaming;
+    public bool CanStop => IsStreaming || HasPendingRun;
 
     public bool CanSendOrStop => CanSend || CanStop;
 
-    public string ActionLabel => IsStreaming ? "停止生成" : "发送消息";
+    public string ActionLabel => CanStop ? "停止生成" : "发送消息";
 
     public bool SelectModelForFutureRequests(string modelId)
     {
-        if (IsStreaming || string.IsNullOrWhiteSpace(modelId)) return false;
+        if (IsStreaming || HasPendingRun || string.IsNullOrWhiteSpace(modelId)) return false;
         var current = _settings.Load().ModelConnection;
         if (current is null) return false;
         var normalized = modelId.Trim();
@@ -479,6 +493,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 CancellationToken.None,
                 SessionContext.ToRequestContext(), requestId);
             if (!IsCurrent()) return false;
+            result = await ApplyInputResultAsync(result);
+            if (!IsCurrent()) return false;
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
@@ -499,11 +515,13 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 SendOrStopCommand.NotifyCanExecuteChanged();
             }
 
-            return result.Status == ConversationSendStatus.Completed;
+            // The initial user message is already persisted when a run waits.
+            // Clear only its accepted draft; later drafts survive input resumption.
+            return result.Status is ConversationSendStatus.Completed or ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval;
         }
         finally
         {
-            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; _activeRequestId = null; }
+            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; if (!HasPendingRun) _activeRequestId = null; }
         }
         bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId
             && _activeRequestId == "request-" + requestId.ToString("N");
@@ -543,24 +561,253 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private async Task RetryCapabilityAsync()
     {
-        if (IsStreaming || string.IsNullOrWhiteSpace(_lastUserMessage) || !CanSendBase)
+        var text = _lastUserMessage;
+        if (!CanSendBase || string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
         SetCapabilityNotice(string.Empty, CapabilityNoticeKind.None);
-        await SendCoreAsync(_lastUserMessage);
+        await SendCoreAsync(text);
     }
 
-    private bool CanSendBase => !IsStreaming && !_configurationRequired
+    private bool CanSendBase => !_disposed && !IsStreaming && !HasPendingRun && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(_lastUserMessage);
 
-    private void Stop() => _orchestrator.CancelCurrent();
+    private void Stop()
+    {
+        if (HasPendingRun && !IsStreaming) { _ = CancelInputWaitAsync("已取消。"); return; }
+        _orchestrator.CancelCurrent();
+    }
+
+    private ToolScope CurrentInputScope() => new(CurrentConversationId, ActiveServantId,
+        string.IsNullOrWhiteSpace(SessionContext.ProjectId) ? null : SessionContext.ProjectId);
+
+    private async Task<ConversationSendResult> ApplyInputResultAsync(ConversationSendResult result)
+    {
+        if (result.Status is not (ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval))
+        {
+            ClearInputWait();
+            return result;
+        }
+        var generation = _sessionGeneration;
+        var scope = CurrentInputScope();
+        AgentInteractionSnapshot? interaction = null;
+        try
+        {
+            if (result.RunId is { } runId) interaction = await _orchestrator.GetAgentInteractionAsync(runId, scope, CancellationToken.None);
+        }
+        catch (AgentStateException) { }
+        if (_disposed || generation != _sessionGeneration || scope != CurrentInputScope()) return result;
+        if (interaction is null || result.Status == ConversationSendStatus.WaitingUserInput && interaction.Input is null)
+        {
+            if (result.RunId is { } runId) await _orchestrator.CancelAgentRunAsync(runId, scope, CancellationToken.None);
+            return result with { Status = ConversationSendStatus.Failed, SafeError = "本次问题已不可用，请重新发起请求。" };
+        }
+        _waitingRunId = result.RunId;
+        _waitingScope = scope;
+        _waitingGeneration = generation;
+        PendingInput = interaction.Input;
+        InputErrorText = string.Empty;
+        StopThinkingTimer();
+        RequestStatusText = PendingInput is null ? "任务等待处理，可停止本次任务。" : "等待你的回答…";
+        StartInputExpiry();
+        NotifyInputWait();
+        return result;
+    }
+
+    internal bool TryAnswerInput(UserInputReply reply, out string errorCode)
+    {
+        if (!MatchInput(reply.RunId, reply.RequestId, reply.ExpectedRevision, out errorCode)) return false;
+        try { _inputValidator.Validate(PendingInput!, reply, CurrentInputScope()); }
+        catch (AgentStateException error)
+        {
+            errorCode = error.Code == "RUN_INVALID_ANSWERS" ? "CHAT_INPUT_INVALID" : "CHAT_INPUT_STALE";
+            InputErrorText = "请完整回答这些问题，或取消本次任务。";
+            NotifyInputWait();
+            return false;
+        }
+        IsInputSubmitting = true;
+        CancelInputExpiry();
+        IsStreaming = true;
+        _acceptRequestUpdates = true;
+        InputErrorText = string.Empty;
+        NotifyInputWait();
+        _ = ResumeInputReplyAsync(reply, _sessionGeneration, _activeRequestId);
+        return true;
+    }
+
+    internal bool TryCancelInput(string runId, string requestId, long revision, out string errorCode)
+    {
+        if (!MatchInput(runId, requestId, revision, out errorCode, allowExpired: true)) return false;
+        _ = CancelInputWaitAsync("已取消。");
+        return true;
+    }
+
+    private bool MatchInput(string runId, string requestId, long revision, out string errorCode, bool allowExpired = false)
+    {
+        errorCode = "CHAT_INPUT_STALE";
+        if (_disposed || IsInputSubmitting || PendingInput is not { } input || _activeRequestId is null
+            || _waitingGeneration != _sessionGeneration || _waitingScope != CurrentInputScope()
+            || input.Binding.Identity.RunId != runId || input.Binding.RequestId != requestId || input.Binding.WaitingRevision != revision)
+            return false;
+        if (!allowExpired && _time.GetUtcNow() >= input.Binding.ExpiresAt)
+        {
+            errorCode = "CHAT_INPUT_EXPIRED";
+            return false;
+        }
+        errorCode = string.Empty;
+        return true;
+    }
+
+    private async Task ResumeInputReplyAsync(UserInputReply reply, long generation, string? requestId)
+    {
+        bool IsCurrent() => !_disposed && generation == _sessionGeneration && requestId == _activeRequestId;
+        var scope = CurrentInputScope();
+        try
+        {
+            var result = await _orchestrator.ResumeAgentInputAsync(reply, scope, CancellationToken.None);
+            if (!IsCurrent()) return;
+            result = await ApplyInputResultAsync(result);
+            if (!IsCurrent()) return;
+            if (result.Status == ConversationSendStatus.Failed) ErrorText = result.SafeError ?? "本次任务未完成，请重新发起请求。";
+            else if (result.Status == ConversationSendStatus.Cancelled) RequestStatusText = "已取消。";
+        }
+        catch (AgentStateException)
+        {
+            await RestoreWaitAsync("本次问题已不可用，请重新发起请求。");
+        }
+        catch (Exception)
+        {
+            await RestoreWaitAsync("本次回答未能完成，请核对状态后重试或取消。");
+        }
+        finally
+        {
+            if (IsCurrent())
+            {
+                IsStreaming = false;
+                IsInputSubmitting = false;
+                _acceptRequestUpdates = false;
+                if (!HasPendingRun) _activeRequestId = null;
+                else StartInputExpiry();
+                NotifyInputWait();
+            }
+        }
+
+        async Task RestoreWaitAsync(string error)
+        {
+            if (!IsCurrent()) return;
+            AgentInteractionSnapshot? interaction = null;
+            try { interaction = await _orchestrator.GetAgentInteractionAsync(reply.RunId, scope, CancellationToken.None); }
+            catch (AgentStateException) { /* A rejected scope or registration is no longer actionable. */ }
+            catch (Exception)
+            {
+                // A failed status read does not prove the live wait ended. Keep the stop/retry route.
+                if (IsCurrent()) InputErrorText = error;
+                return;
+            }
+            if (!IsCurrent()) return;
+            if (interaction is { Snapshot.Status: AgentRunStatus.WaitingUserInput, Input: not null }
+                or { Snapshot.Status: AgentRunStatus.WaitingApproval })
+            {
+                PendingInput = interaction.Input;
+                InputErrorText = error;
+                return;
+            }
+            ClearInputWait();
+            ErrorText = error;
+            RequestStatusText = "本次任务已结束。";
+        }
+    }
+
+    private async Task CancelInputWaitAsync(string status)
+    {
+        if (_waitingRunId is not { } runId || _waitingScope is not { } scope || IsInputSubmitting) return;
+        var generation = _sessionGeneration;
+        CancelInputExpiry();
+        IsInputSubmitting = true;
+        NotifyInputWait();
+        try
+        {
+            await _orchestrator.CancelAgentRunAsync(runId, scope, CancellationToken.None);
+            if (!_disposed && generation == _sessionGeneration && _waitingRunId == runId)
+            {
+                ClearInputWait();
+                _activeRequestId = null;
+                _acceptRequestUpdates = false;
+                RequestStatusText = status;
+            }
+        }
+        catch (Exception)
+        {
+            if (!_disposed && generation == _sessionGeneration)
+            {
+                IsInputSubmitting = false;
+                InputErrorText = "本次任务未能结束，请重试停止。";
+                NotifyInputWait();
+            }
+        }
+    }
+
+    private void ClearInputWait()
+    {
+        CancelInputExpiry();
+        _waitingRunId = null;
+        _waitingScope = null;
+        PendingInput = null;
+        IsInputSubmitting = false;
+        InputErrorText = string.Empty;
+        NotifyInputWait();
+    }
+
+    private void StartInputExpiry()
+    {
+        CancelInputExpiry();
+        if (PendingInput is not { } input) return;
+        var cancellation = new CancellationTokenSource();
+        _inputExpiryCancellation = cancellation;
+        _ = ObserveInputExpiryAsync(input, _sessionGeneration, cancellation);
+    }
+
+    private void CancelInputExpiry()
+    {
+        var cancellation = _inputExpiryCancellation;
+        _inputExpiryCancellation = null;
+        cancellation?.Cancel();
+    }
+
+    private async Task ObserveInputExpiryAsync(UserInputRequest input, long generation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var remaining = input.Binding.ExpiresAt - _time.GetUtcNow();
+            if (remaining > TimeSpan.Zero) await Task.Delay(remaining, _time, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && !_disposed && generation == _sessionGeneration
+                && PendingInput?.Binding == input.Binding && !IsInputSubmitting)
+                await CancelInputWaitAsync("本次问题已过期，请重新发起请求。");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(_inputExpiryCancellation, cancellation)) _inputExpiryCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    private void NotifyInputWait()
+    {
+        foreach (var name in new[] { nameof(HasPendingRun), nameof(PendingInput), nameof(IsInputSubmitting), nameof(InputErrorText),
+            nameof(CanSend), nameof(CanStop), nameof(CanSendOrStop), nameof(ActionLabel) }) OnPropertyChanged(name);
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
+        RetryCapabilityCommand.NotifyCanExecuteChanged();
+    }
 
     private async Task SendOrStopAsync()
     {
-        if (IsStreaming)
+        if (CanStop)
         {
             Stop();
             return;
@@ -908,6 +1155,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _sessionGeneration++;
         _acceptRequestUpdates = false;
         _activeRequestId = null;
+        ClearInputWait();
         _orchestrator.CancelCurrent();
         IsStreaming = false;
         _lastUserMessage = null;

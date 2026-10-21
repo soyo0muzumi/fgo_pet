@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Portraits;
@@ -90,7 +91,7 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
         if (!ValidAcceptedShape(accepted)) return false;
         var key = RunKey(accepted.Identity.RunId);
         var checkpoint = LoadRun(accepted.Identity.RunId);
-        if (!MatchesCompletedRun(checkpoint, accepted) || !TryBuildProjection(accepted, out _)) return false;
+        if (!TryBuildProjection(accepted, out _)) return false;
 
         var plaintext = JsonSerializer.SerializeToUtf8Bytes(accepted, Json);
         try
@@ -100,17 +101,19 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
             using var connection = _database.Open();
             using var transaction = connection.BeginTransaction(deferred: false);
 
-            if (!ScopeIsCurrent(connection, transaction, accepted, key)) return false;
+            if (!ScopeIsCurrent(connection, transaction, accepted, key, out var sourceText)) return false;
 
             var existing = ReadByRunKey(connection, transaction, key);
             if (existing is not null)
             {
                 var saved = Decode(existing);
                 return existing.DeliveryId == accepted.DeliveryId
+                    && MatchesCompletedRun(checkpoint, saved, sourceText, previouslyAccepted: true)
                     && existing.LogicalFingerprint == logicalFingerprint
                     && LogicalFingerprint(saved) == logicalFingerprint;
             }
 
+            if (!MatchesCompletedRun(checkpoint, accepted, sourceText)) return false;
             if (ReadByDeliveryId(connection, transaction, accepted.DeliveryId) is not null) return false;
 
             var protectedPayload = _protector.Protect(plaintext, Purpose(accepted.DeliveryId));
@@ -162,9 +165,9 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
             return null;
         var accepted = Decode(row);
         var checkpoint = LoadRun(accepted.Identity.RunId);
-        if (!MatchesCompletedRun(checkpoint, accepted)
-            || accepted.Identity.Scope != scope
-            || !ScopeIsCurrent(connection, transaction, accepted, row.RunKey)) return null;
+        if (accepted.Identity.Scope != scope
+            || !ScopeIsCurrent(connection, transaction, accepted, row.RunKey, out var sourceText)
+            || !MatchesCompletedRun(checkpoint, accepted, sourceText, previouslyAccepted: true)) return null;
 
         if (row.DeliveredAtUtc is not null)
         {
@@ -241,10 +244,11 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
             foreach (var row in rows)
             {
                 var accepted = Decode(row);
-                if (!MatchesCompletedRun(LoadRun(accepted.Identity.RunId), accepted)
+                if (!ScopeIsCurrent(connection, transaction, accepted, row.RunKey, out var sourceText)) continue;
+                if (!MatchesCompletedRun(LoadRun(accepted.Identity.RunId), accepted, sourceText, previouslyAccepted: true)
                     || !TryBuildProjection(accepted, out _))
                     throw new AgentStateException("AGENT_FINAL_DELIVERY_UNREADABLE");
-                if (ScopeIsCurrent(connection, transaction, accepted, row.RunKey)) result.Add(accepted);
+                result.Add(accepted);
             }
             return result.Take(limit).ToList().AsReadOnly();
         }
@@ -258,9 +262,9 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
         if (row?.DeliveredAtUtc is null || row.ConversationId != scope.ConversationId
             || row.RoleId != scope.RoleId || row.ProjectId != scope.ProjectId) return false;
         var accepted = Decode(row);
-        if (!MatchesCompletedRun(LoadRun(accepted.Identity.RunId), accepted)
-            || accepted.Identity.Scope != scope
-            || !ScopeIsCurrent(connection, transaction, accepted, row.RunKey)
+        if (accepted.Identity.Scope != scope
+            || !ScopeIsCurrent(connection, transaction, accepted, row.RunKey, out var sourceText)
+            || !MatchesCompletedRun(LoadRun(accepted.Identity.RunId), accepted, sourceText, previouslyAccepted: true)
             || ReadPublishedAssistant(connection, transaction, row, accepted) is null) return false;
 
         using var update = connection.CreateCommand();
@@ -278,7 +282,8 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
     private AgentRunCheckpoint? LoadRun(string runId) =>
         _runs.LoadAsync(runId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
 
-    private static bool MatchesCompletedRun(AgentRunCheckpoint? checkpoint, AcceptedAgentFinal accepted)
+    private static bool MatchesCompletedRun(AgentRunCheckpoint? checkpoint, AcceptedAgentFinal accepted, string? sourceText,
+        bool previouslyAccepted = false)
     {
         if (checkpoint is null || checkpoint.Snapshot is null
             || checkpoint.Snapshot.Status != AgentRunStatus.Completed
@@ -293,20 +298,32 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
             || !SameClarifications(checkpoint.ResolvedInputs, accepted.Clarifications)) return false;
 
         var raw = checkpoint.FinalText;
-        if (raw.TrimStart().StartsWith('{'))
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(raw);
-                if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
-            }
-            catch (JsonException) { return false; }
-        }
-
         try
         {
-            var output = StructuredOutputValidator.Validate(raw, ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
-            return output == accepted.Output;
+            var output = StructuredOutputValidator.Validate(raw, ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), sourceText,
+                requireCompleteJson: true);
+            if (output == accepted.Output) return true;
+            if (!previouslyAccepted) return false;
+            // Only an existing authenticated receipt may retain the pre-repair representation.
+            // Bind it to the same raw final and original outer fields; never rewrite accepted text
+            // or let fresh acceptance opt into compatibility using caller-supplied output.
+            var literal = raw.Trim();
+            if (literal.StartsWith('{'))
+            {
+                using var document = JsonDocument.Parse(raw);
+                if (!document.RootElement.TryGetProperty("text", out var text) || text.ValueKind != JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(text.GetString()))
+                {
+                    // Pre-repair complete objects could use the old nested-key fallback. Reproduce
+                    // only that sealed text while binding all outer fields to this same raw final.
+                    var legacyOutput = StructuredOutputValidator.Validate(raw, ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), null,
+                        requireCompleteJson: true);
+                    return (legacyOutput with { Text = ReadLegacyFallbackText(raw) }) == accepted.Output;
+                }
+                literal = text.GetString()!;
+            }
+            return StructuredOutputValidator.Validate(raw, ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), literal,
+                requireCompleteJson: true) == accepted.Output;
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or JsonException)
         {
@@ -314,9 +331,28 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
         }
     }
 
-    private bool ScopeIsCurrent(SqliteConnection connection, SqliteTransaction transaction,
-        AcceptedAgentFinal accepted, string runKey)
+    private static string ReadLegacyFallbackText(string raw)
     {
+        // Compatibility for authenticated existing receipts only; never used by fresh acceptance.
+        // The caller has already limited raw to 12,000 characters and parsed a complete JSON object.
+        var match = Regex.Match(raw, """\"text\"\s*:\s*\"(?<text>(?:\\.|[^\"\\])*)""",
+            RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+        if (match.Success)
+        {
+            try
+            {
+                var value = JsonSerializer.Deserialize<string>("\"" + match.Groups["text"].Value + "\"");
+                if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+            }
+            catch (JsonException) { }
+        }
+        return StructuredOutputValidator.InvalidResponseMessage;
+    }
+
+    private bool ScopeIsCurrent(SqliteConnection connection, SqliteTransaction transaction,
+        AcceptedAgentFinal accepted, string runKey, out string? sourceText)
+    {
+        sourceText = null;
         var identity = accepted.Identity;
         if (accepted.ContentContext.ServantId != identity.Scope.RoleId
             || accepted.Source.UserMessageId != identity.RootUserMessageId
@@ -360,7 +396,9 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
         if (text.Length is < 1 or > 12_000) return false;
         var created = DateTimeOffset.Parse(reader.GetString(19), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
         var fingerprint = SourceFingerprint(identity.RootUserMessageId, ChatMessageRole.User, text, created);
-        return string.Equals(fingerprint, accepted.Source.Fingerprint, StringComparison.Ordinal);
+        if (!string.Equals(fingerprint, accepted.Source.Fingerprint, StringComparison.Ordinal)) return false;
+        sourceText = text;
+        return true;
     }
 
     private static ChatMessage? ReadPublishedAssistant(SqliteConnection connection, SqliteTransaction transaction,
@@ -523,11 +561,33 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
                     answerParts.Add("补充：" + answer.Text);
                 }
                 var answerText = string.Join('\n', answerParts);
-                if (answerText.Length is < 1 or > 12_000 || !ValidUnicode(answerText)) return Fail(out projection);
+                if (answerText.Length < 1 || !ValidUnicode(answerText)) return Fail(out projection);
                 builder.Add(new(StableMessageId(accepted.DeliveryId, "question", binding.RequestId, question.Id),
                     ChatMessageRole.Assistant, question.Text));
-                builder.Add(new(StableMessageId(accepted.DeliveryId, "answer", binding.RequestId, question.Id),
-                    ChatMessageRole.User, answerText));
+                // The broker bounds original answers, not the labels added for semantic history.
+                // Keep existing short projections stable and split only decoration overflow.
+                var texts = new List<string>();
+                if (answerText.Length <= 12_000) texts.Add(answerText);
+                else
+                {
+                    if (selectedLabels.Length > 0) texts.Add("选择：" + string.Join("、", selectedLabels));
+                    var original = answer.Text!;
+                    for (var offset = 0; offset < original.Length;)
+                    {
+                        const string prefix = "补充：“";
+                        const string suffix = "”";
+                        var length = Math.Min(12_000 - prefix.Length - suffix.Length, original.Length - offset);
+                        if (char.IsHighSurrogate(original[offset + length - 1])) length--;
+                        // Quotes preserve whitespace at fragment boundaries through ChatMessage normalization.
+                        texts.Add(prefix + original.Substring(offset, length) + suffix);
+                        offset += length;
+                    }
+                }
+                for (var part = 0; part < texts.Count; part++)
+                    builder.Add(new(part == 0
+                        ? StableMessageId(accepted.DeliveryId, "answer", binding.RequestId, question.Id)
+                        : StableMessageId(accepted.DeliveryId, "answer-part", binding.RequestId, question.Id, part.ToString(CultureInfo.InvariantCulture)),
+                        ChatMessageRole.User, texts[part]));
             }
         }
         if (builder.Select(item => item.MessageId).Distinct(StringComparer.Ordinal).Count() != builder.Count)

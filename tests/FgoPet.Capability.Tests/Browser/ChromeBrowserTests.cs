@@ -99,6 +99,25 @@ public sealed class ChromeBrowserTests
     }
 
     [Fact]
+    public async Task Failed_open_requires_tab_verification_even_though_the_tool_is_readonly()
+    {
+        var connection = new Connection { FailOpen = true };
+        await using var plugin = new ChromeBrowserPlugin(() => Enabled, _ => true, connection);
+        await plugin.StartAsync(default);
+        var descriptor = plugin.Contributions.Tools.Single(tool => tool.Descriptor.Name == "browser.open").Descriptor;
+        Assert.Equal(ToolEffect.ReadOnly, descriptor.Effect);
+        var failed = await Invoke(plugin, "browser.open", new { url = "https://example.org/" });
+        Assert.False(failed.Success);
+        Assert.Equal("BROWSER_OPERATION_FAILED", failed.ErrorCode);
+        var tabs = await Invoke(plugin, "browser.tabs", new { });
+        Assert.True(tabs.Success);
+        Assert.Single(connection.Calls, call => call.Name == "new_page");
+        Assert.Contains("failed", descriptor.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("incomplete", descriptor.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("browser.tabs", descriptor.Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Revoking_grant_during_read_discards_data_and_closes_connection()
     {
         var settings = Enabled;
@@ -132,10 +151,13 @@ public sealed class ChromeBrowserTests
         public string Text { get; init; } = "original page text";
         public string Url { get; init; } = "https://example.org/";
         public Action? BeforeSnapshot { get; init; }
+        public bool FailOpen { get; init; }
         public int Resets { get; private set; }
         public ValueTask<JsonElement> CallAsync(ChromeBrowserSettings settings, string name, JsonElement args, CancellationToken token)
         {
             Calls.Add((name, args));
+            if (name == "new_page" && FailOpen)
+                return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { isError = true }));
             if (name == "take_snapshot")
             {
                 BeforeSnapshot?.Invoke();

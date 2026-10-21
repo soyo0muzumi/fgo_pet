@@ -45,3 +45,15 @@ public interface IChatProvider
 
     Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>An explicitly bound task's input ceiling, independent of the provider's context capacity.</summary>
+public interface IChatInputLimit
+{
+    int MaxInputTokens { get; }
+}
+
+/// <summary>Trusted host per-turn call policy; null removes the count ceiling, cancellation still applies.</summary>
+public interface IChatRequestLimit
+{
+    int? MaxRequestsPerTurn { get; }
+}

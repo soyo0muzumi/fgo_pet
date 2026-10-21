@@ -1,5 +1,5 @@
 // Production assets in installed Edge; synthetic host only. No model/network calls.
-// node tests/chat_composer_probe.cjs <playwright-module> <ignored-output-dir>
+// node tests/chat_composer_probe.cjs <playwright-module> <ignored-output-dir> [no-preference|reduce] [userask]
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
@@ -43,6 +43,7 @@ const server = http.createServer((request, response) => {
         history: { items: [] }
       };
       window.commands = [];
+      window.inputCommands = [];
       window.behavior = { sendDelay:0, stopDelay:0, copyDelay:0, copySuccess:true, copies:0 };
       let receive;
       window.pushFixture = () => { state.version++; receive({ data: { type: 'chat.snapshot', payload: structuredClone(state) } }); };
@@ -52,6 +53,11 @@ const server = http.createServer((request, response) => {
         postMessage(message) {
           if (!message.requestId) return;
           window.commands.push(message.type);
+          if (message.type.startsWith('chat.input.')) {
+            window.inputCommands.push(structuredClone(message));
+            Object.assign(state.conversation, { pendingInput:null, hasPendingRun:false,
+              isStreaming:message.type==='chat.input.answer', canStop:message.type==='chat.input.answer', canSend:message.type!=='chat.input.answer' });
+          }
           if (message.type === 'chat.draft') state.draft = { text: message.payload.text, revision: message.payload.revision };
           if (message.type === 'chat.send') {
             state.draft = { text: '', revision: state.draft.revision + 1 };
@@ -62,7 +68,7 @@ const server = http.createServer((request, response) => {
           const isCopy = message.type === 'chat.host' && message.payload.action === 'copyTurn';
           if (isCopy) window.behavior.copies++;
           const success = !isCopy || window.behavior.copySuccess;
-          const delay = isCopy ? window.behavior.copyDelay : message.type === 'chat.send' ? window.behavior.sendDelay : message.type === 'chat.stop' ? window.behavior.stopDelay : 0;
+          const delay = message.type.startsWith('chat.input.') ? 250 : isCopy ? window.behavior.copyDelay : message.type === 'chat.send' ? window.behavior.sendDelay : message.type === 'chat.stop' ? window.behavior.stopDelay : 0;
           setTimeout(() => receive({ data: { type: 'command.result', requestId: message.requestId, success,
             errorCode: success ? undefined : 'CHAT_HOST_ACTION_FAILED', payload: success ? { snapshot: structuredClone(state) } : undefined } }), delay);
         }
@@ -89,6 +95,68 @@ const server = http.createServer((request, response) => {
       assert.equal(after.anchor, before.anchor);
       assert.ok(Math.abs(after.offset - before.offset) < 2, JSON.stringify({ before, after }));
     };
+    if (process.argv[5] === 'userask') {
+      await page.evaluate(() => {
+        fixture.identity.conversationId='input-flow'; fixture.draft={text:'',revision:100};
+        fixture.presentation.models=[{id:'current',label:'Current',selected:true,canSelect:true},{id:'alternate',label:'Alternate',selected:false,canSelect:true}];
+        Object.assign(fixture.conversation,{isStreaming:false,canSend:false,canStop:true,hasPendingRun:true,pendingInput:{
+          runId:'synthetic-run',requestId:'synthetic-request',revision:5,expiresAt:new Date(Date.now()+60000).toISOString(),
+          questions:[{id:'single',text:'<img src=x onerror=alert(1)> Choose one',options:['A','B'],allowMultiple:false},
+            {id:'multiple',text:'Choose several',options:['C','D'],allowMultiple:true},
+            {id:'free',text:'Provide detail',options:[],allowMultiple:false}],isSubmitting:false,errorText:''}});
+        pushFixture();
+      });
+      await settle();
+      assert.equal(await page.locator('#user-input-card').count(),1,'A pending question must be visible in the production Chat DOM.');
+      assert.equal(await page.locator('#user-input-card img').count(),0);
+      assert.equal(await page.locator('#model-select option').count(),2);
+      assert.equal(await page.locator('#model-select').evaluate(n=>n.disabled),true);
+      assert.equal(await page.locator('#model-select').isDisabled(),true,'The waiting owner cannot change model during a live question.');
+      assert.equal(await page.locator('#history-new').isDisabled(),false,'New conversation must remain available to cancel the waiting task.');
+      assert.match(await page.locator('#user-input-card').textContent(), /<img src=x onerror=alert\(1\)>/);
+      await input('Keep a separate ordinary draft');
+      assert.equal(await page.locator('#send-message').isDisabled(),true);
+      await page.locator('#composer').press('Enter');
+      assert.equal(await page.evaluate(()=>commands.filter(t=>t==='chat.send').length),0);
+      await page.locator('[data-question-id="single"] input[value="1"]').check();
+      await page.locator('[data-question-id="multiple"] input[value="0"]').check();
+      await page.locator('[data-question-id="multiple"] input[value="1"]').check();
+      await page.locator('[data-question-id="free"] textarea').fill('Synthetic detail 中文');
+      await page.locator('[data-question-id="free"] textarea').focus();
+      await page.evaluate(()=>{fixture.conversation.requestStatusText='An unrelated status update';pushFixture();});
+      await settle();
+      assert.equal(await page.locator('[data-question-id="free"] textarea').inputValue(),'Synthetic detail 中文');
+      assert.equal(await page.locator('[data-question-id="single"] input[value="1"]').isChecked(),true);
+      assert.equal(await page.locator('[data-question-id="free"] textarea').evaluate(n=>document.activeElement===n),true);
+      await page.setViewportSize({width:328,height:320}); await settle();
+      assert.equal((await metrics()).horizontal,false);
+      await page.screenshot({path:path.join(output,'user-input-narrow.png')});
+      await page.locator('#user-input-submit').click();
+      await page.evaluate(()=>document.getElementById('user-input-submit').click());
+      assert.equal(await page.evaluate(()=>inputCommands.length),1);
+      assert.equal(await page.locator('#user-input-submit').isDisabled(),true);
+      const reply=await page.evaluate(()=>inputCommands[0]);
+      assert.equal(reply.type,'chat.input.answer');
+      assert.equal(reply.payload.runId,'synthetic-run'); assert.equal(reply.payload.requestId,'synthetic-request'); assert.equal(reply.payload.revision,5);
+      assert.deepEqual(reply.payload.answers,[{questionId:'single',selectedOptionIndices:[1],text:null},
+        {questionId:'multiple',selectedOptionIndices:[0,1],text:null},{questionId:'free',selectedOptionIndices:[],text:'Synthetic detail 中文'}]);
+      await page.waitForFunction(()=>!document.getElementById('user-input-card'));
+      assert.equal(await page.locator('#composer').inputValue(),'Keep a separate ordinary draft');
+      await page.evaluate(()=>{
+        fixture.conversation.pendingInput={runId:'synthetic-run',requestId:'second-request',revision:9,
+          expiresAt:new Date(Date.now()+60000).toISOString(),questions:[{id:'free',text:'New detail',options:[],allowMultiple:false}],isSubmitting:false,errorText:''};
+        Object.assign(fixture.conversation,{hasPendingRun:true,isStreaming:false,canStop:true,canSend:false});pushFixture();
+      });
+      await settle();assert.equal(await page.locator('[data-question-id="free"] textarea').inputValue(),'');
+      await page.locator('#user-input-cancel').click();
+      await page.waitForFunction(()=>!document.getElementById('user-input-card'));
+      assert.equal(await page.evaluate(()=>inputCommands[1].type),'chat.input.cancel');
+      await page.evaluate(()=>{fixture.identity.conversationId='another-conversation';pushFixture();});await settle();
+      assert.equal(await page.locator('#user-input-card').count(),0);
+      await page.screenshot({path:path.join(output,'user-input-completed.png')});
+      record('user-input.literal-content-answer-cancel-draft-snapshot-identity', 'passed');
+      assert.deepEqual(errors, []); record('session.complete','passed'); return;
+    }
     await settle(); assert.equal((await metrics()).height, 34);
     await input('First line\n第二行\nThird line');
     assert.equal((await metrics()).height, 74); assert.ok((await metrics()).gap <= 2);

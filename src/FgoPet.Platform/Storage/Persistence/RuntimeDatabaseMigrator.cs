@@ -410,6 +410,16 @@ public sealed class RuntimeDatabaseMigrator
               status TEXT NOT NULL CHECK(status IN ('pending','staged','rejected','deleted','abandoned')),
               updated_at_utc TEXT NOT NULL);
             CREATE INDEX ix_memories_scope ON memories(servant_id, project_id, is_enabled, updated_at_utc DESC);
+            """),
+        new(15, """
+            DROP TRIGGER chat_message_search_update;
+            CREATE TRIGGER chat_message_search_update AFTER UPDATE ON chat_messages BEGIN
+              INSERT INTO chat_message_search(chat_message_search,rowid,text)
+                SELECT 'delete',old.rowid,old.text WHERE old.rowid<>new.rowid OR old.text IS NOT new.text;
+              INSERT INTO chat_message_search(rowid,text)
+                SELECT new.rowid,new.text WHERE old.rowid<>new.rowid OR old.text IS NOT new.text;
+              UPDATE conversations SET context_revision=context_revision+1 WHERE conversation_id IN (old.conversation_id,new.conversation_id);
+            END;
             """)
     };
 

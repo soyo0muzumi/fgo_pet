@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO;
 using System.Net.Http.Json;
 using System.Text;
 using FgoPet.Core.Dialogue;
@@ -8,7 +9,7 @@ using Xunit;
 
 namespace FgoPet.Infrastructure.Tests.Providers;
 
-public sealed class OpenAiCompatibleChatProviderTests
+public sealed partial class OpenAiCompatibleChatProviderTests
 {
     [Theory]
     [InlineData("http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash", 0)]
@@ -61,6 +62,46 @@ public sealed class OpenAiCompatibleChatProviderTests
             "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"stop\"}]}\n\n"));
         var chunks = await StreamAll(CreateProvider(handler, "fixture"), BuildToolRequest());
         Assert.DoesNotContain(chunks, c => c.IsComplete);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Response_stream_io_is_reported_as_sent_transport_failure_without_replaying_or_fabricating_completion(bool afterDelta, bool failOpening)
+    {
+        var prefix = afterDelta ? "data: {\"choices\":[{\"delta\":{\"content\":\"synthetic partial\"}}]}\n\n" : "";
+        var handler = new RecordingHandler(_ => new(HttpStatusCode.OK) {
+            Content = failOpening ? new FailingResponseContent() : new StreamContent(new FailingResponseStream(prefix))
+        });
+        var provider = CreateProvider(handler, "synthetic-credential");
+        var observed = new List<ChatStreamChunk>();
+        var error = await Assert.ThrowsAsync<ProviderRequestException>(async () => {
+            await foreach (var chunk in provider.StreamAsync(BuildToolRequest(), default)) observed.Add(chunk);
+        });
+        Assert.Equal(ProviderFailureCategory.Network, error.Category);
+        Assert.True(error.RequestWasSent);
+        Assert.IsType<IOException>(error.InnerException);
+        Assert.DoesNotContain("SYNTHETIC_PRIVATE_TRANSPORT_DETAIL", error.Message);
+        Assert.Equal(afterDelta ? "synthetic partial" : "", string.Concat(observed.Select(c => c.TextDelta)));
+        Assert.DoesNotContain(observed, c => c.IsComplete);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancellation_wins_over_an_io_error_while_reading_the_response(bool failOpening)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var handler = new RecordingHandler(_ => new(HttpStatusCode.OK) {
+            Content = failOpening ? new FailingResponseContent(cancellation.Cancel) : new StreamContent(new FailingResponseStream("", cancellation.Cancel))
+        });
+        var provider = CreateProvider(handler, "synthetic-credential");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => {
+            await foreach (var chunk in provider.StreamAsync(BuildToolRequest(), cancellation.Token)) { }
+        });
+        Assert.Equal(1, handler.Calls);
     }
 
     [Theory]
@@ -536,14 +577,51 @@ public sealed class OpenAiCompatibleChatProviderTests
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
+        public int Calls { get; private set; }
         public string RequestLog { get; private set; } = string.Empty;
         public string? AuthorizationHeader { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Calls++;
             AuthorizationHeader = request.Headers.Authorization?.ToString();
             RequestLog = $"{request.Method} {request.RequestUri} {request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult()}";
             return Task.FromResult(responseFactory(request));
         }
+    }
+
+    private sealed class FailingResponseContent(Action? beforeFailure = null) : HttpContent
+    {
+        protected override Task<Stream> CreateContentReadStreamAsync()
+        {
+            beforeFailure?.Invoke();
+            throw new IOException("SYNTHETIC_PRIVATE_TRANSPORT_DETAIL");
+        }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => throw new NotSupportedException();
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+    }
+
+    private sealed class FailingResponseStream(string prefix, Action? beforeFailure = null) : Stream
+    {
+        private readonly MemoryStream buffered = new(Encoding.UTF8.GetBytes(prefix));
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => buffered.Length;
+        public override long Position { get => buffered.Position; set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override int Read(Span<byte> buffer)
+        {
+            var count = buffered.Read(buffer);
+            if (count > 0) return count;
+            beforeFailure?.Invoke();
+            throw new IOException("SYNTHETIC_PRIVATE_TRANSPORT_DETAIL");
+        }
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) => ValueTask.FromResult(Read(buffer.Span));
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing) { if (disposing) buffered.Dispose(); base.Dispose(disposing); }
     }
 }

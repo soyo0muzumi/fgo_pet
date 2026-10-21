@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using FgoPet.Extensibility;
 
 namespace FgoPet.Kernel.Agent;
@@ -119,6 +120,22 @@ internal sealed class AgentRunState : IModelRequestBudget, IToolExecutionIntent
             return current with { Calls = current.Calls.SetItem(current.NextCallIndex, call with { Charged = true }),
                 Snapshot = current.Snapshot with { ToolCalls = current.Snapshot.ToolCalls + 1 } };
         }, [AgentEventKind.ToolRequested], token, currentCall.Call.CallId);
+    }
+
+    public async ValueTask<ToolResult> DeferForSkillLoadAsync(CancellationToken token)
+    {
+        var result = new ToolResult(false, JsonSerializer.SerializeToElement(new { }), "TOOL_DEFERRED_FOR_SKILL_LOAD")
+            { ExecutionState = ToolExecutionState.NotExecuted };
+        var callId = CurrentCall().Call.CallId;
+        await CommitAsync(current =>
+        {
+            EnsureRunning(current);
+            var call = current.Calls[current.NextCallIndex];
+            if (!call.Charged || call.Status != AgentCallStatus.Requested) throw new AgentStateException("RUN_INVALID_TOOL_INTENT");
+            return current with { Calls = current.Calls.SetItem(current.NextCallIndex,
+                call with { Status = AgentCallStatus.NotExecuted, Result = result }), NextCallIndex = current.NextCallIndex + 1 };
+        }, [AgentEventKind.ToolFailed], token, callId, result.ErrorCode);
+        return result;
     }
 
     public ValueTask CommitStartedAsync(ToolDescriptor descriptor, CancellationToken token) => CommitAsync(current =>

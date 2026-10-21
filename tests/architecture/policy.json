@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "projects": [
     {
+      "path": "tools/integrations/token-meter-validation/FgoPet.TokenMeter.Validation.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tools/integrations/understanding-validation/FgoPet.Understanding.Validation.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "tools/integrations/persona-validation/finish-diagnostics/FinishDiagnostics.Offline.csproj",
+      "module": "validation",
+      "layer": "host",
+      "role": "host"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Understanding/Core/FgoPet.Plugin.Understanding.Core.csproj",
+      "module": "understanding",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Understanding/Desktop/FgoPet.Plugin.Understanding.Desktop.csproj",
+      "module": "understanding",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Plugin.Understanding.Tests/FgoPet.Plugin.Understanding.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj",
+      "module": "web-search",
+      "layer": "application",
+      "role": "production"
+    },
+    {
       "path": "plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj",
       "module": "desktop-context",
       "layer": "application",
@@ -445,6 +487,7 @@
     {
       "id": "capabilities-to-neutral-contracts",
       "fromModules": [
+        "web-search",
         "desktop-context",
         "browser",
         "shell",
@@ -458,7 +501,8 @@
         "memory",
         "speech",
         "agent-backend",
-        "kernel"
+        "kernel",
+        "understanding"
       ],
       "fromLayers": [
         "application",
@@ -489,7 +533,8 @@
         "conversation",
         "desktop",
         "agent-backend",
-        "rendering"
+        "rendering",
+        "understanding"
       ],
       "fromLayers": [
         "desktop",
@@ -557,7 +602,9 @@
         "shell",
         "skills",
         "browser",
-        "desktop-context"
+        "web-search",
+        "desktop-context",
+        "understanding"
       ],
       "toLayers": [
         "host",
@@ -1101,6 +1148,45 @@
       ],
       "toLayers": [
         "contract"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "understanding-to-owner-ports-and-storage",
+      "fromModules": [
+        "understanding"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "kernel",
+        "platform"
+      ],
+      "toLayers": [
+        "application",
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "understanding-presentation-to-owned-core-and-source-ports",
+      "fromModules": [
+        "understanding"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "understanding",
+        "kernel"
+      ],
+      "toLayers": [
+        "application"
       ],
       "kinds": [
         "compile"

@@ -16,6 +16,45 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class ChatWebSessionTests : IDisposable
 {
+    [Fact]
+    public async Task User_input_bridge_rejects_escaped_answer_over_64kib()
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var identity = session.ReadSnapshot().Identity;
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            sessionId = identity.SessionId, servantId = identity.ServantId, conversationId = identity.ConversationId,
+            runId = "run", requestId = "question", revision = 1,
+            answers = new[] { new { questionId = "free", selectedOptionIndices = Array.Empty<int>(), text = new string('中', 11987) } },
+        });
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(payload.GetRawText()) > 65536);
+        var rejected = await session.HandleCommandAsync(new("chat.input.answer", "fixture", payload), default);
+        Assert.False(rejected.Success);
+        Assert.Equal("CHAT_COMMAND_INVALID", rejected.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("\"answers\":[]")]
+    [InlineData("\"answers\":{}")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[\"0\"],\"text\":null}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[2147483648],\"text\":null}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":true}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"\\ud800\"}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"answer\",\"authorize\":true}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"a\",\"text\":\"b\"}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"answer\"}],\"scope\":\"untrusted\"")]
+    public async Task User_input_bridge_rejects_malformed_closed_answer_schema(string fields)
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var identity = session.ReadSnapshot().Identity;
+        var payload = Identity(identity).TrimEnd('}') + ",\"runId\":\"run\",\"requestId\":\"request\",\"revision\":1," + fields + "}";
+        var rejected = await session.HandleCommandAsync(Message("chat.input.answer", payload), default);
+        Assert.False(rejected.Success);
+        Assert.Equal("CHAT_COMMAND_INVALID", rejected.ErrorCode);
+    }
+
     [Theory]
     [InlineData("chooseWorkspace", ChatWebHostAction.ChooseWorkspace)]
     [InlineData("clearWorkspace", ChatWebHostAction.ClearWorkspace)]

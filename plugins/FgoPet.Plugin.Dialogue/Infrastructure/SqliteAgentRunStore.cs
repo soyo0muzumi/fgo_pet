@@ -24,7 +24,8 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
     private readonly object _schemaGate = new();
     private bool _schemaReady;
     private static readonly JsonSerializerOptions Json = new() {
-        MaxDepth = 48, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
+        MaxDepth = 48, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        Converters = { new PreservedJsonElementConverter() } };
     private static readonly Migration[] Migrations = [new(1, """
         CREATE TABLE agent_runs(
           run_key TEXT PRIMARY KEY,
@@ -395,6 +396,27 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         binding.Identity == state.Snapshot.Identity && binding.StepNumber == state.Waiting!.StepNumber &&
         binding.CallId == state.Waiting.CallId && binding.RequestId == state.Waiting.RequestId &&
         binding.WaitingRevision == state.Waiting.Revision && binding.ExpiresAt == state.Waiting.ExpiresAt;
+
+    // Payloads are bounded before encoding. Preserve that validated JSON representation:
+    // re-escaping CJK or supplementary Unicode can otherwise exceed its byte cap on readback.
+    private sealed class PreservedJsonElementConverter : JsonConverter<JsonElement>
+    {
+        public override JsonElement Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            return document.RootElement.Clone();
+        }
+        public override void Write(Utf8JsonWriter writer, JsonElement value, JsonSerializerOptions options)
+        {
+            var remainingDepth = options.MaxDepth - writer.CurrentDepth;
+            if (remainingDepth < 0 || remainingDepth == 0 && value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                throw new JsonException();
+            var raw = value.GetRawText();
+            var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(raw), new JsonReaderOptions { MaxDepth = Math.Max(1, remainingDepth) });
+            while (reader.Read()) { }
+            writer.WriteRawValue(raw, skipInputValidation: false);
+        }
+    }
 
     private static bool Id(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 128 && !value.Any(char.IsControl);
     private static bool Hash(string value, int length) => value.Length == length && value.All(c => c is >= 'A' and <= 'F' or >= '0' and <= '9');

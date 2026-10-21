@@ -12,6 +12,8 @@ public static class ChatRequestPayloadWriter
 
     private static readonly string OfficialOpenAiEndpoint = ModelRouteKey.From(
         new ModelConnectionSettings("openai", "https://api.openai.com/v1", "fixture")).EndpointKey;
+    private static readonly string LocalBuddyEndpoint = ModelRouteKey.From(
+        new ModelConnectionSettings("custom-openai-compatible", "http://127.0.0.1:8326/v1", "fixture")).EndpointKey;
     private static readonly HashSet<string> OfficialDeepSeekEndpoints = new(StringComparer.Ordinal)
     {
         ModelRouteKey.From(new("deepseek", "https://api.deepseek.com", "fixture")).EndpointKey,
@@ -26,16 +28,22 @@ public static class ChatRequestPayloadWriter
         if (request.MaxOutputTokens is int output)
             payload[officialOpenAi ? "max_completion_tokens" : "max_tokens"] = output;
         if (officialOpenAi) payload["stream_options"] = new { include_usage = true };
+        // This gateway advertises low/high/max rather than disabled thinking. Its default
+        // high effort exhausted the existing combined review/classification deadline.
+        if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&
+            route.ModelId == "buddy/deepseek-v4.1-flash" &&
+            request.Metadata.TryGetValue("fgo_auxiliary", out var buddyPurpose) && buddyPurpose == "understanding_review")
+            payload["reasoning_effort"] = "low";
         // DeepSeek defaults to thinking, which can exhaust a bounded auxiliary response
         // before any JSON/summary content is emitted. Primary chats retain provider defaults.
         // Only application-created metadata opts in; never infer purpose from prompt text.
         if (route.ProviderId == "deepseek" && OfficialDeepSeekEndpoints.Contains(route.EndpointKey) &&
             route.ModelId is "deepseek-flash" or "deepseek-v4-pro" &&
             request.Metadata.TryGetValue("fgo_auxiliary", out var purpose) &&
-            purpose is "history_recall" or "context_summary" or "memory_extraction")
+            purpose is "history_recall" or "context_summary" or "memory_extraction" or "understanding_review")
         {
             payload["thinking"] = new { type = "disabled" };
-            if (purpose is "history_recall" or "memory_extraction")
+            if (purpose is "history_recall" or "memory_extraction" or "understanding_review")
                 payload["response_format"] = new { type = "json_object" };
         }
         return JsonSerializer.Serialize(payload, Options);

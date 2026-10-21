@@ -26,6 +26,29 @@ public sealed class PersonaManifestReaderTests
         Assert.Null(PersonaManifestReader.ReadOptional(root, "800100"));
     }
 
+    [Fact]
+    public void Repository_persona_loads_without_hash_fallback()
+    {
+        var root = Path.Combine(RepositoryRoot(), "content", "packs", "official.mash");
+
+        var persona = PersonaManifestReader.ReadOptional(root, "mash_kyrielight");
+
+        Assert.NotNull(persona);
+        Assert.Equal("official.mash", persona.PackageId);
+        Assert.False(string.IsNullOrWhiteSpace(persona.CoreText));
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "FgoPet.sln"))) return directory.FullName;
+            directory = directory.Parent;
+        }
+        throw new DirectoryNotFoundException("Cannot locate the repository containing FgoPet.sln.");
+    }
+
     private static string Fixture(string name) =>
         Path.Combine(AppContext.BaseDirectory, "fixtures", "packs", name);
 }

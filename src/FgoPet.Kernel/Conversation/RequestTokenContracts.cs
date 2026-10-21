@@ -1,6 +1,6 @@
 namespace FgoPet.Core.Dialogue;
 
-public enum TokenCountKind { Estimated, ProviderUsage }
+public enum TokenCountKind { Estimated, ProviderUsage, LocalReferenceEstimate }
 public sealed record ChatUsage
 {
     public ChatUsage(int inputTokens, int outputTokens)
@@ -12,7 +12,10 @@ public sealed record ChatUsage
     public int InputTokens { get; }
     public int OutputTokens { get; }
 }
-public sealed record TokenMeasurement(int InputTokens, TokenCountKind Kind, string Fingerprint);
+public sealed record TokenMeasurement(int InputTokens, TokenCountKind Kind, string Fingerprint)
+{
+    public string? ReferencePolicyHash { get; init; }
+}
 public interface IRequestTokenMeter
 {
     TokenMeasurement Measure(ModelRouteKey route, ChatRequest request);
