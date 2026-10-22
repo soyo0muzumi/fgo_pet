@@ -13,7 +13,8 @@ namespace FgoPet.Understanding.Desktop;
 
 public static class UnderstandingRegistration
 {
-    public static IServiceCollection AddUnderstandingCapability(this IServiceCollection services)
+    public static IServiceCollection AddUnderstandingCapability(this IServiceCollection services,
+        Func<IServiceProvider, ConversationScope, UnderstandingPagePresentation>? presentation = null)
     {
         services.TryAddSingleton<IReviewBudgetAccess,UnavailableReviewBudget>();
         services.AddSingleton(provider => new UnderstandingService(provider.GetRequiredService<RuntimeDatabase>(),
@@ -37,7 +38,22 @@ public static class UnderstandingRegistration
                 _ => throw new InvalidOperationException("SETTINGS_USE_WEB_ROOT"), "持续理解", "复核派生理解及其适用条件。", "能力", ["理解", "复核"], 145))
             .AddSingleton<ISettingsWebPage>(p => new UnderstandingWebPage(p.GetRequiredService<UnderstandingService>(),
                 () => p.GetRequiredService<IConversationScopeAuthority>().Current,
-                p.GetRequiredService<IDialogueContextLifetime>(), p.GetRequiredService<IExperienceTimeline>()));
+                p.GetRequiredService<IDialogueContextLifetime>(), p.GetRequiredService<IExperienceTimeline>(),
+                scope =>
+                {
+                    var display = presentation?.Invoke(p, scope) ?? new UnderstandingPagePresentation(ProjectName:
+                        scope.ProjectId is null ? "Across this companion's conversations" : "Current project");
+                    var connection = p.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection;
+                    var recipient = connection is not null && Uri.TryCreate(connection.BaseUrl, UriKind.Absolute, out var endpoint)
+                        ? $"{connection.ModelId} via {endpoint.Host}:{endpoint.Port} ({connection.ProviderId})"
+                        : "No model configured";
+                    if (connection?.ProviderId == "custom-openai-compatible" && connection.ModelId == "buddy/deepseek-v4.1-flash" &&
+                        Uri.TryCreate(connection.BaseUrl, UriKind.Absolute, out var buddy) && buddy.Host == "127.0.0.1" && buddy.Port == 8326 &&
+                        buddy.AbsolutePath.TrimEnd('/') == "/v1")
+                        recipient += " → Tencent CodeBuddy CN; local forwarding may write or re-encode attachments";
+                    // The default host has no review budget. This page never dispatches a review.
+                    return display with { ModelRecipient = recipient, AutomaticReviewAvailable = false };
+                }));
         return services;
     }
 }

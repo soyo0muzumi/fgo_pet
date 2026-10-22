@@ -119,6 +119,9 @@ internal static class ChatWebCommandReader
                 break;
             case "chat.input.answer":
             case "chat.input.cancel":
+            case "chat.approval.review":
+            case "chat.approval.deny":
+            case "chat.approval.cancel":
                 var inputFields = new List<string> { "sessionId", "servantId", "conversationId", "runId", "requestId", "revision" };
                 if (message.Type == "chat.input.answer") inputFields.Add("answers");
                 if (!Only(fields, inputFields.ToArray())

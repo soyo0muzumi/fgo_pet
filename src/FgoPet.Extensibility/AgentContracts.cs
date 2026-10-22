@@ -10,7 +10,11 @@ public sealed record ToolExecutionContext(string RunId, int StepNumber, string C
 }
 
 /// <summary>Owner-frozen business draft. Model arguments and generic policy cannot manufacture confirmation.</summary>
-public sealed record ToolBusinessConfirmation(string DraftId, int Version, string Fingerprint);
+public sealed record ToolBusinessConfirmation(string DraftId, int Version, string Fingerprint)
+{
+    /// <summary>Owner-frozen plain data for the human approval view, never instructions or authorization.</summary>
+    public string? PlainTextSummary { get; init; }
+}
 public interface IToolBusinessConfirmationProvider
 {
     ToolBusinessConfirmation PrepareConfirmation(ToolInvocation invocation, CancellationToken token);

@@ -1044,7 +1044,7 @@ public sealed partial class NativeConversationIntegrationTests
             TestSettingsStore? settings, bool enableSummary, IConversationSummarizer? summarizer,
             IRequestTokenMeter? tokenMeter, IAgentContextProvider? context, ILogger<ConversationOrchestrator>? logger, bool questions, TimeProvider? time,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator,
-            IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools,
+            IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools, IFgoPetPlugin? approvalPlugin,
             Action<ContextBudgetDiagnostic>? contextDiagnostics)
         {
             Directory.CreateDirectory(directory);
@@ -1057,12 +1057,16 @@ public sealed partial class NativeConversationIntegrationTests
             Settings = settings ?? TestSettingsStore.Create();
 
             var plugin = new TestPlugin(tool, observer, context, extraTools);
-            var catalog = skills ? PluginCatalog.Create([plugin, new FgoPet.Plugin.Skills.SkillsPlugin()]) : PluginCatalog.Create([plugin]);
+            var catalog = PluginCatalog.Create([plugin,
+                .. (skills ? new IFgoPetPlugin[] { new FgoPet.Plugin.Skills.SkillsPlugin() } : []),
+                .. (approvalPlugin is null ? Array.Empty<IFgoPetPlugin>() : [approvalPlugin])]);
             plugins = new(catalog);
             nativeRuntime = new(Runs, new ToolRegistry(catalog, plugins), new NativeAgentExtensions(
                 Skills: skills ? new SkillRegistry(catalog, plugins, new ToolRegistry(catalog, plugins)) : null, Context: new(catalog, plugins),
                 Questions: questions ? new UserInputBroker(clock) : null,
-                ContextDiagnostics: contextDiagnostics), clock);
+                Approvals: approvalPlugin is null ? null : new ApprovalBroker(clock, TimeSpan.FromMinutes(5)),
+                ContextDiagnostics: contextDiagnostics), clock,
+                policy: approvalPlugin is null ? null : new NativeSceneToolPolicy());
             var activation = plugins.StartAsync(default).GetAwaiter().GetResult();
             if (!activation.Succeeded) throw new InvalidOperationException("TEST_PLUGIN_ACTIVATION_FAILED");
             var capabilities = new ConversationCapabilityRouter(catalog, plugins);
@@ -1098,10 +1102,10 @@ public sealed partial class NativeConversationIntegrationTests
             ILogger<ConversationOrchestrator>? logger = null, bool questions = false, TimeProvider? time = null,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator = null,
             IConversationContentResolver? contentResolver = null, bool useNative = true, bool skills = false,
-            IReadOnlyList<IToolProvider>? extraTools = null,
+            IReadOnlyList<IToolProvider>? extraTools = null, IFgoPetPlugin? approvalPlugin = null,
             Action<ContextBudgetDiagnostic>? contextDiagnostics = null)
         {
-            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, contextDiagnostics));
+            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, approvalPlugin, contextDiagnostics));
         }
 
         public long CountRows(string table)

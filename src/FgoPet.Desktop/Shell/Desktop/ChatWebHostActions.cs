@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using FgoPet.App.Settings;
@@ -28,6 +29,7 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
     private readonly IBrowserVisualAccess? _browserImages;
     private string? _avatarPath, _avatar;
     private bool _disposed;
+    private NativeApprovalDialog? _approvalDialog;
     public event EventHandler? Changed;
     public async ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token)
     {
@@ -93,6 +95,36 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
                 _selectedImage?.Label is not null && !streaming && !_vm.Conversation.HasPendingRun,
                 _browserImages?.IsAvailable == true && (_browserImages.Enabled || (!streaming && !_vm.Conversation.HasPendingRun))),
             _localWorkspace?.Label, _selectedImage?.Label, _selectedImage?.Disclosure ?? "");
+    }
+    public ValueTask<ChatApprovalDecision> ReviewApprovalAsync(ChatWebApproval approval, CancellationToken cancellationToken)
+    {
+        if (_disposed || cancellationToken.IsCancellationRequested || !_window.IsVisible
+            || _window.Dispatcher.HasShutdownStarted || !_window.Dispatcher.CheckAccess())
+            return ValueTask.FromResult(ChatApprovalDecision.Cancel);
+        var dialog = new NativeApprovalDialog(approval) { Owner = _window };
+        _approvalDialog = dialog;
+        void CloseInvalidReview(object? sender, EventArgs args) { if (!_window.IsVisible || _disposed) dialog.Close(); }
+        void OwnerClosed(object? sender, EventArgs args) => dialog.Close();
+        _window.IsVisibleChanged += VisibilityChanged;
+        _window.Closed += OwnerClosed;
+        void VisibilityChanged(object sender, DependencyPropertyChangedEventArgs args) => CloseInvalidReview(sender, EventArgs.Empty);
+        using var registration = cancellationToken.Register(() =>
+        {
+            if (!dialog.Dispatcher.HasShutdownStarted)
+                _ = dialog.Dispatcher.BeginInvoke(new Action(() => dialog.Close()));
+        });
+        try
+        {
+            dialog.ShowDialog();
+            return ValueTask.FromResult(!_disposed && _window.IsVisible && !cancellationToken.IsCancellationRequested
+                ? dialog.Decision : ChatApprovalDecision.Cancel);
+        }
+        finally
+        {
+            if (ReferenceEquals(_approvalDialog, dialog)) _approvalDialog = null;
+            _window.IsVisibleChanged -= VisibilityChanged;
+            _window.Closed -= OwnerClosed;
+        }
     }
 
     public async ValueTask<WebSurfaceCommandResult> HandleAsync(ChatWebHostRequest request, CancellationToken cancellationToken)
@@ -200,9 +232,59 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
     public void Dispose()
     {
         if (_disposed) return; _disposed = true;
+        _approvalDialog?.Close();
         _vm.PropertyChanged -= OnChanged; _vm.ModelSelection.PropertyChanged -= OnChanged;
         _vm.ProjectSelection.PropertyChanged -= OnChanged;
         if (_localWorkspace is not null) _localWorkspace.Changed -= OnChanged;
         if (_selectedImage is not null) _selectedImage.Changed -= OnChanged;
+    }
+}
+
+/// <summary>Native-only user decision. Model text is inert and the default is always refusal.</summary>
+internal sealed class NativeApprovalDialog : Window
+{
+    public ChatApprovalDecision Decision { get; private set; } = ChatApprovalDecision.Cancel;
+    internal TextBox Details { get; }
+    internal TextBlock Summary { get; }
+    internal Expander DetailsSection { get; }
+    internal Button AllowButton { get; }
+    internal Button DenyButton { get; }
+    internal Button CancelButton { get; }
+    public NativeApprovalDialog(ChatWebApproval approval)
+    {
+        Title = "Review operation";
+        Width = 620; Height = 560; MinWidth = 360; MinHeight = 320;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        ShowInTaskbar = false;
+        var panel = new DockPanel { Margin = new Thickness(20) };
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
+        AllowButton = new Button { Content = "Allow once", Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(4) };
+        DenyButton = new Button { Content = "Deny operation", IsDefault = true, Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(4) };
+        CancelButton = new Button { Content = "Cancel task", IsCancel = true, Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(4) };
+        AllowButton.Click += (_, _) => { Decision = ChatApprovalDecision.Allow; Close(); };
+        DenyButton.Click += (_, _) => { Decision = ChatApprovalDecision.Deny; Close(); };
+        CancelButton.Click += (_, _) => { Decision = ChatApprovalDecision.Cancel; Close(); };
+        actions.Children.Add(AllowButton); actions.Children.Add(DenyButton); actions.Children.Add(CancelButton);
+        DockPanel.SetDock(actions, Dock.Bottom); panel.Children.Add(actions);
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock { Text = approval.ActionTitle ?? "Review proposed operation", FontSize = 21,
+            FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
+        Summary = new TextBlock { Text = approval.PlainTextSummary ?? "A concise summary is unavailable. Read the complete frozen details below.",
+            TextWrapping = TextWrapping.Wrap, FontSize = 14, Margin = new Thickness(0, 0, 0, 14) };
+        body.Children.Add(Summary);
+        body.Children.Add(new TextBlock { Text = $"Confirm before {approval.ExpiresAt.UtcDateTime:yyyy-MM-dd HH:mm:ss} UTC",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+        body.Children.Add(new TextBlock { Text = "Allow once applies only to this exact operation and version. Deny skips this operation; Cancel task ends the request. Closing this window cancels the task.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
+        Details = new TextBox { Text = approval.PlainTextDetails, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = 340, Margin = new Thickness(0, 8, 0, 0) };
+        DetailsSection = new Expander { Header = "Full frozen details & arguments", Content = Details,
+            IsExpanded = string.IsNullOrWhiteSpace(approval.PlainTextSummary) };
+        body.Children.Add(DetailsSection);
+        panel.Children.Add(new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        Content = panel;
+        Loaded += (_, _) => DenyButton.Focus();
     }
 }

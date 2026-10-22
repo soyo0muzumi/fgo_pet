@@ -26,8 +26,8 @@
   "settings.companionSub": "Character · presence · voice",
   "settings.companionLead": "Character, desktop presence, and expression.",
   "settings.services": "Services",
-  "settings.servicesSub": "Model · voice service",
-  "settings.servicesLead": "Services for conversation and speech.",
+  "settings.servicesSub": "Model · voice · QQ",
+  "settings.servicesLead": "Services for conversation, speech, and mobile chat.",
   "settings.app": "App",
   "settings.appSub": "Everyday preferences",
   "settings.appLead": "Make Margin feel at home on your desktop.",
@@ -45,9 +45,11 @@
   "settings.page.RolePackages": "Characters",
   "settings.page.ModelConnection": "Model",
   "settings.page.Speech": "Voice Service",
+  "settings.page.Qq": "QQ",
   "settings.page.UserProfile": "Your name",
   "settings.page.Theme": "Appearance",
   "settings.page.ConversationMemory": "Conversation memory",
+  "settings.page.Understanding": "Understanding",
   "settings.page.Privacy": "Local data & backups",
   "settings.page.AgentConnection": "Access settings"
 };

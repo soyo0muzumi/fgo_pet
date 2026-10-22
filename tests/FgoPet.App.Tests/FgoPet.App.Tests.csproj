@@ -41,6 +41,8 @@
     <ProjectReference Include="../../src/FgoPet.Desktop/Shell/FgoPet.DesktopShell.csproj" />
     <ProjectReference Include="../../src/FgoPet.Desktop/Settings/FgoPet.SettingsHost.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Dialogue/FgoPet.Dialogue.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/FgoPet.Plugin.Qq.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/Desktop/FgoPet.Plugin.Qq.Desktop.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Focus/Core/FgoPet.Plugin.Focus.Core.csproj" />
     <ProjectReference Include="../../src/FgoPet.Desktop/Contracts/FgoPet.HostContracts.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Memory/Desktop/FgoPet.Memory.csproj" />

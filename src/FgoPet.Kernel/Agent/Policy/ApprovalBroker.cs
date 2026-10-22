@@ -30,7 +30,8 @@ public sealed class ApprovalBroker
                 !resource.Fingerprint.All(c => c is >= 'A' and <= 'F' or >= '0' and <= '9')))) throw InvalidApproval();
         if (businessConfirmation is not null && (!InteractionValidation.BoundedId(businessConfirmation.DraftId, 128) ||
             businessConfirmation.Version < 1 || businessConfirmation.Fingerprint is not { Length: 64 } ||
-            !businessConfirmation.Fingerprint.All(c => c is >= 'A' and <= 'F' or >= '0' and <= '9'))) throw InvalidApproval();
+            !businessConfirmation.Fingerprint.All(c => c is >= 'A' and <= 'F' or >= '0' and <= '9') ||
+            !ValidSummary(businessConfirmation.PlainTextSummary))) throw InvalidApproval();
         var normalized = CanonicalObject(arguments);
         var schema = CanonicalObject(tool.Descriptor.Parameters);
         if (!ToolArgumentsValidator.Validate(tool.Descriptor.Parameters, arguments, out _)) throw InvalidApproval();
@@ -44,6 +45,23 @@ public sealed class ApprovalBroker
         InteractionValidation.Match(request.Binding, reply.RunId, reply.RequestId, reply.ExpectedRevision, scope, _time);
         if (!Enum.IsDefined(reply.Decision)) throw new AgentStateException("RUN_INVALID_APPROVAL_REPLY");
         return reply.Decision;
+    }
+
+    private static bool ValidSummary(string? value)
+    {
+        if (value is null) return true;
+        if (value.Length is < 1 or > 4096) return false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var c = value[index];
+            if (char.IsControl(c) && c is not ('\n' or '\r' or '\t')) return false;
+            if (char.IsHighSurrogate(c))
+            {
+                if (++index >= value.Length || !char.IsLowSurrogate(value[index])) return false;
+            }
+            else if (char.IsLowSurrogate(c)) return false;
+        }
+        return true;
     }
 
     private static string CanonicalObject(JsonElement value)

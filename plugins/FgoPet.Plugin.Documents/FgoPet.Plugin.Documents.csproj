@@ -7,9 +7,13 @@
     <MSBuild Projects="Parser/FgoPet.DocumentParser.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="_DocumentParserTarget" />
     </MSBuild>
-    <PropertyGroup><_DocumentParserDirectory>@(_DocumentParserTarget->'%(RootDir)%(Directory)')</_DocumentParserDirectory></PropertyGroup>
+    <PropertyGroup>
+      <_DocumentParserDirectory>@(_DocumentParserTarget->'%(RootDir)%(Directory)')</_DocumentParserDirectory>
+      <!-- The parser is net8.0: native apphost suffix follows its runtime, not this library's Windows TFM. -->
+      <_DocumentParserExecutableExtension Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">.exe</_DocumentParserExecutableExtension>
+    </PropertyGroup>
     <ItemGroup>
-      <_DocumentParserAppHost Include="$(_DocumentParserDirectory)FgoPet.DocumentParser.exe" />
+      <_DocumentParserAppHost Include="$(_DocumentParserDirectory)FgoPet.DocumentParser$(_DocumentParserExecutableExtension)" />
       <_DocumentParserPayload Include="$(_DocumentParserDirectory)FgoPet.DocumentParser.dll;$(_DocumentParserDirectory)FgoPet.DocumentParser.deps.json;$(_DocumentParserDirectory)FgoPet.DocumentParser.runtimeconfig.json;$(_DocumentParserDirectory)UglyToad.PdfPig*.dll" />
       <ContentWithTargetPath Include="@(_DocumentParserPayload)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="%(Filename)%(Extension)" />
       <ContentWithTargetPath Include="@(_DocumentParserAppHost)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" TargetPath="%(Filename)%(Extension)" />

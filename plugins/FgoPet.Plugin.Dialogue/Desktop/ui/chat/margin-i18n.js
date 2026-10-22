@@ -1,6 +1,15 @@
 (() => {
   "use strict";
   const english = {
+  "chat.approval.title": "Review a proposed operation",
+  "chat.approval.note": "Review opens the trusted desktop confirmation. Deny skips this operation; Cancel task ends the request. Nothing has been approved.",
+  "chat.approval.expires": "Confirm before:",
+  "chat.approval.details": "Full frozen details & arguments",
+  "chat.approval.cancel": "Cancel task",
+  "chat.approval.review": "Review operation…",
+  "chat.approval.deny": "Deny operation",
+  "chat.approval.changed": "This confirmation is no longer available or is already being reviewed.",
+  "chat.approval.expired": "This confirmation expired. Start a new request.",
   "chat.open.this.page.in.fgo.pet": "Open this page in FGO Pet.",
   "chat.chat.could.not.complete.this.action.try.again.later": "Chat could not complete this action. Try again later.",
   "chat.this.conversation.has.changed.please.try.again": "This conversation has changed. Please try again.",

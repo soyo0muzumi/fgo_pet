@@ -28,6 +28,9 @@
       <Link>modules\dialogue\Contracts\ChatWebHostContracts.cs</Link>
     </Compile>
     <Compile Include="Contracts\ChatWorkspaceSelection.cs" />
+    <Compile Include="Contracts/ExternalConversationContracts.cs" />
+    <Compile Include="Desktop/ExternalConversationGateway.cs" />
+    <Compile Include="Desktop/ConversationViewModel.External.cs" />
     <Compile Include="Contracts/ChatImageSelection.cs" />
     <Compile Include="Desktop/ChatImageSelection.cs" />
     <Compile Include="Desktop/ChatImageTransfer.cs" />
@@ -75,7 +78,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Application/ModelConnectionRegistration.cs" />
+    <Compile Include="Application/NativeSceneToolPolicy.cs" />
     <Compile Include="Application/ChatWebRegistration.cs" />
+    <Compile Include="Application/ExternalConversationRegistration.cs" />
     <Compile Include="Infrastructure/SqliteAgentRunStore.cs" />
     <Compile Include="Infrastructure/SqliteAgentFinalDeliveryStore.cs" />
     <Compile Include="Application/NativeAgentLifecyclePlugin.cs" />

@@ -62,11 +62,14 @@ public static class ModelConnectionRegistration
         .AddSingleton<SkillRegistry>()
         .AddSingleton<AgentContextAssembler>()
         .AddSingleton(provider => new UserInputBroker(provider.GetRequiredService<TimeProvider>()))
+        .AddSingleton(provider => new ApprovalBroker(provider.GetRequiredService<TimeProvider>(), TimeSpan.FromMinutes(5)))
+        .AddSingleton<NativeSceneToolPolicy>()
         .AddSingleton(provider => new NativeConversationRuntime(provider.GetRequiredService<IAgentRunStore>(),
             provider.GetRequiredService<ToolRegistry>(), new(provider.GetRequiredService<SkillRegistry>(),
                 provider.GetRequiredService<AgentContextAssembler>(), provider.GetRequiredService<UserInputBroker>(),
-                ContextDiagnostics:
+                provider.GetRequiredService<ApprovalBroker>(), ContextDiagnostics:
                     provider.GetService<NativeRunDiagnosticLog>() is { } diagnostics ? diagnostics.RecordContext : null), provider.GetRequiredService<TimeProvider>(),
+            policy: provider.GetRequiredService<NativeSceneToolPolicy>(),
             admissionAvailable: () => provider.GetRequiredService<NativeAgentAvailability>().IsReady,
             diagnostics: (snapshot, stage, persisted) => provider.GetService<NativeRunDiagnosticLog>()?.Record(snapshot, stage, persisted),
             releaseAttachments: runId => provider.GetRequiredService<BrowserImageStore>().Release(runId)))

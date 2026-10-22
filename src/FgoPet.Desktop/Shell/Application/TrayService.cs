@@ -11,6 +11,7 @@ namespace FgoPet.App.Tray;
 public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _icon;
+    private bool _disposed;
 
     public TrayService()
     {
@@ -47,8 +48,20 @@ public sealed class TrayService : IDisposable
 
     internal void HandleDoubleClick() => RestoreRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Submit a local Windows notification. This is not a receipt that a user saw it.</summary>
+    public bool ShowNotification(string title, string message)
+    {
+        if (_disposed || !_icon.Visible) return false;
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 63 || string.IsNullOrWhiteSpace(message) || message.Length > 255)
+            throw new ArgumentException("Invalid notification content.");
+        _icon.ShowBalloonTip(10_000, title, message, ToolTipIcon.Info);
+        return true;
+    }
+
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _icon.Visible = false;
         _icon.ContextMenuStrip?.Dispose();
         _icon.Dispose();

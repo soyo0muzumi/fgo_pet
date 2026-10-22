@@ -65,9 +65,21 @@ Native conversations can use the current system clock and reuse available tool e
 
 Long-term memory candidates show their evidence and scope and require approval. General servant preferences can be recalled across projects; project memories stay within that project. Corrections select an exact memory and version, and edits, disabling and deletion take effect on subsequent requests. Deleting a source conversation preserves approved memories and marks their source unavailable. Storage permits 200 approved items / 40,000 characters per servant, including disabled items; existing data is never evicted to make room. Budgeting, compaction and memory mechanisms draw on the pinned MIT sources in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
+### Understanding review (development branch)
+
+Settings → App → Understanding separates saved interpretations, items waiting for approval and archived items. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Conversation use has a separate explicit choice. Automatic accumulation is currently unavailable in the default host; opening this page sends no model request or grants permissions.
+
+### Local scene tools (development branch)
+
+Native conversations can inspect a Todo's complete details with `todo.get` and resume the exact paused Focus session with `focus.resume`, retaining the existing owners. Only `focus.resume`, `reminder.create` and `reminder.cancel` use the new per-call native confirmation (default deny); other native Command tools stay denied.
+
+One-shot local reminders require confirmation of the exact message, date/time and time zone. They persist across restarts, notify through the Windows tray while the app is running, and catch up at most 24 hours late on the next start; older reminders expire. The app does not schedule notifications while closed. Submitted, failed and unknown outcomes remain distinct, and unknown outcomes are not automatically retried. Deleting the source conversation removes its reminders; restoring a backup does not re-arm historical reminders.
+
 For image reading, choose, paste or drop one local PNG/JPEG into the chat composer, then Send. Selection alone does not send it. Supported connections are the disclosed official DeepSeek `deepseek-flash` and OpenAI `gpt-4.1-mini` routes, plus the exact local Buddy subscription route (`custom-openai-compatible`, `http://127.0.0.1:8326/v1`, `buddy/deepseek-v4.1-flash`) forwarded to Tencent CodeBuddy CN. Other routes remain disabled. Buddy may save or re-encode attachments, retry requests or switch accounts; the app does not impose a shared upstream request cap. Stop/timeouts cannot recall images already sent. Within FGO Pet, selection expires and is cleared on cancellation or scope/model changes, and image bytes are not saved in history or checkpoints. The Chat menu also offers a separate, default-off webpage-image permission: after reading a page, the model can request one rendered element or viewport capture per run. This does not grant desktop capture or background file access, and low-detail images carry no OCR accuracy guarantee. Native paste and production UI-to-service image quality require separate acceptance from automated protocol and isolated WebView2 drop tests.
 
 ### Agent
+
+A development preview of text-only QQ private chat is available under Settings → Services → QQ, disabled by default. It links one locally paired QQ account to one existing desktop conversation. Unsent desktop images stay private to the desktop send; action approvals remain on the desktop. Completing a clarification or approval there does not automatically send its final answer to QQ. Real QQ account and Windows UI acceptance remain pending; see the [QQ module guide](plugins/FgoPet.Plugin.Qq/README.md).
 
 Under **Settings → Capabilities → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 

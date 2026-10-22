@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FgoPet.App.Dialogue;
 using FgoPet.App.Services;
@@ -14,7 +15,7 @@ public static class NativeTodoTools
         TodoProposalService proposals, TimeProvider time)
     {
         var workflow = new Workflow(todos, repository, proposals, time);
-        return [new Reader(todos), new Command("todo.create", workflow), new Command("todo.update", workflow), new Command("todo.complete", workflow)];
+        return [new Reader(todos), new DetailReader(todos), new Command("todo.create", workflow), new Command("todo.update", workflow), new Command("todo.complete", workflow)];
     }
     private static ToolResult Failure(string code, ToolExecutionState state = ToolExecutionState.NotExecuted) =>
         new(false, JsonSerializer.SerializeToElement(new { }), code) { ExecutionState = state };
@@ -39,6 +40,52 @@ public static class NativeTodoTools
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception) { return ValueTask.FromResult(Failure("TODO_UNAVAILABLE")); }
+        }
+    }
+    private sealed class DetailReader(TodoApplicationService todos) : IToolProvider
+    {
+        private const int MaxArgumentsBytes = 4096;
+        private const int MaxDetailBytes = 64 * 1024;
+        public ToolDescriptor Descriptor { get; } = new("todo.get", "Read one real local Todo's complete details, checklist, and exact item version.",
+            """{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":128}},"required":["id"],"additionalProperties":false}""", ToolEffect.ReadOnly);
+        public ValueTask<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                if (!TryReadId(invocation.Arguments, out var id)) return ValueTask.FromResult(Failure("TOOL_INVALID_ARGUMENTS"));
+                var item = todos.Get(id);
+                token.ThrowIfCancellationRequested();
+                if (item is null) return ValueTask.FromResult(Failure("TODO_NOT_FOUND"));
+                var payload = JsonSerializer.SerializeToElement(new
+                {
+                    id = item.Id, title = item.Title, description = item.Description,
+                    priority = item.Priority.ToString().ToLowerInvariant(), status = item.Status.ToString().ToLowerInvariant(),
+                    version = TodoItemVersion.Of(item), dueAt = item.DueAt, createdAt = item.CreatedAt,
+                    updatedAt = item.UpdatedAt, completedAt = item.CompletedAt,
+                    steps = item.Steps.Select(step => new { id = step.Id, title = step.Title, order = step.Order, isCompleted = step.IsCompleted }),
+                });
+                token.ThrowIfCancellationRequested();
+                if (Encoding.UTF8.GetByteCount(payload.GetRawText()) > MaxDetailBytes)
+                    return ValueTask.FromResult(Failure("TOOL_OUTPUT_TOO_LARGE"));
+                return ValueTask.FromResult(new ToolResult(true, payload));
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) { return ValueTask.FromResult(Failure("TODO_UNAVAILABLE")); }
+        }
+        private static bool TryReadId(JsonElement arguments, out string id)
+        {
+            id = string.Empty;
+            if (arguments.ValueKind != JsonValueKind.Object || Encoding.UTF8.GetByteCount(arguments.GetRawText()) > MaxArgumentsBytes)
+                return false;
+            var seen = false;
+            foreach (var property in arguments.EnumerateObject())
+            {
+                if (seen || property.Name != "id" || property.Value.ValueKind != JsonValueKind.String) return false;
+                seen = true;
+                id = property.Value.GetString() ?? string.Empty;
+            }
+            return seen && id.Length is > 0 and <= 128 && !string.IsNullOrWhiteSpace(id);
         }
     }
     private sealed class Command(string name, Workflow workflow) : IToolProvider, IToolBusinessConfirmationProvider

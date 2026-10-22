@@ -146,6 +146,20 @@ internal sealed class ChatWebSession : IChatWebSession
             case "chat.input.cancel":
                 return _conversation.TryCancelInput(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var cancelError)
                     ? Success(BuildSnapshot()) : Failure(cancelError);
+            case "chat.approval.review":
+                using (var reviewCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token))
+                {
+                    var approvalError = await _conversation.ReviewApprovalAsync(command.RunId!, command.InputRequestId!,
+                        command.Revision!.Value, _host.ReviewApprovalAsync, reviewCancellation.Token);
+                    if (_disposed || !IsCurrent(command.Identity)) return Failure("CHAT_IDENTITY_STALE");
+                    return approvalError is null ? Success(BuildSnapshot()) : Failure(approvalError);
+                }
+            case "chat.approval.deny":
+                return _conversation.TryDenyApproval(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var denyError)
+                    ? Success(BuildSnapshot()) : Failure(denyError);
+            case "chat.approval.cancel":
+                return _conversation.TryCancelApproval(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var approvalCancelError)
+                    ? Success(BuildSnapshot()) : Failure(approvalCancelError);
             case "chat.host":
                 if (command.Action is "chooseImage" or "clearImage") _imageTransfer.Clear();
                 return await HandleHostActionAsync(command, cancellationToken);
@@ -390,6 +404,7 @@ internal sealed class ChatWebSession : IChatWebSession
             sources)
         {
             HasPendingRun = _conversation.HasPendingRun,
+            PendingApproval = _conversation.ReadApproval(),
             PendingInput = _conversation.PendingInput is { } input ? new ChatWebUserInput(
                 input.Binding.Identity.RunId, input.Binding.RequestId, input.Binding.WaitingRevision, input.Binding.ExpiresAt,
                 input.Questions.Select(question => new ChatWebQuestion(question.Id, question.Text, question.Options, question.AllowMultiple)).ToArray(),

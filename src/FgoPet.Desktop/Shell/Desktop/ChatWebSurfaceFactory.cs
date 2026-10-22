@@ -22,7 +22,8 @@ public sealed class ChatWebSurfaceFactory
             var host = new WebView2SurfaceHost(new WebSurfacePolicy("https://chat.fgopet.invalid/index.html",
                 ["chat.get", "chat.draft", "chat.image", "chat.image.cancel", "chat.send", "chat.stop", "chat.new", "chat.history",
                  "chat.history.open", "chat.history.requestDelete", "chat.history.cancelDelete",
-                 "chat.history.confirmDelete", "chat.retryCapability", "chat.host"]),
+                 "chat.history.confirmDelete", "chat.retryCapability", "chat.host",
+                 "chat.input.answer", "chat.input.cancel", "chat.approval.review", "chat.approval.deny", "chat.approval.cancel"]),
                 Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "chat"),
                 Path.Combine(_storageRoot, "WebView2", "chat"), session.HandleCommandAsync);
             void Publish(ChatWebSnapshot snapshot) => host.PostEvent(new { type = "chat.snapshot", payload = snapshot });

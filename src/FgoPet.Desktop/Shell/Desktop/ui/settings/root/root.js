@@ -14,7 +14,7 @@
   const sections = ["companion", "services", "app", "privacy"];
   const sectionPages = {
     companion: ["Personalization", "RolePackages"],
-    services: ["ModelConnection", "Speech"],
+    services: ["ModelConnection", "Speech", "Qq"],
     app: ["UserProfile", "Theme"],
     privacy: ["AgentConnection", "ConversationMemory", "Privacy"],
   };

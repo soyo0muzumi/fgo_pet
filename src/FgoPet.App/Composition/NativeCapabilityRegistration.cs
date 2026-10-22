@@ -76,7 +76,7 @@ internal static class NativeCapabilityRegistration
             notification => provider.GetRequiredService<ILogger<ChromeBrowserPlugin>>().LogInformation(
                 "Chrome browser {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
                 notification.Correlation, notification.Stage, notification.ErrorCode),
-            imageSink: provider.GetRequiredService<IBrowserImageSink>()));
+            imageSink: provider.GetService<IBrowserImageSink>()));
 
     private sealed class ProcessDiagnostics(ILogger<ProcessDiagnostics> logger) : IBoundedProcessDiagnostics
     {

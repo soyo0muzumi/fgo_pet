@@ -23,16 +23,51 @@ public sealed class UnderstandingWebPageTests : IDisposable
     private readonly Timeline _timeline = new();
     private ConversationScope? _scope = new("mash", "project");
     private readonly UnderstandingWebPage _page;
+    private string? _contextToken;
     public UnderstandingWebPageTests()
     {
         var db = new RuntimeDatabase(Path.Combine(_root, "runtime.db"), pooling: false); new RuntimeDatabaseMigrator(db).Migrate();
         _owner = new(db, new Sources()); _page = new(_owner, () => _scope, _lifetime, _timeline);
     }
-    private ValueTask<WebSurfaceCommandResult> Send(string type, object payload, CancellationToken token = default) =>
-        _page.HandleCommandAsync(new(type, "request", JsonSerializer.SerializeToElement(payload)), token);
+    private async ValueTask<WebSurfaceCommandResult> Send(string type, object payload, CancellationToken token = default)
+    {
+        var fields = JsonSerializer.SerializeToElement(payload).EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value.Clone());
+        if (type != "understanding.get" && !fields.ContainsKey("contextToken")) fields["contextToken"] = _contextToken;
+        var result = await _page.HandleCommandAsync(new(type, "request", JsonSerializer.SerializeToElement(fields)), token);
+        if (result.Success && result.Payload is not null)
+        {
+            var snapshot = JsonSerializer.SerializeToElement(result.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (snapshot.TryGetProperty("contextToken", out var context)) _contextToken = context.GetString();
+        }
+        return result;
+    }
     private ValueTask<WebSurfaceCommandResult> Get() => Send("understanding.get", new { pageId = "Understanding" });
     private object Configure(long revision = 0) => new { pageId = "Understanding", revision,
         policy = new { mode = "proposals", enabled = true, readSources = true, externalProcessing = false, saveCandidates = true, useInDialogue = true } };
+
+    [Fact] public async Task Snapshot_discloses_readable_context_and_usage_without_granting_permissions()
+    {
+        var before = _owner.State(_scope!);
+        var result = await Get();
+        var snapshot = JsonSerializer.SerializeToElement(result.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotEmpty(snapshot.GetProperty("contextToken").GetString()!);
+        Assert.Equal("Current companion", snapshot.GetProperty("presentation").GetProperty("roleName").GetString());
+        Assert.False(snapshot.GetProperty("presentation").GetProperty("automaticReviewAvailable").GetBoolean());
+        Assert.Empty(snapshot.GetProperty("effectiveIds").EnumerateArray());
+        Assert.Equal(before, _owner.State(_scope!));
+    }
+
+    [Fact] public async Task A_refresh_of_another_scope_cannot_rebind_an_old_editor_or_enable_its_policy()
+    {
+        await Get(); var oldToken = _contextToken;
+        _scope = new("other", "project"); await Get();
+        _scope = new("mash", "project"); await Get();
+        var old = JsonSerializer.SerializeToElement(Configure()).EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value.Clone());
+        old["contextToken"] = oldToken;
+        Assert.Equal("UNDERSTANDING_SCOPE_CHANGED", (await Send("understanding.configure", old)).ErrorCode);
+        Assert.Equal(new UnderstandingPolicy(), _owner.State(_scope!).Policy);
+        Assert.Equal(0, _lifetime.Suspensions);
+    }
 
     [Fact] public async Task Host_scope_and_exact_revision_control_configure_and_boundary_is_not_payload_authority()
     {
@@ -43,6 +78,53 @@ public sealed class UnderstandingWebPageTests : IDisposable
         _scope = new("other", "project");
         Assert.Equal("UNDERSTANDING_SCOPE_CHANGED", (await Send("understanding.configure", Configure())).ErrorCode);
         Assert.Equal(UnderstandingMode.Off, _owner.State(_scope).Policy.Mode);
+    }
+
+    [Fact] public async Task Correct_keeps_a_candidate_pending_and_review_rejects_stale_scope_and_revision()
+    {
+        await Get(); Assert.True((await Send("understanding.configure", Configure())).Success);
+        var source = new ConversationSourceSnapshot(new("fixture", "mash", "project"), "original", new('A', 64),
+            DateTimeOffset.UtcNow, ConversationSourceKind.User, "Synthetic source", 72);
+        _owner.Apply(_owner.Begin(_scope!, "fixture-batch", [source], coverage: [new(source, 0, 4, 4)]),
+            [new("candidate", UnderstandingDomain.Relationship, UnderstandingKind.Interpretation, "user", "Synthetic interpretation", "Synthetic context", [source])]);
+        await Get(); var entry = Assert.Single(_owner.List(_scope!, true)); var oldContext = _contextToken;
+        var command = new { pageId = "Understanding", operationId = "fixture-correction", id = entry.Id, revision = entry.Revision,
+            action = "correct", correction = "Synthetic correction" };
+        Assert.True((await Send("understanding.review", command)).Success);
+        var corrected = Assert.Single(_owner.List(_scope!, true));
+        Assert.Equal(UnderstandingReview.Unreviewed, corrected.Review); Assert.Equal(UnderstandingEffect.Pending, corrected.Effect);
+        Assert.Equal("Synthetic correction", corrected.Correction); Assert.Empty(_owner.Query(_scope!, "").Items);
+        Assert.False((await Send("understanding.review", new { pageId = "Understanding", operationId = "different-operation",
+            id = entry.Id, revision = entry.Revision, action = "approve" })).Success);
+        _scope = new("other", "project"); await Get(); _scope = new("mash", "project"); await Get();
+        var suspensions = _lifetime.Suspensions;
+        Assert.Equal("UNDERSTANDING_SCOPE_CHANGED", (await Send("understanding.review", new { pageId = "Understanding",
+            contextToken = oldContext, operationId = "stale-editor", id = entry.Id, revision = corrected.Revision,
+            action = "correct", correction = "Must not apply" })).ErrorCode);
+        Assert.Equal(suspensions, _lifetime.Suspensions);
+        Assert.Equal(JsonSerializer.Serialize(corrected), JsonSerializer.Serialize(Assert.Single(_owner.List(_scope!, true))));
+    }
+
+    [Fact] public async Task Invalidated_host_generation_rejects_mutation_before_drain_and_refresh_rotates_binding()
+    {
+        await Get(); var before = _contextToken; _lifetime.Generation++;
+        Assert.Equal("UNDERSTANDING_SCOPE_CHANGED", (await Send("understanding.configure", Configure())).ErrorCode);
+        Assert.Equal(0, _lifetime.Suspensions); await Get(); Assert.NotEqual(before, _contextToken);
+        Assert.Equal(new UnderstandingPolicy(), _owner.State(_scope!).Policy);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_observed_unavailable_or_different_scope_revokes_the_old_binding_even_after_return(bool unavailable)
+    {
+        await Get(); var previous = _contextToken;
+        _scope = unavailable ? null : new("other", "project");
+        Assert.False((unavailable ? await Get() : await Send("understanding.configure", Configure())).Success);
+        _scope = new("mash", "project");
+        Assert.Equal("UNDERSTANDING_SCOPE_CHANGED", (await Send("understanding.configure", Configure())).ErrorCode);
+        Assert.Equal(0, _lifetime.Suspensions); Assert.Equal(new UnderstandingPolicy(), _owner.State(_scope).Policy);
+        await Get(); Assert.NotEqual(previous, _contextToken);
     }
     [Fact] public async Task Invalid_payload_does_not_cancel_an_existing_dialogue()
     {
@@ -120,7 +202,7 @@ public sealed class UnderstandingWebPageTests : IDisposable
     }
     private sealed class Lifetime : IDialogueContextLifetime
     {
-        public long Generation => 0;
+        public long Generation { get; set; }
         public int Suspensions;
         public Action? OnSuspend;
         public Task InvalidateAsync(CancellationToken token) => Task.CompletedTask;

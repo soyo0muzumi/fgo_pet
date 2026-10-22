@@ -24,6 +24,9 @@
     <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/FgoPet.Plugin.Qq.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/Desktop/FgoPet.Plugin.Qq.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Reminders/FgoPet.Plugin.Reminders.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Understanding/Desktop/FgoPet.Plugin.Understanding.Desktop.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Workspace/FgoPet.Plugin.Workspace.csproj" />

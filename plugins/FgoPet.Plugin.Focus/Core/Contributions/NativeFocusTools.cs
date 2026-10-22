@@ -34,6 +34,7 @@ public static class NativeFocusTools
             new Reader(access),
             new Command("focus.start", access, receipts),
             new Command("focus.pause", access, receipts),
+            new Command("focus.resume", access, receipts),
             new Command("focus.stop", access, receipts),
         ]);
     }
@@ -121,6 +122,7 @@ public static class NativeFocusTools
                 return Failure("TOOL_INVALID_ARGUMENTS");
             if (!string.Equals(session.SessionId, expectedSessionId, StringComparison.Ordinal)
                 || command == "focus.pause" && session.Status is not (FocusStatus.Focusing or FocusStatus.Breaking)
+                || command == "focus.resume" && session.Status is not (FocusStatus.PausedFocus or FocusStatus.PausedBreak)
                 || command == "focus.stop" && session.Status is not (FocusStatus.Focusing or FocusStatus.Breaking
                     or FocusStatus.PausedFocus or FocusStatus.PausedBreak))
                 return Failure("FOCUS_STATE_CONFLICT");
@@ -158,6 +160,7 @@ public static class NativeFocusTools
                 {
                     case "focus.start": owner.Start(preset!, servantId); break;
                     case "focus.pause": owner.Pause(); break;
+                    case "focus.resume": owner.Resume(); break;
                     case "focus.stop": owner.Stop(); break;
                     default: return Failure("FOCUS_TOOL_UNAVAILABLE");
                 }
@@ -180,6 +183,14 @@ public static class NativeFocusTools
                 "focus.pause" => after.SessionId == before.SessionId && after.IsCurrent
                     && (before.Status == FocusStatus.Focusing && after.Status == FocusStatus.PausedFocus
                         || before.Status == FocusStatus.Breaking && after.Status == FocusStatus.PausedBreak),
+                "focus.resume" => after.SessionId == before.SessionId && after.IsCurrent
+                    && (before.Status == FocusStatus.PausedFocus && after.Status == FocusStatus.Focusing
+                        || before.Status == FocusStatus.PausedBreak && after.Status == FocusStatus.Breaking)
+                    && after.Phase == before.Phase && after.CurrentCycle == before.CurrentCycle
+                    && after.TotalCycles == before.TotalCycles && after.FocusSeconds == before.FocusSeconds
+                    && after.BreakSeconds == before.BreakSeconds && after.RemainingSeconds == before.RemainingSeconds
+                    && after.PhaseElapsedSeconds == before.PhaseElapsedSeconds && after.ServantId == before.ServantId
+                    && after.StartedAtUtc == before.StartedAtUtc,
                 "focus.stop" => after.SessionId == before.SessionId && after.Status == FocusStatus.Idle && !after.IsCurrent,
                 _ => false,
             };
@@ -199,9 +210,12 @@ public static class NativeFocusTools
             var role = ValidateRole(scope);
             if (session is null) throw new WorkspaceAccessException("FOCUS_UNAVAILABLE");
             var resourceId = string.IsNullOrEmpty(session.SessionId) ? "focus-idle" : $"focus-{session.SessionId}";
+            var paused = session.Status is FocusStatus.PausedFocus or FocusStatus.PausedBreak;
             var fingerprintData = new FocusBinding(session.SessionId, FocusStatusKeys.Key(session.Status),
                 FocusPhaseKeys.Key(session.Phase), session.CurrentCycle, session.TotalCycles,
-                session.FocusSeconds, session.BreakSeconds, role);
+                session.FocusSeconds, session.BreakSeconds, role,
+                paused ? session.UpdatedAtUtc : null, paused ? session.RemainingSeconds : null,
+                paused ? session.PhaseElapsedSeconds : null);
             var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(fingerprintData, Json)));
             return new ToolResourceAuthorization(resourceId, 0) { Fingerprint = fingerprint };
         }
@@ -240,6 +254,7 @@ public static class NativeFocusTools
         {
             "focus.start" => "Start a bounded Focus session for the active role.",
             "focus.pause" => "Pause the current Focus session.",
+            "focus.resume" => "Resume the paused Focus session without resetting its phase, remaining time or cycle.",
             _ => "Stop the current Focus session.",
         }, name == "focus.start"
             ? """{"type":"object","properties":{"focusMinutes":{"type":"integer","minimum":5,"maximum":180},"breakMinutes":{"type":"integer","minimum":1,"maximum":60},"cycles":{"type":"integer","minimum":1,"maximum":12}},"required":["focusMinutes","breakMinutes","cycles"],"additionalProperties":false}"""
@@ -254,7 +269,8 @@ public static class NativeFocusTools
                 || string.IsNullOrWhiteSpace(execution.RunId) || string.IsNullOrWhiteSpace(execution.CallId)
                 || string.IsNullOrWhiteSpace(execution.IdempotencyKey) || execution.IdempotencyKey.Length > 128)
                 return Failure("TOOL_EXECUTION_CONTEXT_REQUIRED");
-            if (Encoding.UTF8.GetByteCount(invocation.Arguments.GetRawText()) > MaxArgumentsBytes)
+            if (invocation.Arguments.ValueKind != JsonValueKind.Object
+                || Encoding.UTF8.GetByteCount(invocation.Arguments.GetRawText()) > MaxArgumentsBytes)
                 return Failure("TOOL_INVALID_ARGUMENTS");
 
             try
@@ -309,7 +325,8 @@ public static class NativeFocusTools
     }
 
     private sealed record FocusBinding(string SessionId, string Status, string Phase, int CurrentCycle,
-        int TotalCycles, int FocusSeconds, int BreakSeconds, string ActiveRole);
+        int TotalCycles, int FocusSeconds, int BreakSeconds, string ActiveRole,
+        DateTimeOffset? PausedAtUtc, int? PausedRemainingSeconds, int? PausedElapsedSeconds);
 
     private sealed record FocusPayload(string SessionId, string Status, string Phase, int FocusSeconds,
         int BreakSeconds, int TotalCycles, int CurrentCycle, int RemainingSeconds, int PhaseElapsedSeconds,

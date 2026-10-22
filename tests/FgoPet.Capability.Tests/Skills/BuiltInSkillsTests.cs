@@ -36,7 +36,7 @@ public sealed class BuiltInSkillsTests
         foreach (var registered in skills)
         {
             var descriptor = registered.Descriptor;
-            Assert.Equal("1.0.4", descriptor.Version);
+            Assert.Equal("1.0.5", descriptor.Version);
             Assert.Matches("\\A[0-9A-F]{64}\\z", descriptor.ContentDigest);
 
             var loaded = await host.Registry.LoadAsync(Scope, descriptor.Id, default);
@@ -153,6 +153,23 @@ public sealed class BuiltInSkillsTests
         Assert.Contains("do not blindly open again", loaded.Content.Instructions, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Focus_skill_keeps_resume_optional_and_loads_with_only_the_read_tool(bool resumeRegistered)
+    {
+        await using var host = new Host(availableTools: resumeRegistered ? ["focus.get", "focus.resume"] : ["focus.get"]);
+        await host.StartAsync();
+
+        var loaded = await host.Registry.LoadAsync(Scope, "focus-session", default);
+
+        Assert.Null(loaded.ErrorCode);
+        Assert.NotNull(loaded.Content);
+        Assert.Contains("focus.resume", loaded.Content.Descriptor.OptionalTools);
+        Assert.DoesNotContain("focus.resume", loaded.Content.Descriptor.RequiredTools);
+        Assert.Contains(host.Registry.GetSkills(Scope), skill => skill.Id == "focus-session");
+    }
+
     [Fact]
     public async Task Skill_guidance_preserves_tool_authority_and_document_source_evidence()
     {
@@ -169,6 +186,11 @@ public sealed class BuiltInSkillsTests
         Assert.Contains("confirmation", capture.Content!.Instructions, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("result", capture.Content.Instructions, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("state checks", focus.Content!.Instructions, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("focus.resume", focus.Content.Descriptor.OptionalTools);
+        Assert.Contains("Use focus.resume", focus.Content.Instructions, StringComparison.Ordinal);
+        Assert.DoesNotContain("resuming a paused session is unavailable", focus.Content.Instructions, StringComparison.Ordinal);
+        Assert.Contains("todo.get", todo.Content.Descriptor.OptionalTools);
+        Assert.Contains("todo.get", todo.Content.Instructions, StringComparison.Ordinal);
         Assert.Contains("source", documents.Content!.Instructions, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("truncated", documents.Content.Instructions, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("nextCursor", documents.Content.Instructions, StringComparison.OrdinalIgnoreCase);
@@ -237,7 +259,7 @@ public sealed class BuiltInSkillsTests
         {
             var effect = name == "submit_todo_proposals" ? ToolEffect.Proposal
                 : name is "workspace.write" or "workspace.edit" or "todo.create" or "todo.update"
-                    or "todo.complete" or "focus.start" or "focus.pause" or "focus.stop"
+                    or "todo.complete" or "focus.start" or "focus.pause" or "focus.resume" or "focus.stop"
                     ? ToolEffect.Command : ToolEffect.ReadOnly;
             Descriptor = new(name, "Synthetic dependency fixture", "{}", effect);
         }

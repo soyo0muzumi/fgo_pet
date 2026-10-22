@@ -183,6 +183,193 @@ public sealed class NativeFocusToolsTests
         Assert.Equal(0, owner.StartCalls);
     }
 
+    [Theory]
+    [InlineData(false, "focusing", "focus")]
+    [InlineData(true, "breaking", "break")]
+    public async Task Resume_preserves_the_paused_phase_and_replays_without_a_second_resume(
+        bool inBreak, string expectedStatus, string expectedPhase)
+    {
+        var owner = PausedOwner(inBreak);
+        var before = owner.Current;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        var arguments = new { expectedSessionId = before.SessionId };
+
+        var result = await Invoke(resume, Scope(), arguments, "resume-1");
+        var repeated = await Invoke(resume, Scope(), arguments, "resume-1");
+
+        Assert.True(result.Success);
+        Assert.Equal(ToolEffect.Command, resume.Descriptor.Effect);
+        Assert.Equal(ToolExecutionState.Committed, result.ExecutionState);
+        Assert.Equal(expectedStatus, result.Payload.GetProperty("status").GetString());
+        Assert.Equal(expectedPhase, result.Payload.GetProperty("phase").GetString());
+        Assert.Equal(before.SessionId, result.Payload.GetProperty("sessionId").GetString());
+        Assert.Equal(before.RemainingSeconds, result.Payload.GetProperty("remainingSeconds").GetInt32());
+        Assert.Equal(before.PhaseElapsedSeconds, result.Payload.GetProperty("phaseElapsedSeconds").GetInt32());
+        Assert.Equal(before.CurrentCycle, result.Payload.GetProperty("currentCycle").GetInt32());
+        Assert.Equal(before.TotalCycles, result.Payload.GetProperty("totalCycles").GetInt32());
+        Assert.Equal(before.ServantId, result.Payload.GetProperty("servantId").GetString());
+        Assert.Equal(result.Payload.GetRawText(), repeated.Payload.GetRawText());
+        Assert.Equal(ToolExecutionState.Committed, repeated.ExecutionState);
+        Assert.Equal(1, owner.ResumeCalls);
+        Assert.Equal(1, owner.StartCalls);
+    }
+
+    [Theory]
+    [InlineData(FocusStatus.Idle)]
+    [InlineData(FocusStatus.Focusing)]
+    [InlineData(FocusStatus.Breaking)]
+    [InlineData(FocusStatus.Completed)]
+    public async Task Resume_refuses_nonpaused_states_without_calling_the_owner(FocusStatus status)
+    {
+        var owner = new FakeFocusSessionService();
+        if (status != FocusStatus.Idle)
+        {
+            owner.Start(FocusPreset.Create(5, 1, status == FocusStatus.Breaking ? 2 : 1), "role-a");
+            if (status is FocusStatus.Breaking or FocusStatus.Completed) owner.Elapse(300);
+        }
+        var before = owner.Current;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+
+        var result = await Invoke(resume, Scope(), new
+        {
+            expectedSessionId = string.IsNullOrEmpty(before.SessionId) ? "missing" : before.SessionId,
+        }, "resume-invalid-state");
+
+        Assert.False(result.Success);
+        Assert.Equal("FOCUS_STATE_CONFLICT", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(before, owner.Current);
+        Assert.Equal(0, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_refuses_a_different_session_without_changing_the_paused_owner()
+    {
+        var owner = PausedOwner();
+        var before = owner.Current;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+
+        var result = await Invoke(resume, Scope(), new { expectedSessionId = "different-session" }, "resume-wrong-session");
+
+        Assert.Equal("FOCUS_STATE_CONFLICT", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(before, owner.Current);
+        Assert.Equal(0, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_refuses_a_role_mismatch_with_otherwise_valid_host_context()
+    {
+        var owner = PausedOwner();
+        var before = owner.Current;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        var authorization = ((IToolResourceAuthorizationProvider)resume).GetAuthorization(Scope());
+
+        var result = await Invoke(resume, Scope("role-b"), new { expectedSessionId = before.SessionId },
+            "resume-wrong-role", authorization);
+
+        Assert.Equal("FOCUS_SCOPE_DENIED", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(before, owner.Current);
+        Assert.Equal(0, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_refuses_a_frozen_state_that_was_already_resumed()
+    {
+        var owner = PausedOwner();
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        var authorization = ((IToolResourceAuthorizationProvider)resume).GetAuthorization(Scope());
+        owner.Resume();
+        var before = owner.Current;
+
+        var result = await Invoke(resume, Scope(), new { expectedSessionId = before.SessionId }, "resume-stale", authorization);
+
+        Assert.Equal("FOCUS_STATE_CHANGED", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(before, owner.Current);
+        Assert.Equal(1, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_rejects_changed_arguments_for_an_existing_idempotency_key()
+    {
+        var owner = PausedOwner();
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        var result = await Invoke(resume, Scope(), new { expectedSessionId = owner.Current.SessionId }, "resume-key");
+
+        var changed = await Invoke(resume, Scope(), new { expectedSessionId = "different-session" }, "resume-key");
+
+        Assert.True(result.Success);
+        Assert.Equal("FOCUS_IDEMPOTENCY_CONFLICT", changed.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, changed.ExecutionState);
+        Assert.Equal(1, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_persistence_failure_is_unknown_and_a_retry_does_not_resume_again()
+    {
+        var owner = PausedOwner();
+        var before = owner.Current;
+        owner.FailNextPersistence = true;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        var arguments = new { expectedSessionId = before.SessionId };
+
+        var result = await Invoke(resume, Scope(), arguments, "resume-unknown");
+        var repeated = await Invoke(resume, Scope(), arguments, "resume-unknown");
+
+        Assert.False(result.Success);
+        Assert.Equal("FOCUS_EXECUTION_UNKNOWN", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.Unknown, result.ExecutionState);
+        Assert.Equal(result.ErrorCode, repeated.ErrorCode);
+        Assert.Equal(ToolExecutionState.Unknown, repeated.ExecutionState);
+        Assert.Equal(before.SessionId, owner.Current.SessionId);
+        Assert.Equal(FocusStatus.PausedFocus, owner.Current.Status);
+        Assert.Equal(1, owner.ResumeCalls);
+    }
+
+    [Theory]
+    [InlineData("{\"expectedSessionId\":\"\"}")]
+    [InlineData("{\"expectedSessionId\":\"session\",\"focusMinutes\":25}")]
+    public async Task Resume_rejects_invalid_arguments_before_calling_the_owner(string json)
+    {
+        var owner = PausedOwner();
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+        using var arguments = JsonDocument.Parse(json);
+
+        var result = await Invoke(resume, Scope(), arguments.RootElement, "resume-invalid-arguments");
+
+        Assert.Equal("TOOL_INVALID_ARGUMENTS", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(0, owner.ResumeCalls);
+    }
+
+    [Fact]
+    public async Task Resume_without_host_execution_context_does_not_change_the_paused_session()
+    {
+        var owner = PausedOwner();
+        var before = owner.Current;
+        var resume = Tool(Create(owner, new InlineFocusDispatcher(), "role-a"), "focus.resume");
+
+        var result = await resume.InvokeAsync(new ToolInvocation(Scope(),
+            JsonSerializer.SerializeToElement(new { expectedSessionId = before.SessionId })), CancellationToken.None);
+
+        Assert.Equal("TOOL_EXECUTION_CONTEXT_REQUIRED", result.ErrorCode);
+        Assert.Equal(ToolExecutionState.NotExecuted, result.ExecutionState);
+        Assert.Equal(before, owner.Current);
+        Assert.Equal(0, owner.ResumeCalls);
+    }
+
+    private static FakeFocusSessionService PausedOwner(bool inBreak = false)
+    {
+        var owner = new FakeFocusSessionService();
+        owner.Start(FocusPreset.Create(5, 1, 2), "role-a");
+        if (inBreak) owner.Elapse(300);
+        owner.Elapse(17);
+        owner.Pause();
+        return owner;
+    }
+
     private static IReadOnlyList<IToolProvider> Create(FakeFocusSessionService owner,
         InlineFocusDispatcher dispatcher, string? activeRole) => NativeFocusTools.Create(owner, dispatcher, () => activeRole);
 
@@ -231,6 +418,7 @@ public sealed class NativeFocusToolsTests
         public FocusSession Current { get; private set; } = FocusSession.Idle;
         public int StartCalls { get; private set; }
         public int PauseCalls { get; private set; }
+        public int ResumeCalls { get; private set; }
         public int StopCalls { get; private set; }
         public bool FailNextPersistence { get; set; }
         public event EventHandler? SnapshotChanged;
@@ -249,7 +437,13 @@ public sealed class NativeFocusToolsTests
             Apply(Current, new FocusCommand.Pause());
         }
 
-        public void Resume() => Apply(Current, new FocusCommand.Resume());
+        public void Resume()
+        {
+            ResumeCalls++;
+            Apply(Current, new FocusCommand.Resume());
+        }
+
+        public void Elapse(int seconds) => Apply(Current, new FocusCommand.Elapsed(seconds));
         public void Stop()
         {
             StopCalls++;

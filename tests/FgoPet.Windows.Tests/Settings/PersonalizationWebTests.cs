@@ -109,7 +109,8 @@ public sealed class PersonalizationWebTests
                 await CaptureScene("settings-companion");
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=services]').click()");
                 await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "services");
-                Assert.Equal("2", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
+                Assert.Equal("3", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
+                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.overview-rows > [data-page-id=Qq]').disabled"));
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').hidden"));
                 await CaptureScene("settings-services");
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=privacy]').click()");

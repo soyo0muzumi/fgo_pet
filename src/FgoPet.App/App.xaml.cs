@@ -59,7 +59,7 @@ public partial class App : Application
             {
                 var message = restored.Status switch
                 {
-                    BackupRestoreStatus.Restored => "私有备份已恢复。缺失的角色包需重新安装；Agent 连接与任务请重新核对。",
+                    BackupRestoreStatus.Restored => "私有备份已恢复。缺失的角色包需重新安装；Agent 连接与任务请重新核对。历史提醒不会重新启用，请按需重新创建。",
                     BackupRestoreStatus.RolledBack => "恢复未完成，已回滚原数据。",
                     BackupRestoreStatus.RecoveryRequired => "恢复未能安全完成，已保留备份和回滚材料。应用已停止启动，请先恢复数据后再打开。",
                     _ => "备份未通过恢复校验，原数据保持不变。",

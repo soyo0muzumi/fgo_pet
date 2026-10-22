@@ -73,6 +73,10 @@ public interface IChatWebHostActions
     ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token) =>
         ValueTask.FromResult(new WebSurfaceCommandResult(false, ErrorCode: "CHAT_NOT_AVAILABLE"));
 
+    /// <summary>Only a trusted native dialog may return Allow. Hosts without this UI fail closed.</summary>
+    ValueTask<ChatApprovalDecision> ReviewApprovalAsync(ChatWebApproval approval, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(ChatApprovalDecision.Cancel);
+
     ValueTask<WebSurfaceCommandResult> HandleAsync(
         ChatWebHostRequest request,
         CancellationToken cancellationToken);

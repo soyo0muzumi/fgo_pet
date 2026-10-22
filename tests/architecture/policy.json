@@ -2,6 +2,18 @@
   "schemaVersion": 1,
   "projects": [
     {
+      "path": "plugins/FgoPet.Plugin.Reminders/FgoPet.Plugin.Reminders.csproj",
+      "module": "reminders",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Plugin.Reminders.Tests/FgoPet.Plugin.Reminders.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
+    },
+    {
       "path": "tools/integrations/token-meter-validation/FgoPet.TokenMeter.Validation.csproj",
       "module": "tests",
       "layer": "test",
@@ -408,6 +420,24 @@
       "module": "platform",
       "layer": "implementation",
       "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Qq/FgoPet.Plugin.Qq.csproj",
+      "module": "qq",
+      "layer": "application",
+      "role": "production"
+    },
+    {
+      "path": "plugins/FgoPet.Plugin.Qq/Desktop/FgoPet.Plugin.Qq.Desktop.csproj",
+      "module": "qq",
+      "layer": "desktop",
+      "role": "production"
+    },
+    {
+      "path": "tests/FgoPet.Qq.Tests/FgoPet.Qq.Tests.csproj",
+      "module": "tests",
+      "layer": "test",
+      "role": "test"
     }
   ],
   "dependencyRules": [
@@ -487,6 +517,7 @@
     {
       "id": "capabilities-to-neutral-contracts",
       "fromModules": [
+        "qq",
         "web-search",
         "desktop-context",
         "browser",
@@ -502,7 +533,8 @@
         "speech",
         "agent-backend",
         "kernel",
-        "understanding"
+        "understanding",
+        "reminders"
       ],
       "fromLayers": [
         "application",
@@ -525,6 +557,7 @@
     {
       "id": "capability-ui-to-ui-sdk",
       "fromModules": [
+        "qq",
         "character",
         "todo",
         "focus",
@@ -582,6 +615,7 @@
         "host"
       ],
       "toModules": [
+        "qq",
         "desktop",
         "kernel",
         "extensibility",
@@ -604,7 +638,8 @@
         "browser",
         "web-search",
         "desktop-context",
-        "understanding"
+        "understanding",
+        "reminders"
       ],
       "toLayers": [
         "host",
@@ -1184,6 +1219,44 @@
       "toModules": [
         "understanding",
         "kernel"
+      ],
+      "toLayers": [
+        "application"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "reminders-to-owned-storage-and-lifetime",
+      "fromModules": [
+        "reminders"
+      ],
+      "fromLayers": [
+        "application"
+      ],
+      "toModules": [
+        "kernel",
+        "platform"
+      ],
+      "toLayers": [
+        "application",
+        "implementation"
+      ],
+      "kinds": [
+        "compile"
+      ]
+    },
+    {
+      "id": "qq-presentation-to-owned-channel",
+      "fromModules": [
+        "qq"
+      ],
+      "fromLayers": [
+        "desktop"
+      ],
+      "toModules": [
+        "qq"
       ],
       "toLayers": [
         "application"

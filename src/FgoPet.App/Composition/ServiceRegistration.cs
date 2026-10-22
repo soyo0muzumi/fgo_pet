@@ -83,7 +83,17 @@ public static class ServiceRegistration
             provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
             provider.GetRequiredService<IMemoryRecall>()),
             provider => () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection)
-        .AddUnderstandingCapability()
+        .AddUnderstandingCapability((provider, scope) =>
+        {
+            var role = provider.GetRequiredService<ServantLibraryViewModel>().Servants
+                .FirstOrDefault(item => item.ServantId == scope.ServantId);
+            var context = provider.GetRequiredService<ConversationViewModel>().SessionContext;
+            return new UnderstandingPagePresentation(
+                role?.DisplayName ?? "Current companion",
+                scope.ProjectId is null ? "Across this companion's conversations" :
+                    context.ProjectId == scope.ProjectId && !string.IsNullOrWhiteSpace(context.ProjectLabel) ? context.ProjectLabel : "Current project");
+        })
+        .AddReminderCapability()
         .AddSingleton(TimeProvider.System)
         .AddLogging(builder => builder.AddDebug())
         .AddSingleton<TextWriter>(Console.Out)
@@ -183,6 +193,7 @@ public static class ServiceRegistration
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddNativeCapabilities()
         .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
+        .AddQqChannel(paths.StorageRoot)
         .AddChatWebPresentation()
         .AddModelConnectionSettings()
         .AddSpeechSettings(Path.Combine(paths.StorageRoot, "voices"), includeSpeech)

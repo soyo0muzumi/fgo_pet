@@ -9,6 +9,7 @@
   const pending = new Map();
   const turnNodes = new Map();
   let inputCard = null;
+  let approvalCard = null;
   const draftCache = new Map();
   const acceptedDrafts = new Map();
   let requestSerial = 0;
@@ -98,6 +99,9 @@
       case "CHAT_DRAFT_TOO_LONG": return t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")});
       case "CHAT_NOT_AVAILABLE": return t("chat.this.action.is.currently.unavailable");
       case "CHAT_COMMAND_INVALID": return t("chat.the.action.could.not.be.completed.try.again");
+      case "CHAT_APPROVAL_STALE":
+      case "CHAT_APPROVAL_BUSY": return t("chat.approval.changed");
+      case "CHAT_APPROVAL_EXPIRED": return t("chat.approval.expired");
       case "CHAT_INPUT_STALE": return t("chat.input.changed");
       case "CHAT_INPUT_EXPIRED": return t("chat.input.expired");
       case "CHAT_INPUT_INVALID": return t("chat.input.complete");
@@ -126,7 +130,7 @@
         pending.delete(requestId);
         logRequest(type, requestId, "timeout", "CHAT_TIMEOUT");
         reject(new Error("CHAT_TIMEOUT"));
-      }, type === "chat.host" && ["chooseWorkspace", "chooseImage", "configureBrowserImages"].includes(payload.action) ? 600000 : requestTimeoutMs);
+      }, type === "chat.approval.review" ? 960000 : type === "chat.host" && ["chooseWorkspace", "chooseImage", "configureBrowserImages"].includes(payload.action) ? 600000 : requestTimeoutMs);
       pending.set(requestId, { resolve, reject, timer, type });
       try {
         bridge.postMessage({ type, requestId, payload });
@@ -470,6 +474,8 @@
     }
     const questionCard = renderInputCard(snapshot.conversation);
     if (questionCard) ordered.push(questionCard);
+    const reviewCard = renderApprovalCard(snapshot.conversation);
+    if (reviewCard) ordered.push(reviewCard);
     for (const [id, record] of turnNodes) {
       if (!wanted.has(id)) {
         record.article.remove();
@@ -577,6 +583,70 @@
       }
     } finally {
       if (inputCard === card) { card.busy = false; updateInputControls(card); }
+    }
+  }
+
+  function renderApprovalCard(conversation) {
+    const approval = conversation?.pendingApproval;
+    if (!approval || typeof approval.plainTextDetails !== "string" || typeof approval.toolName !== "string") {
+      approvalCard?.article.remove(); approvalCard = null; return null;
+    }
+    const key = inputKey(approval);
+    if (!approvalCard || approvalCard.key !== key) {
+      approvalCard?.article.remove();
+      const article = document.createElement("article"); article.id = "approval-card"; article.className = "turn her user-input-card";
+      const heading = document.createElement("h3"); setText(heading, approval.actionTitle || t("chat.approval.title"));
+      const note = document.createElement("p"); setText(note, t("chat.approval.note"));
+      const summary = document.createElement("p"); summary.className = "approval-summary"; setText(summary, approval.plainTextSummary || "");
+      summary.hidden = !approval.plainTextSummary;
+      const expiry = document.createElement("p"); expiry.className = "approval-expiry";
+      setText(expiry, `${t("chat.approval.expires")} ${approval.expiresAt}`);
+      const technical = document.createElement("details"); technical.className = "approval-technical";
+      technical.open = !approval.plainTextSummary;
+      const disclosure = document.createElement("summary"); setText(disclosure, t("chat.approval.details"));
+      const details = document.createElement("pre"); details.className = "approval-details"; setText(details, approval.plainTextDetails);
+      technical.append(disclosure, details);
+      const error = document.createElement("div"); error.className = "input-error"; error.setAttribute("role", "alert"); error.hidden = true;
+      const actions = document.createElement("div"); actions.className = "turn-actions input-actions";
+      const review = makeButton("btn primary", t("chat.approval.review"), null, "approvalReview", undefined, t("chat.approval.review")); review.id = "approval-review";
+      const deny = makeButton("btn ghost", t("chat.approval.deny"), null, "approvalDeny", undefined, t("chat.approval.deny")); deny.id = "approval-deny";
+      const cancel = makeButton("btn ghost", t("chat.approval.cancel"), null, "approvalCancel", undefined, t("chat.approval.cancel")); cancel.id = "approval-cancel";
+      actions.append(review, deny, cancel); article.append(heading, summary, expiry, note, technical, error, actions);
+      approvalCard = {key, article, error, review, deny, cancel, busy:false, approval};
+    }
+    approvalCard.approval = approval;
+    if (approval.errorText) { setText(approvalCard.error, approval.errorText); approvalCard.error.hidden = false; }
+    updateApprovalControls(approvalCard);
+    return approvalCard.article;
+  }
+
+  function updateApprovalControls(card) {
+    const expiry = Date.parse(card.approval.expiresAt);
+    const expired = !Number.isFinite(expiry) || Date.now() >= expiry;
+    const busy = card.busy || card.approval.isSubmitting === true;
+    card.review.disabled = busy || expired; card.deny.disabled = busy || expired; card.cancel.disabled = busy;
+    card.article.setAttribute("aria-busy", String(busy));
+    if (expired) { setText(card.error, t("chat.approval.expired")); card.error.hidden = false; }
+  }
+
+  async function submitApproval(action) {
+    const card = approvalCard;
+    if (!card || card.busy || card.approval.isSubmitting || card.key !== inputKey(state?.conversation?.pendingApproval)) return;
+    updateApprovalControls(card);
+    if (action !== "cancel" && card.review.disabled) return;
+    const identity = identityOf(state);
+    card.busy = true; card.error.hidden = true; updateApprovalControls(card);
+    try {
+      // A page can request review, reject, or cancel. It can never submit an Allow decision or arguments.
+      const result = await post(`chat.approval.${action}`, appendIdentity({runId:card.approval.runId,
+        requestId:card.approval.requestId, revision:card.approval.revision}));
+      if (result.snapshot) applyCommandSnapshot(result.snapshot, identity, false);
+    } catch (error) {
+      if (approvalCard === card && identityOf(state) === identity) {
+        setText(card.error, safeErrorText(error.message)); card.error.hidden = false;
+      }
+    } finally {
+      if (approvalCard === card) { card.busy = false; updateApprovalControls(card); }
     }
   }
 
@@ -1246,6 +1316,9 @@
       const button = event.target.closest("button[data-action]");
       if (!button || button.disabled) return;
       const action = button.dataset.action;
+      if (action === "approvalReview" || action === "approvalDeny" || action === "approvalCancel") {
+        void submitApproval(action === "approvalReview" ? "review" : action === "approvalDeny" ? "deny" : "cancel"); return;
+      }
       if (action === "inputSubmit" || action === "inputCancel") { void submitInputAnswer(action === "inputCancel"); return; }
       const targetId = button.dataset.targetId;
       if (action === "openSpeechSettings") { void hostAction("openSpeechSettings"); return; }

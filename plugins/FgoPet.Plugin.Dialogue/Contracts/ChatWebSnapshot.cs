@@ -33,6 +33,16 @@ public sealed record ChatWebQuestion(string Id, string Text, IReadOnlyList<strin
 public sealed record ChatWebUserInput(string RunId, string RequestId, long Revision,
     DateTimeOffset ExpiresAt, IReadOnlyList<ChatWebQuestion> Questions, bool IsSubmitting, string ErrorText);
 
+/// <summary>Frozen owner data, never instructions or editable arguments from the web page.</summary>
+public sealed record ChatWebApproval(string RunId, string RequestId, long Revision, DateTimeOffset ExpiresAt,
+    string ToolName, string PlainTextDetails, bool IsSubmitting, string ErrorText)
+{
+    public string? ActionTitle { get; init; }
+    /// <summary>Exact owner confirmation or host formatting of the frozen resource; never a model summary.</summary>
+    public string? PlainTextSummary { get; init; }
+}
+public enum ChatApprovalDecision { Allow, Deny, Cancel }
+
 public sealed record ChatWebConversationSnapshot(
     IReadOnlyList<ChatWebTurnSnapshot> Turns,
     bool IsStreaming,
@@ -54,6 +64,7 @@ public sealed record ChatWebConversationSnapshot(
     IReadOnlyList<ChatWebSource> RecalledSources)
 {
     public ChatWebUserInput? PendingInput { get; init; }
+    public ChatWebApproval? PendingApproval { get; init; }
     public bool HasPendingRun { get; init; }
 }
 

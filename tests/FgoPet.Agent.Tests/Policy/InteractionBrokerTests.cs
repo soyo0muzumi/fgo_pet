@@ -228,6 +228,23 @@ public sealed class InteractionBrokerTests
     }
 
     [Fact]
+    public void Owner_summary_is_frozen_as_plain_data_and_validated_without_silent_truncation()
+    {
+        var provider = new NeverInvoked();
+        var tool = new RegisteredTool("fixture", new("fixture.command", "Synthetic", "{\"type\":\"object\"}", ToolEffect.Command), provider);
+        var broker = new ApprovalBroker();
+        var confirmation = new ToolBusinessConfirmation("draft", 1, new string('A', 64)) { PlainTextSummary = "提醒：😀\nUTC" };
+        var frozen = broker.Create(Identity, 1, "call", 1, tool, "1.0", JsonSerializer.SerializeToElement(new { }), businessConfirmation: confirmation);
+        Assert.Equal(confirmation, frozen.Tool.BusinessConfirmation);
+        Assert.NotEqual(confirmation, confirmation with { PlainTextSummary = "different" });
+        foreach (var invalid in new[] { "", new string('x', 4097), "bad\ud800", "bad\udc00", "bad\0" })
+            Assert.Equal("RUN_INVALID_APPROVAL", Assert.Throws<AgentStateException>(() => broker.Create(Identity, 1, "call", 1,
+                tool, "1.0", JsonSerializer.SerializeToElement(new { }), businessConfirmation: confirmation with { PlainTextSummary = invalid })).Code);
+        Assert.NotNull(broker.Create(Identity, 1, "call", 1, tool, "1.0", JsonSerializer.SerializeToElement(new { }),
+            businessConfirmation: confirmation with { PlainTextSummary = new string('x', 4096) }));
+    }
+
+    [Fact]
     public void Approval_does_not_freeze_schema_invalid_arguments()
     {
         var tool = new RegisteredTool("firstparty.fixture", new("fixture.command", "Synthetic command",

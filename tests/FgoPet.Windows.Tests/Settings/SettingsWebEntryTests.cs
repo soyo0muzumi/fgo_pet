@@ -126,9 +126,9 @@ public sealed class SettingsWebEntryTests
             var window = provider.GetRequiredService<SettingsWindow>();
             Assert.IsType<WebView2SurfaceHost>(window.Content);
             var owners = provider.GetServices<ISettingsWebPage>().Select(page => page.SettingsPageId).ToArray();
-            Assert.Equal(9, owners.Length);
+            Assert.Equal(10, owners.Length);
             foreach (var id in new[] { "UserProfile", "Personalization", "ModelConnection", "RolePackages",
-                         "Speech", "ConversationMemory", "Understanding", "Privacy", "Theme" }) Assert.Contains(id, owners);
+                         "Speech", "Qq", "ConversationMemory", "Understanding", "Privacy", "Theme" }) Assert.Contains(id, owners);
             Assert.Equal(owners.Length, owners.Distinct(StringComparer.Ordinal).Count());
         });
     }
