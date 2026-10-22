@@ -9,6 +9,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\FgoPet.Desktop\Shell\Assets\AppIcon.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <RootNamespace>FgoPet.App</RootNamespace>
     <CompanionTargetFramework>net8.0-windows</CompanionTargetFramework>

@@ -10,6 +10,12 @@
 
 ## Contract locations
 
+The shell owns the approved Mash v2 application artwork in `Shell/Assets/AppIcon.svg`
+and its multi-resolution Windows `AppIcon.ico`. DesktopShell embeds the ICO for
+portrait, Chat, Settings and tray use; the App project uses the same file for its
+native executable icon. Asset provenance and regeneration are documented beside
+the source. No character-pack artwork or runtime files are needed to load this icon.
+
 `SettingsSection` is in `FgoPet.Platform.Contracts/Settings`. `ISettingsNavigator` and `PackageDetailRoute` are in `FgoPet.UiSdk/Settings`. The shell consumes these contracts when composing capability pages and routes. UiSdk also publishes the existing privacy UI request ports; DataManagement supplies their singleton implementations and retains export/deletion policy and confirmation workflows.
 
 `SettingsWebRootFactory` composes a single Web surface from catalog metadata and owner-supplied `ISettingsWebPage` modules. It restricts commands to the active page, isolates mutable handlers per host, and cancels outstanding page work on navigation or closure. It is the only SettingsWindow entry.

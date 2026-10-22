@@ -11,14 +11,16 @@ namespace FgoPet.App.Tray;
 public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _icon;
+    private readonly Icon _applicationIcon;
     private bool _disposed;
 
     public TrayService()
     {
+        _applicationIcon = LoadApplicationIcon();
         _icon = new NotifyIcon
         {
             Text = "FGO Pet",
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon,
             Visible = true,
         };
 
@@ -48,6 +50,16 @@ public sealed class TrayService : IDisposable
 
     internal void HandleDoubleClick() => RestoreRequested?.Invoke(this, EventArgs.Empty);
 
+    private static Icon LoadApplicationIcon()
+    {
+        var resource = System.Windows.Application.GetResourceStream(new Uri(
+            "/FgoPet.DesktopShell;component/Assets/AppIcon.ico",
+            UriKind.Relative)) ?? throw new InvalidOperationException("Application icon resource is missing.");
+        using var stream = resource.Stream;
+        using var icon = new Icon(stream, SystemInformation.SmallIconSize);
+        return (Icon)icon.Clone();
+    }
+
     /// <summary>Submit a local Windows notification. This is not a receipt that a user saw it.</summary>
     public bool ShowNotification(string title, string message)
     {
@@ -65,5 +77,6 @@ public sealed class TrayService : IDisposable
         _icon.Visible = false;
         _icon.ContextMenuStrip?.Dispose();
         _icon.Dispose();
+        _applicationIcon.Dispose();
     }
 }

@@ -16,6 +16,10 @@
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+    <None Include="Assets\AppIcon.svg" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="FgoPet.App.Tests" />
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
