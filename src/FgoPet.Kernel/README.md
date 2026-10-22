@@ -28,6 +28,8 @@ Native history is projected once as source-labelled data attached to historical 
 
 `ConversationContextDiagnostics` uses the existing `ILogger` Debug channel at preparation, compaction and dispatch boundaries. It emits UTC time, hashed run/source identifiers, numeric memory versions/revisions, persona presence and token estimates by category, never prompt bodies or tool payloads. Category estimates include independent request envelopes and must not be added together. Disabled Debug logging performs no diagnostic measurement; diagnostic failures cannot fail a request. These are developer diagnostics, not a new Chat UI or a persistent content log.
 
+`NativeAgentExtensions.ContextDiagnostics` is an optional operational observer for resolved capacity, independent envelope counts, compaction decisions and exact capacity rejection locations. Its typed contract carries only enum values and integer counts; Dialogue owns bounded persistence. An absent observer adds no diagnostic measurement. Observer or diagnostic measurement failures do not alter admission, compaction, execution or cancellation, and observations never imply HTTP dispatch.
+
 An ordinary request rejected by the final input guard emits Warning event 4103 with UTC time, a fixed phase/error code, the actual rejected measurement and limit, count kind, message/tool counts, next attempt number and validated request hash. It reuses the guard's full-input measurement; it does not measure again, dispatch the rejected request or change the budget. Invalid hashes and diagnostic sink failures cannot expose content or bypass rejection.
 
 `TokenCountKind.LocalReferenceEstimate` identifies a locally rendered/tokenized estimate with an optional reference policy hash, separately from conservative `Estimated` and exact-envelope `ProviderUsage`. Kernel does not load assets or start a reference runtime. Input guards use the returned complete count with the existing budget; the count kind grants no dispatch permission.
@@ -49,6 +51,12 @@ are available, the host can start directly in final output. Tool rejection can u
 no-tools fallback, whose actual request is final output. A tool-stage answer is rejected rather
 than reused as a draft. Finalization control calls remain in the run journal but are omitted from
 business history projections and from the final request's input; business call/result pairs remain.
+An invalid finalization batch is discarded before any call is admitted. Once per run, if the
+reserved final-response request remains available, the host can request a corrected control signal
+with only `response.finalize` offered. The rejected text and calls are not reused as a draft or
+executed. This correction uses the same input, durable request, cancellation and scope limits,
+with no application-side transport retry or tool fallback. Only a valid control advances to the
+normal final-output validator; an invalid correction retains `MODEL_INVALID_FINALIZE`.
 A compliant final is delivered immediately, without another generation. When tools are offered,
 selection can cost an additional request even if no business tool is needed; it never generates a draft answer.
 Only a complete object with nonempty string `text` and no duplicate keys reaches delivery.
@@ -95,3 +103,7 @@ Each ConversationOrchestrator send captures one immutable RequestId for its even
 Native final answers pass the same strict structured-output validator used by durable delivery before the run is completed. A malformed final may receive one format-only model correction with no tools offered; it uses the same durable request budget, connection and active-scope checks, input limits and cancellation. A second invalid final or tool call fails the run before acceptance. The host does not guess JSON repairs, replay tools, or weaken the delivery store. Native user literals belong inside the JSON text field; ordinary chat retains its existing plain-text compatibility.
 
 Current tool observations carry checkpoint-owned source identity, call status and recorded Effect. Historical calls remain historical data; successful receipt lookup describes the query, not successful execution of its target. Missing Effect remains null, payload cannot replace the outer metadata, and clarification results do not acquire approval evidence.
+
+Selected-image contracts retain only opaque references in native tool observations. `SelectedImageStore` enforces one expiring, exact-scope and exact-route grant tied to an original desktop message and one native run. Granting requires that persisted message ID; context binds the run once, and tool reads reject another or missing run ID. Clear/reselection and the final synchronous HTTP handoff share a dispatch lease. `IChatImageInputProvider` explicitly opts into request preparation before budgeting. Prepared PNG data lives only in request-local weak state, not semantic messages or run checkpoints. The envelope preserves complete tool batches before adding one user image part; the conservative meter reserves 8,192 image tokens without treating base64 as text, while exact provider usage still takes precedence. This reserve also covers the official DeepSeek Flash documented 1,024-token image ceiling; the text-only local reference counter must not replace it for image requests. Historical source projections do not restore image references. Tests: `dotnet test tests/FgoPet.Agent.Tests/FgoPet.Agent.Tests.csproj -c Release`.
+
+`ImageModelCapabilities` additionally recognizes only the exact local Buddy tuple: provider `custom-openai-compatible`, base endpoint `http://127.0.0.1:8326/v1`, model `buddy/deepseek-v4.1-flash`. This is a capability declaration, not service authentication or a credential. Existing provider/model/endpoint/configuration and session bindings remain authoritative; unknown proxy routes are denied. The application-owned in-memory snapshot does not imply that a downstream proxy or model retains no copy.

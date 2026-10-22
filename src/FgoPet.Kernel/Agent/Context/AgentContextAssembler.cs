@@ -19,25 +19,31 @@ public sealed class AgentContextAssembler(PluginCatalog catalog, PluginRuntime r
 
     public ValueTask<ImmutableArray<ModelMessage>> AssembleAsync(AgentContextRequest request,
         ImmutableArray<ModelMessage> baseMessages, Func<ImmutableArray<ModelMessage>, int> measureInputTokens,
-        CancellationToken token) => AssembleCoreAsync(request, baseMessages, measureInputTokens, false, token);
+        CancellationToken token, Action<ContextBudgetDiagnostic>? diagnostics = null) =>
+        AssembleCoreAsync(request, baseMessages, measureInputTokens, false, token, diagnostics);
 
     // The Native host compacts the complete request next, then enforces its input budget.
     // Keep fresh context intact rather than rejecting/truncating it before that opportunity.
     internal ValueTask<ImmutableArray<ModelMessage>> AssembleForCompactionAsync(AgentContextRequest request,
         ImmutableArray<ModelMessage> baseMessages, Func<ImmutableArray<ModelMessage>, int> measureInputTokens,
-        CancellationToken token) => AssembleCoreAsync(request, baseMessages, measureInputTokens, true, token);
+        CancellationToken token, Action<ContextBudgetDiagnostic>? diagnostics = null) =>
+        AssembleCoreAsync(request, baseMessages, measureInputTokens, true, token, diagnostics);
 
     private async ValueTask<ImmutableArray<ModelMessage>> AssembleCoreAsync(AgentContextRequest request,
         ImmutableArray<ModelMessage> baseMessages, Func<ImmutableArray<ModelMessage>, int> measureInputTokens,
-        bool deferInputBudget, CancellationToken token)
+        bool deferInputBudget, CancellationToken token, Action<ContextBudgetDiagnostic>? diagnostics)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(measureInputTokens);
         token.ThrowIfCancellationRequested();
         ValidateRequest(request);
         ModelProtocol.ValidateTranscript(baseMessages);
-        if (_catalog.AgentContexts.Length > MaxProviders || !deferInputBudget && Measure(baseMessages) > request.InputTokenBudget)
-            throw TooLarge();
+        if (_catalog.AgentContexts.Length > MaxProviders) throw Reject(ContextRejectionPoint.ProviderCount);
+        if (!deferInputBudget)
+        {
+            var initial = Measure(baseMessages);
+            if (initial > request.InputTokenBudget) throw Reject(ContextRejectionPoint.InitialInputBudget, initial);
+        }
 
         var blocks = new List<CollectedBlock>();
         foreach (var entry in _catalog.AgentContexts)
@@ -104,19 +110,36 @@ public sealed class AgentContextAssembler(PluginCatalog catalog, PluginRuntime r
                 Measure([new(ModelMessageRole.System,projected,[])])>request.InputTokenBudget)continue;
             if (!Fits(projected))
             {
-                if (deferInputBudget) throw TooLarge();
-                if (block.Kind == AgentContextKind.Instruction || item.IsMarker) throw TooLarge();
+                if (deferInputBudget) throw Reject(ContextRejectionPoint.DeferredBlockBytes,
+                    blockBytes: Encoding.UTF8.GetByteCount(projected));
+                if (block.Kind == AgentContextKind.Instruction || item.IsMarker)
+                    throw Reject(ContextRejectionPoint.MandatoryBlock, blockBytes: Encoding.UTF8.GetByteCount(projected));
                 if (block.Whole) continue;
-                projected = TruncateData(source, block.Content, Fits);
+                projected = TruncateData(source, block.Content, Fits,
+                    () => Reject(ContextRejectionPoint.NoTruncatableData));
             }
             context.Add(new(ModelMessageRole.System, projected, []));
         }
         token.ThrowIfCancellationRequested();
         var result = baseMessages.InsertRange(insertion, context);
         ModelProtocol.ValidateTranscript(result);
-        if (!deferInputBudget && Measure(result) > request.InputTokenBudget) throw TooLarge();
+        if (!deferInputBudget)
+        {
+            var final = Measure(result);
+            if (final > request.InputTokenBudget) throw Reject(ContextRejectionPoint.FinalAssemblyInputBudget, final);
+        }
         if (deferInputBudget) StepEnvironmentBuilder.CheckSize(result);
         return result;
+
+        AgentProtocolException Reject(ContextRejectionPoint point, int? input = null, int? blockBytes = null)
+        {
+            ContextBudgetDiagnostics.Emit(diagnostics, new(ContextDiagnosticStage.Rejected) {
+                Point = point, InputBudget = request.InputTokenBudget, MeasuredInput = input,
+                BlockUtf8Bytes = blockBytes, MessageCount = baseMessages.Length,
+                ToolCount = request.AvailableTools.Length, Step = request.StepNumber
+            });
+            return TooLarge();
+        }
 
         int Measure(ImmutableArray<ModelMessage> messages)
         {
@@ -130,7 +153,8 @@ public sealed class AgentContextAssembler(PluginCatalog catalog, PluginRuntime r
                 <= request.InputTokenBudget);
     }
 
-    private static string TruncateData(string source, string content, Func<string, bool> fits)
+    private static string TruncateData(string source, string content, Func<string, bool> fits,
+        Func<AgentProtocolException> rejected)
     {
         var scalarEnds = new List<int> { 0 };
         for (var index = 0; index < content.Length;)
@@ -148,7 +172,7 @@ public sealed class AgentContextAssembler(PluginCatalog catalog, PluginRuntime r
             if (fits(candidate)) { best = candidate; low = middle + 1; }
             else high = middle - 1;
         }
-        return best ?? throw TooLarge();
+        return best ?? throw rejected();
     }
 
     private static CollectedBlock Unavailable(RegisteredAgentContext entry, string code) =>

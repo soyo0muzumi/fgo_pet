@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace FgoPet.Plugin.Browser;
 
 /// <summary>Local host grant. Never supplied by a model, page, package or tool argument.</summary>
-public sealed record ChromeBrowserSettings(bool Enabled, string NodePath, string ServerPath, string? UserDataDirectory = null)
+public sealed record ChromeBrowserSettings(bool Enabled, string NodePath, string ServerPath, string? UserDataDirectory = null,
+    bool VisualEnabled = false, string? VisualGrantId = null)
 {
     public const string ServerVersion = "1.10.1";
     public static ChromeBrowserSettings? Load(string path)

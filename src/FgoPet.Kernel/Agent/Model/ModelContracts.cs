@@ -26,7 +26,10 @@ public sealed record ModelToolCall(string CallId, string Name, string ArgumentsJ
 }
 
 public sealed record ModelMessage(ModelMessageRole Role, string Content,
-    ImmutableArray<ModelToolCall> ToolCalls, string? ToolCallId = null);
+    ImmutableArray<ModelToolCall> ToolCalls, string? ToolCallId = null)
+{
+    public FgoPet.Extensibility.ToolImageReference? Image { get; init; }
+}
 
 public sealed record ModelStepResponse(ModelMessage AssistantMessage, string FinishReason,
     bool IsComplete, ChatUsage? Usage = null)

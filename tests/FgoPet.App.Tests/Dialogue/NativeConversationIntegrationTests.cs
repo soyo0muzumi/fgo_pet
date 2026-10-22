@@ -1044,7 +1044,8 @@ public sealed partial class NativeConversationIntegrationTests
             TestSettingsStore? settings, bool enableSummary, IConversationSummarizer? summarizer,
             IRequestTokenMeter? tokenMeter, IAgentContextProvider? context, ILogger<ConversationOrchestrator>? logger, bool questions, TimeProvider? time,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator,
-            IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools)
+            IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools,
+            Action<ContextBudgetDiagnostic>? contextDiagnostics)
         {
             Directory.CreateDirectory(directory);
             Database = new(Path.Combine(directory, "runtime.db"), pooling: false);
@@ -1060,7 +1061,8 @@ public sealed partial class NativeConversationIntegrationTests
             plugins = new(catalog);
             nativeRuntime = new(Runs, new ToolRegistry(catalog, plugins), new NativeAgentExtensions(
                 Skills: skills ? new SkillRegistry(catalog, plugins, new ToolRegistry(catalog, plugins)) : null, Context: new(catalog, plugins),
-                Questions: questions ? new UserInputBroker(clock) : null), clock);
+                Questions: questions ? new UserInputBroker(clock) : null,
+                ContextDiagnostics: contextDiagnostics), clock);
             var activation = plugins.StartAsync(default).GetAwaiter().GetResult();
             if (!activation.Succeeded) throw new InvalidOperationException("TEST_PLUGIN_ACTIVATION_FAILED");
             var capabilities = new ConversationCapabilityRouter(catalog, plugins);
@@ -1096,9 +1098,10 @@ public sealed partial class NativeConversationIntegrationTests
             ILogger<ConversationOrchestrator>? logger = null, bool questions = false, TimeProvider? time = null,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator = null,
             IConversationContentResolver? contentResolver = null, bool useNative = true, bool skills = false,
-            IReadOnlyList<IToolProvider>? extraTools = null)
+            IReadOnlyList<IToolProvider>? extraTools = null,
+            Action<ContextBudgetDiagnostic>? contextDiagnostics = null)
         {
-            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools));
+            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, contextDiagnostics));
         }
 
         public long CountRows(string table)

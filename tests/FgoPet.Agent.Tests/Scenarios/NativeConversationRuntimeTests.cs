@@ -12,6 +12,67 @@ public sealed class NativeConversationRuntimeTests
 {
     private static readonly ToolScope Scope = new("conversation", "role", "project");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Terminal_success_and_failure_release_only_their_run_attachments(bool fail)
+    {
+        await using var host = await RuntimeHost.CreateAsync();
+        var released = new List<string>();
+        await using var runtime = host.CreateRuntime(releaseAttachments: released.Add);
+        var model = new ScriptedAgentModelStep(Final("synthetic result"));
+        if (fail) model.BeforeResponseAsync = (_, _) => throw new AgentProtocolException("MODEL_REQUEST_FAILED");
+        var delivery = new DeliveryRecorder();
+        var result = await runtime.StartAsync(Request("image-owner"), token => Model(model, token), () => { }, delivery.DeliverAsync, default);
+        Assert.Equal(fail ? ConversationSendStatus.Failed : ConversationSendStatus.Completed, result.Status);
+        Assert.Equal("image-owner", Assert.Single(released));
+    }
+
+    [Fact]
+    public async Task Failed_model_request_exposes_a_safe_code_and_does_not_replay()
+    {
+        await using var host = await RuntimeHost.CreateAsync();
+        var diagnostics = new List<(AgentRunSnapshot Snapshot, string Stage, bool? Persisted)>();
+        await using var runtime = host.CreateRuntime(diagnostics: (snapshot, stage, persisted) => diagnostics.Add((snapshot, stage, persisted)));
+        var delivery = new DeliveryRecorder();
+        var model = new ScriptedAgentModelStep(Final("must not deliver"))
+        { BeforeResponseAsync = (_, _) => throw new AgentProtocolException("MODEL_REQUEST_FAILED") };
+        var result = await runtime.StartAsync(Request("synthetic-request-failure"), token => Model(model, token),
+            () => { }, delivery.DeliverAsync, default);
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        Assert.Contains("MODEL_REQUEST_FAILED", result.SafeError);
+        Assert.Contains("核对", result.SafeError);
+        Assert.Single(model.Requests);
+        Assert.Empty(delivery.Results);
+        var failure = Assert.Single(diagnostics);
+        Assert.Equal("terminal_failure", failure.Stage);
+        Assert.True(failure.Persisted);
+        Assert.Equal(1, failure.Snapshot.ModelRequests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unpersisted_failure_keeps_its_safe_diagnostic_even_if_the_diagnostic_sink_throws(bool diagnosticThrows)
+    {
+        await using var host = await RuntimeHost.CreateAsync();
+        var observed = new List<(string Stage, bool? Persisted)>();
+        await using var runtime = host.CreateRuntime(new ScriptedFaultingRunStore(new InMemoryAgentRunStore(), AgentEventKind.RunCompleted),
+            diagnostics: (_, stage, persisted) => {
+                observed.Add((stage, persisted));
+                if (diagnosticThrows) throw new InvalidOperationException("SYNTHETIC_DIAGNOSTIC_FAILURE");
+            });
+        var delivery = new DeliveryRecorder();
+        var model = new ScriptedAgentModelStep(Final("must not deliver"));
+        var result = await runtime.StartAsync(Request("synthetic-persistence-failure"), token => Model(model, token),
+            () => { }, delivery.DeliverAsync, default);
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        Assert.Contains("RUN_STORE_FAILED", result.SafeError);
+        Assert.Equal(("terminal_failure", (bool?)false), Assert.Single(observed));
+        Assert.Single(model.Requests);
+        Assert.Empty(delivery.Results);
+    }
+
     [Fact]
     public async Task Truncated_provider_reply_explains_output_limit_without_delivery_or_replay()
     {
@@ -67,11 +128,13 @@ public sealed class NativeConversationRuntimeTests
     public async Task Synchronous_disposal_fences_admission_and_async_shutdown_drains_waiting_run()
     {
         await using var host = await RuntimeHost.CreateAsync();
-        await using var runtime = host.CreateRuntime();
+        var released = new List<string>();
+        await using var runtime = host.CreateRuntime(releaseAttachments: released.Add);
         var delivery = new DeliveryRecorder();
         var waiting = await runtime.StartAsync(Request("run-sync-dispose"),
             token => Model(new ScriptedAgentModelStep(Ask()), token), () => { }, delivery.DeliverAsync, default);
         Assert.Equal(ConversationSendStatus.WaitingUserInput, waiting.Status);
+        Assert.Empty(released);
         runtime.Dispose();
         var error = await Assert.ThrowsAsync<AgentStateException>(() => runtime.StartAsync(Request("run-after-dispose"),
             token => Model(new ScriptedAgentModelStep(Final("must not send")), token), () => { }, delivery.DeliverAsync, default).AsTask());
@@ -80,6 +143,7 @@ public sealed class NativeConversationRuntimeTests
         Assert.False(runtime.HasActiveConversation(Scope.ConversationId));
         Assert.Equal(AgentRunStatus.Cancelled, (await host.Store.LoadAsync("run-sync-dispose", default))!.Snapshot.Status);
         Assert.Empty(delivery.Results);
+        Assert.Contains("run-sync-dispose", released);
     }
 
     [Fact]
@@ -349,8 +413,9 @@ public sealed class NativeConversationRuntimeTests
             return new(plugins, tools, new InMemoryAgentRunStore(), time, extensions);
         }
 
-        public NativeConversationRuntime CreateRuntime(IAgentRunStore? runStore = null, IToolPolicy? policy = null) =>
-            new(runStore ?? Store, tools, extensions, time, policy);
+        public NativeConversationRuntime CreateRuntime(IAgentRunStore? runStore = null, IToolPolicy? policy = null,
+            Action<AgentRunSnapshot, string, bool?>? diagnostics = null, Action<string>? releaseAttachments = null) =>
+            new(runStore ?? Store, tools, extensions, time, policy, diagnostics: diagnostics, releaseAttachments: releaseAttachments);
 
         public ValueTask DisposeAsync() => plugins.DisposeAsync();
     }

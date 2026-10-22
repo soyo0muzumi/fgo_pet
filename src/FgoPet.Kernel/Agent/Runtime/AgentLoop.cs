@@ -97,9 +97,20 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
                 }
                 ModelProtocol.ValidateTranscript(step.Messages);
                 StepEnvironmentBuilder.CheckSize(step.Messages);
-                if (preparation.RetainsToolHistory && session.Model is IAgentModelInputBudget input
-                    && input.MeasureInputTokens(step) > input.InputTokenBudget)
-                    throw new AgentProtocolException("RUN_CONTEXT_TOO_LARGE");
+                if (preparation.RetainsToolHistory && session.Model is IAgentModelInputBudget input)
+                {
+                    var measured = input.MeasureInputTokens(step);
+                    if (measured > input.InputTokenBudget)
+                    {
+                        ContextBudgetDiagnostics.Observe(extensions?.ContextDiagnostics,
+                            new(ContextDiagnosticStage.Rejected) {
+                                Point = ContextRejectionPoint.FinalStepInputBudget,
+                                InputBudget = input.InputTokenBudget, MeasuredInput = measured,
+                                Step = state.Snapshot.StepNumber
+                            }, step, input.MeasureInputTokens);
+                        throw new AgentProtocolException("RUN_CONTEXT_TOO_LARGE");
+                    }
+                }
                 var transientSystem = step.Messages.Where(message => message.Role == ModelMessageRole.System)
                     .Except(session.Transcript).ToHashSet();
                 session.SetPreparedTranscript(step.Messages.Where(message => !transientSystem.Contains(message)).ToImmutableArray());
@@ -145,6 +156,6 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             success = result.Success, payload = result.Payload,
             errorCode = result.ErrorCode, executionState = result.ExecutionState?.ToString()
         }, ObservationJson);
-        session.Append(new(ModelMessageRole.Tool, observation, [], callId));
+        session.Append(new(ModelMessageRole.Tool, observation, [], callId) { Image = result.Image });
     }
 }

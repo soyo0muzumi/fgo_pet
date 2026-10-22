@@ -20,7 +20,7 @@ public sealed class ChatWebSurfaceFactory
         try
         {
             var host = new WebView2SurfaceHost(new WebSurfacePolicy("https://chat.fgopet.invalid/index.html",
-                ["chat.get", "chat.draft", "chat.send", "chat.stop", "chat.new", "chat.history",
+                ["chat.get", "chat.draft", "chat.image", "chat.image.cancel", "chat.send", "chat.stop", "chat.new", "chat.history",
                  "chat.history.open", "chat.history.requestDelete", "chat.history.cancelDelete",
                  "chat.history.confirmDelete", "chat.retryCapability", "chat.host"]),
                 Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "chat"),

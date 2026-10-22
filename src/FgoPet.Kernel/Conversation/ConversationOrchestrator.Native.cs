@@ -81,6 +81,12 @@ public sealed partial class ConversationOrchestrator
                 recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None, Publish));
         var preparedTurn = (ConversationModelTurn)await ConversationModelTurn.CreateAgentStepAsync(_providerResolver,
             _settings, _contextResolver, _tokenMeter, Publish, CancelCurrent, scope.RoleId, scope.ConversationId, token);
+        var contextDiagnostics = _nativeRuntime?.ContextDiagnosticObserver;
+        ContextBudgetDiagnostics.Emit(contextDiagnostics, new(ContextDiagnosticStage.CapacityResolved) {
+            CapacitySource = preparedTurn.CapacitySource, WindowTokens = preparedTurn.Budget.ContextWindowTokens,
+            InputBudget = preparedTurn.Budget.InputTokens, OutputTokens = preparedTurn.Budget.OutputTokens,
+            TriggerTokens = CompactionPlanner.TriggerTokens(preparedTurn.Budget)
+        });
         preparedTurn.RetainsToolHistory = true;
         preparedTurn.NativeRequestDiagnostics = (environment, budget) =>
             ConversationContextDiagnostics.Record(_logger, identity.RunId,
@@ -105,16 +111,24 @@ public sealed partial class ConversationOrchestrator
             var model = preparedTurn ?? throw new AgentStateException("RUN_HOST_CLOSED");
             var number = budget is AgentRunState state ? state.Snapshot.StepNumber : 0;
             ConversationContextDiagnostics.Record(_logger, identity.RunId, number, "before_compact", step, model.MeasureInputTokens);
+            var diagnostic = new ContextBudgetDiagnostic(ContextDiagnosticStage.BeforeCompaction) {
+                CapacitySource = model.CapacitySource, WindowTokens = model.Budget.ContextWindowTokens,
+                InputBudget = model.Budget.InputTokens, OutputTokens = model.Budget.OutputTokens,
+                TriggerTokens = CompactionPlanner.TriggerTokens(model.Budget), Step = number
+            };
+            ContextBudgetDiagnostics.Observe(contextDiagnostics, diagnostic, step, model.MeasureInputTokens);
             if (_summaries is null) return step;
             int Measure(ImmutableArray<ModelMessage> messages) => model.MeasureInputTokens(step with { Messages = messages });
             if (Measure(step.Messages) >= CompactionPlanner.TriggerTokens(model.Budget))
                 Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
                     RequestStage: ConversationRequestStage.Compacting));
             var compacted = await _summaries.TryCompactNativeAsync(step.Messages, model.Provider, model.Route, model.Budget,
-                Measure, scope.RoleId, scope.ConversationId, SummaryCalls(budget), cancellation);
+                Measure, scope.RoleId, scope.ConversationId, SummaryCalls(budget), cancellation, contextDiagnostics);
             CheckCurrent(); model.EnsureCurrent(cancellation);
             var result = step with { Messages = compacted };
             ConversationContextDiagnostics.Record(_logger, identity.RunId, number, "after_compact", result, model.MeasureInputTokens);
+            ContextBudgetDiagnostics.Observe(contextDiagnostics,
+                diagnostic with { Stage = ContextDiagnosticStage.AfterCompaction }, result, model.MeasureInputTokens);
             return result;
         }
         ValueTask<IAgentModelStep> CreateModel(CancellationToken cancellation)
@@ -165,7 +179,7 @@ public sealed partial class ConversationOrchestrator
                         RequestStage: ConversationRequestStage.Compacting));
                     await _summaries.TryCompactAsync(snapshot, model.Provider, model.Route, model.Budget,
                         prompt.Usage.InputTokens, Compose, lease, () => { CheckCurrent(); model.EnsureCurrent(lease.Token); },
-                        SummaryCalls(budget), lease.Token, toolSources);
+                        SummaryCalls(budget), lease.Token, toolSources, contextDiagnostics);
                     snapshot = _contextStore!.Read(semanticScope, scope.ConversationId);
                     prompt = Compose(snapshot.Summary, snapshot.UncoveredMessages);
                 }
@@ -245,6 +259,7 @@ public sealed partial class ConversationOrchestrator
         string userText, Action checkCurrent, Action reportFormatRepair)
         : IAgentModelStep, IAgentModelInputBudget, IAgentRunPreparation
     {
+        private bool _controlRepairUsed;
         public ImmutableArray<ModelMessage> HistoricalMessages => history;
         public bool RetainsToolHistory => true;
         public string FinalOutputInstructions => StructuredOutputValidator.FinalStepInstructions;
@@ -256,7 +271,32 @@ public sealed partial class ConversationOrchestrator
             if (model.LastRequestKind == ModelStepKind.Tools)
             {
                 if (response.IsFinal) throw new AgentProtocolException("MODEL_EXPECTED_FINALIZE");
-                NativeFinalization.Validate(response);
+                try { NativeFinalization.Validate(response); }
+                catch (AgentProtocolException error) when (error.Code == "MODEL_INVALID_FINALIZE" && !_controlRepairUsed)
+                {
+                    // Do not spend the request reserved for a final answer on control correction.
+                    if (budget is AgentRunState state && state.Snapshot.Budget.ReserveFinalResponse
+                        && state.Snapshot.ModelRequests >= state.Snapshot.Budget.MaxModelRequests - 1) throw;
+                    _controlRepairUsed = true;
+                    checkCurrent();
+                    reportFormatRepair();
+                    // Reject the entire batch, including sibling business calls and answer text.
+                    // Only already accepted observations reach this one control-only correction.
+                    var controlRepair = environment with
+                    {
+                        Kind = ModelStepKind.Tools, Tools = [NativeFinalization.Tool],
+                        Messages = environment.Messages.Add(new(ModelMessageRole.System,
+                            "Correct the control signal once: the previous tool-selection response was rejected. " +
+                            $"Call only {ModelToolNameMap.GetWireName(NativeFinalization.Name)} with {{}} and no text. " +
+                            "Do not repeat any business operation. A separate no-tools request will ask for the final answer.", []))
+                    };
+                    response = await model.ExecuteAsync(controlRepair, budget, token, allowRecovery: false);
+                    checkCurrent();
+                    if (model.LastRequestKind != ModelStepKind.Tools || response.ToolCalls.Length != 1
+                        || !response.ToolCalls[0].IsResolved || response.ToolCalls[0].Name != NativeFinalization.Name)
+                        throw new AgentProtocolException("MODEL_INVALID_FINALIZE");
+                    NativeFinalization.Validate(response);
+                }
                 return response;
             }
             if (!response.IsFinal) throw new AgentProtocolException("MODEL_UNEXPECTED_TOOL_CALL");

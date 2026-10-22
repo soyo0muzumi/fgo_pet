@@ -14,15 +14,18 @@ public sealed class ChatProviderFactory
     private readonly ProviderCatalog _catalog;
     private readonly ICredentialReader _credentialReader;
     private readonly HttpClient _httpClient;
+    private readonly IChatImageResolver? _images;
 
     public ChatProviderFactory(
         ProviderCatalog catalog,
         ICredentialReader credentialReader,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        IChatImageResolver? images = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _credentialReader = credentialReader ?? throw new ArgumentNullException(nameof(credentialReader));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _images = images;
     }
 
     public IChatProvider Create(ModelConnectionSettings settings) => Create(settings, apiKeyOverride: null, dispatchGate: null);
@@ -46,7 +49,7 @@ public sealed class ChatProviderFactory
             baseUri,
             settings.ModelId,
             credentialReader,
-            _httpClient, dispatchGate, ModelRouteKey.From(settings));
+            _httpClient, dispatchGate, ModelRouteKey.From(settings), _images);
     }
 
     private sealed class InlineCredentialReader(string secret) : ICredentialReader

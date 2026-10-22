@@ -10,6 +10,8 @@ An optional `AgentContextBlock.Whole` flag preserves a data entry as one unit un
 
 Canonical tool IDs accept bounded dotted segments as well as existing underscore names. Provider wire aliases belong to the model adapter. Optional `ToolInvocation.ExecutionContext` carries host-generated run, step, call and idempotency identity. Optional `ToolResult.ExecutionState` distinguishes proven command commitment, non-execution and uncertainty; these fields preserve existing constructor compatibility and grant no authority.
 
+`ToolResult.Image` optionally carries a `ToolImageReference` for a successful read-only observation. It contains only an opaque identifier, never a path or image bytes, and grants no authority; the current selection owner must authorize every later request. Existing text-only tool constructors remain unchanged.
+
 There is no WPF, database, service locator, external plugin loader, hot reload or security sandbox in this assembly. Stateful provider instances remain owned by their plugin; catalog metadata is captured once.
 
 Validation: `dotnet test tests/FgoPet.Foundation.Tests/FgoPet.Foundation.Tests.csproj -c Release` (including `NativeContributionCatalogTests`).

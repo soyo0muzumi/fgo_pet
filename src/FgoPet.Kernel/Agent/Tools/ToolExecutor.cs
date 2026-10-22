@@ -72,6 +72,8 @@ public static class ToolResultNormalizer
             || result.ExecutionState is not (ToolExecutionState.NotExecuted or ToolExecutionState.Committed or ToolExecutionState.Unknown)
             || (result.Success && result.ExecutionState == ToolExecutionState.NotExecuted))) return Unknown();
         if (result is null) return Failure("TOOL_INVALID_OUTPUT");
+        if (result.Image is { } image && (effect != ToolEffect.ReadOnly || !result.Success
+            || !Guid.TryParseExact(image.Id, "N", out _))) return Failure("TOOL_INVALID_OUTPUT");
         JsonElement payload;
         try
         {

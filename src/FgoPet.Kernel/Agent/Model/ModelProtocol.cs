@@ -55,6 +55,9 @@ public static class ModelProtocol
         if (message is null || !Enum.IsDefined(message.Role) || message.Content is null
             || Encoding.UTF8.GetByteCount(message.Content) > MaxContentBytes || message.ToolCalls.IsDefault)
             throw new AgentProtocolException("MODEL_INVALID_MESSAGE");
+        if (message.Image is { } image && (message.Role != ModelMessageRole.Tool
+            || !Guid.TryParseExact(image.Id, "N", out _)))
+            throw new AgentProtocolException("MODEL_INVALID_IMAGE_REFERENCE");
         if (message.Role != ModelMessageRole.Assistant && !message.ToolCalls.IsEmpty)
             throw new AgentProtocolException("MODEL_INVALID_MESSAGE_ROLE");
         if ((message.Role == ModelMessageRole.Tool) != (message.ToolCallId is not null))

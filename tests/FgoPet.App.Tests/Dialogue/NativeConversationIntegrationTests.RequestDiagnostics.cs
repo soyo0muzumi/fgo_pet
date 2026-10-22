@@ -81,9 +81,12 @@ public sealed partial class NativeConversationIntegrationTests
             var result = await host.Orchestrator.SendAsync(RoleId, "Synthetic turn.", default, new(ProjectId));
             var delivery = await diagnostics.CaptureAsync(host, result, observer, turn, RoleId, hostTurnHash: scope);
             deliveries.Add(delivery);
-            var terminal = Assert.Single(events.Where(item => item.Status == "completed" && item.HostTurnHash == delivery.HostTurnHash));
+            var attempts = events.Where(item => item.Status == "completed" && item.HostTurnHash == delivery.HostTurnHash).ToArray();
+            Assert.Equal(2, attempts.Length); // Invalid initial control plus its one rejected correction.
+            var terminal = attempts[0];
             Assert.Equal(scope, terminal.HostTurnHash);
-            Assert.Equal(turn, terminal.Attempt);
+            Assert.Equal(turn * 2 - 1, terminal.Attempt);
+            Assert.Equal(turn * 2, attempts[1].Attempt);
             Assert.Equal(turn, delivery.Turn);
             Assert.Equal(P2Hash(result.RunId!), delivery.RunHash);
             Assert.Equal("MODEL_INVALID_FINALIZE", delivery.RunErrorCode);
@@ -93,7 +96,7 @@ public sealed partial class NativeConversationIntegrationTests
         }
         Assert.NotEqual(deliveries[0].HostTurnHash, deliveries[1].HostTurnHash);
         Assert.NotEqual(deliveries[0].RunHash, deliveries[1].RunHash);
-        Assert.Equal(2, fixture.Sends);
+        Assert.Equal(4, fixture.Sends);
         var safe = JsonSerializer.Serialize(new { Provider = events, Deliveries = deliveries });
         Assert.DoesNotContain(FinalizeDiagnosticCanary, safe);
         Assert.DoesNotContain("private-argument-key", safe);
@@ -227,7 +230,7 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal("MODEL_INVALID_FINALIZE", delivery.RunErrorCode);
         Assert.Null(delivery.HostTurnHash);
         Assert.All(events, item => Assert.Null(item.HostTurnHash));
-        Assert.Equal(1, fixture.Sends);
+        Assert.Equal(2, fixture.Sends);
         Assert.DoesNotContain(FinalizeDiagnosticCanary, JsonSerializer.Serialize(new { Provider = events, Delivery = delivery }));
     }
 

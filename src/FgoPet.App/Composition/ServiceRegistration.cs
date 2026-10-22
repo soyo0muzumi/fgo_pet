@@ -182,7 +182,7 @@ public static class ServiceRegistration
         .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddNativeCapabilities()
-        .AddDialogueRuntime()
+        .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
         .AddChatWebPresentation()
         .AddModelConnectionSettings()
         .AddSpeechSettings(Path.Combine(paths.StorageRoot, "voices"), includeSpeech)
@@ -265,7 +265,9 @@ public static class ServiceRegistration
             provider.GetRequiredService<FgoPet.Kernel.Companion.CompanionPresentation>(),
             webFactory: provider.GetRequiredService<ChatWebSurfaceFactory>(),
             workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open,
-            localWorkspace: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>()))
+            localWorkspace: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>(),
+            selectedImage: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatImageSelection>(),
+            browserImages: provider.GetRequiredService<FgoPet.Extensibility.IBrowserVisualAccess>()))
         .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
         {

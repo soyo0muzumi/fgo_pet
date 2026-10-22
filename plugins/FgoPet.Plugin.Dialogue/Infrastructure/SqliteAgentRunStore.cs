@@ -368,6 +368,7 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
             !Enum.IsDefined(call.Status) || call.Effect is not null && !Enum.IsDefined(call.Effect.Value) ||
             call.Result is not null && (call.Result.Payload.ValueKind == JsonValueKind.Undefined ||
                 Encoding.UTF8.GetByteCount(call.Result.Payload.GetRawText()) > 65536 || !SafeCode(call.Result.ErrorCode, 128)) ||
+            call.Result?.Image is { } image && (!Guid.TryParseExact(image.Id, "N", out _) || !call.Result.Success || call.Effect != ToolEffect.ReadOnly) ||
             call.Result?.Conversation is not null || call.Result?.ExecutionState is not null && !Enum.IsDefined(call.Result.ExecutionState.Value)) ||
             all.Count(call => call.Charged) != s.ToolCalls || all.Select(call => call.Call.CallId).Distinct(StringComparer.Ordinal).Count() != all.Length ||
             state.ActiveSkills.Any(skill => skill is null || !Id(skill.Id) || !Id(skill.PluginId) || !Id(skill.Version) || !Hash(skill.ContentDigest, 64)))

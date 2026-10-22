@@ -43,11 +43,11 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(0, run.Snapshot.ToolCalls);
         Assert.Empty(tool.Invocations);
         Assert.Empty(observer.Turns);
-        Assert.Equal(1, fixture.Sends);
-        Assert.Equal(1, fixture.Batch.Snapshot.Requests);
+        Assert.Equal(2, fixture.Sends);
+        Assert.Equal(2, fixture.Batch.Snapshot.Requests);
         Assert.Null(fixture.Batch.Snapshot.StopCode);
 
-        var terminal = Assert.Single(events.Where(item => item.Stage == "settlement"));
+        var terminal = Assert.Single(events.Where(item => item.Stage == "settlement" && item.Attempt == 1));
         Assert.Equal("completed", terminal.Status);
         Assert.Equal(FinalizeWireHash(scenario), terminal.Response!.RequestHash);
         var state = FinalizeRejection(terminal);
@@ -58,7 +58,7 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(whitespace, state.GetProperty("BodyWhitespaceOnly").GetBoolean());
         Assert.Equal(emptyObject, state.GetProperty("ArgumentsEmptyObject").GetBoolean());
         Assert.Equal(argumentState.Split(','), state.GetProperty("ArgumentStates").EnumerateArray().Select(item => item.GetString()));
-        Assert.Single(events.Where(HasFinalizeRejection));
+        Assert.Equal(2, events.Count(HasFinalizeRejection));
         Assert.DoesNotContain(FinalizeDiagnosticCanary, JsonSerializer.Serialize(events));
         Assert.DoesNotContain("private-argument-key", JsonSerializer.Serialize(events));
         WriteFinalizeDiagnosticEvidence(scenario, events);
@@ -84,7 +84,7 @@ public sealed partial class NativeConversationIntegrationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Finalize_diagnostics_sink_failure_keeps_native_error_and_no_extra_send(bool throws)
+    public async Task Finalize_diagnostics_sink_failure_keeps_native_error_and_single_control_correction(bool throws)
     {
         using var fixture = new BatchFixture(subscription: true);
         fixture.Batch.Diagnostic = throws ? _ => throw new IOException(FinalizeDiagnosticCanary) : null;
@@ -92,7 +92,7 @@ public sealed partial class NativeConversationIntegrationTests
         await using var host = await TestHost.CreateAsync(fixture.Batch, new RecordingTool(ToolEffect.ReadOnly), new RecordingObserver());
         var result = await host.Orchestrator.SendAsync(RoleId, "Synthetic control validation.", default, new(ProjectId));
         Assert.Equal("MODEL_INVALID_FINALIZE", (await host.Runs.LoadAsync(result.RunId!, default))!.Snapshot.ErrorCode);
-        Assert.Equal(1, fixture.Sends);
+        Assert.Equal(2, fixture.Sends);
         Assert.Null(fixture.Batch.Snapshot.StopCode);
     }
 

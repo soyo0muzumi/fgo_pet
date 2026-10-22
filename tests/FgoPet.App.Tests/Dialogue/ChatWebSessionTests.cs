@@ -17,6 +17,58 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class ChatWebSessionTests : IDisposable
 {
     [Fact]
+    public async Task Image_chunks_need_current_identity_and_completion_and_cannot_send_partial_pixels()
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        var host = new RecordingChatHostActions { Presentation = new("Role", null, [], [], Actions: new(CanChooseImage: true)) };
+        using var session = new ChatWebSession(conversation, host);
+        var identity = session.ReadSnapshot().Identity; var transfer = Guid.NewGuid().ToString("N");
+        string Chunk(int offset, bool complete) => Identity(identity).TrimEnd('}') + JsonSerializer.Serialize(new {
+            transferId = transfer, mimeType = "image/png", offset, data = "AQID", complete }).Replace("{", ",");
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(0, false)), default)).Success);
+        Assert.Empty(host.Imports);
+        Assert.Equal("CHAT_IMAGE_BUSY", (await session.HandleCommandAsync(Message("chat.send", Identity(identity)), default)).ErrorCode);
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).Success);
+        Assert.Equal(new byte[] {1,2,3,1,2,3}, Assert.Single(host.Imports));
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(0, false)), default)).Success);
+        conversation.NewConversationCommand.Execute(null);
+        Assert.Equal("CHAT_IDENTITY_STALE", (await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).ErrorCode);
+        Assert.Single(host.Imports);
+    }
+
+    [Theory]
+    [InlineData("\"offset\":\"0\"")]
+    [InlineData("\"offset\":-1")]
+    [InlineData("\"offset\":8388609")]
+    [InlineData("\"offset\":0,\"path\":\"arbitrary\"")]
+    public async Task Image_bridge_rejects_malformed_or_path_bearing_payload(string fields)
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(conversation, new RecordingChatHostActions());
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}') + ",\"transferId\":\"" + Guid.NewGuid().ToString("N")
+            + "\",\"mimeType\":\"image/png\",\"data\":\"AQID\",\"complete\":true," + fields + "}";
+        Assert.Equal("CHAT_COMMAND_INVALID", (await session.HandleCommandAsync(Message("chat.image", payload), default)).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("chat.approval.allow", "")]
+    [InlineData("chat.approval.review", ",\"decision\":\"Allow\"")]
+    [InlineData("chat.approval.review", ",\"allow\":true")]
+    [InlineData("chat.approval.review", ",\"arguments\":{}")]
+    [InlineData("chat.approval.review", ",\"scope\":\"other\"")]
+    [InlineData("chat.approval.review", ",\"requestId\":\"duplicate\"")]
+    public async Task Approval_bridge_never_accepts_page_allow_decision_or_mutable_arguments(string type, string extra)
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}')
+            + ",\"runId\":\"run\",\"requestId\":\"request\",\"revision\":1" + extra + "}";
+        var result = await session.HandleCommandAsync(Message(type, payload), default);
+        Assert.False(result.Success); Assert.Equal("CHAT_COMMAND_INVALID", result.ErrorCode);
+    }
+
+    [Fact]
     public async Task User_input_bridge_rejects_escaped_answer_over_64kib()
     {
         using var model = TestDialogueFakes.CreateConversation();
@@ -333,6 +385,9 @@ public sealed class ChatWebSessionTests : IDisposable
 
     private sealed class RecordingChatHostActions : IChatWebHostActions
     {
+        public List<byte[]> Imports { get; } = [];
+        public ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token)
+        { Imports.Add(bytes); return ValueTask.FromResult(new WebSurfaceCommandResult(true)); }
         public List<ChatWebHostRequest> Requests { get; } = [];
         public ChatWebHostPresentation Presentation { get; set; } = new("角色", null, [], []);
         public event EventHandler? Changed { add { } remove { } }

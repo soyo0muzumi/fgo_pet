@@ -229,6 +229,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     /// <summary>Raised when the active conversation identity is about to change.</summary>
     public event Action? SessionChanged;
+    public event Action? RequestCancelled;
+    internal event Action<string>? DesktopMessagePersisted;
+    private string? _desktopRequestId;
+    internal bool IsExternalRequest => _activeRequestId is not null && _desktopRequestId != _activeRequestId;
 
     public CapabilityNoticeState CapabilityNotice => _capabilityNotice;
 
@@ -473,7 +477,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private async Task<bool> SendCoreAsync(string text)
     {
-        if (_disposed) return false;
+        var result = await SendCoreResultAsync(text, desktopInput: true);
+        return result?.Status is ConversationSendStatus.Completed or ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval;
+    }
+
+    private async Task<ConversationSendResult?> SendCoreResultAsync(string text, CancellationToken cancellationToken = default,
+        bool desktopInput = false)
+    {
+        if (_disposed) return null;
         var generation = _sessionGeneration;
         var servant = ActiveServantId;
         ErrorText = string.Empty;
@@ -484,17 +495,18 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _acceptRequestUpdates = true;
         var requestId = Guid.NewGuid();
         _activeRequestId = "request-" + requestId.ToString("N");
+        _desktopRequestId = desktopInput ? _activeRequestId : null;
         try
         {
             _lastUserMessage = text;
             var result = await _orchestrator.SendAsync(
                 servant,
                 text,
-                CancellationToken.None,
+                cancellationToken,
                 SessionContext.ToRequestContext(), requestId);
-            if (!IsCurrent()) return false;
+            if (!IsCurrent()) return null;
             result = await ApplyInputResultAsync(result);
-            if (!IsCurrent()) return false;
+            if (!IsCurrent()) return null;
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
@@ -517,7 +529,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
             // The initial user message is already persisted when a run waits.
             // Clear only its accepted draft; later drafts survive input resumption.
-            return result.Status is ConversationSendStatus.Completed or ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval;
+            return result;
         }
         finally
         {
@@ -577,6 +589,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void Stop()
     {
+        RequestCancelled?.Invoke();
         if (HasPendingRun && !IsStreaming) { _ = CancelInputWaitAsync("已取消。"); return; }
         _orchestrator.CancelCurrent();
     }
@@ -724,6 +737,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private async Task CancelInputWaitAsync(string status)
     {
         if (_waitingRunId is not { } runId || _waitingScope is not { } scope || IsInputSubmitting) return;
+        RequestCancelled?.Invoke();
         var generation = _sessionGeneration;
         CancelInputExpiry();
         IsInputSubmitting = true;
@@ -924,6 +938,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             }
 
             _activeConversationId = update.ConversationId;
+            if (_desktopRequestId == update.RequestId && !string.IsNullOrWhiteSpace(update.MessageId))
+                DesktopMessagePersisted?.Invoke(update.MessageId);
             OnPropertyChanged(nameof(CurrentConversationId));
             RequestStatusText = "正在准备请求…";
             ErrorText = string.Empty;
@@ -1152,6 +1168,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void InvalidateSession()
     {
+        RequestCancelled?.Invoke();
         _sessionGeneration++;
         _acceptRequestUpdates = false;
         _activeRequestId = null;

@@ -11,12 +11,14 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
     private ChromeBrowserSettings? _settings;
     private Task? _stderr;
     private long _id;
+    private string? _scratch;
     private readonly char[] _readBuffer = new char[8192];
     private int _position, _length;
 
     public async ValueTask<JsonElement> CallAsync(ChromeBrowserSettings settings, string name, JsonElement arguments, CancellationToken token)
     {
-        if (name is not ("list_pages" or "new_page" or "take_snapshot")) throw new BrowserException("BROWSER_TOOL_DENIED");
+        if (name is not ("list_pages" or "new_page" or "take_snapshot" or "take_screenshot")) throw new BrowserException("BROWSER_TOOL_DENIED");
+        if (name == "take_screenshot" && !settings.VisualEnabled) throw new BrowserException("BROWSER_VISUAL_NOT_ENABLED");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(45));
         try
@@ -35,9 +37,11 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
                 var names = available.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToHashSet();
                 if (!new[] { "list_pages", "new_page", "take_snapshot" }.All(names.Contains))
                     throw new BrowserException("BROWSER_SERVER_TOOLS_MISSING");
+                if (settings.VisualEnabled && !names.Contains("take_screenshot")) throw new BrowserException("BROWSER_SERVER_TOOLS_MISSING");
                 _settings = settings;
             }
-            return await Request("tools/call", new { name, arguments }, deadline.Token);
+            return await Request("tools/call", new { name, arguments }, deadline.Token,
+                name == "take_screenshot" ? 2_800_000 : 2_097_152);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { await ResetAsync(); throw new BrowserException("BROWSER_CONNECTION_TIMEOUT"); }
@@ -64,6 +68,15 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
         foreach (var arg in new[] { settings.ServerPath, "--autoConnect", "--experimental-structured-content",
             "--no-usage-statistics", "--no-performance-crux", "--javascript-evaluation=false", "--file-navigations=false" })
             info.ArgumentList.Add(arg);
+        if (settings.VisualEnabled)
+        {
+            foreach (var arg in new[] { "--screenshot-max-width=1024", "--screenshot-max-height=1024", "--screenshot-format=jpeg", "--screenshot-quality=60" })
+                info.ArgumentList.Add(arg);
+            _scratch = Path.Combine(Path.GetTempPath(), "fgopet-browser-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_scratch);
+            // Upstream may spool oversized images. Keep such files in this process-owned directory.
+            info.Environment["TEMP"] = _scratch; info.Environment["TMP"] = _scratch; info.Environment["TMPDIR"] = _scratch;
+        }
         if (settings.UserDataDirectory is { } profile)
         {
             info.ArgumentList.Add("--user-data-dir");
@@ -78,13 +91,13 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
         _stderr = DrainStderr(_process.StandardError);
     }
 
-    private async Task<JsonElement> Request(string method, object parameters, CancellationToken token)
+    private async Task<JsonElement> Request(string method, object parameters, CancellationToken token, int maximumChars = 2_097_152)
     {
         var id = ++_id;
         await Write(new { jsonrpc = "2.0", id, method, @params = parameters }, token);
         for (var count = 0; count < 64; count++)
         {
-            using var message = JsonDocument.Parse(await ReadLine(token), new JsonDocumentOptions { MaxDepth = 128 });
+            using var message = JsonDocument.Parse(await ReadLine(token, maximumChars), new JsonDocumentOptions { MaxDepth = 128 });
             var root = message.RootElement;
             if (root.GetProperty("jsonrpc").GetString() != "2.0") throw new BrowserException("BROWSER_INVALID_PROTOCOL");
             if (root.TryGetProperty("method", out _))
@@ -108,7 +121,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
         await _process.StandardInput.FlushAsync(token);
     }
 
-    private async Task<string> ReadLine(CancellationToken token)
+    private async Task<string> ReadLine(CancellationToken token, int maximumChars)
     {
         var result = new StringBuilder();
         while (true)
@@ -121,7 +134,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
             }
             var newline = Array.IndexOf(_readBuffer, '\n', _position, _length - _position);
             var end = newline >= 0 ? newline : _length;
-            if (result.Length + end - _position > 2_097_152) throw new BrowserException("BROWSER_PROTOCOL_LIMIT");
+            if (result.Length + end - _position > maximumChars) throw new BrowserException("BROWSER_PROTOCOL_LIMIT");
             result.Append(_readBuffer, _position, end - _position);
             _position = newline >= 0 ? newline + 1 : end;
             if (newline >= 0) return result.ToString().TrimEnd('\r');
@@ -138,7 +151,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
     public async ValueTask ResetAsync()
     {
         var process = _process; _process = null; _settings = null; _position = _length = 0;
-        if (process is null) return;
+        if (process is null) { CleanScratch(); return; }
         try
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
@@ -146,7 +159,33 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
             if (_stderr is not null) await _stderr.WaitAsync(TimeSpan.FromSeconds(5));
         }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException or IOException) { }
-        finally { process.Dispose(); _stderr = null; }
+        finally { process.Dispose(); _stderr = null; CleanScratch(); }
+    }
+    private void CleanScratch()
+    {
+        var directory = _scratch; _scratch = null;
+        if (directory is null) return;
+        try
+        {
+            var root = Path.GetFullPath(directory);
+            if (Path.GetDirectoryName(root) != Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar)
+                || !Path.GetFileName(root).StartsWith("fgopet-browser-", StringComparison.Ordinal)
+                || !Directory.Exists(root)) return;
+            // Never recurse through a link, even inside an owned scratch directory.
+            var pending = new Stack<string>(); pending.Push(root);
+            while (pending.TryPop(out var next))
+            {
+                if ((File.GetAttributes(next) & FileAttributes.ReparsePoint) != 0) return;
+                foreach (var item in Directory.EnumerateFileSystemEntries(next))
+                {
+                    if (!Path.GetFullPath(item).StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                        || (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0) return;
+                    if (Directory.Exists(item)) pending.Push(item);
+                }
+            }
+            Directory.Delete(root, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { /* Leave unknown contents untouched. */ }
     }
     public ValueTask DisposeAsync() => ResetAsync();
 }

@@ -49,6 +49,7 @@ public sealed record ToolInvocation(ToolScope Scope, JsonElement Arguments)
 }
 public sealed record ToolResult(bool Success, JsonElement Payload, string? ErrorCode = null)
 {
+    public ToolImageReference? Image { get; init; }
     public ConversationContributionResult? Conversation { get; init; }
     public ToolExecutionState? ExecutionState { get; init; }
 }

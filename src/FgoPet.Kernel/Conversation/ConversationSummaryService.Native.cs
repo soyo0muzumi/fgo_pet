@@ -21,18 +21,35 @@ public sealed partial class ConversationSummaryService
     internal async Task<ImmutableArray<ModelMessage>> TryCompactNativeAsync(ImmutableArray<ModelMessage> messages,
         IChatProvider provider, ModelRouteKey route, PromptBudget budget,
         Func<ImmutableArray<ModelMessage>, int> measure, string servantId, string conversationId,
-        CompactionCallBudget calls, CancellationToken token)
+        CompactionCallBudget calls, CancellationToken token, Action<ContextBudgetDiagnostic>? diagnostics = null)
     {
         token.ThrowIfCancellationRequested();
+        int? observedInput = null;
+        var selectedGroups = 0;
+        void Observe(ContextDiagnosticStage stage, ContextCompactionReason reason) =>
+            ContextBudgetDiagnostics.Emit(diagnostics, new(stage) {
+                Decision = reason, CompactionKind = ContextCompactionKind.RunProjection,
+                WindowTokens = budget.ContextWindowTokens, InputBudget = budget.InputTokens,
+                OutputTokens = budget.OutputTokens, TriggerTokens = CompactionPlanner.TriggerTokens(budget),
+                MeasuredInput = observedInput, MessageCount = messages.Length,
+                EligibleGroups = selectedGroups, AuxiliaryBudgetReservations = calls.CallsUsed
+            });
+        ImmutableArray<ModelMessage> Keep(ContextCompactionReason reason)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, reason); return messages; }
         try
         {
             ModelProtocol.ValidateTranscript(messages);
             var before = measure(messages);
+            observedInput = before;
             var beforeBytes = NativeSize(messages);
-            if (before < CompactionPlanner.TriggerTokens(budget) && beforeBytes <= NativeCompactionBytes) return messages;
+            if (before < CompactionPlanner.TriggerTokens(budget) && beforeBytes <= NativeCompactionBytes)
+                return Keep(ContextCompactionReason.NotTriggered);
+            Observe(ContextDiagnosticStage.CompactionStarted, before >= CompactionPlanner.TriggerTokens(budget)
+                ? ContextCompactionReason.TokenThreshold : ContextCompactionReason.ByteThreshold);
 
             var selected = SelectNativeSources(messages);
-            if (selected.Count == 0) return messages;
+            if (selected.Count == 0) return Keep(ContextCompactionReason.NoEligibleHistory);
+            selectedGroups = selected.Count(index => messages[index].Role != ModelMessageRole.Tool);
             var sources = selected.Select(index => new NativeSource(index, messages[index].Role,
                 messages[index].Content + NativeCallDetails(messages[index]))).ToArray();
             string? previous = null;
@@ -81,16 +98,18 @@ public sealed partial class ConversationSummaryService
                     }
                     break;
                 }
-                if (request is null || !calls.TryConsume()) return messages;
+                if (request is null) return Keep(ContextCompactionReason.BatchInputLimit);
+                if (!calls.TryConsume()) return Keep(ContextCompactionReason.AuxiliaryCallLimit);
                 token.ThrowIfCancellationRequested();
                 var attempt = calls.ModelBudget is { } shared
                     ? await summarizer.SummarizeAsync(provider, request, shared, token).ConfigureAwait(false)
                     : await summarizer.SummarizeAsync(provider, request, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                if (!IsValid(attempt, batch[^1].Id)) return messages;
+                if (!IsValid(attempt, batch[^1].Id)) return Keep(ContextCompactionReason.InvalidSummary);
                 var raw = NativeSummaryDataRequest(batch, previous, servantId, conversationId, budget);
                 var condensed = NativeSummaryDataRequest([], attempt.Text, servantId, conversationId, budget);
-                if (meter.Measure(route, condensed).InputTokens >= meter.Measure(route, raw).InputTokens) return messages;
+                if (meter.Measure(route, condensed).InputTokens >= meter.Measure(route, raw).InputTokens)
+                    return Keep(ContextCompactionReason.NoReduction);
                 if (attempt.Usage is not null) meter.RecordUsage(route, request, attempt.Usage);
                 previous = attempt.Text;
             }
@@ -108,14 +127,18 @@ public sealed partial class ConversationSummaryService
             ModelProtocol.ValidateTranscript(result);
             token.ThrowIfCancellationRequested();
             var after = measure(result);
-            return after < before && after <= budget.InputTokens && NativeSize(result) <= NativeCompactionBytes
-                ? result : messages;
+            if (after >= before) return Keep(ContextCompactionReason.NoReduction);
+            if (after > budget.InputTokens || NativeSize(result) > NativeCompactionBytes)
+                return Keep(ContextCompactionReason.FinalProjectionLimit);
+            Observe(ContextDiagnosticStage.CompactionApplied, ContextCompactionReason.None);
+            return result;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, ContextCompactionReason.Cancelled); throw; }
         catch (Exception error) when (error is ProviderRequestException or PromptBudgetException
             or AgentProtocolException or AgentBudgetExceededException or ArgumentException)
         {
-            return messages;
+            return Keep(ContextCompactionReason.Failure);
         }
     }
 

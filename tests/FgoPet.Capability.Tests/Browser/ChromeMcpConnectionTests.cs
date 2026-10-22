@@ -7,6 +7,22 @@ namespace FgoPet.Capability.Tests.Browser;
 public sealed class ChromeMcpConnectionTests
 {
     [Fact]
+    public async Task Visual_calls_reuse_connection_bound_resolution_and_remove_owned_scratch_on_close()
+    {
+        await using var connection = new ChromeMcpConnection();
+        var settings = Settings() with { VisualEnabled = true };
+        var first = await connection.CallAsync(settings, "take_snapshot", JsonSerializer.SerializeToElement(new {pageId=7}), default);
+        var image = await connection.CallAsync(settings, "take_screenshot", JsonSerializer.SerializeToElement(new {pageId=7}), default);
+        var last = await connection.CallAsync(settings, "list_pages", JsonSerializer.SerializeToElement(new {}), default);
+        Assert.Equal(1, first.GetProperty("sequence").GetInt32());
+        Assert.Equal(2, image.GetProperty("sequence").GetInt32());
+        Assert.Equal(3, last.GetProperty("sequence").GetInt32());
+        Assert.True(image.GetProperty("visualFlags").GetBoolean());
+        var scratch = image.GetProperty("scratch").GetString()!;
+        Assert.StartsWith("fgopet-browser-", Path.GetFileName(scratch)); Assert.True(Directory.Exists(scratch));
+        await connection.ResetAsync(); Assert.False(Directory.Exists(scratch));
+    }
+    [Fact]
     public async Task Explicit_portable_profile_is_passed_only_as_a_host_setting()
     {
         var defaults = Settings();

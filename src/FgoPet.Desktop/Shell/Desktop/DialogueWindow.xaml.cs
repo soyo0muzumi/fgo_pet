@@ -38,12 +38,14 @@ public partial class DialogueWindow : Window, IDisposable
         IWorkspaceCatalog? workspaces = null, CompanionPresentation? presentation = null,
         IClipboardWriter? clipboard = null, ChatWebSurfaceFactory? webFactory = null,
         Func<string, WorkspaceNavigation, bool>? workspaceNavigation = null,
-        FgoPet.Dialogue.Contracts.IChatWorkspaceSelection? localWorkspace = null)
+        FgoPet.Dialogue.Contracts.IChatWorkspaceSelection? localWorkspace = null,
+        FgoPet.Dialogue.Contracts.IChatImageSelection? selectedImage = null,
+        FgoPet.Extensibility.IBrowserVisualAccess? browserImages = null)
     {
         _viewModel = viewModel; _factory = webFactory; _workspace = workspaceNavigation;
         _defaultWorkspace = workspaces?.Workspaces.FirstOrDefault()?.Id; _presentation = presentation;
         InitializeComponent(); DataContext = viewModel;
-        _actions = new(viewModel, this, clipboard ?? new SystemClipboardWriter(), panel, workspaces, workspaceNavigation, localWorkspace);
+        _actions = new(viewModel, this, clipboard ?? new SystemClipboardWriter(), panel, workspaces, workspaceNavigation, localWorkspace, selectedImage: selectedImage, browserImages: browserImages);
         viewModel.OpenRequested += OnOpenRequested;
         viewModel.NavigationRequested += OnNavigationRequested;
         viewModel.Conversation.NewWorkspaceItemRequested += OnNewWorkspaceItem;

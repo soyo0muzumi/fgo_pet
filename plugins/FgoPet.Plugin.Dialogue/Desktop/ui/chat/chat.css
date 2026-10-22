@@ -130,6 +130,7 @@ svg { fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; st
 .composer textarea::placeholder { color:var(--faint); }
 .composer textarea:focus,.composer textarea:focus-visible { outline:0; box-shadow:none; }
 .composer-toolbar { display:flex; align-items:center; gap:8px; min-height:34px; flex:none; }
+#choose-image { width:28px; height:28px; flex:none; }
 .composer-feedback { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--muted); font:11px/1.5 var(--ui); }
 .composer-submit { width:34px; height:34px; flex:none; margin-left:auto; }
 .send,.stop { width:34px; height:34px; display:grid; place-items:center; padding:0; border:1px solid transparent; border-radius:8px; cursor:pointer; }

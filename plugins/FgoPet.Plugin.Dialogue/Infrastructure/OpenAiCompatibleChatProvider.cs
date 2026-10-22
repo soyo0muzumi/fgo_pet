@@ -11,13 +11,14 @@ using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Infrastructure.Providers;
 
-public sealed class OpenAiCompatibleChatProvider : IChatProvider
+public sealed class OpenAiCompatibleChatProvider : IChatProvider, IChatImageInputProvider
 {
     private readonly Uri _baseUri;
     private readonly ICredentialReader _credentialReader;
     private readonly HttpClient _httpClient;
     private readonly IChatDispatchGate? _dispatchGate;
     private readonly ModelRouteKey _route;
+    private readonly IChatImageResolver? _images;
 
     public OpenAiCompatibleChatProvider(
         string providerId,
@@ -26,7 +27,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         ICredentialReader credentialReader,
         HttpClient httpClient,
         IChatDispatchGate? dispatchGate = null,
-        ModelRouteKey? route = null)
+        ModelRouteKey? route = null,
+        IChatImageResolver? images = null)
     {
         if (baseUri is null || !baseUri.IsAbsoluteUri || baseUri.Scheme is not ("https" or "http"))
         {
@@ -48,6 +50,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         if(route is not null&&(route.ProviderId!=physicalRoute.ProviderId||route.ModelId!=physicalRoute.ModelId||route.EndpointKey!=physicalRoute.EndpointKey))
             throw new ArgumentException("MODEL_DISPATCH_ROUTE_MISMATCH",nameof(route));
         _route=route??physicalRoute;
+        _images = images;
         CredentialTarget = $"fgo-pet/provider/{ProviderId}";
     }
 
@@ -56,6 +59,9 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     public string ModelId { get; }
 
     public string CredentialTarget { get; }
+
+    public void PrepareImages(ChatRequest request, CancellationToken token) =>
+        ChatImageInputs.Prepare(request, _route, _images, ImageModelCapabilities.Supports(_route), token);
 
     public async Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken cancellationToken)
     {
@@ -102,6 +108,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        PrepareImages(request, cancellationToken);
         var ordinaryNames = !request.IsAgentRequest && request.Tools is { Count: > 0 }
             ? new ModelToolNameMap(request.Tools.Select(tool => tool.Name)) : null;
         using var httpRequest = await CreateAuthorizedRequestAsync(HttpMethod.Post, "chat/completions", cancellationToken);
@@ -115,10 +122,13 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         {
             // Credentials and serialization may await or execute host callbacks. Admission belongs
             // at this final transport boundary, with no await between its lease and SendAsync.
-            var pending = _dispatchGate is null
-                ? _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                : _dispatchGate.Dispatch(request, route,
+            Task<HttpResponseMessage> Send()
+            {
+                return ChatImageInputs.Dispatch(request, route, _images,
                     () => _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken);
+            }
+            var pending = _dispatchGate is null ? Send()
+                : _dispatchGate.Dispatch(request, route, Send, cancellationToken);
             response = await pending;
         }
         catch (HttpRequestException error)

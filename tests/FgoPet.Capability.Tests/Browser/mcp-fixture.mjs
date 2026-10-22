@@ -11,7 +11,7 @@ input.on('line', line => {
   } else if (request.method === 'notifications/initialized') {
     initialized = true;
   } else if (request.method === 'tools/list' && initialized) {
-    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot'].map(name => ({ name })) });
+    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot', 'take_screenshot'].map(name => ({ name })) });
   } else if (request.method === 'tools/call' && initialized) {
     sequence++;
     const mode = request.params.arguments.fixtureMode;
@@ -28,6 +28,7 @@ input.on('line', line => {
       && process.env.CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS === '1';
     const profileIndex = process.argv.indexOf('--user-data-dir');
     const explicitProfile = profileIndex >= 0 && process.argv[profileIndex + 1] === request.params.arguments.expectedDirectory;
-    reply(request.id, { sequence, safeFlags, explicitProfile });
+    const visualFlags = ['--screenshot-max-width=1024', '--screenshot-max-height=1024', '--screenshot-format=jpeg', '--screenshot-quality=60'].every(flag => process.argv.includes(flag));
+    reply(request.id, { sequence, safeFlags, explicitProfile, visualFlags, scratch: process.env.TMPDIR });
   }
 });

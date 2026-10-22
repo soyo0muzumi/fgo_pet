@@ -27,6 +27,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
     public ModelConnectionSettings? Connection { get; private set; }
     public ModelRouteKey Route { get; private set; }
     public PromptBudget Budget { get; }
+    internal ContextLimitSource CapacitySource { get; }
     private int PrimaryAttempts { get; set; }
     private bool SawOutput { get; set; }
     private ChatRequest? _ordinaryInitialRequest;
@@ -61,7 +62,15 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
         var request = ChatRequest.CreateAgent(_agentServantId, _agentConversationId,
             includeToolContracts ? WithToolContracts(projected.Messages, withTools ? projected.Tools : []) : projected.Messages,
             tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
+        PrepareImages(request, CancellationToken.None);
         return _tokenMeter.Measure(Route, request).InputTokens;
+    }
+
+    private void PrepareImages(ChatRequest request, CancellationToken token)
+    {
+        if (!ChatImageInputs.HasImages(request)) return;
+        if (Provider is not IChatImageInputProvider images) throw new SelectedImageException("IMAGE_MODEL_UNSUPPORTED");
+        images.PrepareImages(request, token);
     }
 
     private static ImmutableArray<ModelMessage> WithToolContracts(ImmutableArray<ModelMessage> messages,
@@ -78,12 +87,14 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
 
     private ConversationModelTurn(IChatProvider provider, ModelConnectionSettings? connection,
         ModelRouteKey route, PromptBudget budget, IDialogueSettingsStore? settings, IRequestTokenMeter meter,
-        ConversationCapabilityRouter? capabilities, Action<ConversationUpdate> publish, Action cancelCurrent, ILogger? logger)
+        ConversationCapabilityRouter? capabilities, Action<ConversationUpdate> publish, Action cancelCurrent, ILogger? logger,
+        ContextLimitSource capacitySource)
     {
         Provider = provider; Connection = connection; Route = route; Budget = budget;
         _settings = settings; _tokenMeter = meter; _capabilities = capabilities;
         _publish = publish; _cancelCurrent = cancelCurrent;
         _logger = logger;
+        CapacitySource = capacitySource;
     }
 
     public static async Task<ConversationModelTurn> CreateAsync(IChatProviderResolver providerResolver,
@@ -99,7 +110,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
             : await contextResolver.ResolveAsync(connection, cancellationToken);
         var workingBudget=PromptBudget.Resolve(limit,connection?.MaxOutputTokens??2048);
         if(provider is IChatInputLimit taskLimit)workingBudget=workingBudget.ConstrainInput(taskLimit.MaxInputTokens);
-        var session = new ConversationModelTurn(provider, connection, route, workingBudget, settings, meter, capabilities, publish, cancelCurrent, logger);
+        var session = new ConversationModelTurn(provider, connection, route, workingBudget, settings, meter, capabilities, publish, cancelCurrent, logger, limit.Source);
         session.EnsureCurrent(cancellationToken);
         return session;
     }
@@ -128,8 +139,11 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
     }
 
     /// <summary>One logical step; every actual provider attempt reserves from the same durable Run budget.</summary>
-    public async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget,
-        CancellationToken token)
+    public ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget,
+        CancellationToken token) => ExecuteAsync(environment, budget, token, allowRecovery: true);
+
+    internal async ValueTask<ModelStepResponse> ExecuteAsync(StepEnvironment environment, IModelRequestBudget budget,
+        CancellationToken token, bool allowRecovery)
     {
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(budget);
@@ -159,9 +173,11 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
                 actual = environment with { Messages = messages, Tools = withTools ? environment.Tools : [] };
                 actual = NativeRequestPreparation?.Invoke(actual) ?? actual;
                 LastRequestKind = actual.Kind;
-                return ChatRequest.CreateAgent(_agentServantId, _agentConversationId,
+                var preparedRequest = ChatRequest.CreateAgent(_agentServantId, _agentConversationId,
                     WithToolContracts(actual.Messages, withTools ? actual.Tools : []),
                     tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
+                PrepareImages(preparedRequest, token);
+                return preparedRequest;
             }
             var request = BuildRequest();
             while (_tokenMeter.Measure(Route, request).InputTokens > Budget.InputTokens)
@@ -200,7 +216,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
                 if (response.Usage is not null) _tokenMeter.RecordUsage(Route, request, response.Usage);
                 return response;
             }
-            catch (ProviderRequestException error) when (!SawOutput && PrimaryAttempts < MaxPrimaryAttempts)
+            catch (ProviderRequestException error) when (allowRecovery && !SawOutput && PrimaryAttempts < MaxPrimaryAttempts)
             {
                 if (withTools && !ToolsFallbackUsed && error.Category == ProviderFailureCategory.ToolsRejected)
                 {

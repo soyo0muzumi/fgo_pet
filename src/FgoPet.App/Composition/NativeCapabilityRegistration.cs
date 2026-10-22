@@ -23,6 +23,8 @@ internal static class NativeCapabilityRegistration
 {
     internal static IServiceCollection AddNativeCapabilities(this IServiceCollection services) => services
         .AddSingleton<IProtectedStateProtector, WindowsStateProtector>()
+        .AddSingleton<IBrowserVisualAccess>(provider => new ChromeBrowserVisualAccess(
+            Path.Combine(provider.GetRequiredService<AppPaths>().StorageRoot, "chrome-browser.json")))
         .AddSingleton<IBoundedProcessDiagnostics, ProcessDiagnostics>()
         .AddSingleton<IBoundedProcessRunner, WindowsBoundedProcessRunner>()
         .AddSingleton(provider => new WorkspaceAuthorizationRegistry(scope =>
@@ -73,7 +75,8 @@ internal static class NativeCapabilityRegistration
             },
             notification => provider.GetRequiredService<ILogger<ChromeBrowserPlugin>>().LogInformation(
                 "Chrome browser {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
-                notification.Correlation, notification.Stage, notification.ErrorCode)));
+                notification.Correlation, notification.Stage, notification.ErrorCode),
+            imageSink: provider.GetRequiredService<IBrowserImageSink>()));
 
     private sealed class ProcessDiagnostics(ILogger<ProcessDiagnostics> logger) : IBoundedProcessDiagnostics
     {

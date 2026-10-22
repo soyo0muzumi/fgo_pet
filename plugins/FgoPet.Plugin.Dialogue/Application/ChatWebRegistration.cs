@@ -12,6 +12,7 @@ public static class ChatWebRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IChatWebSessionFactory, ChatWebSessionFactory>();
         services.TryAddSingleton<IChatWorkspaceSelection, ChatWorkspaceSelection>();
+        services.TryAddSingleton<IChatImageSelection, ChatImageSelection>();
         return services;
     }
 }

@@ -16,6 +16,7 @@
   let draftTimer = 0;
   let draftQueue = Promise.resolve();
   let submitInProgress = false;
+  let imageImporting = false;
   let stopInProgress = false;
   let copyFeedback = null;
   let copyTimer = 0;
@@ -73,6 +74,8 @@
     send: $("send-message"),
     stop: $("stop-generation"),
     chooseWorkspace: $("choose-workspace"),
+    chooseImage: $("choose-image"), imageSelection: $("image-selection"), imageLabel: $("image-label"),
+    clearImage: $("clear-image"),
     workspaceSelection: $("workspace-selection"),
     workspaceLabel: $("workspace-label"),
     clearWorkspace: $("clear-workspace"),
@@ -123,7 +126,7 @@
         pending.delete(requestId);
         logRequest(type, requestId, "timeout", "CHAT_TIMEOUT");
         reject(new Error("CHAT_TIMEOUT"));
-      }, type === "chat.host" && payload.action === "chooseWorkspace" ? 600000 : requestTimeoutMs);
+      }, type === "chat.host" && ["chooseWorkspace", "chooseImage", "configureBrowserImages"].includes(payload.action) ? 600000 : requestTimeoutMs);
       pending.set(requestId, { resolve, reject, timer, type });
       try {
         bridge.postMessage({ type, requestId, payload });
@@ -636,6 +639,12 @@
     const actions = presentation.actions || {};
     const models = Array.isArray(presentation.models) ? presentation.models : [];
     appendOptions(el.model, models, "", t("chat.no.models.available"));
+    el.chooseImage.hidden = !presentation.imageDisclosure;
+    el.chooseImage.disabled = actions.canChooseImage !== true || conversation.isStreaming === true || conversation.hasPendingRun === true;
+    el.imageLabel.textContent = typeof presentation.imageLabel === "string" ? presentation.imageLabel : "";
+    el.imageSelection.hidden = !el.imageLabel.textContent;
+    el.clearImage.disabled = actions.canClearImage !== true;
+    el.imageSelection.title = typeof presentation.imageDisclosure === "string" ? presentation.imageDisclosure : "";
     el.chooseWorkspace.hidden = actions.canChooseWorkspace !== true && !presentation.workspaceLabel;
     el.chooseWorkspace.disabled = actions.canChooseWorkspace !== true || conversation.isStreaming === true;
     el.workspaceLabel.textContent = typeof presentation.workspaceLabel === "string" ? presentation.workspaceLabel : "";
@@ -738,7 +747,8 @@
     ["canCreateWorkspaceItem", "newWorkspaceItem", t("chat.new.note")],
     ["canOpenPersonalizationSettings", "openPersonalizationSettings", t("chat.companion.settings")],
     ["canOpenSpeechSettings", "openSpeechSettings", t("chat.speech.settings")],
-    ["canOpenModelSettings", "openModelSettings", t("chat.model.settings")]
+    ["canOpenModelSettings", "openModelSettings", t("chat.model.settings")],
+    ["canConfigureBrowserImages", "configureBrowserImages", t("chat.browser.images")]
   ];
 
   function renderMoreActions(snapshot) {
@@ -795,7 +805,7 @@
     renderSources(conversation);
     renderContextChips(conversation);
     renderChoices(snapshot);
-    el.contextBar.hidden = el.chooseWorkspace.hidden && el.workspaceSelection.hidden && el.chips.childElementCount === 0;
+    el.contextBar.hidden = el.chooseWorkspace.hidden && el.workspaceSelection.hidden && el.imageSelection.hidden && el.chips.childElementCount === 0;
     renderHistory(snapshot);
     renderMoreActions(snapshot);
     updateComposerControls();
@@ -808,6 +818,7 @@
   }
 
   function composerCanSend() {
+    if (imageImporting) return false;
     const text = el.composer.value;
     const conversation = state && state.conversation;
     const serverText = state?.draft?.text || "";
@@ -1207,6 +1218,15 @@
     });
     $("hide-window").addEventListener("click", () => { void hideWindow(); });
     el.pageRetry.addEventListener("click", () => { void refreshSnapshot(); });
+    el.chooseImage.addEventListener("click", () => { void hostAction("chooseImage"); });
+    el.clearImage.addEventListener("click", () => { void hostAction("clearImage"); });
+    ChatImageImport.install(el.composerCard, {
+      canImport: () => Boolean(state && !el.chooseImage.disabled && !imageImporting),
+      identity: () => state ? identityOf(state) : "",
+      send: (type, data) => commandWithSnapshot(type, appendIdentity(data)),
+      busy: value => { imageImporting = value; updateComposerControls(); },
+      error: kind => showComposerError(t(kind === "unavailable" ? "chat.image.unavailable" : "chat.image.invalid"))
+    });
     el.chooseWorkspace.addEventListener("click", () => { void hostAction("chooseWorkspace"); });
     el.clearWorkspace.addEventListener("click", () => { void hostAction("clearWorkspace"); });
     el.capabilityRetry.addEventListener("click", () => {

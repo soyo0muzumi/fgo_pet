@@ -37,6 +37,10 @@ public sealed class NativeTranscriptCompactionTests
         Assert.Equal(input, await fixture.Compact(input, Budget()));
         Assert.Empty(fixture.Summaries.Requests);
         Assert.Equal(0, fixture.Calls.CallsUsed);
+        var diagnostic = Assert.Single(fixture.Diagnostics);
+        Assert.Equal(ContextDiagnosticStage.CompactionSkipped, diagnostic.Stage);
+        Assert.Equal(ContextCompactionReason.NotTriggered, diagnostic.Decision);
+        Assert.Equal(ContextCompactionKind.RunProjection, diagnostic.CompactionKind);
     }
 
     [Fact]
@@ -66,6 +70,9 @@ public sealed class NativeTranscriptCompactionTests
         Assert.Contains(new string('x', 14000), input[3].Content);
         Assert.True(fixture.Measure(result) < fixture.Measure(input));
         Assert.Equal(fixture.Summaries.Requests.Count, fixture.RunBudget.Reservations);
+        Assert.Contains(fixture.Diagnostics, value => value.Stage == ContextDiagnosticStage.CompactionStarted
+            && value.Decision == ContextCompactionReason.TokenThreshold);
+        Assert.Contains(fixture.Diagnostics, value => value.Stage == ContextDiagnosticStage.CompactionApplied);
     }
 
     [Theory]
@@ -249,6 +256,7 @@ public sealed class NativeTranscriptCompactionTests
         public Summarizer Summaries { get; }
         public SharedBudget RunBudget { get; } = new();
         public CompactionCallBudget Calls { get; }
+        public List<ContextBudgetDiagnostic> Diagnostics { get; } = [];
         private readonly ConversationSummaryService _service;
         public Fixture(Summarizer? summaries = null)
         {
@@ -261,7 +269,7 @@ public sealed class NativeTranscriptCompactionTests
         public Task<ImmutableArray<ModelMessage>> Compact(ImmutableArray<ModelMessage> messages, PromptBudget budget, CancellationToken token = default)
         {
             return _service.TryCompactNativeAsync(messages, new Provider(), Route, budget, Measure,
-                "fixture", "conversation", Calls, token);
+                "fixture", "conversation", Calls, token, Diagnostics.Add);
         }
     }
 

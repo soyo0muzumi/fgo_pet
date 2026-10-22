@@ -139,12 +139,14 @@ public sealed partial class NativeConversationIntegrationTests
     [InlineData("{")]
     public async Task Phase_handoff_rejects_nonempty_or_invalid_arguments(string arguments)
     {
-        var provider = new ScriptedProvider(ProviderTurn.Call(FinalizeTool, "bad-finish", arguments), ProviderTurn.Final("must not send")) { RawFinalResponses = true };
+        var provider = new ScriptedProvider(ProviderTurn.Call(FinalizeTool, "bad-finish", arguments),
+            ProviderTurn.Call(FinalizeTool, "bad-correction", arguments)) { RawFinalResponses = true, AutoFinalize = false };
         var tool = new RecordingTool(ToolEffect.ReadOnly);
         await using var host = await TestHost.CreateAsync(provider, tool, new RecordingObserver());
         var result = await host.Orchestrator.SendAsync(RoleId, "Use the phase protocol.", default, new(ProjectId));
         Assert.Equal(ConversationSendStatus.Failed, result.Status);
-        Assert.Single(provider.Requests);
+        Assert.Equal(2, provider.Requests.Count);
+        AssertControlRepair(provider.Requests[1]);
         Assert.Empty(tool.Invocations);
         Assert.Equal("MODEL_INVALID_FINALIZE", (await host.Runs.LoadAsync(result.RunId!, default))!.Snapshot.ErrorCode);
     }
@@ -159,12 +161,13 @@ public sealed partial class NativeConversationIntegrationTests
         chunks.Add(sibling ? new ChatStreamChunk("", ToolCallDelta: new(1, id: "sibling",
             name: ModelToolNameMap.GetWireName("fixture.read"), argumentsDelta: "{}")) : new ChatStreamChunk("forbidden answer draft"));
         chunks.Add(signal.Chunks[^1]);
-        var provider = new ScriptedProvider(new ProviderTurn(chunks)) { RawFinalResponses = true };
+        var provider = new ScriptedProvider(new ProviderTurn(chunks), new ProviderTurn(chunks)) { RawFinalResponses = true, AutoFinalize = false };
         var tool = new RecordingTool(ToolEffect.ReadOnly);
         await using var host = await TestHost.CreateAsync(provider, tool, new RecordingObserver());
         var result = await host.Orchestrator.SendAsync(RoleId, "Use the phase protocol.", default, new(ProjectId));
         Assert.Equal(ConversationSendStatus.Failed, result.Status);
-        Assert.Single(provider.Requests);
+        Assert.Equal(2, provider.Requests.Count);
+        AssertControlRepair(provider.Requests[1]);
         Assert.Empty(tool.Invocations);
         var run = (await host.Runs.LoadAsync(result.RunId!, default))!;
         Assert.Equal("MODEL_INVALID_FINALIZE", run.Snapshot.ErrorCode);

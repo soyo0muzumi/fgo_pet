@@ -1,12 +1,14 @@
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using FgoPet.App.Settings;
 using FgoPet.Core.Panels;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.UiSdk;
+using FgoPet.Extensibility;
 
 namespace FgoPet.App.Dialogue;
 
@@ -21,16 +23,40 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
     private readonly string? _defaultWorkspace;
     private readonly IChatWorkspaceSelection? _localWorkspace;
     private readonly Func<string?> _chooseDirectory;
+    private readonly IChatImageSelection? _selectedImage;
+    private readonly Func<string?> _chooseImage;
+    private readonly IBrowserVisualAccess? _browserImages;
     private string? _avatarPath, _avatar;
     private bool _disposed;
     public event EventHandler? Changed;
+    public async ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token)
+    {
+        if (_disposed || !_window.IsVisible || _selectedImage?.CanChoose != true)
+            return new(false, ErrorCode: "CHAT_NOT_AVAILABLE");
+        return await _selectedImage.ImportAsync(bytes, mimeType, token)
+            ? new(true) : new(false, ErrorCode: "CHAT_IMAGE_INVALID");
+    }
     public ChatWebHostActions(DialogueWindowViewModel vm, DialogueWindow window, IClipboardWriter clipboard,
         IAttachedPanelLauncher? panel, IWorkspaceCatalog? catalog, Func<string, WorkspaceNavigation, bool>? workspace,
-        IChatWorkspaceSelection? localWorkspace = null, Func<string?>? chooseDirectory = null)
+        IChatWorkspaceSelection? localWorkspace = null, Func<string?>? chooseDirectory = null,
+        IChatImageSelection? selectedImage = null, Func<string?>? chooseImage = null, IBrowserVisualAccess? browserImages = null)
     {
         _vm = vm; _window = window; _clipboard = clipboard; _panel = panel; _workspace = workspace;
         _defaultWorkspace = catalog?.Workspaces.FirstOrDefault()?.Id;
         _localWorkspace = localWorkspace;
+        _selectedImage = selectedImage;
+        _browserImages = browserImages;
+        _chooseImage = chooseImage ?? (() =>
+        {
+            var picker = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select an image to share with the currently disclosed model when you Send",
+                Filter = "Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg", Multiselect = false,
+                CheckFileExists = true, CheckPathExists = true,
+            };
+            return picker.ShowDialog(_window) == true ? picker.FileName : null;
+        });
+        if (_selectedImage is not null) _selectedImage.Changed += OnChanged;
         _chooseDirectory = chooseDirectory ?? (() =>
         {
             var picker = new Microsoft.Win32.OpenFolderDialog
@@ -62,8 +88,13 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
                 _workspace is not null && _defaultWorkspace is not null, true, true, _vm.Conversation.CanOpenModelSettings,
                 _vm.ProjectSelection.IsAvailable && !streaming,
                 _localWorkspace?.CanChoose == true,
-                _localWorkspace?.Label is not null && !streaming), _localWorkspace?.Label);
+                _localWorkspace?.Label is not null && !streaming,
+                _selectedImage?.CanChoose == true,
+                _selectedImage?.Label is not null && !streaming && !_vm.Conversation.HasPendingRun,
+                _browserImages?.IsAvailable == true && (_browserImages.Enabled || (!streaming && !_vm.Conversation.HasPendingRun))),
+            _localWorkspace?.Label, _selectedImage?.Label, _selectedImage?.Disclosure ?? "");
     }
+
     public async ValueTask<WebSurfaceCommandResult> HandleAsync(ChatWebHostRequest request, CancellationToken cancellationToken)
     {
         if (_disposed || cancellationToken.IsCancellationRequested || _window.Dispatcher.HasShutdownStarted)
@@ -73,6 +104,29 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         var turn = matches.Length == 1 ? matches[0] : null;
         switch (request.Action)
         {
+            case ChatWebHostAction.ConfigureBrowserImages when _window.IsVisible && _browserImages?.IsAvailable == true
+                && (_browserImages.Enabled || (!_vm.Conversation.IsStreaming && !_vm.Conversation.HasPendingRun)):
+                var enable = !_browserImages.Enabled;
+                var question = enable
+                    ? "允许 FGO Pet 在对话需要时读取网页图片吗？\n\n页面截图（可能包含登录后可见的内容）会发送给当前选择的模型。每次任务最多一张；不会自动发送整页或后台截图。\n\n使用本机 Buddy 时，截图可能落盘、重新编码并转发给腾讯 CodeBuddy CN；代理可能重试或换号。同一张图可能随任务多次发送，停止无法撤回已发送的图片。\n\n此权限用于之后的对话，可在此处关闭。Chrome 的连接批准仍然保留。"
+                    : "关闭网页读图权限吗？关闭后，模型将不能获取新的网页截图。";
+                if (MessageBox.Show(_window, question, "网页读图权限", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return new(true);
+                if (cancellationToken.IsCancellationRequested || !_window.IsVisible || _disposed
+                    || (enable && (_vm.Conversation.IsStreaming || _vm.Conversation.HasPendingRun))) return new(false, ErrorCode: "CHAT_NOT_AVAILABLE");
+                if (!_browserImages.TrySetEnabled(enable)) return new(false, ErrorCode: "CHAT_HOST_ACTION_FAILED");
+                Changed?.Invoke(this, EventArgs.Empty);
+                break;
+            case ChatWebHostAction.ChooseImage when _window.IsVisible && _selectedImage?.CanChoose == true:
+                if (!await _selectedImage.ChooseAsync(() =>
+                {
+                    var image = _chooseImage();
+                    return cancellationToken.IsCancellationRequested || !_window.IsVisible ? null : image;
+                }, cancellationToken)) return new(false, ErrorCode: "CHAT_HOST_ACTION_FAILED");
+                break;
+            case ChatWebHostAction.ClearImage when _window.IsVisible && !_vm.Conversation.IsStreaming
+                && !_vm.Conversation.HasPendingRun && _selectedImage?.Label is not null:
+                _selectedImage.Clear(); break;
             case ChatWebHostAction.ChooseWorkspace when _window.IsVisible && _localWorkspace?.CanChoose == true:
                 if (!_localWorkspace.Choose(() =>
                 {
@@ -149,5 +203,6 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         _vm.PropertyChanged -= OnChanged; _vm.ModelSelection.PropertyChanged -= OnChanged;
         _vm.ProjectSelection.PropertyChanged -= OnChanged;
         if (_localWorkspace is not null) _localWorkspace.Changed -= OnChanged;
+        if (_selectedImage is not null) _selectedImage.Changed -= OnChanged;
     }
 }

@@ -20,7 +20,10 @@ internal sealed record ChatWebCommand(
     bool? Expanded = null,
     string? RunId = null,
     string? InputRequestId = null,
-    ImmutableArray<QuestionAnswer> Answers = default);
+    ImmutableArray<QuestionAnswer> Answers = default,
+    ChatImageChunk? ImageChunk = null);
+
+internal sealed record ChatImageChunk(string Id, string MimeType, long Offset, string Data, bool Complete);
 
 /// <summary>Strictly reads the closed JSON schemas used by the Chat Web bridge.</summary>
 internal static class ChatWebCommandReader
@@ -85,9 +88,21 @@ internal static class ChatWebCommandReader
         string? runId = null;
         string? inputRequestId = null;
         ImmutableArray<QuestionAnswer> answers = default;
+        ChatImageChunk? imageChunk = null;
 
         switch (message.Type)
         {
+            case "chat.image":
+                if (!Only(fields, "sessionId", "servantId", "conversationId", "transferId", "mimeType", "offset", "data", "complete")
+                    || !ReadString(fields, "transferId", false, 32, out var transferId)
+                    || !Guid.TryParseExact(transferId, "N", out _)
+                    || !ReadString(fields, "mimeType", false, 16, out var mimeType)
+                    || mimeType is not ("image/png" or "image/jpeg")
+                    || !fields["offset"].TryGetInt64(out var offset) || offset is < 0 or > 8388608
+                    || !ReadString(fields, "data", false, 49152, out var data)
+                    || !ReadBoolean(fields, "complete", out var complete)) return false;
+                imageChunk = new(transferId!, mimeType!, offset, data!, complete);
+                break;
             case "chat.draft":
                 if (!Only(fields, "sessionId", "servantId", "conversationId", "text", "revision")
                     || !ReadString(fields, "text", allowEmpty: true, MaxDraftChars, out text)
@@ -95,6 +110,7 @@ internal static class ChatWebCommandReader
                 revision = draftRevision;
                 break;
             case "chat.send":
+            case "chat.image.cancel":
             case "chat.stop":
             case "chat.new":
             case "chat.history.cancelDelete":
@@ -147,7 +163,7 @@ internal static class ChatWebCommandReader
         }
 
         command = new(message.Type, identity, text, revision, onlyCurrentProject, append,
-            targetConversationId, action, targetId, expanded, runId, inputRequestId, answers);
+            targetConversationId, action, targetId, expanded, runId, inputRequestId, answers, imageChunk);
         errorCode = string.Empty;
         return true;
     }
@@ -228,5 +244,5 @@ internal static class ChatWebCommandReader
         or "openFocus" or "openWorkspaceOverview" or "newWorkspaceItem"
         or "openPersonalizationSettings" or "openSpeechSettings" or "openModelSettings"
         or "refreshProjects" or "selectProject" or "selectModel" or "removeContextChip"
-        or "chooseWorkspace" or "clearWorkspace";
+        or "chooseWorkspace" or "clearWorkspace" or "chooseImage" or "clearImage" or "configureBrowserImages";
 }

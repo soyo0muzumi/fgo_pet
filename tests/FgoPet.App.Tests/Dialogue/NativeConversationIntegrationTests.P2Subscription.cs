@@ -508,9 +508,33 @@ public sealed partial class NativeConversationIntegrationTests
 
     private static string P2RepositoryRoot()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "FgoPet.sln"))) directory = directory.Parent;
+        var directory = ResolveTestRepositoryRoot(AppContext.BaseDirectory,
+            Environment.GetEnvironmentVariable("FGO_PET_TEST_REPOSITORY_ROOT"));
         return directory?.FullName ?? throw new P2BudgetException("P2_SOURCE_NOT_FOUND");
+    }
+
+    private static DirectoryInfo? ResolveTestRepositoryRoot(string outputDirectory, string? explicitRoot)
+    {
+        static bool IsRepository(DirectoryInfo directory) =>
+            File.Exists(Path.Combine(directory.FullName, "FgoPet.sln"))
+            && File.Exists(Path.Combine(directory.FullName, "tests", "FgoPet.App.Tests", "FgoPet.App.Tests.csproj"))
+            && File.Exists(Path.Combine(directory.FullName, "src", "FgoPet.App", "FgoPet.App.csproj"));
+
+        // An explicit source root is authoritative: invalid input must not select another checkout.
+        if (explicitRoot is not null)
+        {
+            if (string.IsNullOrWhiteSpace(explicitRoot) || !Path.IsPathFullyQualified(explicitRoot)) return null;
+            var supplied = new DirectoryInfo(explicitRoot);
+            return IsRepository(supplied) ? supplied : null;
+        }
+
+        var directory = new DirectoryInfo(outputDirectory);
+        while (directory is not null)
+        {
+            if (IsRepository(directory)) return directory;
+            directory = directory.Parent;
+        }
+        return null;
     }
     private sealed record P2LiveManifest(string Authorization, string BatchId, string FixtureHash, string PersonaHash, string PersonaTextHash,
         DateTimeOffset ExpiresUtc, Dictionary<string, string> BinaryHashes);

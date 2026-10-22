@@ -1,5 +1,6 @@
 using FgoPet.Core.Dialogue;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
@@ -33,8 +34,22 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
         ModelRouteKey route, PromptBudget budget, int inputTokensBefore,
         Func<ConversationSummary, IReadOnlyList<ChatMessage>, ComposedPrompt> composeCandidate,
         DialogueContextLifetime.Lease lease, Action revalidate, CompactionCallBudget calls, CancellationToken cancellationToken,
-        IReadOnlyDictionary<string, string>? toolSources = null)
+        IReadOnlyDictionary<string, string>? toolSources = null,
+        Action<ContextBudgetDiagnostic>? diagnostics = null)
     {
+        var selectedCount = 0;
+        void Observe(ContextDiagnosticStage stage, ContextCompactionReason reason) =>
+            ContextBudgetDiagnostics.Emit(diagnostics, new(stage) {
+                Decision = reason, CompactionKind = ContextCompactionKind.ConversationProjection,
+                WindowTokens = budget.ContextWindowTokens, InputBudget = budget.InputTokens,
+                OutputTokens = budget.OutputTokens, TriggerTokens = CompactionPlanner.TriggerTokens(budget),
+                MeasuredInput = inputTokensBefore, MessageCount = source.UncoveredMessages.Count,
+                EligibleGroups = selectedCount, AuxiliaryBudgetReservations = calls.CallsUsed
+            });
+        bool Skip(ContextCompactionReason reason)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, reason); return false; }
+        Observe(ContextDiagnosticStage.CompactionStarted, inputTokensBefore >= CompactionPlanner.TriggerTokens(budget)
+            ? ContextCompactionReason.TokenThreshold : ContextCompactionReason.Caller);
         try
         {
             var groups = Group(source.UncoveredMessages);
@@ -43,8 +58,9 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
                 IsSettled(group, index + 1 < groups.Count && groups[index + 1][0].Role == ChatMessageRole.User),
                 HasCompletedReply(group))).ToArray();
             var range = CompactionPlanner.Select(turns, (int)Math.Floor(budget.InputTokens * 0.16d));
-            if (range is null) return false;
+            if (range is null) return Skip(ContextCompactionReason.NoEligibleHistory);
             var selected = groups.Where(group => group[^1].Sequence <= range.LastSequence).ToArray();
+            selectedCount = selected.Length;
             var summaryBudget = PromptBudget.Resolve(new(route, budget.ContextWindowTokens, null, ContextLimitSource.Override, "request-snapshot"),
                 Math.Min(2048, budget.OutputTokens));
             var previous = source.Summary?.SummaryText;
@@ -61,7 +77,8 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
                     batch.AddRange(selected[next++]);
                     request = candidate;
                 }
-                if (request is null || !calls.TryConsume()) return false;
+                if (request is null) return Skip(ContextCompactionReason.BatchInputLimit);
+                if (!calls.TryConsume()) return Skip(ContextCompactionReason.AuxiliaryCallLimit);
                 lease.CheckCurrent();
                 revalidate();
                 var attempt = calls.ModelBudget is { } shared
@@ -69,10 +86,10 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
                     : await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);
                 lease.CheckCurrent();
                 revalidate();
-                if (!IsValid(attempt, batch[^1].MessageId)) return false;
+                if (!IsValid(attempt, batch[^1].MessageId)) return Skip(ContextCompactionReason.InvalidSummary);
                 var before = meter.Measure(route, RawRequest(source, batch, previous, summaryBudget.OutputTokens, toolSources: toolSources)).InputTokens;
                 var after = meter.Measure(route, RawRequest(source, [], attempt.Text, summaryBudget.OutputTokens)).InputTokens;
-                if (after >= before) return false;
+                if (after >= before) return Skip(ContextCompactionReason.NoReduction);
                 if (attempt.Usage is not null) meter.RecordUsage(route, request, attempt.Usage);
                 previous = attempt.Text;
             }
@@ -83,17 +100,22 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
             var tail = source.UncoveredMessages.Where(message => message.Sequence > end.Sequence).ToArray();
             revalidate();
             var composed = composeCandidate(summary, tail);
-            if (!composed.FitsBudget || composed.Usage.InputTokens >= inputTokensBefore) return false;
-            return lease.Commit(() =>
+            if (!composed.FitsBudget) return Skip(ContextCompactionReason.FinalProjectionLimit);
+            if (composed.Usage.InputTokens >= inputTokensBefore) return Skip(ContextCompactionReason.NoReduction);
+            var committed = lease.Commit(() =>
             {
                 revalidate();
                 return store.TryCommit(new(source, summary, route, inputTokensBefore, composed.Usage.InputTokens));
             });
+            if (committed) Observe(ContextDiagnosticStage.CompactionCommitted, ContextCompactionReason.None);
+            else Observe(ContextDiagnosticStage.CompactionSkipped, ContextCompactionReason.ProjectionChanged);
+            return committed;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, ContextCompactionReason.Cancelled); throw; }
         catch (Exception error) when (error is ProviderRequestException or PromptBudgetException or ArgumentException or System.Data.Common.DbException)
         {
-            return false;
+            return Skip(ContextCompactionReason.Failure);
         }
     }
 

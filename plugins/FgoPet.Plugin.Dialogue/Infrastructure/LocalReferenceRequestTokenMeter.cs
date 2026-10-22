@@ -40,7 +40,10 @@ public sealed class LocalReferenceRequestTokenMeter : IRequestTokenMeter
     public TokenMeasurement Measure(ModelRouteKey route, ChatRequest request)
     {
         var fallback = _conservative.Measure(route, request);
-        if (fallback.Kind == TokenCountKind.ProviderUsage || route != _approvedRoute || route.ProviderId != "deepseek"
+        // This reference counter handles text only. Images retain the conservative image reserve
+        // (plus the ordinary envelope estimate); base64 text counting is not image token counting.
+        if (fallback.Kind == TokenCountKind.ProviderUsage || ChatImageInputs.HasImages(request)
+            || route != _approvedRoute || route.ProviderId != "deepseek"
             || route.ModelId != "deepseek-flash" || !OfficialEndpoints.Contains(route.EndpointKey) || !IsHash(_policyHash)
             || request.MaxOutputTokens != 2048 || request.Metadata.Count != 0
             || request.Tools is { Count: > 0 } && request.ToolChoice is not (null or "auto")) return fallback;

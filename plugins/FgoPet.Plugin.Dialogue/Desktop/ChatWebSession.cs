@@ -29,6 +29,8 @@ internal sealed class ChatWebSession : IChatWebSession
     private long _sendEpoch = -1;
     private bool _refreshPending;
     private bool _disposed;
+    private readonly CancellationTokenSource _closed = new();
+    private readonly ChatImageTransfer _imageTransfer = new();
 
     public ChatWebSession(ConversationViewModel conversation, IChatWebHostActions host)
     {
@@ -78,6 +80,22 @@ internal sealed class ChatWebSession : IChatWebSession
 
         switch (command.Type)
         {
+            case "chat.image.cancel":
+                _imageTransfer.Clear(); return Success(BuildSnapshot());
+            case "chat.image":
+                if (_conversation.IsStreaming || _conversation.HasPendingRun
+                    || _host.ReadPresentation().Actions?.CanChooseImage != true)
+                { _imageTransfer.Clear(); return Failure("CHAT_NOT_AVAILABLE"); }
+                try
+                {
+                    var chunk = command.ImageChunk!;
+                    var bytes = _imageTransfer.Append(chunk.Id, chunk.MimeType, chunk.Offset, chunk.Data, chunk.Complete);
+                    if (bytes is null) return Success(BuildSnapshot());
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token);
+                    var imported = await _host.ImportImageAsync(bytes, chunk.MimeType, linked.Token);
+                    return imported.Success ? Success(BuildSnapshot()) : imported;
+                }
+                catch (InvalidOperationException) { return Failure("CHAT_IMAGE_TRANSFER_INVALID"); }
             case "chat.draft":
                 if (command.Text!.Length > MaxSafeTextLength) return Failure("CHAT_DRAFT_TOO_LONG");
                 if (command.Revision!.Value <= _draftRevision) return Failure("CHAT_DRAFT_STALE");
@@ -87,6 +105,7 @@ internal sealed class ChatWebSession : IChatWebSession
                 ScheduleRefresh();
                 return Success(BuildSnapshot());
             case "chat.send":
+                if (_imageTransfer.Active) return Failure("CHAT_IMAGE_BUSY");
                 return StartGeneration(_conversation.SendCommand, cancellationToken);
             case "chat.stop":
                 if (!_conversation.StopCommand.CanExecute(null)) return Failure("CHAT_NOT_AVAILABLE");
@@ -128,6 +147,7 @@ internal sealed class ChatWebSession : IChatWebSession
                 return _conversation.TryCancelInput(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var cancelError)
                     ? Success(BuildSnapshot()) : Failure(cancelError);
             case "chat.host":
+                if (command.Action is "chooseImage" or "clearImage") _imageTransfer.Clear();
                 return await HandleHostActionAsync(command, cancellationToken);
             default:
                 return Failure("CHAT_COMMAND_INVALID");
@@ -238,6 +258,9 @@ internal sealed class ChatWebSession : IChatWebSession
         "refreshProjects" => availability.CanRefreshProjects && !_conversation.IsStreaming,
         "selectProject" => !_conversation.IsStreaming,
         "selectModel" => !_conversation.IsStreaming,
+        "chooseImage" => availability.CanChooseImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "clearImage" => availability.CanClearImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "configureBrowserImages" => availability.CanConfigureBrowserImages,
         "chooseWorkspace" => availability.CanChooseWorkspace && !_conversation.IsStreaming,
         "clearWorkspace" => availability.CanClearWorkspace && !_conversation.IsStreaming,
         _ => false,
@@ -261,6 +284,9 @@ internal sealed class ChatWebSession : IChatWebSession
             "refreshProjects" => ChatWebHostAction.RefreshProjects,
             "selectProject" => ChatWebHostAction.SelectProject,
             "selectModel" => ChatWebHostAction.SelectModel,
+            "chooseImage" => ChatWebHostAction.ChooseImage,
+            "clearImage" => ChatWebHostAction.ClearImage,
+            "configureBrowserImages" => ChatWebHostAction.ConfigureBrowserImages,
             "chooseWorkspace" => ChatWebHostAction.ChooseWorkspace,
             "clearWorkspace" => ChatWebHostAction.ClearWorkspace,
             _ => (ChatWebHostAction?)null,
@@ -403,7 +429,8 @@ internal sealed class ChatWebSession : IChatWebSession
             raw.IsProjectsLoading,
             Safe(raw.ProjectsStatus, 256),
             raw.Actions ?? new ChatWebHostAvailability(),
-            raw.WorkspaceLabel is null ? null : Safe(raw.WorkspaceLabel, 160));
+            raw.WorkspaceLabel is null ? null : Safe(raw.WorkspaceLabel, 160),
+            raw.ImageLabel is null ? null : Safe(raw.ImageLabel, 160), Safe(raw.ImageDisclosure, 512));
     }
 
     private static IReadOnlyList<ChatWebChoice> SanitizeChoices(IReadOnlyList<ChatWebChoice>? choices,
@@ -520,7 +547,7 @@ internal sealed class ChatWebSession : IChatWebSession
     }
 
     private void OnConversationPropertyChanged(object? sender, PropertyChangedEventArgs args) => ScheduleRefresh();
-    private void OnConversationSessionChanged() { _sessionEpoch++; ScheduleRefresh(); }
+    private void OnConversationSessionChanged() { _imageTransfer.Clear(); _sessionEpoch++; ScheduleRefresh(); }
     private void OnHostChanged(object? sender, EventArgs args) => ScheduleRefresh();
     private void OnContextChanged(object? sender, PropertyChangedEventArgs args) => ScheduleRefresh();
     private void OnTurnsChanged(object? sender, NotifyCollectionChangedEventArgs args) { UpdateTurnSubscriptions(); ScheduleRefresh(); }
@@ -538,6 +565,9 @@ internal sealed class ChatWebSession : IChatWebSession
     {
         if (_disposed) return;
         _disposed = true;
+        _imageTransfer.Dispose();
+        _closed.Cancel();
+        _closed.Dispose();
         _conversation.PropertyChanged -= OnConversationPropertyChanged;
         _conversation.SessionChanged -= OnConversationSessionChanged;
         _conversation.Turns.CollectionChanged -= OnTurnsChanged;

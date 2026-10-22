@@ -11,7 +11,9 @@ public sealed record ChatWebHostPresentation(
     bool IsProjectsLoading = false,
     string ProjectsStatus = "",
     ChatWebHostAvailability? Actions = null,
-    string? WorkspaceLabel = null);
+    string? WorkspaceLabel = null,
+    string? ImageLabel = null,
+    string ImageDisclosure = "");
 
 /// <summary>A value selected from a current, host-owned catalog.</summary>
 public sealed record ChatWebChoice(string Id, string Label, bool Selected, bool CanSelect = true);
@@ -26,7 +28,10 @@ public sealed record ChatWebHostAvailability(
     bool CanOpenModelSettings = false,
     bool CanRefreshProjects = false,
     bool CanChooseWorkspace = false,
-    bool CanClearWorkspace = false);
+    bool CanClearWorkspace = false,
+    bool CanChooseImage = false,
+    bool CanClearImage = false,
+    bool CanConfigureBrowserImages = false);
 
 public enum ChatWebHostAction
 {
@@ -47,6 +52,9 @@ public enum ChatWebHostAction
     SelectModel,
     ChooseWorkspace,
     ClearWorkspace,
+    ChooseImage,
+    ClearImage,
+    ConfigureBrowserImages,
 }
 
 /// <summary>Finite request passed from the Dialogue adapter to its native host.</summary>
@@ -61,6 +69,9 @@ public interface IChatWebHostActions
     event EventHandler? Changed;
 
     ChatWebHostPresentation ReadPresentation();
+
+    ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token) =>
+        ValueTask.FromResult(new WebSurfaceCommandResult(false, ErrorCode: "CHAT_NOT_AVAILABLE"));
 
     ValueTask<WebSurfaceCommandResult> HandleAsync(
         ChatWebHostRequest request,

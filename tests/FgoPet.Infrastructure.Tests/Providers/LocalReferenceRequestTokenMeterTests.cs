@@ -2,6 +2,8 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using FgoPet.Core.Dialogue;
+using FgoPet.Extensibility;
+using FgoPet.Kernel.Agent;
 using FgoPet.Infrastructure.Providers;
 using Xunit;
 
@@ -79,6 +81,33 @@ public sealed class LocalReferenceRequestTokenMeterTests
         var proxy = Route with { EndpointKey = "proxy" };
         Assert.Equal(TokenCountKind.Estimated, new LocalReferenceRequestTokenMeter(proxy, Policy, counter).Measure(proxy, Request()).Kind);
         Assert.Equal(TokenCountKind.Estimated, new LocalReferenceRequestTokenMeter(Route, "PRIVATE_NOT_A_POLICY_HASH", counter).Measure(Route, Request()).Kind);
+        Assert.Equal(0, counter.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Image_requests_never_enter_text_only_reference_counter_or_lose_image_budget(bool buddy)
+    {
+        var route = buddy ? ModelRouteKey.From(new("custom-openai-compatible", "http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash")) : Route;
+        var scope = new ToolScope("conversation", "role", null);
+        var store = new SelectedImageStore(s => s == scope);
+        store.Grant(scope, route, new(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="), 1, 1), "user");
+        store.Bind(scope, route, "user", "run", default);
+        var request = ChatRequest.CreateAgent("role", "conversation", [
+            new(ModelMessageRole.User, "synthetic", []),
+            new(ModelMessageRole.Assistant, "", [new("call", "image.read", "{}")]),
+            new(ModelMessageRole.Tool, "{}", [], "call") { Image = store.Read(scope, route, "run", default) }
+        ], maxOutputTokens: 2048);
+        ChatImageInputs.Prepare(request, route, store, ImageModelCapabilities.Supports(route), default);
+        var counter = new Counter(); var meter = new LocalReferenceRequestTokenMeter(route, Policy, counter);
+        var measured = meter.Measure(route, request);
+        Assert.Equal(new RequestTokenMeter().Measure(route, request), measured);
+        Assert.Equal(TokenCountKind.Estimated, measured.Kind); Assert.True(measured.InputTokens > 8192);
+        Assert.Equal(0, counter.Calls);
+        meter.RecordUsage(route, request, new(1498, 5));
+        Assert.Equal(1498, meter.Measure(route, request).InputTokens);
+        Assert.Equal(TokenCountKind.ProviderUsage, meter.Measure(route, request).Kind);
         Assert.Equal(0, counter.Calls);
     }
 

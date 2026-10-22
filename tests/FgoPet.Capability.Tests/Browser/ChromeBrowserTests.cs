@@ -66,7 +66,7 @@ public sealed class ChromeBrowserTests
         var connection = new Connection();
         await using var plugin = new ChromeBrowserPlugin(() => Enabled, _ => true, connection);
         await plugin.StartAsync(default);
-        Assert.Equal(new[] { "browser.tabs", "browser.open", "browser.read" }, plugin.Contributions.Tools.Select(t => t.Descriptor.Name));
+        Assert.Equal(new[] { "browser.tabs", "browser.open", "browser.read", "browser.inspect_image" }, plugin.Contributions.Tools.Select(t => t.Descriptor.Name));
         Assert.Equal("TOOL_INVALID_ARGUMENTS", (await Invoke(plugin, "browser.open", new { url = "https://example.org", initScript = "evil" })).ErrorCode);
         Assert.Empty(connection.Calls);
         Assert.True((await Invoke(plugin, "browser.open", new { url = "https://example.org" })).Success);

@@ -7,7 +7,8 @@ using FgoPet.Extensibility;
 namespace FgoPet.Kernel.Agent;
 
 public sealed record NativeAgentExtensions(SkillRegistry? Skills = null, AgentContextAssembler? Context = null,
-    UserInputBroker? Questions = null, ApprovalBroker? Approvals = null, AgentEventDispatcher? Events = null);
+    UserInputBroker? Questions = null, ApprovalBroker? Approvals = null, AgentEventDispatcher? Events = null,
+    Action<ContextBudgetDiagnostic>? ContextDiagnostics = null);
 
 internal static class NativeAgentEnvironment
 {
@@ -87,9 +88,9 @@ internal static class NativeAgentEnvironment
                 input.InputTokenBudget, tools);
             projected = session.Model is IAgentRunPreparation { RetainsToolHistory: true }
                 ? await extensions.Context.AssembleForCompactionAsync(request, projected,
-                    candidate => input.MeasureInputTokens(new(candidate, tools)), token)
+                    candidate => input.MeasureInputTokens(new(candidate, tools)), token, extensions.ContextDiagnostics)
                 : await extensions.Context.AssembleAsync(request, projected,
-                    candidate => input.MeasureInputTokens(new(candidate, tools)), token);
+                    candidate => input.MeasureInputTokens(new(candidate, tools)), token, extensions.ContextDiagnostics);
         }
         ModelProtocol.ValidateTranscript(projected);
         StepEnvironmentBuilder.CheckSize(projected);

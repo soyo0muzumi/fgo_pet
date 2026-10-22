@@ -17,9 +17,29 @@ namespace FgoPet.App.Dialogue;
 
 public static class ModelConnectionRegistration
 {
-    public static IServiceCollection AddDialogueRuntime(this IServiceCollection services)
+    public static IServiceCollection AddDialogueRuntime(this IServiceCollection services, string? diagnosticLogPath = null)
     {
+        if (diagnosticLogPath is not null) services.AddSingleton(new NativeRunDiagnosticLog(diagnosticLogPath));
         return services
+        .AddSingleton<SelectedImageStore>(provider => new(
+            scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope),
+            provider.GetRequiredService<TimeProvider>(),
+            () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
+                ? ModelRouteKey.From(connection) : null))
+        .AddSingleton(provider => new BrowserImageStore(provider.GetRequiredService<SelectedImageStore>(),
+            scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope),
+            () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
+                ? ModelRouteKey.From(connection) : null, provider.GetRequiredService<TimeProvider>()))
+        .AddSingleton<IBrowserImageSink>(provider => provider.GetRequiredService<BrowserImageStore>())
+        .AddSingleton<IChatImageResolver>(provider => new ConversationImageResolver(
+            provider.GetRequiredService<SelectedImageStore>(), provider.GetRequiredService<BrowserImageStore>()))
+        .AddSingleton<IFgoPetPlugin>(provider => new ImageToolsPlugin(
+            provider.GetRequiredService<SelectedImageStore>(),
+            () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
+                ? ModelRouteKey.From(connection) : null,
+            diagnostic => provider.GetRequiredService<ILogger<ImageToolsPlugin>>().LogInformation(
+                "Image read {Timestamp} {Correlation} {Stage} {ErrorCode}", diagnostic.TimestampUtc,
+                diagnostic.Correlation, diagnostic.Stage, diagnostic.ErrorCode)))
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ApprovedKnowledgeQuery>()
@@ -44,8 +64,12 @@ public static class ModelConnectionRegistration
         .AddSingleton(provider => new UserInputBroker(provider.GetRequiredService<TimeProvider>()))
         .AddSingleton(provider => new NativeConversationRuntime(provider.GetRequiredService<IAgentRunStore>(),
             provider.GetRequiredService<ToolRegistry>(), new(provider.GetRequiredService<SkillRegistry>(),
-                provider.GetRequiredService<AgentContextAssembler>(), provider.GetRequiredService<UserInputBroker>()), provider.GetRequiredService<TimeProvider>(),
-            admissionAvailable: () => provider.GetRequiredService<NativeAgentAvailability>().IsReady))
+                provider.GetRequiredService<AgentContextAssembler>(), provider.GetRequiredService<UserInputBroker>(),
+                ContextDiagnostics:
+                    provider.GetService<NativeRunDiagnosticLog>() is { } diagnostics ? diagnostics.RecordContext : null), provider.GetRequiredService<TimeProvider>(),
+            admissionAvailable: () => provider.GetRequiredService<NativeAgentAvailability>().IsReady,
+            diagnostics: (snapshot, stage, persisted) => provider.GetService<NativeRunDiagnosticLog>()?.Record(snapshot, stage, persisted),
+            releaseAttachments: runId => provider.GetRequiredService<BrowserImageStore>().Release(runId)))
         .AddSingleton<IFgoPetPlugin>(provider => new NativeAgentLifecyclePlugin(
             () => provider.GetRequiredService<SqliteAgentRunStore>(), () => provider.GetRequiredService<IAgentFinalDeliveryStore>(),
             () => provider.GetRequiredService<NativeConversationRuntime>(), () => provider.GetRequiredService<ConversationCapabilityRouter>(),

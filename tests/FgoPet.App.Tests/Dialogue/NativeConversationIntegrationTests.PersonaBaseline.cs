@@ -354,8 +354,8 @@ public sealed partial class NativeConversationIntegrationTests
 
     private static ContentBinding ResolveSourcePersona()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "FgoPet.sln"))) directory = directory.Parent;
+        var directory = ResolveTestRepositoryRoot(AppContext.BaseDirectory,
+            Environment.GetEnvironmentVariable("FGO_PET_TEST_REPOSITORY_ROOT"));
         Assert.NotNull(directory);
         var binding = ContentBindingResolver.Resolve(Path.Combine(directory.FullName, "content", "packs", "official.mash"), SourcePersonaRole, "casual");
         Assert.NotNull(binding.Persona);
