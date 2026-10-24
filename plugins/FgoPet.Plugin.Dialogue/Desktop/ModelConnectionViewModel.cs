@@ -16,19 +16,29 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     private readonly ICredentialStore _credentials;
     private readonly ProviderCatalog _catalog;
     private readonly ChatProviderFactory _providerFactory;
+    private readonly TimeProvider _clock;
     private string _pendingApiKey = string.Empty;
     private long _draftVersion;
+    private long _connectionVersion;
+    private long _keyCheckVersion;
+    private long _operationVersion;
+    private DateTimeOffset _modelsRetryAfter;
+    private ModelQuery? _modelQuery;
+
+    public static readonly TimeSpan ModelsCacheLifetime = TimeSpan.FromMinutes(5);
 
     public ModelConnectionViewModel(
         IDialogueSettingsStore settings,
         ICredentialStore credentials,
         ProviderCatalog catalog,
-        ChatProviderFactory providerFactory)
+        ChatProviderFactory providerFactory,
+        TimeProvider? clock = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
+        _clock = clock ?? TimeProvider.System;
         ConfiguredModels = new(() => _settings.Load().ModelConnection,
             (connection, token) => _providerFactory.Create(connection).ListModelsAsync(token));
         Providers = _catalog.Providers;
@@ -61,7 +71,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     partial void OnSelectedProviderIdChanged(string value)
     {
-        _draftVersion++;
+        _pendingApiKey = string.Empty;
+        IsKeySaved = false;
+        InvalidateDraftConnection();
         var provider = Providers.FirstOrDefault(candidate => candidate.ProviderId == value);
         if (provider is null)
         {
@@ -79,8 +91,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     partial void OnBaseUrlChanged(string value)
     {
-        _draftVersion++;
-        AvailableModels = Array.Empty<ProviderModel>();
+        InvalidateDraftConnection();
         OnPropertyChanged(nameof(ContextLimitText));
     }
 
@@ -198,67 +209,151 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     public void SetApiKey(string value)
     {
-        _pendingApiKey = value?.Trim() ?? string.Empty;
-        _draftVersion++;
-        AvailableModels = Array.Empty<ProviderModel>();
+        var pending = value?.Trim() ?? string.Empty;
+        if (string.Equals(_pendingApiKey, pending, StringComparison.Ordinal)) return;
+        _pendingApiKey = pending;
+        InvalidateDraftConnection();
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        IsKeySaved = await _credentials.ExistsAsync(CredentialTarget(), cancellationToken);
+        var providerId = SelectedProviderId;
+        var connectionVersion = _connectionVersion;
+        var checkVersion = ++_keyCheckVersion;
+        var exists = await _credentials.ExistsAsync(CredentialTarget(providerId), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (connectionVersion == _connectionVersion && checkVersion == _keyCheckVersion
+            && providerId == SelectedProviderId)
+            IsKeySaved = exists;
     }
 
-    private async Task TestAsync()
-    {
-        var testedDraftVersion = _draftVersion;
-        await ExecuteProviderOperationAsync("测试连接", async provider =>
-        {
-            var models = await provider.ListModelsAsync(CancellationToken.None);
-            if (testedDraftVersion != _draftVersion)
-            {
-                StatusText = "测试完成，但草稿已更改；结果未应用。";
-                return;
-            }
+    private Task TestAsync() => QueryModelsAsync(explicitRequest: true, test: true);
 
-            AvailableModels = models;
-            StatusText = $"连接成功（尚未保存） · {ProviderStatusText} · {ModelStatusText}";
-        });
+    private Task RefreshModelsAsync() => QueryModelsAsync(explicitRequest: true);
+
+    /// <summary>Loads models for this draft on demand without saving or selecting anything.</summary>
+    public Task EnsureModelsAsync(CancellationToken cancellationToken = default) =>
+        QueryModelsAsync(explicitRequest: false, cancellationToken: cancellationToken);
+
+    private Task QueryModelsAsync(bool explicitRequest, bool test = false,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_modelQuery is { } current && current.ConnectionVersion == _connectionVersion
+            && current.DraftVersion == _draftVersion)
+        {
+            current.ExplicitRequest |= explicitRequest;
+            current.Test |= test;
+            return WaitForQuery(current.Completion.Task, cancellationToken);
+        }
+        if (!explicitRequest && _clock.GetUtcNow() < _modelsRetryAfter) return Task.CompletedTask;
+        // A passive page refresh must not supersede an explicit credential save/delete.
+        if (!explicitRequest && IsBusy && _modelQuery is null) return Task.CompletedTask;
+
+        var operationVersion = BeginOperation();
+        var query = new ModelQuery(_connectionVersion, _draftVersion, operationVersion,
+            SelectedProviderId, BaseUrl, ModelId, _pendingApiKey, explicitRequest, test,
+            new CancellationTokenSource(TimeSpan.FromSeconds(15), _clock));
+        _modelQuery = query;
+        _ = RunModelQueryAsync(query);
+        // Closing one page cancels its wait, not the shared request used by another page.
+        return WaitForQuery(query.Completion.Task, cancellationToken);
     }
 
-    private async Task RefreshModelsAsync()
+    private static Task WaitForQuery(Task task, CancellationToken cancellationToken) =>
+        cancellationToken.CanBeCanceled ? task.WaitAsync(cancellationToken) : task;
+
+    private bool OwnsQuery(ModelQuery query) => ReferenceEquals(_modelQuery, query)
+        && query.ConnectionVersion == _connectionVersion && query.OperationVersion == _operationVersion;
+
+    private async Task RunModelQueryAsync(ModelQuery query)
     {
-        var testedDraftVersion = _draftVersion;
-        await ExecuteProviderOperationAsync("刷新模型", async provider =>
+        try
         {
-            var models = await provider.ListModelsAsync(CancellationToken.None);
-            if (testedDraftVersion != _draftVersion)
+            var token = query.Cancellation.Token;
+            if (string.IsNullOrEmpty(query.PendingKey))
             {
-                StatusText = "刷新完成，但草稿已更改；结果未应用。";
+                var exists = await _credentials.ExistsAsync(CredentialTarget(query.ProviderId), token).WaitAsync(token);
+                if (!OwnsQuery(query)) return;
+                IsKeySaved = exists;
+                if (!exists)
+                {
+                    if (!query.ExplicitRequest) return;
+                    throw new ProviderRequestException(ProviderFailureCategory.Configuration, "尚未配置模型 API Key。");
+                }
+            }
+
+            // Listing models does not require a selected model. This fallback is request metadata only.
+            var connection = new ModelConnectionSettings(query.ProviderId, query.BaseUrl,
+                string.IsNullOrWhiteSpace(query.ModelId) ? DefaultModel(query.ProviderId) : query.ModelId);
+            var models = await _providerFactory.Create(connection, query.PendingKey)
+                .ListModelsAsync(token).WaitAsync(token);
+            if (!OwnsQuery(query)) return;
+            if (query.DraftVersion != _draftVersion)
+            {
+                StatusText = query.Test ? "测试完成，但草稿已更改；结果未应用。" : "刷新完成，但草稿已更改；结果未应用。";
                 return;
             }
             AvailableModels = models;
-            StatusText = $"已刷新 {AvailableModels.Count} 个模型。";
-        });
+            _modelsRetryAfter = _clock.GetUtcNow() + ModelsCacheLifetime;
+            StatusText = query.Test ? $"连接成功（尚未保存） · {ProviderStatusText} · {ModelStatusText}"
+                : $"已刷新 {AvailableModels.Count} 个模型。";
+        }
+        catch (Exception error) when (IsProviderOperationFailure(error))
+        {
+            if (!OwnsQuery(query) || query.DraftVersion != _draftVersion) return;
+            _modelsRetryAfter = _clock.GetUtcNow() + TimeSpan.FromSeconds(30);
+            ErrorText = ProviderOperationError(query.Test ? "测试连接" : "刷新模型", error);
+        }
+        catch (Exception error)
+        {
+            if (OwnsQuery(query) && query.DraftVersion == _draftVersion)
+                query.Completion.TrySetException(error);
+        }
+        finally
+        {
+            if (ReferenceEquals(_modelQuery, query)) _modelQuery = null;
+            EndOperation(query.OperationVersion);
+            query.Cancellation.Dispose();
+            query.Completion.TrySetResult();
+        }
     }
 
     private async Task SaveAsync()
     {
-        IsBusy = true;
-        ErrorText = string.Empty;
+        var operationVersion = BeginOperation();
+        var connectionVersion = _connectionVersion;
+        var draftVersion = _draftVersion;
+        bool OwnsSave() => operationVersion == _operationVersion && connectionVersion == _connectionVersion
+            && draftVersion == _draftVersion;
         try
         {
             var connection = BuildConnection();
             _ = PromptBudget.Resolve(CurrentLimit(connection), connection.MaxOutputTokens);
-            if (!string.IsNullOrEmpty(_pendingApiKey))
+            var pendingKey = _pendingApiKey;
+            if (!string.IsNullOrEmpty(pendingKey))
             {
-                await _credentials.SaveAsync(CredentialTarget(), _pendingApiKey, CancellationToken.None);
+                await _credentials.SaveAsync(CredentialTarget(connection.ProviderId), pendingKey, CancellationToken.None);
+                // The captured credential may have changed even if the user has since moved to another draft.
+                ConfiguredModels.Invalidate();
+                if (!OwnsSave()) return;
+                _keyCheckVersion++;
                 IsKeySaved = true;
                 _pendingApiKey = string.Empty;
                 _draftVersion++;
+                _connectionVersion++;
+                draftVersion = _draftVersion;
+                connectionVersion = _connectionVersion;
+                _modelsRetryAfter = default;
             }
-            else if (!IsKeySaved)
+            else
             {
-                throw new ProviderRequestException(ProviderFailureCategory.Configuration, "请先输入 API Key。");
+                var exists = await _credentials.ExistsAsync(CredentialTarget(connection.ProviderId), CancellationToken.None);
+                if (!OwnsSave()) return;
+                _keyCheckVersion++;
+                IsKeySaved = exists;
+                if (!exists)
+                    throw new ProviderRequestException(ProviderFailureCategory.Configuration, "请先输入 API Key。");
             }
 
             lock (_settings)
@@ -270,57 +365,107 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         }
         catch (ArgumentException error)
         {
-            ErrorText = $"设置无效：{error.Message}";
+            if (OwnsSave()) ErrorText = $"设置无效：{error.Message}";
         }
         catch (PromptBudgetException)
         {
-            ErrorText = "最大输出超出模型限制，或没有为输入留下空间。";
+            if (OwnsSave()) ErrorText = "最大输出超出模型限制，或没有为输入留下空间。";
         }
         catch (ProviderRequestException error)
         {
-            ErrorText = error.Message;
+            if (OwnsSave()) ErrorText = error.Message;
         }
         finally
         {
-            IsBusy = false;
+            EndOperation(operationVersion);
         }
     }
 
     private async Task ClearKeyAsync()
     {
-        await _credentials.DeleteAsync(CredentialTarget(), CancellationToken.None);
-        _pendingApiKey = string.Empty;
-        IsKeySaved = false;
-        _draftVersion++;
-        AvailableModels = Array.Empty<ProviderModel>();
-        ConfiguredModels.Invalidate();
-        StatusText = "API Key 已清除。";
-    }
-
-    private async Task ExecuteProviderOperationAsync(string operation, Func<IChatProvider, Task> action)
-    {
-        IsBusy = true;
-        ErrorText = string.Empty;
+        var operationVersion = BeginOperation();
+        var connectionVersion = _connectionVersion;
+        var providerId = SelectedProviderId;
         try
         {
-            var connection = new ModelConnectionSettings(SelectedProviderId, BaseUrl, ModelId);
-            await action(_providerFactory.Create(connection, _pendingApiKey));
+            await _credentials.DeleteAsync(CredentialTarget(providerId), CancellationToken.None);
+            ConfiguredModels.Invalidate();
+            if (operationVersion != _operationVersion || connectionVersion != _connectionVersion) return;
+            _pendingApiKey = string.Empty;
+            IsKeySaved = false;
+            InvalidateDraftConnection();
+            StatusText = "API Key 已清除。";
         }
-        catch (ArgumentException)
-        {
-            ErrorText = $"{operation}失败：设置无效。";
-        }
-        catch (ProviderRequestException error)
-        {
-            ErrorText = $"{operation}失败：{error.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        finally { EndOperation(operationVersion); }
     }
 
-    private string CredentialTarget() => $"fgo-pet/provider/{SelectedProviderId}";
+    private long BeginOperation()
+    {
+        var version = ++_operationVersion;
+        CancelModelQuery();
+        IsBusy = true;
+        ErrorText = string.Empty;
+        return version;
+    }
+
+    private void EndOperation(long version)
+    {
+        if (version == _operationVersion) IsBusy = false;
+    }
+
+    private void InvalidateDraftConnection()
+    {
+        _draftVersion++;
+        _connectionVersion++;
+        _keyCheckVersion++;
+        _operationVersion++;
+        CancelModelQuery();
+        _modelsRetryAfter = default;
+        AvailableModels = Array.Empty<ProviderModel>();
+        IsBusy = false;
+        ErrorText = string.Empty;
+        StatusText = "未测试连接。";
+    }
+
+    private void CancelModelQuery()
+    {
+        var query = _modelQuery;
+        _modelQuery = null;
+        try { query?.Cancellation.Cancel(); }
+        catch (ObjectDisposedException) { /* Completion raced with detaching the old query. */ }
+    }
+
+    private static bool IsProviderOperationFailure(Exception error) => error is ArgumentException
+        or ProviderRequestException or OperationCanceledException or System.Net.Http.HttpRequestException
+        or System.IO.IOException or System.ComponentModel.Win32Exception;
+
+    private static string ProviderOperationError(string operation, Exception error) => error switch
+    {
+        ArgumentException => $"{operation}失败：设置无效。",
+        ProviderRequestException providerError => $"{operation}失败：{providerError.Message}",
+        OperationCanceledException => $"{operation}失败：请求超时，请重试。",
+        System.ComponentModel.Win32Exception => $"{operation}失败：无法读取已保存的凭据。",
+        _ => $"{operation}失败：无法连接模型服务。",
+    };
+
+    private sealed class ModelQuery(long connectionVersion, long draftVersion, long operationVersion,
+        string providerId, string baseUrl, string modelId, string pendingKey, bool explicitRequest,
+        bool test, CancellationTokenSource cancellation)
+    {
+        public long ConnectionVersion { get; } = connectionVersion;
+        public long DraftVersion { get; } = draftVersion;
+        public long OperationVersion { get; } = operationVersion;
+        public string ProviderId { get; } = providerId;
+        public string BaseUrl { get; } = baseUrl;
+        public string ModelId { get; } = modelId;
+        public string PendingKey { get; } = pendingKey;
+        public bool ExplicitRequest { get; set; } = explicitRequest;
+        public bool Test { get; set; } = test;
+        public CancellationTokenSource Cancellation { get; } = cancellation;
+        public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private static string CredentialTarget(string providerId) => $"fgo-pet/provider/{providerId}";
 
     private static string DefaultModel(string providerId) =>
         providerId switch

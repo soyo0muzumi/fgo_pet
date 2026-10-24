@@ -13,6 +13,39 @@ namespace FgoPet.Windows.Tests.Settings;
 /// <summary>Production page modules with synthetic bridge data; never contacts a service or reads credentials.</summary>
 public sealed class MarginServiceSettingsWebTests
 {
+    [Fact]
+    public async Task Model_list_loads_on_entry_and_open_and_provider_change_clears_key_input()
+    {
+        await StaRunner.RunAsync(async () =>
+        {
+            var owner = new FixtureOwner("ModelConnection");
+            using var host = Factory(owner).CreateView("ModelConnection");
+            var window = Window(host);
+            try
+            {
+                window.Show();
+                await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
+                var web = Assert.Single(host.Children.OfType<WebView2>());
+                await Ready(web, "mc");
+                await Wait(() => Task.FromResult(owner.Calls.Contains("modelConnection.refreshModels")));
+                await Wait(async () => await Text(web, "document.querySelector('[data-model-list]').getAttribute('aria-busy')") == "false");
+                var count = owner.Calls.Count(call => call == "modelConnection.refreshModels");
+                await Script(web, "document.querySelector('[data-model-toggle]').click()");
+                await Wait(() => Task.FromResult(owner.Calls.Count(call => call == "modelConnection.refreshModels") > count));
+                await Wait(async () => await Text(web, "document.querySelector('[data-model-list]').getAttribute('aria-busy')") == "false");
+
+                await Script(web, "var key=document.querySelector('[data-field=apiKey]');key.value='fixture-provider-a';key.dispatchEvent(new Event('input',{bubbles:true}))");
+                await Ready(web, "mc");
+                await Script(web, "var provider=document.getElementById('mc-provider');provider.value='local';provider.dispatchEvent(new Event('change',{bubbles:true}))");
+                await Ready(web, "mc");
+                Assert.Equal("", await Text(web, "document.querySelector('[data-field=apiKey]').value"));
+                Assert.DoesNotContain("modelConnection.test", owner.Calls);
+                Assert.DoesNotContain("modelConnection.save", owner.Calls);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Theory]
     [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]

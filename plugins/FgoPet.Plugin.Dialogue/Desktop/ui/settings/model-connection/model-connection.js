@@ -9,6 +9,12 @@ const english = {
   "model.feedback.outputLimit": "Maximum output exceeds the model limit or leaves no room for input.",
   "model.feedback.invalidTest": "Connection test failed. Check the settings.",
   "model.feedback.invalidRefresh": "Model refresh failed. Check the settings.",
+  "model.feedback.refreshTimeout": "Model refresh timed out. Try again.",
+  "model.feedback.testTimeout": "Connection test timed out. Try again.",
+  "model.feedback.refreshCredentials": "Model refresh failed. The saved credential could not be read.",
+  "model.feedback.testCredentials": "Connection test failed. The saved credential could not be read.",
+  "model.feedback.refreshUnavailable": "Model refresh failed. The service could not be reached.",
+  "model.feedback.testUnavailable": "Connection test failed. The service could not be reached.",
   "model.dirty": "You have unsaved changes. Save to apply them.",
   "model.heading": "Model",
   "model.lead": "Connect your preferred model service.",
@@ -36,7 +42,8 @@ const english = {
   "model.reload": "Reload",
   "model.numericHint": "Use positive whole numbers, or leave blank to use model metadata. The service validates these limits.",
   "model.instant": "Saved immediately; does not wait for Save.",
-  "model.noModels": "No models loaded. Test the connection to load available models.",
+  "model.noModels": "No models available. Check your endpoint and API key, then reopen the list or test the connection.",
+  "model.loadingModels": "Loading available models…",
   "model.loadFailed": "Model settings could not be loaded. Try again.",
   "model.notCompleted": "The action did not complete. Current settings were reloaded; you can retry.",
   "model.styleFailed": "The page style could not be loaded. Reopen the page.",
@@ -57,6 +64,12 @@ const ownerFeedbackKeys = new Map([
   ["最大输出超出模型限制，或没有为输入留下空间。", "model.feedback.outputLimit"],
   ["测试连接失败：设置无效。", "model.feedback.invalidTest"],
   ["刷新模型失败：设置无效。", "model.feedback.invalidRefresh"],
+  ["刷新模型失败：请求超时，请重试。", "model.feedback.refreshTimeout"],
+  ["测试连接失败：请求超时，请重试。", "model.feedback.testTimeout"],
+  ["刷新模型失败：无法读取已保存的凭据。", "model.feedback.refreshCredentials"],
+  ["测试连接失败：无法读取已保存的凭据。", "model.feedback.testCredentials"],
+  ["刷新模型失败：无法连接模型服务。", "model.feedback.refreshUnavailable"],
+  ["测试连接失败：无法连接模型服务。", "model.feedback.testUnavailable"],
 ]);
 function ownerFeedback(text) {
   const key = ownerFeedbackKeys.get(text);
@@ -281,6 +294,9 @@ export async function mount(container, context) {
   let pickerOpen = false;
   let retryCommand = null;
   let pendingSave = null;
+  let modelsFlight = null;
+  let draftRevision = 0;
+  let displayedProviderId = null;
 
   const root = container.querySelector(".mc-page");
   const dirtyBanner = container.querySelector("[data-dirty]");
@@ -333,6 +349,8 @@ export async function mount(container, context) {
 
   function renderSnapshot() {
     if (!snapshot) return;
+    if (displayedProviderId !== null && displayedProviderId !== snapshot.providerId) keyInput.value = "";
+    displayedProviderId = snapshot.providerId;
     status.textContent = ownerFeedback(snapshot.statusText);
     error.textContent = localError || ownerFeedback(snapshot.errorText) || styleError;
 
@@ -371,10 +389,11 @@ export async function mount(container, context) {
 
   function buildModelList() {
     modelList.replaceChildren();
+    modelList.setAttribute("aria-busy", String(modelsFlight !== null));
     if (!snapshot || snapshot.availableModels.length === 0) {
       const empty = document.createElement("p");
       empty.className = "mc-model-empty";
-      empty.textContent = t("model.noModels");
+      empty.textContent = t(modelsFlight ? "model.loadingModels" : "model.noModels");
       modelList.append(empty);
       return;
     }
@@ -430,6 +449,7 @@ export async function mount(container, context) {
       applyInitialState();
       renderSnapshot();
       setMode("ready");
+      void refreshModels();
     } catch {
       if (disposed) return;
       localError = t("model.loadFailed");
@@ -442,6 +462,9 @@ export async function mount(container, context) {
 
   async function sendCommand(type, payload = {}) {
     if (disposed || mode !== "ready") return;
+    // Any explicit action supersedes an older background catalogue response.
+    draftRevision++;
+    modelsFlight = null;
     setMode("busy");
     localError = "";
     retryCommand = null;
@@ -453,10 +476,13 @@ export async function mount(container, context) {
       if (disposed) return;
       snapshot = updated;
       if (type === "modelConnection.save") dirty = false;
-      if (type === "modelConnection.clearKey") keyInput.value = "";
+      if (type === "modelConnection.clearKey" || type === "modelConnection.save"
+        || (type === "modelConnection.setDraft" && payload.field === "providerId")) keyInput.value = "";
       renderSnapshot();
       renderDirty();
       setMode("ready");
+      if (pickerOpen && type === "modelConnection.setDraft"
+        && (payload.field === "providerId" || payload.field === "baseUrl")) void refreshModels();
     } catch (caught) {
       if (disposed) return;
       const message = t("model.notCompleted");
@@ -472,6 +498,48 @@ export async function mount(container, context) {
       if (snapshot) renderSnapshot();
       else error.textContent = message;
       setMode("ready");
+    }
+  }
+
+  async function refreshModels() {
+    if (disposed || mode !== "ready" || !snapshot || modelsFlight) return;
+    const flight = { revision: draftRevision, providerId: snapshot.providerId, baseUrl: snapshot.baseUrl };
+    modelsFlight = flight;
+    buildModelList();
+    const isCurrent = () => !disposed && modelsFlight === flight && draftRevision === flight.revision;
+    const applyModels = updated => {
+      if (!isCurrent() || !updated || updated.providerId !== flight.providerId || updated.baseUrl !== flight.baseUrl) return;
+      // Update catalogue feedback only. Do not repaint text inputs while the user
+      // is typing a new endpoint/model, or change the explicitly selected model.
+      snapshot = { ...snapshot, availableModels: updated.availableModels,
+        contextLimitText: updated.contextLimitText, statusText: updated.statusText, errorText: updated.errorText };
+      status.textContent = ownerFeedback(snapshot.statusText);
+      contextLimit.textContent = snapshot.contextLimitText;
+      localError = "";
+      error.textContent = ownerFeedback(snapshot.errorText) || styleError;
+      retryCommand = snapshot.errorText ? { type: "modelConnection.refreshModels", payload: {} } : null;
+      renderMode();
+    };
+    try {
+      const result = await context.request("modelConnection.refreshModels");
+      const updated = normalizeSnapshot(result);
+      if (!updated) throw new Error("SETTINGS_INVALID_SNAPSHOT");
+      applyModels(updated);
+    } catch (caught) {
+      if (!isCurrent()) return;
+      const updated = normalizeSnapshot(caught?.details);
+      if (updated) applyModels(updated);
+      else {
+        localError = t("model.notCompleted");
+        retryCommand = { type: "modelConnection.refreshModels", payload: {} };
+        error.textContent = localError;
+        renderMode();
+      }
+    } finally {
+      if (modelsFlight === flight) {
+        modelsFlight = null;
+        if (!disposed) buildModelList();
+      }
     }
   }
 
@@ -517,6 +585,7 @@ export async function mount(container, context) {
     if (mode !== "ready") return;
     const value = providerSelect.value;
     if (value !== snapshot?.providerId) {
+      keyInput.value = "";
       markDirty();
       void sendCommand("modelConnection.setDraft", { field: "providerId", value });
     }
@@ -580,6 +649,7 @@ export async function mount(container, context) {
   modelToggle.addEventListener("click", () => {
     if (mode !== "ready") return;
     setPickerOpen(!pickerOpen);
+    if (pickerOpen) void refreshModels();
   });
 
   testButton.addEventListener("click", () => {
@@ -594,7 +664,8 @@ export async function mount(container, context) {
 
   retry.addEventListener("click", () => {
     if (mode === "busy" || mode === "loading") return;
-    if (retryCommand) void sendCommand(retryCommand.type, retryCommand.payload);
+    if (retryCommand?.type === "modelConnection.refreshModels") void refreshModels();
+    else if (retryCommand) void sendCommand(retryCommand.type, retryCommand.payload);
     else void refreshSnapshot();
   });
 

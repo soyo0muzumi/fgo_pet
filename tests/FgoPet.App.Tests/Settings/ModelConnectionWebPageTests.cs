@@ -155,6 +155,58 @@ public sealed class ModelConnectionWebPageTests
     }
 
     [Fact]
+    public async Task Provider_change_returns_current_key_state_and_does_not_reuse_pending_key()
+    {
+        var settings = new FakeSettings();
+        var credentials = new FakeCredentials();
+        credentials.Values["fgo-pet/provider/openai"] = "fixture-saved-a";
+        var handler = new RespondingHandler();
+        var page = new ModelConnectionWebPage(CreateViewModel(settings, credentials, handler));
+        await Send(page, "modelConnection.get", "{\"pageId\":\"ModelConnection\"}");
+        await Send(page, "modelConnection.setDraft",
+            "{\"pageId\":\"ModelConnection\",\"field\":\"apiKey\",\"value\":\"fixture-pending-a\"}");
+
+        var changed = await Send(page, "modelConnection.setDraft",
+            "{\"pageId\":\"ModelConnection\",\"field\":\"providerId\",\"value\":\"deepseek\"}");
+        Assert.True(changed.Success);
+        using var snapshot = JsonDocument.Parse(JsonSerializer.Serialize(changed.Payload));
+        Assert.False(snapshot.RootElement.GetProperty("isKeySaved").GetBoolean());
+        Assert.DoesNotContain("fixture-pending-a", JsonSerializer.Serialize(changed.Payload));
+
+        var refresh = await Send(page, "modelConnection.refreshModels", "{\"pageId\":\"ModelConnection\"}");
+        Assert.True(refresh.Success);
+        Assert.Equal(0, handler.RequestCount);
+        var save = await Send(page, "modelConnection.save", "{\"pageId\":\"ModelConnection\"}");
+        Assert.False(save.Success);
+        Assert.Null(settings.Saved);
+        Assert.False(credentials.Values.ContainsKey("fgo-pet/provider/deepseek"));
+    }
+
+    [Fact]
+    public async Task Provider_change_rechecks_preexisting_key_and_repeated_refresh_uses_cache()
+    {
+        var settings = new FakeSettings();
+        var credentials = new FakeCredentials();
+        credentials.Values["fgo-pet/provider/deepseek"] = "fixture-saved-b";
+        var handler = new RespondingHandler();
+        var page = new ModelConnectionWebPage(CreateViewModel(settings, credentials, handler));
+        await Send(page, "modelConnection.get", "{\"pageId\":\"ModelConnection\"}");
+
+        var changed = await Send(page, "modelConnection.setDraft",
+            "{\"pageId\":\"ModelConnection\",\"field\":\"providerId\",\"value\":\"deepseek\"}");
+        using var snapshot = JsonDocument.Parse(JsonSerializer.Serialize(changed.Payload));
+        Assert.True(snapshot.RootElement.GetProperty("isKeySaved").GetBoolean());
+        for (var attempt = 0; attempt < 3; attempt++)
+            Assert.True((await Send(page, "modelConnection.refreshModels", "{\"pageId\":\"ModelConnection\"}")).Success);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(0, settings.SaveCount);
+        Assert.Single(credentials.Values);
+
+        Assert.True((await Send(page, "modelConnection.test", "{\"pageId\":\"ModelConnection\"}")).Success);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task Save_without_key_reports_save_failed_with_view_model_error()
     {
         var settings = new FakeSettings { Current = DialogueSettings.Defaults with { ModelConnection = null } };
@@ -411,8 +463,11 @@ public sealed class ModelConnectionWebPageTests
 
     private sealed class RespondingHandler : HttpMessageHandler
     {
+        public int RequestCount { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            RequestCount++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(new { data = new[] { new { id = "gpt-4o-mini" } } }),
