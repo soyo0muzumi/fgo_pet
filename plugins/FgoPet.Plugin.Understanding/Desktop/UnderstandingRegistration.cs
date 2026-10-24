@@ -53,7 +53,7 @@ public static class UnderstandingRegistration
                         recipient += " → Tencent CodeBuddy CN; local forwarding may write or re-encode attachments";
                     // The default host has no review budget. This page never dispatches a review.
                     return display with { ModelRecipient = recipient, AutomaticReviewAvailable = false };
-                }));
+                }, awareness: p.GetService<ICompanionAwarenessControls>()));
         return services;
     }
 }

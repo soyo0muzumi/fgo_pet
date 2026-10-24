@@ -192,6 +192,7 @@ public static class ServiceRegistration
         .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddNativeCapabilities()
+        .AddCompanionAwareness()
         .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
         .AddQqChannel(paths.StorageRoot)
         .AddChatWebPresentation()

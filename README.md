@@ -53,7 +53,7 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 
 Under **Settings → Capabilities → Model Services**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
 
-The following context and memory changes are on the development branch, with real-provider and native Windows acceptance still pending.
+The following context, memory and ambient awareness changes are on the development branch, with real-provider and native Windows acceptance still pending.
 
 Context capacity comes from a manual override, provider metadata, or known model information, in that order. An unknown model uses a clearly labelled conservative estimate. Requests reserve space for the selected output limit and count the complete prompt and tool definitions; estimates are not exact tokenizer counts.
 
@@ -61,13 +61,21 @@ New conversations can retrieve earlier messages from the same servant and projec
 
 Long conversations compact older complete exchanges while retaining recent raw messages and the current Todo draft. Compaction preserves the original history and survives restart and private backup restore. It also works when long-term memory is disabled. If compaction cannot safely fit the request, the input is retained and the app reports the problem.
 
-Native conversations can use the current system clock and reuse available tool evidence from the same conversation, role and project. Longer tool histories share the existing bounded compaction and retention rules; this is not unlimited archival. Each send permits up to 32 model requests and 64 tool calls, including summary work, with a final-response reservation. Browser access stays disabled until an explicit local grant and Chrome connection approval; the [Chrome integration guide](tools/integrations/chrome-browser/README.md) describes its read/open scope. Application-window discovery is not enabled in production.
+Ordinary and Native conversations receive fresh system-clock context directly. Native conversations can also reuse available tool evidence from the same conversation, role and project. Longer tool histories share the existing bounded compaction and retention rules; this is not unlimited archival. Each send permits up to 32 model requests and 64 tool calls, including summary work, with a final-response reservation. Browser access stays disabled until an explicit local grant and Chrome connection approval; the [Chrome integration guide](tools/integrations/chrome-browser/README.md) describes its read/open scope.
 
 Long-term memory candidates show their evidence and scope and require approval. General servant preferences can be recalled across projects; project memories stay within that project. Corrections select an exact memory and version, and edits, disabling and deletion take effect on subsequent requests. Deleting a source conversation preserves approved memories and marks their source unavailable. Storage permits 200 approved items / 40,000 characters per servant, including disabled items; existing data is never evicted to make room. Budgeting, compaction and memory mechanisms draw on the pinned MIT sources in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
+### Ambient awareness (development branch)
+
+Settings → App → Understanding includes a separate **Ambient awareness** card. Activity context defaults on for Focus, reminders and the shared local Todo book; that task book is shared across companions and projects. The clock remains available independently. Application overview defaults off: explicitly save approval for the current model to include application names, foreground status and window counts. This overview does not read window titles or content. Changing the model requires saving approval again.
+
+**Allow a window** lists open window titles only when clicked. Choosing one permits repeated background text reads of that same window during the current app session. Scope, model or window-title changes, closure and revocation invalidate the permission; choosing another window replaces it. The host samples approved sources every 15 seconds, and observations expire after two minutes. Opening the page does not enumerate windows or grant access.
+
+**Allow limited background thought** defaults off. Once explicitly enabled, meaningful changes can trigger a model request without a new user message. Each activity permits at most one request, with a minimum five-minute interval between background requests within one app session and an independent allowance of six calls per rolling 24 hours, adjustable from 1 to 24. Each request is capped at 4,096 input tokens and 384 output tokens, additional to chat and memory extraction. No tools are offered, and this work does not initiate messages or rewrite long-term Understanding. Its tentative result can inform later conversation only while its source context remains current. Input limits may shorten or omit sources; a result does not establish that the whole source was read.
+
 ### Understanding review (development branch)
 
-Settings → App → Understanding separates saved interpretations, items waiting for approval and archived items. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Conversation use has a separate explicit choice. Automatic accumulation is currently unavailable in the default host; opening this page sends no model request or grants permissions.
+Settings → App → Understanding separates saved interpretations, items waiting for approval and archived items. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Conversation use has a separate explicit choice. Automatic accumulation of these saved interpretations remains unavailable in the default host; opening the page does not itself dispatch a model request or grant permissions.
 
 ### Local scene tools (development branch)
 

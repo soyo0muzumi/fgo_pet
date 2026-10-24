@@ -14,6 +14,7 @@ using FgoPet.Plugin.Skills;
 using FgoPet.Plugin.Workspace;
 using FgoPet.Plugin.WebSearch;
 using FgoPet.Infrastructure.Dialogue;
+using FgoPet.App.Companion;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -42,14 +43,15 @@ internal static class NativeCapabilityRegistration
         .AddSingleton<IFgoPetPlugin>(provider => new DocumentsPlugin(provider.GetRequiredService<IWorkspaceAccessGuard>(),
             provider.GetRequiredService<IBoundedProcessRunner>(), Path.Combine(AppContext.BaseDirectory, "FgoPet.DocumentParser.exe")))
         .AddSingleton<IFgoPetPlugin, SkillsPlugin>()
-        .AddSingleton<IFgoPetPlugin>(provider => new DesktopContextPlugin(scope =>
-            {
-                if (provider.GetRequiredService<AppRuntime>().ActiveRole?.ServantId != scope.RoleId) return false;
-                var conversation = provider.GetRequiredService<IConversationReader>().GetConversation(scope.ConversationId, scope.RoleId);
-                return conversation is { IsArchived: false } && conversation.ProjectId == scope.ProjectId;
-            }, diagnostics: notification => provider.GetRequiredService<ILogger<DesktopContextPlugin>>().LogInformation(
+        .AddSingleton<IFgoPetPlugin>(provider => new DesktopContextPlugin(
+            scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope),
+            time: provider.GetService<TimeProvider>(),
+            applicationsAuthorized: scope => provider.GetRequiredService<CompanionAwarenessHost>().ApplicationsAuthorized(scope),
+            readApplications: WindowsApplicationDiscovery.Read,
+            diagnostics: notification => provider.GetRequiredService<ILogger<DesktopContextPlugin>>().LogInformation(
                 "Desktop context {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
-                notification.Correlation, notification.Stage, notification.ErrorCode)))
+                notification.Correlation, notification.Stage, notification.ErrorCode),
+            contextSnapshot: scope => provider.GetRequiredService<CompanionAwarenessHost>().GetSnapshot(scope)))
         .AddSingleton<IFgoPetPlugin>(provider => new WebSearchPlugin(
             () => WebSearchSettings.Load(Path.Combine(provider.GetRequiredService<AppPaths>().StorageRoot, "web-search.json")),
             scope =>

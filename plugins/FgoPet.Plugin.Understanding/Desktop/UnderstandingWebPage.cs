@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FgoPet.Core.Dialogue;
+using FgoPet.Extensibility;
 using FgoPet.UiSdk;
 using FgoPet.Understanding.Contracts;
 
@@ -11,15 +12,17 @@ public sealed record UnderstandingPagePresentation(string RoleName = "Current co
 /// <summary>Host-scoped review adapter. Payloads cannot choose another role/project.</summary>
 public sealed class UnderstandingWebPage(UnderstandingService owner, Func<ConversationScope?> currentScope,
     IDialogueContextLifetime lifetime, IExperienceTimeline timeline,
-    Func<ConversationScope, UnderstandingPagePresentation>? presentation = null) : ISettingsWebPage
+    Func<ConversationScope, UnderstandingPagePresentation>? presentation = null,
+    ICompanionAwarenessControls? awareness = null) : ISettingsWebPage
 {
     private ConversationScope? _boundScope;
     private long _boundGeneration = -1, _boundPolicyGeneration = -1;
     private string? _contextToken;
     public string SettingsPageId => "Understanding";
     public string ModulePath => "pages/understanding.js";
-    public IReadOnlyList<string> Commands => ["understanding.get", "understanding.configure", "understanding.review"];
-    public ISettingsWebPage CreateSession() => new UnderstandingWebPage(owner, currentScope, lifetime, timeline, presentation);
+    public IReadOnlyList<string> Commands => ["understanding.get", "understanding.configure", "understanding.review",
+        "understanding.awareness.configure", "understanding.awareness.windows", "understanding.awareness.allowWindow", "understanding.awareness.clearWindows"];
+    public ISettingsWebPage CreateSession() => new UnderstandingWebPage(owner, currentScope, lifetime, timeline, presentation, awareness);
     public async ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken token)
     {
         try
@@ -35,6 +38,12 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
             {
                 if (!Only(payload, "pageId")) return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
                 return new(true, Snapshot(scope));
+            }
+            // Ambient source/resource choices have their own host binding. They do not grant saved-understanding access.
+            if (message.Type.StartsWith("understanding.awareness.", StringComparison.Ordinal))
+            {
+                if (_boundScope != scope) { _boundScope = null; _contextToken = null; }
+                return await HandleAwarenessAsync(message.Type, payload, scope, token).ConfigureAwait(true);
             }
             if (_boundScope != scope)
             { _boundScope = null; _contextToken = null; return new(false, ErrorCode: "UNDERSTANDING_SCOPE_CHANGED"); }
@@ -85,7 +94,59 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
         catch (ArgumentException) { return new(false, ErrorCode: "SETTINGS_INVALID_INPUT"); }
         catch (Exception) { return new(false, ErrorCode: "UNDERSTANDING_UNAVAILABLE"); }
     }
-    private object Snapshot(ConversationScope scope)
+    private async ValueTask<WebSurfaceCommandResult> HandleAwarenessAsync(string type, JsonElement payload,
+        ConversationScope scope, CancellationToken token)
+    {
+        if (!Text(payload, "contextToken", out var contextToken) || contextToken.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+        CompanionAwarenessOptions? options = null; long revision = 0; string candidateToken = "";
+        switch (type)
+        {
+            case "understanding.awareness.configure":
+                if (!Only(payload, "pageId", "contextToken", "revision", "options") || !Revision(payload, out revision) ||
+                    !payload.TryGetProperty("options", out var configured) || !TryAwarenessOptions(configured, out options))
+                    return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                break;
+            case "understanding.awareness.windows":
+                if (!Only(payload, "pageId", "contextToken")) return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                break;
+            case "understanding.awareness.allowWindow":
+                if (!Only(payload, "pageId", "contextToken", "revision", "candidateToken") || !Revision(payload, out revision) ||
+                    !Text(payload, "candidateToken", out candidateToken) || candidateToken.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+                    return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                break;
+            case "understanding.awareness.clearWindows":
+                if (!Only(payload, "pageId", "contextToken", "revision") || !Revision(payload, out revision))
+                    return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                break;
+            default: return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+        }
+        if (awareness is null) return new(false, ErrorCode: "AWARENESS_UNAVAILABLE");
+        try
+        {
+            if (type == "understanding.awareness.windows")
+            {
+                var windows = await awareness.ListWindowsAsync(contextToken, token).ConfigureAwait(true);
+                token.ThrowIfCancellationRequested();
+                if (currentScope() != scope) return new(false, ErrorCode: "AWARENESS_STALE_OR_UNAVAILABLE");
+                return new(true, new { ContextToken = contextToken, Windows = windows });
+            }
+            var status = type switch
+            {
+                "understanding.awareness.configure" => await awareness.ConfigureAsync(contextToken, revision, options!, token).ConfigureAwait(true),
+                "understanding.awareness.allowWindow" => await awareness.AllowWindowAsync(contextToken, revision, candidateToken, token).ConfigureAwait(true),
+                _ => await awareness.ClearWindowsAsync(contextToken, revision, token).ConfigureAwait(true)
+            };
+            token.ThrowIfCancellationRequested();
+            if (currentScope() != scope) return new(false, ErrorCode: "AWARENESS_STALE_OR_UNAVAILABLE");
+            return new(true, Snapshot(scope, status));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (InvalidOperationException) { return new(false, ErrorCode: "AWARENESS_STALE_OR_UNAVAILABLE"); }
+        catch (ArgumentException) { return new(false, ErrorCode: "SETTINGS_INVALID_INPUT"); }
+        catch (Exception) { return new(false, ErrorCode: "AWARENESS_UNAVAILABLE"); }
+    }
+    private object Snapshot(ConversationScope scope, CompanionAwarenessStatus? awarenessStatus = null)
     {
         var accumulated = owner.List(scope, false); var pending = owner.List(scope, true);
         var state = owner.State(scope);
@@ -94,6 +155,7 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
         _boundScope = scope; _boundGeneration = lifetime.Generation; _boundPolicyGeneration = state.Generation;
         var display = presentation?.Invoke(scope) ?? new(ProjectName: scope.ProjectId is null ? "Across this companion's conversations" : "Current project");
         return new { Scope = scope, State = state, ContextToken = _contextToken, Presentation = display,
+            Awareness = awarenessStatus ?? awareness?.GetStatus(),
             EffectiveIds = owner.Query(scope, "").Items.Select(e => e.Id).ToArray(), Accumulated = accumulated, Pending = pending,
             Changes = accumulated.Concat(pending).ToDictionary(e => e.Id, e => owner.Changes(scope, e.Id), StringComparer.Ordinal) };
     }
@@ -103,6 +165,26 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
     {
         value = ""; if (!p.TryGetProperty(name, out var e) || e.ValueKind != JsonValueKind.String || e.GetString() is not { Length: > 0 and <= 128 } text) return false;
         value = text; return true;
+    }
+    private static bool Revision(JsonElement p, out long value)
+    {
+        value = 0;
+        return p.TryGetProperty("revision", out var revision) && revision.ValueKind == JsonValueKind.Number &&
+            revision.TryGetInt64(out value) && value >= 0;
+    }
+    private static bool TryAwarenessOptions(JsonElement p, out CompanionAwarenessOptions? value)
+    {
+        value = null;
+        if (p.ValueKind != JsonValueKind.Object || !Only(p, "activityContextEnabled", "applicationsEnabled", "backgroundEnabled", "dailyRequestLimit")) return false;
+        var booleans = new List<bool>();
+        foreach (var name in new[] { "activityContextEnabled", "applicationsEnabled", "backgroundEnabled" })
+        {
+            if (!p.TryGetProperty(name, out var b) || b.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+            booleans.Add(b.GetBoolean());
+        }
+        if (!p.TryGetProperty("dailyRequestLimit", out var limit) || limit.ValueKind != JsonValueKind.Number ||
+            !limit.TryGetInt32(out var dailyLimit) || dailyLimit is < 1 or > 24) return false;
+        value = new(booleans[0], booleans[1], booleans[2], dailyLimit); return true;
     }
     private static bool TryPolicy(JsonElement p, out UnderstandingPolicy value)
     {

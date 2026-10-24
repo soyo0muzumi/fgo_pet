@@ -171,10 +171,14 @@ public sealed class UnderstandingWebPageTests : IDisposable
         repo.CreateConversation("active", "mash", context, now, "p"); repo.CreateConversation("previous", "mash", context, now, "p");
         repo.WriteState("LastActiveConversationId:mash", "active", now);
         var authority = provider.GetRequiredService<IConversationScopeAuthority>();
+        Assert.Equal(new ToolScope("active", "mash", "p"), authority.ActiveConversation);
         Assert.True(authority.IsActive(new("active", "mash", "p")));
         Assert.False(authority.IsActive(new("active", "other", "p"))); Assert.False(authority.IsActive(new("active", "mash", "other")));
         Assert.False(authority.IsActive(new("previous", "mash", "p")));
         repo.WriteState("LastActiveConversationId:mash", "previous", now); Assert.False(authority.IsActive(new("active", "mash", "p")));
+        Assert.Equal(new ToolScope("previous", "mash", "p"), authority.ActiveConversation);
+        repo.DeleteState("LastActiveConversationId:mash");
+        Assert.Null(authority.ActiveConversation);
     }
     [Fact] public async Task Cancellation_after_suspension_or_scope_switch_cannot_commit_new_permissions()
     {

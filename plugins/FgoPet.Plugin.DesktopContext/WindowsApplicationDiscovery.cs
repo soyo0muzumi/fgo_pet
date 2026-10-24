@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace FgoPet.Plugin.DesktopContext;
 
-/// <summary>No titles, paths, command lines, UI text or screenshots. Not registered by the production host.</summary>
+/// <summary>Explicitly authorized application overview. No titles, paths, command lines, UI text or screenshots.</summary>
 public static class WindowsApplicationDiscovery
 {
     public static ApplicationSnapshot Read(CancellationToken token)

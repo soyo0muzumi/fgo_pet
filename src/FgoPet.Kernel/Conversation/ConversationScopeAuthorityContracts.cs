@@ -6,5 +6,7 @@ namespace FgoPet.Core.Dialogue;
 public interface IConversationScopeAuthority
 {
     ConversationScope? Current { get; }
+    /// <summary>The existing active conversation, if any. Reading never creates a synthetic conversation.</summary>
+    ToolScope? ActiveConversation => null;
     bool IsActive(ToolScope scope);
 }
