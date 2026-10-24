@@ -33,6 +33,10 @@
     <Compile Include="Desktop/ConversationViewModel.External.cs" />
     <Compile Include="Contracts/ChatImageSelection.cs" />
     <Compile Include="Desktop/ChatImageSelection.cs" />
+    <Compile Include="Desktop/ConfiguredModelCatalog.cs" />
+    <Compile Include="Contracts/ChatWindowSelection.cs" />
+    <Compile Include="Desktop/ChatWindowSelection.cs" />
+    <Compile Include="Desktop/ConversationViewModel.WindowContext.cs" />
     <Compile Include="Desktop/ChatImageTransfer.cs" />
     <Compile Include="Application/ImageToolsPlugin.cs" />
     <Compile Include="Application/BrowserImageStore.cs" />
@@ -97,21 +101,12 @@
       <Link>Desktop\ui\settings\root\pages\model-connection.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="../../src/FgoPet.UiSdk/Resources/Web/*" Link="Desktop/ui/chat/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Desktop\ui\chat\margin-i18n.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Desktop\ui\chat\image-import.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Desktop\ui\chat\index.html" Condition="Exists('Desktop\ui\chat\index.html')">
-      <Link>Desktop\ui\chat\index.html</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Desktop\ui\chat\chat.js" Condition="Exists('Desktop\ui\chat\chat.js')">
-      <Link>Desktop\ui\chat\chat.js</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Desktop\ui\chat\chat.css" Condition="Exists('Desktop\ui\chat\chat.css')">
-      <Link>Desktop\ui\chat\chat.css</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <!-- Keep shared Margin resources; the React output includes nested assets and fonts. -->
+    <Content Include="../../src/FgoPet.UiSdk/Resources/Web/*" Link="Desktop/ui/chat/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Desktop\ui\chat\**\*"
+             Exclude="Desktop\ui\chat\margin.css;Desktop\ui\chat\margin-select.js"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />

@@ -27,6 +27,11 @@ public sealed class ChatImageComposerWebTests
             // This off-screen fixture must emulate document focus before sending real keyboard events.
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
             async Task<bool> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code) == "true";
+            async Task Key(string key, int virtualKey)
+            {
+                await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", JsonSerializer.Serialize(new { type = "keyDown", key, code = key, windowsVirtualKeyCode = virtualKey, text = key == "Enter" ? "\r" : "", unmodifiedText = key == "Enter" ? "\r" : "" }));
+                await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", JsonSerializer.Serialize(new { type = "keyUp", key, code = key, windowsVirtualKeyCode = virtualKey }));
+            }
             async Task Capture(string name)
             {
                 var evidence = Environment.GetEnvironmentVariable("FGO_PET_UI_EVIDENCE_ROOT");
@@ -36,29 +41,41 @@ public sealed class ChatImageComposerWebTests
                 using var image = File.Create(Path.Combine(evidence, name + ".png"));
                 await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image);
             }
-            await MarginWebIntegrationTests.WaitUntil(() => Js("!document.getElementById('choose-image').hidden"));
-            Assert.True(await Js("document.getElementById('choose-image').closest('.composer-toolbar')!==null && document.getElementById('choose-image').textContent.trim()==='' && !!document.querySelector('#choose-image use[href=\"#icon-image\"]')"));
-            Assert.True(await Js("document.getElementById('choose-image').getAttribute('aria-label')==='Choose image' && document.getElementById('choose-image').title==='Choose image'"));
-            Assert.True(await Js("!document.getElementById('image-disclosure') && !document.body.innerText.includes('Tencent CodeBuddy') && document.getElementById('context-bar').hidden && document.getElementById('context-bar').getBoundingClientRect().height===0"));
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.querySelector('.composer-tools button[aria-label=\"添加图片与上下文\"]:not(:disabled)')"));
+            Assert.True(await Js("parseFloat(getComputedStyle(document.querySelector('.model-chip')).fontSize)>=12 && parseFloat(getComputedStyle(document.querySelector('.chat-footer'),'::after').fontSize)>=11"));
+            await web.CoreWebView2.ExecuteScriptAsync("window.contextButton=()=>document.querySelector('.composer-tools button[aria-label=\"添加图片与上下文\"]'); window.imageButton=()=>document.querySelector('.sheet-body .context-actions button'); window.imageChip=()=>document.querySelector('.image-chip');");
+            Assert.True(await Js("contextButton().closest('.composer-tools')!==null && contextButton().textContent.trim()==='' && !!contextButton().querySelector('svg')"));
+            Assert.True(await Js("contextButton().getAttribute('aria-label')==='添加图片与上下文' && contextButton().title==='添加图片与上下文'"));
+            Assert.True(await Js("!document.body.innerText.includes('Tencent CodeBuddy') && !document.querySelector('.attachment-strip')"));
             await Capture("01-empty-image-icon");
             // Keyboard setup must not depend on optional screenshot collection.
             await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('composer').focus()");
-            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");
-            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");
-            Assert.True(await Js("document.activeElement.id==='choose-image' && getComputedStyle(document.activeElement).outlineWidth==='2px' && !document.getElementById('chat-tooltip').hidden && document.getElementById('chat-tooltip').textContent==='Choose image'"),
-                await web.CoreWebView2.ExecuteScriptAsync("JSON.stringify({active:document.activeElement.id,focused:document.hasFocus(),focusVisible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outlineWidth,tooltipHidden:document.getElementById('chat-tooltip').hidden,tooltipText:document.getElementById('chat-tooltip').textContent})"));
-            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"text\":\"\\r\",\"unmodifiedText\":\"\\r\"}");
-            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}");
-            await MarginWebIntegrationTests.WaitUntil(() => Js("!document.getElementById('image-selection').hidden"));
+            await Key("Tab", 9);
+            Assert.True(await Js("document.activeElement===contextButton() && getComputedStyle(document.activeElement).outlineWidth==='2px' && document.activeElement.title==='添加图片与上下文'"));
+            await Key("Enter", 13);
+            try { await MarginWebIntegrationTests.WaitUntil(() => Js("!!imageButton() && document.activeElement.getAttribute('aria-label')==='关闭面板'")); }
+            catch
+            {
+                Console.WriteLine("IMAGE_PANEL_METADATA_ONLY " + await web.CoreWebView2.ExecuteScriptAsync("JSON.stringify({panel:!!document.querySelector('.sheet'),imageAction:!!imageButton(),activeTag:document.activeElement.tagName,activeLabel:document.activeElement.getAttribute('aria-label'),focused:document.hasFocus()})"));
+                throw;
+            }
+            Assert.True(await Js("document.querySelector('.sheet').innerText.includes('图片与上下文') && !document.querySelector('.sheet').innerText.includes('Tencent CodeBuddy') && !document.querySelector('.sheet').innerText.includes('选择窗口内容')"));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.image-disclosure summary').click()");
+            Assert.True(await Js("document.querySelector('.sheet').innerText.includes('Tencent CodeBuddy')"));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.image-disclosure summary').click()");
+            await Key("Tab", 9);
+            Assert.True(await Js("document.activeElement===imageButton() && getComputedStyle(document.activeElement).outlineWidth==='2px' && document.activeElement.textContent.includes('添加图片')"));
+            await Key("Enter", 13);
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!!imageChip() && !document.querySelector('.sheet')"));
             Assert.Equal(1, session.Choices);
-            Assert.True(await Js("document.getElementById('image-label').textContent==='PNG · 64 × 48' && !document.getElementById('clear-image').disabled && document.getElementById('image-selection').title.includes('Sending shares')"));
-            Assert.True(await Js("!document.body.innerText.includes('Tencent CodeBuddy') && document.getElementById('context-bar').scrollHeight<=document.getElementById('context-bar').clientHeight"));
+            Assert.True(await Js("imageChip().textContent.includes('PNG · 64 × 48') && !imageChip().querySelector('button[aria-label=\"移除图片\"]').disabled && imageChip().title.includes('Sending shares')"));
+            Assert.True(await Js("!document.body.innerText.includes('Tencent CodeBuddy') && document.querySelector('.attachment-strip').scrollHeight<=document.querySelector('.attachment-strip').clientHeight"));
             await Capture("02-selected-image");
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride", "{\"width\":328,\"height\":640,\"deviceScaleFactor\":1,\"mobile\":false}");
-            Assert.True(await Js("document.documentElement.scrollWidth<=innerWidth && document.getElementById('context-bar').scrollHeight<=document.getElementById('context-bar').clientHeight"));
+            Assert.True(await Js("document.documentElement.scrollWidth<=innerWidth && document.querySelector('.attachment-strip').scrollHeight<=document.querySelector('.attachment-strip').clientHeight"));
             await Capture("03-narrow-selected-image");
-            await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('clear-image').click()");
-            await MarginWebIntegrationTests.WaitUntil(() => Js("document.getElementById('image-selection').hidden && document.getElementById('context-bar').hidden"));
+            await web.CoreWebView2.ExecuteScriptAsync("imageChip().querySelector('button[aria-label=\"移除图片\"]').click()");
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!imageChip() && !document.querySelector('.attachment-strip')"));
             Assert.Equal(1, session.Clears);
             await Capture("04-narrow-empty-image-icon");
             // CDP delivers a trusted browser drop with a synthetic local PNG; no user clipboard is touched.
@@ -75,12 +92,13 @@ public sealed class ChatImageComposerWebTests
                     }));
             }
             await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(session.Imports == 1));
-            Assert.True(await Js("!document.getElementById('image-selection').hidden"));
+            Assert.True(await Js("!!imageChip()"));
             Assert.DoesNotContain("chat.send", session.Commands);
             await Capture("05-trusted-drop-image");
             session.Publish(streaming: true);
-            await MarginWebIntegrationTests.WaitUntil(() => Js("document.getElementById('choose-image').disabled"));
-            await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('choose-image').click()");
+            await web.CoreWebView2.ExecuteScriptAsync("contextButton().click()");
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!!imageButton() && imageButton().disabled"));
+            await web.CoreWebView2.ExecuteScriptAsync("imageButton().click()");
             Assert.Equal(1, session.Choices);
             Assert.DoesNotContain("chat.send", session.Commands);
             Console.WriteLine("IMAGE_COMPOSER_METADATA_ONLY empty=true selected=true narrow=true keyboard=true hostChoose=1 hostClear=1 streamingDisabled=true modelCalls=0");

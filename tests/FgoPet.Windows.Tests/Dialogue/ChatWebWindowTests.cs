@@ -53,6 +53,10 @@ public sealed class ChatWebWindowTests
             while (surface.State == FgoPet.UiSdk.WebSurfaceState.Initializing && DateTime.UtcNow < deadline) await Task.Delay(25);
             Assert.Equal(FgoPet.UiSdk.WebSurfaceState.Ready, surface.State);
             var web = Assert.IsType<Microsoft.Web.WebView2.Wpf.WebView2>(surface.Children[0]);
+            // The 0.2.2 native surface starts in composer mode; open the real conversation view.
+            await MarginWebIntegrationTests.WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                "!!document.querySelector('button[aria-label=\"展开完整对话\"]')") == "true");
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('button[aria-label=\"展开完整对话\"]').click()");
             for (var attempt = 0; attempt < 100; attempt++)
             {
                 var ready = await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('#messages article').length === 20");
@@ -62,6 +66,13 @@ public sealed class ChatWebWindowTests
             Assert.Equal("20", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('#messages article').length"));
             // Let the frozen entry animation settle before establishing a user reading anchor.
             await Task.Delay(350);
+            // React distinguishes deliberate reading from its own scroll corrections.
+            // Send a trusted upward reading gesture before pinning the deterministic pixel anchor.
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
+            await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('message-scroll').focus()");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"PageUp\",\"code\":\"PageUp\",\"windowsVirtualKeyCode\":33}");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"PageUp\",\"code\":\"PageUp\",\"windowsVirtualKeyCode\":33}");
+            await Task.Delay(150);
             await web.CoreWebView2.ExecuteScriptAsync("var scroll=document.getElementById('message-scroll');scroll.scrollTo({top:500,behavior:'instant'});scroll.dispatchEvent(new Event('scroll'));document.getElementById('composer').focus();");
             await Task.Delay(100);
             Assert.Equal("500", await web.CoreWebView2.ExecuteScriptAsync("Math.round(scroll.scrollTop)"));

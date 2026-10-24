@@ -15,6 +15,17 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class ModelConnectionViewModelTests
 {
     [Fact]
+    public void Draft_models_never_authorize_saved_chat_connection()
+    {
+        var model = CreateViewModel(new FakeSettings(), new FakeCredentials());
+        var source = new FgoPet.App.Dialogue.DialogueModelConnectionSource(model);
+        model.BaseUrl = "https://draft.example/v1";
+        model.AvailableModels = [new ProviderModel("draft-only", "Draft only")];
+        Assert.Empty(source.AvailableModels);
+        Assert.False(source.IsAvailable("draft-only"));
+    }
+
+    [Fact]
     public async Task Context_override_and_output_are_validated_and_saved()
     {
         var settings = new FakeSettings();

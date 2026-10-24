@@ -1,9 +1,21 @@
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using FgoPet.App.Dialogue;
+using FgoPet.App.Settings;
+using FgoPet.App.Providers;
+using FgoPet.Core.Dialogue;
+using FgoPet.Core.Packs;
+using FgoPet.Dialogue.Settings;
+using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Persistence;
+using FgoPet.Infrastructure.Packs;
+using FgoPet.Infrastructure.Providers;
+using FgoPet.Infrastructure.Secrets;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.UiSdk;
 using Xunit;
@@ -18,7 +30,8 @@ public sealed class MarginWebIntegrationTests
         public bool CanChoose => true;
         public string? Label { get; private set; } = "Synthetic workspace";
         public event EventHandler? Changed;
-        public bool Choose(Func<string?> nativePicker) => true;
+        public int Choices { get; private set; }
+        public bool Choose(Func<string?> nativePicker) { Choices++; return true; }
         public void Clear() { Label = null; Changed?.Invoke(this, EventArgs.Empty); }
     }
     [StructLayout(LayoutKind.Sequential)]
@@ -33,7 +46,8 @@ public sealed class MarginWebIntegrationTests
     {
         await StaRunner.RunAsync(async () =>
         {
-            var vm = DialogueWindowIntegrationTests.CreateViewModel();
+            using var modelHttp = new HttpClient(new OfflineModels());
+            var vm = CreateModelViewModel(modelHttp);
             vm.Conversation.SetActiveServant("margin-fixture");
             vm.Conversation.Turns.Add(new("margin-user", FgoPet.Core.Dialogue.ChatMessageRole.User,
                 "Could you help me think through my next step?"));
@@ -59,50 +73,50 @@ public sealed class MarginWebIntegrationTests
             Log("session.ready","success");
             var web = Assert.IsType<Microsoft.Web.WebView2.Wpf.WebView2>(host.Children[0]);
             async Task<string> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code);
-            await WaitUntil(async () => await Js("document.querySelector('#model-select + .margin-select-trigger') !== null") == "true");
-            Assert.Equal("true", await Js("document.getElementById('project-select') === null && document.getElementById('refresh-projects') === null"));
-            Assert.Equal("true", await Js("!document.getElementById('choose-workspace').hidden && document.getElementById('choose-workspace').getAttribute('aria-label') === 'Choose a workspace for this conversation'"));
-            await WaitUntil(async () => await Js("document.getElementById('workspace-label').textContent === 'Synthetic workspace'") == "true");
-            Assert.Equal("true", await Js("getComputedStyle(document.querySelector('#choose-workspace svg')).width === '14px'"));
-            await Js("document.getElementById('clear-workspace').click()");
-            await WaitUntil(async () => await Js("document.getElementById('workspace-selection').hidden") == "true");
-            Assert.Null(workspace.Label);
-            Assert.Equal("true", await Js("document.getElementById('send-message').disabled"));
-            Assert.Equal("\"rgb(242, 240, 235)\"", await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor"));
-            // The disabled empty-input state is neutral; the enabled theme accent stays intact.
-            Assert.Equal("\"rgb(178, 113, 139)\"", await Js("(() => { const b=document.createElement('button');b.className='send send-button';document.body.append(b);const color=getComputedStyle(b).backgroundColor;b.remove();return color; })()"));
-            Assert.Contains("Segoe UI", await Js("getComputedStyle(document.getElementById('role-name')).fontFamily"));
-            await WaitUntil(async () => await Js("document.querySelectorAll('#messages article').length === 2") == "true");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
+            await WaitUntil(async () => await Js("!!document.querySelector('button[aria-label=\"展开完整对话\"]')") == "true");
+            await Js("document.querySelector('button[aria-label=\"展开完整对话\"]').click()");
+            await WaitUntil(async () => await Js("document.querySelectorAll('#messages article').length === 2 && !!document.querySelector('.model-chip')") == "true");
             Assert.Equal(WindowStyle.None, window.WindowStyle);
-            Assert.Equal("true", await Js("document.querySelector('.sheet-top') !== null && document.querySelector('.chat-header') === null"));
-            Assert.Equal("\"34px\"", await Js("getComputedStyle(document.getElementById('send-message')).width"));
-            Assert.Equal("\"82%\"", await Js("getComputedStyle(document.querySelector('.turn.user')).maxWidth"));
-            Assert.Equal("true", await Js("document.getElementById('model-select').closest('details') === document.getElementById('more-menu')"));
-            await Js("document.getElementById('more-menu').open=true");
-            Assert.Equal("true", await Js("document.getElementById('new-conversation').getBoundingClientRect().width > 150"));
-            await Js("document.getElementById('more-menu').open=false");
+            Assert.Equal("true", await Js("!!document.querySelector('.chat-header') && document.querySelector('.send-button').disabled"));
+            Assert.Equal("true", await Js("document.querySelector('.message-user').getBoundingClientRect().width < document.getElementById('messages').getBoundingClientRect().width && document.documentElement.scrollWidth <= innerWidth"));
+            var disabledColor = await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor");
 
-            // Exercise the adapter using the existing select/change contract; no business state machine.
-            // A disposable presentation probe avoids changing the real model selection or host state.
-            await Js("var s=document.createElement('select');s.id='keyboard-probe';s.setAttribute('aria-label','Keyboard probe');s.replaceChildren(new Option('One','one'),new Option('Two','two'));s.selectedIndex=0;document.querySelector('.context-bar').append(s);var changed=0;s.addEventListener('change',()=>changed++);");
-            await WaitUntil(async () => await Js("document.querySelector('#keyboard-probe + button') !== null") == "true");
-            await Js("document.querySelector('#keyboard-probe + button').click()");
-            Assert.Equal("true", await Js("document.activeElement.getAttribute('aria-selected') === 'true'"));
-            await Js("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))");
-            Assert.Equal("\"Two\"", await Js("document.activeElement.firstChild.textContent"));
-            await Js("document.activeElement.click()");
-            Assert.Equal("1", await Js("changed"));
+            await Js("document.querySelector('button[aria-label=\"添加图片与上下文\"]').click()");
+            await WaitUntil(async () => await Js("document.querySelectorAll('.context-actions button')[1]?.textContent.includes('Synthetic workspace')") == "true");
+            Assert.Equal("true", await Js("!document.querySelectorAll('.context-actions button')[1].disabled && !!document.querySelectorAll('.context-actions button')[1].querySelector('svg')"));
+            await Js("document.querySelectorAll('.context-actions button')[1].click()");
+            await WaitUntil(() => Task.FromResult(workspace.Choices == 1));
+            await Js("[...document.querySelectorAll('.native-links button')].find(b=>b.textContent.includes('清除工作区上下文')).click()");
+            await WaitUntil(() => Task.FromResult(workspace.Label is null));
+            await WaitUntil(async () => await Js("document.querySelectorAll('.context-actions button')[1].textContent.includes('选择工作区上下文')") == "true");
+            await Key(web, "Escape", 27);
+            await WaitUntil(async () => await Js("!document.querySelector('.sheet')") == "true");
+
+            // Real keyboard choices travel through the native model owner; the HTTP fixture is offline.
+            await Js("document.querySelector('.model-chip').focus()");
+            await Key(web, "Enter", 13);
+            await WaitUntil(async () => await Js("document.querySelectorAll('.choice-option').length === 2 && document.activeElement.getAttribute('aria-label') === '关闭面板'") == "true");
+            await Key(web, "Tab", 9);
+            Assert.Equal("true", await Js("document.activeElement === document.querySelectorAll('.choice-option')[0] && document.activeElement.getAttribute('aria-pressed') === 'true'"));
+            await Key(web, "Tab", 9);
+            Assert.Equal("true", await Js("document.activeElement === document.querySelectorAll('.choice-option')[1]"));
+            await Key(web, "Enter", 13);
+            await WaitUntil(() => Task.FromResult(vm.Conversation.ModelStatusText == "model-two"));
+            await WaitUntil(async () => await Js("!document.querySelector('.sheet') && document.activeElement === document.querySelector('.model-chip')") == "true");
+            Assert.Equal("model-two", vm.ModelSelection.SelectedModelId);
             Log("dropdown.selection","success");
-            Assert.Equal("true", await Js("document.activeElement === document.querySelector('#keyboard-probe + button')"));
-            await Js("document.activeElement.click();document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
-            Assert.Equal("0", await Js("document.querySelectorAll('.margin-select-menu').length"));
-            Assert.Equal("true", await Js("document.activeElement === document.querySelector('#keyboard-probe + button')"));
-            await Js("s.nextElementSibling.remove();s.remove()");
-            await Task.Delay(50);
+            await Key(web, "Enter", 13);
+            await WaitUntil(async () => await Js("document.querySelectorAll('.choice-option').length === 2") == "true");
+            await Key(web, "Escape", 27);
+            await WaitUntil(async () => await Js("!document.querySelector('.sheet') && document.activeElement === document.querySelector('.model-chip')") == "true");
             Assert.True(window.IsVisible); // Escape dismisses the picker, not the native Chat.
 
-            await Js("var c=document.getElementById('composer');c.value='offline draft';c.dispatchEvent(new Event('input',{bubbles:true}))");
+            await Js("document.getElementById('composer').focus()");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText", "{\"text\":\"offline draft\"}");
             await WaitUntil(() => Task.FromResult(vm.Conversation.InputText == "offline draft"));
+            await WaitUntil(async () => await Js("!document.querySelector('.send-button').disabled") == "true");
+            Assert.NotEqual(disabledColor, await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor"));
             window.Close(); Log("window.hidden","success");
             vm.RequestOpen(); Log("window.restored","success");
             Assert.Same(host, ((ContentControl)window.FindName("ChatSurface")).Content);
@@ -155,7 +169,9 @@ public sealed class MarginWebIntegrationTests
                 }
             }
             // The new secondary entry still invokes the original conversation owner through the bridge.
-            await Js("document.getElementById('more-menu').open=true;document.getElementById('new-conversation').click()");
+            await Js("document.querySelector('button[aria-label=\"对话历史\"]').click()");
+            await WaitUntil(async () => await Js("!!document.querySelector('.new-conversation-button')") == "true");
+            await Js("document.querySelector('.new-conversation-button').click()");
             await WaitUntil(() => Task.FromResult(vm.Conversation.Turns.Count == 0));
             Assert.Empty(vm.Conversation.InputText);
             await WaitUntil(async () => await Js("document.querySelectorAll('#messages article').length === 0 && document.getElementById('composer').value === ''") == "true");
@@ -182,30 +198,108 @@ public sealed class MarginWebIntegrationTests
             await WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
             var web = Assert.IsType<Microsoft.Web.WebView2.Wpf.WebView2>(host.Children[0]);
             async Task<string> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code);
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
+            await WaitUntil(async () => await Js("!!document.querySelector('button[aria-label=\"展开完整对话\"]')") == "true");
+            await Js("document.querySelector('button[aria-label=\"展开完整对话\"]').click()");
             await WaitUntil(async () => await Js("!document.getElementById('composer').disabled && document.querySelectorAll('#messages article').length === 20") == "true");
             await WaitUntil(async () => await Js("document.getElementById('messages').getAnimations({subtree:true}).every(a => a.playState === 'finished')") == "true");
-            await Js("window.c=document.getElementById('composer');window.s=document.getElementById('message-scroll');s.scrollTo({top:450,behavior:'instant'})");
-            await Task.Delay(100);
-            await Js("window.readingTop=s.scrollTop;c.value='First line\\n第二行\\nThird line';c.dispatchEvent(new Event('input',{bubbles:true}))");
+            await Js("window.c=document.getElementById('composer');window.s=document.getElementById('message-scroll');window.initialHeight=c.getBoundingClientRect().height;s.focus()");
+            await Key(web, "PageUp", 33); // Trusted reading intent pauses follow; script scroll alone does not.
+            await Task.Delay(150);
+            await Js("s.scrollTo({top:450,behavior:'instant'})");
+            await WaitUntil(async () => await Js("!!document.querySelector('.scroll-latest') && Math.abs(s.scrollTop-450)<2") == "true");
+            await Task.Delay(100); // Let the browser deliver the reading scroll event before changing layout.
+            await Js("window.readingTop=s.scrollTop;c.focus()");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = "First line\n第二行\nThird line" }));
             await WaitUntil(() => Task.FromResult(vm.Conversation.InputText == "First line\n第二行\nThird line"));
-            var measured = await Js("JSON.stringify({height:c.getBoundingClientRect().height,top:s.scrollTop,readingTop,viewport:innerHeight,windowWidth:innerWidth})");
-            Assert.True(await Js("c.getBoundingClientRect().height === 74 && Math.abs(s.scrollTop-readingTop) < 2") == "true", measured);
+            try { await WaitUntil(async () => await Js("c.getBoundingClientRect().height > initialHeight && c.getBoundingClientRect().height <= 112 && Math.abs(s.scrollTop-readingTop) < 2") == "true"); }
+            catch
+            {
+                Console.WriteLine("COMPOSER_LAYOUT_METADATA_ONLY " + await Js("JSON.stringify({height:c.getBoundingClientRect().height,initialHeight,top:s.scrollTop,readingTop,viewport:innerHeight,scrollHeight:s.scrollHeight,clientHeight:s.clientHeight})"));
+                throw;
+            }
             vm.Conversation.Turns[^1].Text += string.Concat(Enumerable.Repeat("\nSynthetic streamed line", 100));
             await Task.Delay(100);
             Assert.Equal("true", await Js("Math.abs(s.scrollTop-readingTop) < 2"));
-            await Js("c.value='Synthetic paste\\n'.repeat(40);c.dispatchEvent(new Event('input',{bubbles:true}))");
-            await WaitUntil(async () => await Js("c.getBoundingClientRect().height > 106 && c.scrollHeight > c.clientHeight") == "true");
+            await Js("c.select()");
+            await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = string.Concat(Enumerable.Repeat("Synthetic paste\n", 40)) }));
+            await WaitUntil(async () => await Js("c.getBoundingClientRect().height > 106 && c.getBoundingClientRect().height <= 112 && c.scrollHeight > c.clientHeight") == "true");
             window.Width = 328; window.Height = 388;
-            await WaitUntil(async () => await Js("c.getBoundingClientRect().height <= innerHeight*.55 && document.querySelector('.thread-viewport').getBoundingClientRect().height >= 72 && c.getBoundingClientRect().bottom <= innerHeight") == "true");
-            Assert.Equal("true", await Js("document.getElementById('jump-bottom').getBoundingClientRect().top >= s.getBoundingClientRect().bottom && document.getElementById('jump-bottom').getBoundingClientRect().bottom <= c.getBoundingClientRect().top && document.documentElement.scrollWidth <= innerWidth"));
+            try { await WaitUntil(async () => await Js("c.getBoundingClientRect().height <= innerHeight*.55 && s.getBoundingClientRect().height >= 72 && c.getBoundingClientRect().bottom <= innerHeight") == "true"); }
+            catch
+            {
+                Console.WriteLine("COMPOSER_SMALL_LAYOUT_METADATA_ONLY " + await Js("JSON.stringify({height:c.getBoundingClientRect().height,bottom:c.getBoundingClientRect().bottom,readingHeight:s.getBoundingClientRect().height,viewport:innerHeight,width:innerWidth,overflow:document.documentElement.scrollWidth})"));
+                throw;
+            }
+            Assert.Equal("true", await Js("(()=>{const b=document.querySelector('.scroll-latest').getBoundingClientRect(),r=s.getBoundingClientRect();return b.top>=r.top && b.bottom<=r.bottom && b.bottom<=c.getBoundingClientRect().top && document.documentElement.scrollWidth<=innerWidth})()"));
+            Assert.Equal("true", await Js("[...document.querySelectorAll('.composer button')].every(b=>{const r=b.getBoundingClientRect();return r.width>0 && r.height>0 && r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight})"));
             // A host draft replacement must follow acknowledgement of local typing.
             await WaitUntil(() => Task.FromResult(vm.Conversation.InputText == string.Concat(Enumerable.Repeat("Synthetic paste\n", 40))));
             vm.Conversation.InputText = "Native restored\ndraft\n第三行";
-            await WaitUntil(async () => await Js("c.value.startsWith('Native restored') && c.getBoundingClientRect().height === 74") == "true");
+            await WaitUntil(async () => await Js("c.value.startsWith('Native restored') && c.getBoundingClientRect().height > initialHeight && c.getBoundingClientRect().height <= 112") == "true");
             vm.Conversation.InputText = "";
-            await WaitUntil(async () => await Js("c.value === '' && c.getBoundingClientRect().height === 34") == "true");
+            await WaitUntil(async () => await Js("c.value === '' && c.getBoundingClientRect().height >= 30 && c.getBoundingClientRect().height <= 40") == "true");
+            // Jump resumes following, including a subsequent streamed update.
+            await Js("document.querySelector('.scroll-latest').click()");
+            await WaitUntil(async () => await Js("s.scrollHeight-s.clientHeight-s.scrollTop<3 && !document.querySelector('.scroll-latest')") == "true");
+            vm.Conversation.Turns[^1].Text += "\nFollowed streamed update";
+            await WaitUntil(async () => await Js("s.scrollHeight-s.clientHeight-s.scrollTop<3 && !document.querySelector('.scroll-latest')") == "true");
             vm.Conversation.Dispose();
         }, TimeSpan.FromSeconds(60));
+    }
+
+    private static async Task Key(Microsoft.Web.WebView2.Wpf.WebView2 web, string key, int virtualKey)
+    {
+        await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", JsonSerializer.Serialize(new
+        { type = "keyDown", key, code = key, windowsVirtualKeyCode = virtualKey, text = key == "Enter" ? "\r" : "", unmodifiedText = key == "Enter" ? "\r" : "" }));
+        await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", JsonSerializer.Serialize(new
+        { type = "keyUp", key, code = key, windowsVirtualKeyCode = virtualKey }));
+    }
+
+    private static DialogueWindowViewModel CreateModelViewModel(HttpClient http)
+    {
+        var settings = new OfflineSettings(DialogueSettings.Defaults with
+        { ModelConnection = new FgoPet.Core.Settings.ModelConnectionSettings("deepseek", "https://example.test/v1", "model-one") });
+        var credentials = new OfflineCredentials();
+        var catalog = new ProviderCatalog();
+        var connection = new ModelConnectionViewModel(settings, credentials, catalog, new ChatProviderFactory(catalog, credentials, http));
+        var database = new RuntimeDatabase(Path.Combine(Path.GetTempPath(), "fgopet-model-web-" + Guid.NewGuid().ToString("N"), "runtime.sqlite3"), pooling: false);
+        new RuntimeDatabaseMigrator(database).Migrate();
+        var engine = new ConversationOrchestrator(new OfflineProvider(), new OfflineContent(),
+            new SqliteConversationRepository(database), new PromptComposer(), TimeProvider.System, settings);
+        return new(new ConversationViewModel(engine, settings, connection));
+    }
+
+    private sealed class OfflineModels : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.EndsWith("/models", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = new StringContent("{\"data\":[{\"id\":\"model-one\"},{\"id\":\"model-two\"}]}", System.Text.Encoding.UTF8, "application/json") });
+        }
+    }
+    private sealed class OfflineSettings(DialogueSettings initial) : IDialogueSettingsStore
+    {
+        private DialogueSettings _current = initial;
+        public DialogueSettings Load() => _current;
+        public void Save(DialogueSettings settings) => _current = settings;
+    }
+    private sealed class OfflineCredentials : ICredentialStore, ICredentialReader
+    {
+        public Task SaveAsync(string target, string secret, CancellationToken cancellationToken) => throw new InvalidOperationException("No credential writes in this fixture.");
+        public Task<bool> ExistsAsync(string target, CancellationToken cancellationToken) => Task.FromResult(true);
+        public Task DeleteAsync(string target, CancellationToken cancellationToken) => throw new InvalidOperationException("No credential writes in this fixture.");
+        public Task<string?> ReadAsync(string target, CancellationToken cancellationToken) => Task.FromResult<string?>("synthetic-offline-key");
+    }
+    private sealed class OfflineProvider : IChatProviderResolver
+    { public IChatProvider Resolve() => throw new InvalidOperationException("No conversation requests in this fixture."); }
+    private sealed class OfflineContent : IConversationContentResolver
+    {
+        public Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken) => Task.FromResult(new ContentBinding(
+            new ContentContextKey(servantId, "stub.pack", "1.0.0", "default", "1", "1"), null,
+            Array.Empty<KnowledgeEntry>(), Array.Empty<string>(), string.Empty, string.Empty));
     }
 
     internal static async Task WaitUntil(Func<Task<bool>> condition,

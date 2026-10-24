@@ -31,6 +31,7 @@ public sealed class ChatWebSessionTests : IDisposable
         Assert.Equal("CHAT_IMAGE_BUSY", (await session.HandleCommandAsync(Message("chat.send", Identity(identity)), default)).ErrorCode);
         Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).Success);
         Assert.Equal(new byte[] {1,2,3,1,2,3}, Assert.Single(host.Imports));
+        transfer = Guid.NewGuid().ToString("N");
         Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(0, false)), default)).Success);
         conversation.NewConversationCommand.Execute(null);
         Assert.Equal("CHAT_IDENTITY_STALE", (await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).ErrorCode);

@@ -265,6 +265,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<ServantLibraryViewModel>(),
             provider.GetRequiredService<SpeechPlaybackCoordinator>(),
             provider.GetRequiredService<IDialogueProjectCatalog>()))
+        .AddSingleton<FgoPet.Platform.WindowText.IWindowTextDiagnostics, WindowTextDiagnostics>()
+        .AddSingleton<FgoPet.Platform.WindowText.IWindowTextReader, FgoPet.Platform.Windows.WindowText.WindowsWindowTextReader>()
         .AddSingleton(provider => new ChatWebSurfaceFactory(
             provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWebSessionFactory>(), paths.StorageRoot,
             provider.GetRequiredService<ThemeService>()))
@@ -331,4 +333,12 @@ public static class ServiceRegistration
         return services;
     }
 
+    private sealed class WindowTextDiagnostics(ILogger<WindowTextDiagnostics> logger)
+        : FgoPet.Platform.WindowText.IWindowTextDiagnostics
+    {
+        public void Record(FgoPet.Platform.WindowText.WindowTextReadDiagnostic notification) => logger.LogInformation(
+            "Selected window read {Timestamp} {Correlation} {Stage} {Status} {CharacterCount}",
+            notification.TimestampUtc, notification.RequestHash, notification.Stage,
+            notification.Status, notification.CharacterCount);
+    }
 }

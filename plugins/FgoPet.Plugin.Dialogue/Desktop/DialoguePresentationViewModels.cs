@@ -15,26 +15,39 @@ public interface IConfiguredModelAuthority
     IReadOnlyList<DialogueModelChoice> AvailableModels { get; }
     bool IsAvailable(string modelId);
     event EventHandler? Changed;
+    bool IsRefreshing => false;
+    string Status => "";
+    string? SelectedModelId => null;
+    Task RefreshAsync(CancellationToken token = default) => Task.CompletedTask;
 }
 
-public sealed class DialogueModelConnectionSource : IConfiguredModelAuthority
+public sealed class DialogueModelConnectionSource : IConfiguredModelAuthority, IDisposable
 {
     private readonly ModelConnectionViewModel _connection;
     public DialogueModelConnectionSource(ModelConnectionViewModel connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        _connection.PropertyChanged += OnConnectionPropertyChanged;
+        _connection.ConfiguredModels.Changed += OnCatalogChanged;
+        _connection.ConnectionSaved += OnSaved;
     }
     public event EventHandler? Changed;
-    public IReadOnlyList<DialogueModelChoice> AvailableModels => _connection.AvailableModels
-        .Where(model => !string.IsNullOrWhiteSpace(model.Id))
-        .GroupBy(model => model.Id.Trim(), StringComparer.Ordinal)
-        .Select(group => new DialogueModelChoice(group.Key, group.First().DisplayName))
-        .ToArray();
+    public IReadOnlyList<DialogueModelChoice> AvailableModels => _connection.ConfiguredModels.Models;
+    public bool IsRefreshing => _connection.ConfiguredModels.IsRefreshing;
+    public string Status => _connection.ConfiguredModels.Status;
+    public string? SelectedModelId => _connection.ConfiguredModels.SelectedModelId;
+    public Task RefreshAsync(CancellationToken token = default) => _connection.ConfiguredModels.RefreshAsync(token);
     public bool IsAvailable(string modelId) => AvailableModels.Any(model => model.Id == modelId);
-    private void OnConnectionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnCatalogChanged(object? sender, EventArgs e) => Changed?.Invoke(this, EventArgs.Empty);
+    private void OnSaved(FgoPet.Core.Settings.ModelConnectionSettings connection)
     {
-        if (e.PropertyName == nameof(ModelConnectionViewModel.AvailableModels)) Changed?.Invoke(this, EventArgs.Empty);
+        _connection.ConfiguredModels.Invalidate();
+        _ = RefreshAsync();
+    }
+    public void Dispose()
+    {
+        _connection.ConfiguredModels.Changed -= OnCatalogChanged;
+        _connection.ConnectionSaved -= OnSaved;
+        _connection.ConfiguredModels.Dispose();
     }
 }
 
@@ -51,13 +64,16 @@ public sealed class DialogueModelSelectionViewModel : INotifyPropertyChanged
         _authority = authority ?? throw new ArgumentNullException(nameof(authority));
         _authority.Changed += OnAuthorityChanged;
         _models = authority.AvailableModels;
-        _selectedModelId = _models.Any(model => model.Id == selectedModelId) ? selectedModelId : _models.FirstOrDefault()?.Id;
+        _selectedModelId = authority.SelectedModelId ?? selectedModelId;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<string>? ModelSelected;
 
     public IReadOnlyList<DialogueModelChoice> Models => _models;
+    public bool IsRefreshing => _authority.IsRefreshing;
+    public string Status => _authority.Status;
+    public Task RefreshAsync(CancellationToken token = default) => _authority.RefreshAsync(token);
 
     public string? SelectedModelId
     {
@@ -98,11 +114,10 @@ public sealed class DialogueModelSelectionViewModel : INotifyPropertyChanged
     private void OnAuthorityChanged(object? sender, EventArgs e)
     {
         _models = _authority.AvailableModels;
-        if (_selectedModelId is not null && !_authority.IsAvailable(_selectedModelId))
-        {
-            SelectedModelId = _models.FirstOrDefault()?.Id;
-        }
+        if (_authority.SelectedModelId is { } selected) SelectedModelId = selected;
         PropertyChanged?.Invoke(this, new(nameof(Models)));
+        PropertyChanged?.Invoke(this, new(nameof(IsRefreshing)));
+        PropertyChanged?.Invoke(this, new(nameof(Status)));
     }
 }
 
@@ -257,12 +272,12 @@ public sealed class DialogueSessionContextViewModel : ObservableObject
         return true;
     }
 
-    public ConversationRequestContext ToRequestContext() => new(
+    public ConversationRequestContext ToRequestContext(SelectedWindowContent? selectedWindowContent = null) => new(
         _projectId,
         _projectLabel,
         _attachmentNames,
         _intentId,
-        IntentLabel);
+        IntentLabel, selectedWindowContent);
 
     public void ClearTransient()
     {

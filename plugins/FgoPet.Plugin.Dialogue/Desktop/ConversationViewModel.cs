@@ -211,10 +211,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (string.Equals(current.ModelId, normalized, StringComparison.Ordinal)) return true;
         _settings.Save(_settings.Load() with
         {
-            ModelConnection = new ModelConnectionSettings(
-                current.ProviderId, current.BaseUrl, normalized, current.ToolsSupported),
+            ModelConnection = new ModelConnectionSettings(current.ProviderId, current.BaseUrl, normalized,
+                current.ToolsSupported, current.ContextWindowOverride, current.MaxOutputTokens),
         });
         ModelStatusText = normalized;
+        ClearWindowSelection();
         return true;
     }
 
@@ -507,7 +508,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 servant,
                 text,
                 cancellationToken,
-                SessionContext.ToRequestContext(), requestId);
+                SessionContext.ToRequestContext(desktopInput ? _windowSelection?.CurrentContent : null), requestId);
             if (!IsCurrent()) return null;
             result = await ApplyInputResultAsync(result);
             if (!IsCurrent()) return null;
@@ -522,6 +523,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             else
             {
                 SessionContext.ClearTransient();
+                if (desktopInput) ClearWindowSelection();
                 _configurationRequired = false;
                 OnPropertyChanged(nameof(IsConfigurationRequired));
                 OnPropertyChanged(nameof(IsConfigurationStateVisible));
@@ -1329,6 +1331,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (_modelConnection is not null)
         {
             _modelConnection.ConnectionSaved -= OnConnectionSaved;
+            (_modelAuthority as IDisposable)?.Dispose();
             _modelConnection.ShowReasoningChanged -= OnShowReasoningChanged;
         }
         StopThinkingTimer();

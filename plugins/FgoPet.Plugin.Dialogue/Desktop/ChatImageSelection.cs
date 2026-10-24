@@ -54,13 +54,16 @@ internal sealed class ChatImageSelection : IChatImageSelection, IDisposable
         token.ThrowIfCancellationRequested();
         if (!CanChoose || bytes.Length > SelectedImageFormat.MaxSourceBytes
             || mimeType is not ("image/png" or "image/jpeg")) return Task.FromResult(false);
+        var originalEpoch = epoch;
+        var scope = Scope();
+        var route = Route!;
         try
         {
             var image = SelectedImageDecoder.Decode(bytes, mimeType == "image/png" ? ".png" : ".jpg", token);
             token.ThrowIfCancellationRequested();
-            Clear(); pending = image; selectedRoute = Route; expiresAt = clock.GetUtcNow() + SelectedImageStore.Lifetime;
-            expiry.Start(); Changed?.Invoke(this, EventArgs.Empty);
-            return Task.FromResult(true);
+            if (disposed || originalEpoch != epoch || scope != Scope() || route != Route
+                || conversation.IsStreaming || conversation.HasPendingRun) return Task.FromResult(false);
+            return Task.FromResult(Select(image, route));
         }
         catch (SelectedImageException) { return Task.FromResult(false); }
     }
@@ -75,18 +78,25 @@ internal sealed class ChatImageSelection : IChatImageSelection, IDisposable
         try
         {
             var path = nativePicker();
+            token.ThrowIfCancellationRequested();
             if (path is null) return true;
             var image = await SelectedImageDecoder.ReadAsync(path, token);
             token.ThrowIfCancellationRequested();
             if (disposed || originalEpoch != epoch || scope != Scope() || route != Route
                 || conversation.IsStreaming || conversation.HasPendingRun) return false;
-            Clear();
-            pending = image; selectedRoute = route; expiresAt = clock.GetUtcNow() + SelectedImageStore.Lifetime;
-            expiry.Start(); Changed?.Invoke(this, EventArgs.Empty);
-            return true;
+            return Select(image, route);
         }
         catch (SelectedImageException) { return false; }
         finally { choosing = false; Changed?.Invoke(this, EventArgs.Empty); }
+    }
+    private bool Select(ChatImageInput image, ModelRouteKey route)
+    {
+        // Publish only after replacement is complete. Changed handlers may invalidate
+        // the session synchronously; never write the old image after that callback.
+        epoch++; images.Clear(); granted = null;
+        pending = image; selectedRoute = route; expiresAt = clock.GetUtcNow() + SelectedImageStore.Lifetime;
+        expiry.Start(); Changed?.Invoke(this, EventArgs.Empty);
+        return !disposed && ReferenceEquals(pending, image);
     }
     private ToolScope Scope() => new(conversation.CurrentConversationId, conversation.ActiveServantId,
         string.IsNullOrWhiteSpace(conversation.SessionContext.ProjectId) ? null : conversation.SessionContext.ProjectId);

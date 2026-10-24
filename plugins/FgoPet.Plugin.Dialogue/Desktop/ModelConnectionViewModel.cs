@@ -29,6 +29,8 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
+        ConfiguredModels = new(() => _settings.Load().ModelConnection,
+            (connection, token) => _providerFactory.Create(connection).ListModelsAsync(token));
         Providers = _catalog.Providers;
 
         var saved = _settings.Load().ModelConnection;
@@ -51,6 +53,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     /// <summary>Raised after the persisted connection becomes the active app configuration.</summary>
     public event Action<ModelConnectionSettings>? ConnectionSaved;
+    public ConfiguredModelCatalog ConfiguredModels { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ProviderStatusText))]
@@ -197,6 +200,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     {
         _pendingApiKey = value?.Trim() ?? string.Empty;
         _draftVersion++;
+        AvailableModels = Array.Empty<ProviderModel>();
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -287,6 +291,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         await _credentials.DeleteAsync(CredentialTarget(), CancellationToken.None);
         _pendingApiKey = string.Empty;
         IsKeySaved = false;
+        _draftVersion++;
+        AvailableModels = Array.Empty<ProviderModel>();
+        ConfiguredModels.Invalidate();
         StatusText = "API Key 已清除。";
     }
 

@@ -373,7 +373,9 @@ public sealed class DesktopAppUi : IDesktopAppUi, IDisposable
     private void UpdateManagementPriority()
     {
         if (_portrait is null) return;
-        if (_dialogueWindow is not null) _dialogueWindow.Topmost = _portrait.Topmost;
+        // The companion's topmost setting does not apply to Chat. Its owned dialogs
+        // also remain ordinary windows so users can reach their source window.
+        if (_dialogueWindow is not null) _dialogueWindow.Topmost = false;
         if (_settingsWindow is not null) _settingsWindow.Topmost = _portrait.Topmost;
     }
 

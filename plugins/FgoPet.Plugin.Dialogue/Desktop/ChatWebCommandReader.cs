@@ -21,7 +21,10 @@ internal sealed record ChatWebCommand(
     string? RunId = null,
     string? InputRequestId = null,
     ImmutableArray<QuestionAnswer> Answers = default,
-    ChatImageChunk? ImageChunk = null);
+    ChatImageChunk? ImageChunk = null,
+    string? View = null,
+    bool? Wide = null,
+    double? ComposerHeight = null);
 
 internal sealed record ChatImageChunk(string Id, string MimeType, long Offset, string Data, bool Complete);
 
@@ -89,6 +92,9 @@ internal static class ChatWebCommandReader
         string? inputRequestId = null;
         ImmutableArray<QuestionAnswer> answers = default;
         ChatImageChunk? imageChunk = null;
+        string? view = null;
+        bool? wide = null;
+        double? composerHeight = null;
 
         switch (message.Type)
         {
@@ -152,21 +158,42 @@ internal static class ChatWebCommandReader
                 action = actionName;
                 var targetRequired = actionName is "copyTurn" or "readTurn" or "openSource" or "openWorkspace" or "selectProject" or "selectModel" or "removeContextChip";
                 var expandedRequired = actionName == "setExpanded";
+                var presentationRequired = actionName == "setPresentation";
                 var expected = new List<string> { "sessionId", "servantId", "conversationId", "action" };
                 if (targetRequired) expected.Add("targetId");
                 if (expandedRequired) expected.Add("expanded");
+                if (presentationRequired)
+                {
+                    expected.Add("view"); expected.Add("wide");
+                    if (fields.ContainsKey("composerHeight")) expected.Add("composerHeight");
+                }
                 if (!Only(fields, expected.ToArray())) return false;
                 if (targetRequired && !ReadString(fields, "targetId", allowEmpty: false, 128, out targetId)) return false;
                 var expandedValue = false;
                 if (expandedRequired && !ReadBoolean(fields, "expanded", out expandedValue)) return false;
                 if (expandedRequired) expanded = expandedValue;
+                if (presentationRequired)
+                {
+                    if (!ReadString(fields, "view", false, 12, out view)
+                        || view is not ("composer" or "conversation")
+                        || !ReadBoolean(fields, "wide", out var wideValue)) return false;
+                    wide = wideValue;
+                    if (fields.TryGetValue("composerHeight", out var heightElement))
+                    {
+                        if (heightElement.ValueKind != JsonValueKind.Number
+                            || !heightElement.TryGetDouble(out var height)
+                            || !double.IsFinite(height) || height is < 160 or > 360) return false;
+                        composerHeight = height;
+                    }
+                }
                 break;
             default:
                 return false;
         }
 
         command = new(message.Type, identity, text, revision, onlyCurrentProject, append,
-            targetConversationId, action, targetId, expanded, runId, inputRequestId, answers, imageChunk);
+            targetConversationId, action, targetId, expanded, runId, inputRequestId, answers, imageChunk,
+            view, wide, composerHeight);
         errorCode = string.Empty;
         return true;
     }
@@ -243,9 +270,10 @@ internal static class ChatWebCommandReader
     }
 
     private static bool IsKnownHostAction(string action) => action is
-        "hide" or "setExpanded" or "copyTurn" or "readTurn" or "openSource" or "openWorkspace"
+        "hide" or "setExpanded" or "setPresentation" or "copyTurn" or "readTurn" or "openSource" or "openWorkspace"
         or "openFocus" or "openWorkspaceOverview" or "newWorkspaceItem"
         or "openPersonalizationSettings" or "openSpeechSettings" or "openModelSettings"
-        or "refreshProjects" or "selectProject" or "selectModel" or "removeContextChip"
+        or "refreshProjects" or "refreshModels" or "selectProject" or "selectModel" or "removeContextChip"
+        or "chooseWindowContext" or "previewWindowContext" or "rereadWindowContext" or "clearWindowContext"
         or "chooseWorkspace" or "clearWorkspace" or "chooseImage" or "clearImage" or "configureBrowserImages";
 }

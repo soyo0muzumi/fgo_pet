@@ -415,6 +415,7 @@ public sealed partial class ConversationOrchestrator
             {
                 PromptBudgetFailure.PendingDraftTooLarge => "待确认草稿过大，请取消草稿后分批规划。",
                 PromptBudgetFailure.UserInputTooLarge => "本次输入过长，请缩短后重试。",
+                PromptBudgetFailure.SelectedWindowTooLarge => "所选窗口文字超出单条上下文限制，请移除或重新选择较短内容。",
                 _ => "当前内容超出模型可用上下文，且无法安全压缩。原记录已保留，请缩短输入或调整模型容量后重试。",
             };
             _logger?.LogWarning("Dialogue prompt budget rejected: {Failure}", error.Failure);

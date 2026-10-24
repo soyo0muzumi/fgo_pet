@@ -11,6 +11,102 @@ namespace FgoPet.Windows.Tests.Dialogue;
 
 public sealed class ChatImageSelectionTests
 {
+    [Theory]
+    [InlineData("role")]
+    [InlineData("conversation")]
+    [InlineData("project")]
+    [InlineData("model")]
+    [InlineData("stop")]
+    public Task Picker_result_cannot_cross_scope_or_route_change(string change) => StaRunner.RunAsync(async () =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), "image-scope-" + Guid.NewGuid().ToString("N") + ".png");
+        await File.WriteAllBytesAsync(path, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+        try
+        {
+            var vm = DialogueWindowIntegrationTests.CreateViewModel(); using var conversation = vm.Conversation;
+            conversation.SetActiveServant("stub"); var images = new SelectedImageStore(_ => true); var settings = new Settings();
+            using var selection = new ChatImageSelection(conversation, images, settings, TimeProvider.System);
+            Assert.False(await selection.ChooseAsync(() =>
+            {
+                if (change == "role") conversation.SetActiveServant("other");
+                if (change == "conversation") conversation.NewConversationCommand.Execute(null);
+                if (change == "project") conversation.SessionContext.TrySetProject("other-project", "Synthetic project");
+                if (change == "model") settings.Connection = new("deepseek", "https://api.deepseek.com/v1", "deepseek-flash");
+                if (change == "stop") conversation.StopCommand.Execute(null);
+                return path;
+            }, default));
+            Assert.Null(selection.Label);
+            Assert.False(images.HasSelection);
+            Assert.True(selection.CanChoose);
+        }
+        finally { File.Delete(path); }
+    });
+
+    [Fact]
+    public Task Cancelled_import_and_picker_preserve_previous_unshared_selection() => StaRunner.RunAsync(async () =>
+    {
+        var vm = DialogueWindowIntegrationTests.CreateViewModel(); using var conversation = vm.Conversation;
+        conversation.SetActiveServant("stub"); var images = new SelectedImageStore(_ => true);
+        using var selection = new ChatImageSelection(conversation, images, new Settings(), TimeProvider.System);
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        Assert.True(await selection.ImportAsync(png, "image/png", default));
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => selection.ImportAsync(png, "image/png", cancelled.Token));
+        Assert.True(await selection.ChooseAsync(() => null, default));
+        Assert.NotNull(selection.Label);
+        Assert.False(images.HasSelection);
+        conversation.NewConversationCommand.Execute(null);
+        Assert.Null(selection.Label);
+        Assert.True(await selection.ImportAsync(png, "image/png", default));
+        Assert.False(images.HasSelection);
+    });
+
+    [Fact]
+    public Task Cancellation_while_picker_is_open_is_not_reported_as_success() => StaRunner.RunAsync(async () =>
+    {
+        var vm = DialogueWindowIntegrationTests.CreateViewModel(); using var conversation = vm.Conversation;
+        conversation.SetActiveServant("stub"); var images = new SelectedImageStore(_ => true);
+        using var selection = new ChatImageSelection(conversation, images, new Settings(), TimeProvider.System);
+        using var cancelled = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => selection.ChooseAsync(() =>
+        {
+            cancelled.Cancel();
+            return null;
+        }, cancelled.Token));
+
+        Assert.Null(selection.Label);
+        Assert.True(selection.CanChoose);
+    });
+
+    [Theory]
+    [InlineData("role")]
+    [InlineData("conversation")]
+    [InlineData("stop")]
+    [InlineData("dispose")]
+    public Task Selection_change_observer_cannot_resurrect_image_after_invalidation(string change) => StaRunner.RunAsync(async () =>
+    {
+        var vm = DialogueWindowIntegrationTests.CreateViewModel(); using var conversation = vm.Conversation;
+        conversation.SetActiveServant("stub"); var images = new SelectedImageStore(_ => true);
+        using var selection = new ChatImageSelection(conversation, images, new Settings(), TimeProvider.System);
+        var observed = false;
+        selection.Changed += (_, _) =>
+        {
+            if (observed) return;
+            observed = true;
+            if (change == "role") conversation.SetActiveServant("different");
+            if (change == "conversation") conversation.NewConversationCommand.Execute(null);
+            if (change == "stop") conversation.StopCommand.Execute(null);
+            if (change == "dispose") selection.Dispose();
+        };
+
+        await selection.ImportAsync(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="), "image/png", default);
+
+        Assert.True(observed);
+        Assert.Null(selection.Label);
+        Assert.False(images.HasSelection);
+    });
+
     [Fact]
     public Task Paste_import_validates_pixels_preserves_previous_on_failure_and_waits_for_send() => StaRunner.RunAsync(async () =>
     {

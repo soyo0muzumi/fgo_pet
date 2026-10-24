@@ -25,10 +25,12 @@ public sealed class ChatApprovalWebTests
             await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
             var web = Assert.IsType<WebView2>(host.Children[0]);
             async Task<bool> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code) == "true";
-            await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.getElementById('approval-review')"));
-            Assert.True(await Js("document.querySelector('.approval-summary').textContent.includes('Synthetic reminder') && !document.querySelector('.approval-technical').open"));
-            Assert.True(await Js("!document.querySelector('#approval-card img') && document.querySelector('.approval-details').textContent.endsWith('VERSION 17')"));
-            Assert.True(await Js("document.getElementById('approval-cancel').textContent==='Cancel task' && document.getElementById('approval-deny').textContent==='Deny operation'"));
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.querySelector('.approval-card .primary-button')"));
+            Assert.True(await Js("!document.body.innerText.includes('CHAT_BRIDGE_UNAVAILABLE') && !document.body.innerText.includes('无法连接桌面宿主')"),
+                "A valid initial approval snapshot must not trigger presentation before the native handshake completes.");
+            Assert.True(await Js("document.querySelector('.approval-card > p').textContent.includes('Synthetic reminder') && !document.querySelector('.approval-card details').open"));
+            Assert.True(await Js("!document.querySelector('.approval-card img') && document.querySelector('.approval-card pre').textContent.endsWith('VERSION 17')"));
+            Assert.True(await Js("document.querySelector('.approval-card .text-button').textContent==='取消请求' && document.querySelector('.approval-card .secondary-button').textContent==='这次不允许'"));
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride", "{\"width\":328,\"height\":700,\"deviceScaleFactor\":1,\"mobile\":false}");
             Assert.True(await Js("document.documentElement.scrollWidth<=innerWidth"));
             await MarginWebIntegrationTests.WaitUntil(() => Js("document.querySelector('#messages').getAnimations({subtree:true}).every(a=>a.playState==='finished')"));
@@ -39,18 +41,18 @@ public sealed class ChatApprovalWebTests
                 using var image = File.Create(Path.Combine(evidence, "chat-approval-synthetic.png"));
                 await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image);
             }
-            await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('approval-review').click();document.getElementById('approval-review').click()");
-            await MarginWebIntegrationTests.WaitUntil(() => Js("!document.getElementById('approval-card')"));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.approval-card .primary-button').click();document.querySelector('.approval-card .primary-button').click()");
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!document.querySelector('.approval-card')"));
             Assert.Equal(1, session.Reviews);
             Assert.DoesNotContain("chat.approval.allow", session.Commands);
             Assert.True(await Js("document.getElementById('composer').value==='Synthetic unsent draft'"));
             session.PublishApproval(summary: false);
-            await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.getElementById('approval-card')"));
-            Assert.True(await Js("document.querySelector('.approval-technical').open && document.querySelector('.approval-summary').hidden"));
-            Assert.True(await Js("document.querySelector('.approval-details').textContent.endsWith('VERSION 17')"));
+            await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.querySelector('.approval-card')"));
+            Assert.True(await Js("document.querySelector('.approval-card details').open && !document.querySelector('.approval-card > p').textContent.includes('Synthetic reminder')"));
+            Assert.True(await Js("document.querySelector('.approval-card pre').textContent.endsWith('VERSION 17')"));
             session.PublishApproval(summary: true, expired: true);
-            await MarginWebIntegrationTests.WaitUntil(() => Js("document.getElementById('approval-review').disabled"));
-            Assert.True(await Js("document.getElementById('approval-deny').disabled && !document.getElementById('approval-cancel').disabled"));
+            await MarginWebIntegrationTests.WaitUntil(() => Js("document.querySelector('.approval-card .primary-button').disabled"));
+            Assert.True(await Js("document.querySelector('.approval-card .secondary-button').disabled && !document.querySelector('.approval-card .text-button').disabled"));
             Console.WriteLine("APPROVAL_WEB_METADATA_ONLY summary=true fullFallback=true inert=true narrow=true repeatedReviewOnce=true expired=true modelCalls=0");
         }
         finally { window.Close(); }

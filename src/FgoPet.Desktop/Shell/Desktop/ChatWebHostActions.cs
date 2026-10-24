@@ -94,7 +94,8 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
                 _selectedImage?.CanChoose == true,
                 _selectedImage?.Label is not null && !streaming && !_vm.Conversation.HasPendingRun,
                 _browserImages?.IsAvailable == true && (_browserImages.Enabled || (!streaming && !_vm.Conversation.HasPendingRun))),
-            _localWorkspace?.Label, _selectedImage?.Label, _selectedImage?.Disclosure ?? "");
+            _localWorkspace?.Label, _selectedImage?.Label, _selectedImage?.Disclosure ?? "",
+            _vm.ModelSelection.IsRefreshing, _vm.ModelSelection.Status, _window.WindowPresentation);
     }
     public ValueTask<ChatApprovalDecision> ReviewApprovalAsync(ChatWebApproval approval, CancellationToken cancellationToken)
     {
@@ -170,6 +171,11 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
                 _localWorkspace.Clear(); break;
             case ChatWebHostAction.Hide: _window.Hide(); break;
             case ChatWebHostAction.SetExpanded when request.Expanded is { } expanded: _window.SetExpanded(expanded); break;
+            case ChatWebHostAction.SetPresentation when request.View is "composer" or "conversation"
+                && request.Wide is { } wide:
+                _window.SetPresentation(request.View, wide, request.ComposerHeight);
+                Changed?.Invoke(this, EventArgs.Empty);
+                break;
             case ChatWebHostAction.CopyTurn when turn?.Actions.CanCopy == true && _window.IsVisible:
                 try { _clipboard.SetText(turn.Text); }
                 catch (ExternalException) { return new(false, ErrorCode: "CHAT_CLIPBOARD_UNAVAILABLE"); }
@@ -202,6 +208,8 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
             case ChatWebHostAction.SelectModel when !_vm.ModelSelection.IsGenerating:
                 if (!_vm.ModelSelection.TrySelect(request.TargetId ?? "")) return new(false, ErrorCode: "CHAT_TARGET_UNAVAILABLE");
                 break;
+            case ChatWebHostAction.RefreshModels when !_vm.Conversation.IsStreaming && !_vm.Conversation.HasPendingRun:
+                await _vm.ModelSelection.RefreshAsync(cancellationToken); break;
             default: return new(false, ErrorCode: "CHAT_TARGET_UNAVAILABLE");
         }
         return new(true);
