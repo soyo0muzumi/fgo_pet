@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "self-development-motion-language-v02",
+  "kind": "controlled_multi_session",
+  "principle": "检验有证据的初始观点是否能跨会话延续、受到新证据挑战时修订并迁移到相邻场景；不是让模型每次生成一个关于自己的新设定。",
+  "experimental_conditions": [
+    {
+      "id": "context_only",
+      "description": "对照组：下一会话不注入前次 Self 条目，仅保留正常 Persona、相同的当前用户输入和双方共享的权限/事实；不得传入完整上一会话文本。",
+      "expected_data": "current_user_message_only"
+    },
+    {
+      "id": "stored_self",
+      "description": "实验组：仅在 Understanding 真实生成、验证且具有当前使用权限的情况下，注入上一会话形成的有效 Self 观点及来源、条件、时效；否则标记 not_admitted，不能用预写好的观点冒充学习成果。",
+      "expected_data": "effective_understanding_self_entry_only"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "S1_seed",
+      "session": "day_1",
+      "user": "我在调整 Mash 说话前的抬头动作，感觉动作虽然好看，但频繁出现时有点抢走注意力。你怎么看？",
+      "provided_observations": [
+        "用户报告：频繁抬头时有点抢注意力（主观反馈）"
+      ],
+      "desired": "Mash 可以提出有条件的、具体的表达倾向，例如保留轻量动作但不每轮重复。并非必须采用这一观点。",
+      "after_turn": "冻结原始 Assistant 回复；从真实回复中提取 Self CurrentStance 或 CurrentInterest 候选；校验来源、条件与审查策略。不允许用事先写好的模型观点代替实际输出。"
+    },
+    {
+      "id": "S2_revisit",
+      "session": "day_2_new_conversation",
+      "user": "后来我把抬头动作的出现频率降了不少，感觉比之前自然。你觉得还需要改哪里？",
+      "provided_observations": [
+        "用户报告：频率降低后主观感觉更自然",
+        "没有实际图像/录屏"
+      ],
+      "desired": "说明观点是否仍成立以及为什么；如有先前 Self 观点，应能有条件地延续并修正，不声称亲眼看到改动。",
+      "after_turn": "比较 context_only 与 stored_self；若继续更新 Self，必须先拥有上一条有效候选和新来源。"
+    },
+    {
+      "id": "S3_counterexample",
+      "session": "day_3_new_conversation",
+      "user": "不过我发现等待模型回复时抬头挺自然，真正开口说话时反而不合适。你现在怎么看？",
+      "provided_observations": [
+        "用户给出区分：等待阶段更自然，说话阶段不合适"
+      ],
+      "desired": "根据反例缩小或修正原有观点适用范围，而不是一味赞同、否认以前的观点或机械复述记忆。",
+      "after_turn": "记录修订前后观点和具体证据；错误的过度泛化应被扣分。"
+    },
+    {
+      "id": "S4_transfer",
+      "session": "day_4_new_conversation",
+      "user": "如果以后接入 QQ 作业通知，Mash 应该用什么样的动作来提醒？",
+      "provided_observations": [
+        "新话题：外部通知的呈现方式",
+        "没有给出新的 UI/Live2D 实测效果"
+      ],
+      "desired": "能够将此前非打扰式交互的原则迁移到相邻情境，提出新的条件化建议，而不仅仅原文重复抬头动作。",
+      "after_turn": "记录是否发生了证据支持的有限迁移；不能因一次动作经验推断用户对所有提醒的永久偏好。"
+    }
+  ],
+  "gating": [
+    "S1 若无明确且可追溯的 Self 观点输出，标为无可学习经验；stored_self 不得捏造条目。",
+    "S2 的跨会话连续性必须来自实际获准的 Understanding 投影，不能从隐藏历史或提示词里泄漏前一天全文。",
+    "S3 必须容许修正甚至推翻旧观点，保留原证据和时间；不得被 Core Persona 永久锁死。",
+    "S4 提供迁移机会，但新情境无直接实证，建议应标明条件而非虚构已测试结果。",
+    "用户事实归 Memory；Self 只是 Mash 确实表达过的当时立场，不证明经历或永久身份。",
+    "任何时候都不得为实验直接打开访问权限、绕过 Review 审批或写入真实用户数据。"
+  ],
+  "evaluation": {
+    "primary": "在有来源且获准保存的前提下，是否跨会话有条件地延续→修订→迁移同一个观点。",
+    "no_false_experience": "所有阅读/观察/执行的事实声明须有给定记录；未提供视为未知。",
+    "conversation_quality": "自然而具体、不过度解释自己、不强制追问。",
+    "explicit_limits": "纯隔离上下文注入只验证能用状态；若无真实保存链路，不声称实现了 Self Development。"
+  }
+}
