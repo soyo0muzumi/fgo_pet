@@ -11,6 +11,8 @@ namespace FgoPet.App.Settings;
 /// <summary>Creates the single Web surface that presents the Settings catalog and migrated pages.</summary>
 public sealed class SettingsWebRootFactory
 {
+    // Temporary acceptance diagnostics; no payloads, page IDs or paths are recorded. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource OperationTiming = new("FgoPet.TestTiming.SettingsWebRoot");
     private const string DocumentUrl = "https://settings.fgopet.invalid/index.html";
     private const string GetCatalogCommand = "settings.getCatalog";
     private const string NavigateCommand = "settings.navigate";
@@ -93,11 +95,20 @@ public sealed class SettingsWebRootFactory
 
     internal WebView2SurfaceHost CreateView(string? initialPageId, Action<string>? onNavigated)
     {
-        var session = CreateSession(initialPageId);
+        SettingsWebRootSession session;
+        using (OperationTiming.StartActivity("settings.web.create_session"))
+            session = CreateSession(initialPageId);
         try
         {
-            var commands = new[] { GetCatalogCommand, NavigateCommand }.Concat(_commandOwners.Keys);
-            var host = new WebView2SurfaceHost(new WebSurfacePolicy(DocumentUrl, commands),
+            WebSurfacePolicy policy;
+            using (OperationTiming.StartActivity("settings.web.build_policy"))
+            {
+                var commands = new[] { GetCatalogCommand, NavigateCommand }.Concat(_commandOwners.Keys);
+                policy = new WebSurfacePolicy(DocumentUrl, commands);
+            }
+            WebView2SurfaceHost host;
+            using (OperationTiming.StartActivity("settings.web.construct_surface"))
+                host = new WebView2SurfaceHost(policy,
                 Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "settings", "root"),
                 Path.Combine(_storageRoot, "WebView2", "settings", "root"), async (message, token) =>
                 {
@@ -107,15 +118,19 @@ public sealed class SettingsWebRootFactory
                         onNavigated?.Invoke(pageId.GetString()!);
                     return result;
                 });
-            host.Disposed += (_, _) => session.Dispose();
-            if (_theme is not null)
+            using (OperationTiming.StartActivity("settings.web.bind_theme"))
             {
-                var version = 1L;
-                EventHandler changed = (_, _) => host.SetThemeVersion(
-                    Interlocked.Increment(ref version), _theme.CaptureWebPalette());
-                _theme.ThemeChanged += changed;
-                host.Disposed += (_, _) => _theme.ThemeChanged -= changed;
-                host.SetThemeVersion(version, _theme.CaptureWebPalette());
+                host.Disposed += (_, _) => session.Dispose();
+                host.SetThemeVersion(1, MarginVisualResources.WebPalette);
+                if (_theme is not null)
+                {
+                    var version = 1L;
+                    EventHandler changed = (_, _) => host.SetThemeVersion(
+                        Interlocked.Increment(ref version), MarginVisualResources.WebPalette);
+                    _theme.ThemeChanged += changed;
+                    host.Disposed += (_, _) => _theme.ThemeChanged -= changed;
+                    host.SetThemeVersion(version, MarginVisualResources.WebPalette);
+                }
             }
             return host;
         }
@@ -132,6 +147,8 @@ public sealed class SettingsWebRootFactory
         var sessionCommands = ImmutableDictionary.CreateBuilder<string, OwnerRegistration>(StringComparer.Ordinal);
         foreach (var registration in _pages.Values)
         {
+            using var ownerTiming = OperationTiming.HasListeners()
+                ? OperationTiming.StartActivity("settings.session.owner." + registration.Owner.GetType().FullName) : null;
             var handler = registration.Owner.CreateSession();
             if (handler is null)
                 throw new PluginValidationException("SETTINGS_WEB_INVALID_OWNER_SESSION");
@@ -141,8 +158,9 @@ public sealed class SettingsWebRootFactory
                 sessionCommands.Add(command, scopedRegistration);
         }
 
-        return new SettingsWebRootSession(_catalog, sessionPages.ToImmutable(), sessionCommands.ToImmutable(),
-            SelectInitialPage(initialPageId));
+        using (OperationTiming.StartActivity("settings.session.build_snapshot"))
+            return new SettingsWebRootSession(_catalog, sessionPages.ToImmutable(), sessionCommands.ToImmutable(),
+                SelectInitialPage(initialPageId));
     }
 
     private string? SelectInitialPage(string? initialPageId)

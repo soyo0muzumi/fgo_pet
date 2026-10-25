@@ -13,6 +13,13 @@ public partial class AttachedPanelView : UserControl, IDisposable
 {
     private AttachedPanelViewModel? _model;
     private bool _disposed;
+    private bool _marginEntriesOnly;
+
+    internal void UseMarginEntries()
+    {
+        _marginEntriesOnly = true;
+        ApplyState();
+    }
 
     internal bool QuickActionsExpanded { get; private set; }
     internal event Action? CompactSizeChanged;
@@ -40,9 +47,25 @@ public partial class AttachedPanelView : UserControl, IDisposable
 
     internal void ApplyPhase0Clip(double width, double height, double corner)
     {
+        MaxHeight = height;
+        CardSurface.MaxHeight = height;
+        var chrome = CardSurface.Padding.Top + CardSurface.Padding.Bottom
+            + CardSurface.BorderThickness.Top + CardSurface.BorderThickness.Bottom;
+        CompactContentHost.MaxHeight = Math.Max(0, height - chrome);
+        if (CompactContentHost.Content is FrameworkElement content) content.MaxHeight = CompactContentHost.MaxHeight;
         var geometry = new RectangleGeometry(new Rect(0, 0, width, height), corner, corner);
         geometry.Freeze();
         Clip = geometry;
+    }
+
+    internal void SetPlacementSide(bool onLeft)
+    {
+        // The entry rail hugs the portrait; any card occupies the outward side.
+        PanelContents.HorizontalAlignment = onLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        Grid.SetColumn(EntryRail, onLeft ? 1 : 0);
+        Grid.SetColumn(CardSurface, onLeft ? 0 : 1);
+        CardSurface.Margin = _model?.IsCompactSurfaceActive == true ? new Thickness(0)
+            : onLeft ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -95,16 +118,25 @@ public partial class AttachedPanelView : UserControl, IDisposable
 
         var active = _model?.IsCompactSurfaceActive == true;
         var expanded = state == AttachedPanelState.ExpandedFocus;
+        CloseCompactButton.Visibility = expanded && !active ? Visibility.Visible : Visibility.Collapsed;
+        CloseCompactButton.ToolTip = MarginStrings.Get("action.closePanel");
+        System.Windows.Automation.AutomationProperties.SetName(CloseCompactButton, MarginStrings.Get("action.closePanel"));
         CardSurface.Visibility = CompactContentHost.Content is not null && (active || expanded)
             ? Visibility.Visible : Visibility.Collapsed;
         if (CompactContentHost.Content is ICompactSurfaceView surface) surface.SetExpanded(expanded);
         FocusEntryButton.Visibility = _model?.CompactSurface is null ? Visibility.Collapsed : Visibility.Visible;
-        CompanionControlIsland.Visibility = state == AttachedPanelState.Collapsed
+        CompanionControlIsland.Visibility = _marginEntriesOnly || state == AttachedPanelState.Collapsed || active || expanded
             ? Visibility.Collapsed
             : Visibility.Visible;
-        CompactActions.Visibility = state != AttachedPanelState.Collapsed && QuickActionsExpanded
+        CompactActions.Visibility = !_marginEntriesOnly && state != AttachedPanelState.Collapsed && !active && !expanded && QuickActionsExpanded
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        CardSurface.Background = active ? null
+            : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FBFAF8"));
+        CardSurface.BorderThickness = active ? new Thickness(0) : new Thickness(1);
+        CardSurface.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CFC8BC"));
+        CardSurface.CornerRadius = new CornerRadius(10);
 
         MoreEntryButton.SetResourceReference(
             ForegroundProperty,
@@ -130,6 +162,7 @@ public partial class AttachedPanelView : UserControl, IDisposable
     private void OnExitClick(object sender, RoutedEventArgs e) => _model?.RequestExit();
 
     private void OnFocusClick(object sender, RoutedEventArgs e) => _model?.FocusClick();
+    private void OnCloseCompactClick(object sender, RoutedEventArgs e) => _model?.Escape();
 
     private void OnPointerEntered(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerEntered();
     private void OnPointerLeft(object sender, System.Windows.Input.MouseEventArgs e) => _model?.PointerLeft();

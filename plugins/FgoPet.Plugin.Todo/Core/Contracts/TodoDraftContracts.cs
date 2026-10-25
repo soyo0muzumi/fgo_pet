@@ -6,6 +6,8 @@ namespace FgoPet.App.Dialogue;
 public interface ITodoDraftWorkflow
 {
     PendingTodoDraft Replace(string conversationId, string servantId, IReadOnlyList<TodoProposal> proposals);
+    PendingTodoDraft ReplaceForAgent(string conversationId, string servantId, IReadOnlyList<TodoProposal> proposals)
+        => throw new NotSupportedException("Native drafts require their confirmation owner.");
     PendingTodoDraft? Get(string conversationId, string servantId);
     string? GetPromptState(string conversationId, string servantId);
     void ClearServant(string servantId);
@@ -29,7 +31,10 @@ public sealed record PendingTodoDraft(
     int Version,
     IReadOnlyList<TodoProposal> Proposals,
     TodoDraftStatus Status = TodoDraftStatus.Pending,
-    string? CreatedItemId = null);
+    string? CreatedItemId = null)
+{
+    public bool RequiresNativeConfirmation { get; init; }
+}
 
 public enum TodoDraftResultKind
 {

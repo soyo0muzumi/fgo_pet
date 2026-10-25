@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>FgoPet.DocumentParser</AssemblyName>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="PdfPig" Version="0.1.13" />
+    <Content Include="../../../plugins/FgoPet.Plugin.Documents/Parser/licenses/PdfPig-LICENSE.txt"
+             Link="licenses/PdfPig-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="GenerateParserTimingProbe" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ParserProbePython)' == ''" Text="An explicitly supplied existing ParserProbePython is required." />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)"
+          Command="&quot;$(ParserProbePython)&quot; -I -B &quot;$(MSBuildProjectDirectory)/generate_probe.py&quot; &quot;$(MSBuildProjectDirectory)/../../../plugins/FgoPet.Plugin.Documents/Parser/Program.cs&quot; &quot;$(IntermediateOutputPath)ParserProgram.g.cs&quot;" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)ParserProgram.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

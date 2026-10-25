@@ -58,6 +58,54 @@ public sealed class MigrationRepositoryTests
     [InlineData("{\"schemaVersion\":1}")]
     public void Invalid_baseline_fails_closed(string json) => Assert.ThrowsAny<Exception>(() => MigrationRepository.ReadBaseline(json));
 
+    [Theory]
+    [InlineData("docs/internal/reports")]
+    [InlineData("DOCS/INTERNAL/REPORTS")]
+    public void Project_scan_excludes_only_the_checkout_internal_report_tree(string evidenceDirectory)
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "fgo-migration-project-scan-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(sandbox, ".worktree", "personal");
+        string[] expected =
+        [
+            "src/FgoPet.Kernel/FgoPet.Kernel.csproj",
+            "src/Second/FgoPet.Kernel.csproj",
+            "src/docs/internal/reports/NestedSource.csproj",
+            "docs/internal/reports-extra/Unclassified.csproj",
+            "tools/Runner/Runner.csproj",
+            "tests/reports/TestProject.csproj",
+        ];
+        try
+        {
+            foreach (var relative in expected.Append(evidenceDirectory + "/before/FgoPet.Kernel.csproj"))
+            {
+                var path = Path.Combine(root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, "<Project />");
+            }
+
+            var actual = MigrationRepository.ProjectPaths(root);
+            Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox)) Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Offline_diagnostic_runner_is_accepted_by_the_host_classification()
+    {
+        const string projectPath = "tools/integrations/persona-validation/finish-diagnostics/FinishDiagnostics.Offline.csproj";
+        var root = FindRoot();
+        var policy = new StrictJsonArchitecturePolicyReader().Read(File.ReadAllText(Path.Combine(root, "tests/architecture/policy.json")), "policy.json");
+        var runnerPolicy = policy with { Projects = [.. policy.Projects.Where(project => project.Path == projectPath)] };
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        var evaluated = await MigrationRepository.EvaluateAsync(root, projectPath, "Release", null, deadline.Token);
+
+        Assert.False(evaluated.IsTestProject);
+        Assert.Empty(MigrationBoundaryGate.Verify(runnerPolicy, MigrationBaseline.Empty, MigrationBaseline.Empty, [evaluated]));
+    }
+
     private static string FindRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
@@ -116,13 +164,15 @@ internal static class MigrationRepository
 
     internal static IEnumerable<string> ProjectPaths(string root)
     {
+        var reportDirectory = Path.GetFullPath(Path.Combine(root, "docs", "internal", "reports"));
         var pending = new Stack<string>();
         pending.Push(root);
         while (pending.TryPop(out var directory))
         {
             foreach (var project in Directory.EnumerateFiles(directory, "*.csproj")) yield return Relative(root, project);
             foreach (var child in Directory.EnumerateDirectories(directory))
-                if (Path.GetFileName(child) is not (".git" or ".worktrees" or "bin" or "obj" or "artifacts" or "spikes" or ".superpowers")) pending.Push(child);
+                if (Path.GetFileName(child) is not (".git" or ".worktrees" or "bin" or "obj" or "artifacts" or "spikes" or ".superpowers")
+                    && !string.Equals(Path.GetFullPath(child), reportDirectory, StringComparison.OrdinalIgnoreCase)) pending.Push(child);
         }
     }
 

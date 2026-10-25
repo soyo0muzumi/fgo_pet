@@ -87,6 +87,7 @@ public sealed class RuntimeDatabaseSnapshotService
             DataSource = path,
             Mode = SqliteOpenMode.ReadOnly,
             Cache = SqliteCacheMode.Private,
+            Pooling = false,
         }.ToString());
         connection.Open();
 

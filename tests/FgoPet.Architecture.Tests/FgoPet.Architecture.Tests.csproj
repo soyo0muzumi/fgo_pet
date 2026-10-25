@@ -17,6 +17,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../Shared/SyntheticFileOperationDiagnostics.cs" />
     <!-- Keep real process deadlines meaningful while retaining collection parallelism. -->
     <None Include="../xunit.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

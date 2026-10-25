@@ -279,6 +279,9 @@ pwsh -File tools/scripts/test-phase4.ps1
 
 ### 9.1 工作树安全
 
+- 本地工作树与产物登记、复核及退场规则见 `docs/internal/workspace-lifecycle.md`；本机登记表为 `docs/internal/workspace-lifecycle.json`。
+- 任务开始先核对登记目标、实际路径、分支及本地改动；任务结束交代工作树和产物去向。运行 `python tools/scripts/check-workspace-hygiene.py` 获取只读报告；登记缺失、逾期或缓存候选均不构成删除授权。
+
 - 将所有预先存在的修改和未跟踪文件视为用户所有。
 - 未经许可，不丢弃、reset、stash、移动或 amend 用户工作。
 - 避免编辑已有修改的文件；确需编辑时保留无关 hunk 并报告重叠。

@@ -219,6 +219,10 @@ public sealed class ThemeWebTests
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('.theme-page')?.dataset.state === 'ready'") == "true");
                 LogBoundary("webview-ready", "theme-root", "theme.get", "success");
+                window.Width = 824;
+                Assert.Equal("Follow Windows", await Script(web, "document.querySelector('[data-theme-choice=System] .theme-choice-title').textContent"));
+                Assert.Equal("6px", await Script(web, "getComputedStyle(document.querySelector('.theme-choice')).borderRadius"));
+                await MarginCharacterCapture.Save(web, "appearance-normal");
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('main h1#page-title').length"));
                 Assert.Equal("0", await Script(web, "document.querySelectorAll('.theme-page h1').length"));
                 Assert.Equal("System", await Script(web,
@@ -245,6 +249,7 @@ public sealed class ThemeWebTests
                 Assert.Equal(savesBeforeSystemChange + 1, themeSettings.SaveCount);
                 Assert.NotEqual(statusBeforeSystemChange, theme.StatusText);
                 LogBoundary("theme-broadcast", "theme-root", "theme.changed", "success");
+                await MarginCharacterCapture.Save(web, "appearance-system");
 
                 window.Width = 320;
                 var viewport = 0;
@@ -256,6 +261,11 @@ public sealed class ThemeWebTests
                 Assert.Equal("true", await Script(web,
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
 
+                await MarginCharacterCapture.Save(web, "appearance-small");
+                await web.CoreWebView2.ExecuteScriptAsync(
+                    "document.querySelector('#settings-back').click()");
+                await WaitUntil(async () => await Script(web,
+                    "document.body.dataset.settingsOverview === 'app'") == "true");
                 await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('[data-page-id=UserProfile]').click()");
                 LogBoundary("webview-navigation", "theme-root", "settings.navigate", "started");
@@ -263,6 +273,10 @@ public sealed class ThemeWebTests
                     "document.querySelector('#profile-display-name') !== null") == "true");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('link[data-settings-owner=theme]') === null") == "true");
+                await web.CoreWebView2.ExecuteScriptAsync(
+                    "document.querySelector('#settings-back').click()");
+                await WaitUntil(async () => await Script(web,
+                    "document.body.dataset.settingsOverview === 'app'") == "true");
                 await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('[data-page-id=Theme]').click()");
                 await WaitUntil(async () => await Script(web,

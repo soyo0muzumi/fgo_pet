@@ -35,17 +35,25 @@ public sealed class ServiceRegistrationTests
         services.RemoveAll<IAppLifetime>();
         services.AddSingleton<IAppLifetime>(lifetime);
         await using var provider = services.BuildServiceProvider();
-        Assert.Equal(new[] { "firstparty.content", "firstparty.portrait-static" },
+        Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
+            provider.GetRequiredService<IWorkspaceAuthorizationManager>());
+        Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
+        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
-        Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
-        Assert.Empty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
+        await AssertPluginActivationAsync(provider);
+        var readTools = provider.GetRequiredService<ConversationCapabilityRouter>().Tools;
+        Assert.Equal(new[] { "browser.inspect_image", "browser.open", "browser.read", "browser.tabs", "context.apps", "context.time", "document.read", "experience.read", "experience.search", "image.read", "reminder.list", "understanding.query", "web.search", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
+            readTools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.All(readTools, tool => Assert.Equal(ToolEffect.ReadOnly, tool.Effect));
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
         Assert.Empty(provider.GetRequiredService<ITransientSurfaceCatalog>().TransientSurfaces);
         var settings = provider.GetRequiredService<SettingsPageCatalog>();
         Assert.True(settings.Contains("Privacy"));
         Assert.True(settings.Contains("ModelConnection"));
+        Assert.True(settings.Contains("Qq"));
+        Assert.False((await provider.GetRequiredService<FgoPet.Plugin.Qq.QqChatPlugin>().GetSnapshotAsync(default)).Enabled);
         Assert.False(settings.Contains("Speech"));
         Assert.False(settings.Contains("ConversationMemory"));
         Assert.False(settings.Contains("AgentConnection"));
@@ -71,7 +79,7 @@ public sealed class ServiceRegistrationTests
         var catalog = provider.GetRequiredService<PluginCatalog>();
         Assert.DoesNotContain(catalog.Plugins, entry => entry.Manifest.Id == "firstparty.focus");
         Assert.Contains(catalog.Plugins, entry => entry.Manifest.Id == "firstparty.todo");
-        Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
+        await AssertPluginActivationAsync(provider);
         Assert.NotEmpty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
         Assert.Single(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
         Assert.Contains(provider.GetRequiredService<ITransientSurfaceCatalog>().TransientSurfaces,
@@ -86,7 +94,7 @@ public sealed class ServiceRegistrationTests
         Assert.DoesNotContain(catalog.Plugins, entry => entry.Manifest.Id == "firstparty.memory");
         Assert.Contains(catalog.Plugins, entry => entry.Manifest.Id == "firstparty.todo");
         Assert.Contains(catalog.Plugins, entry => entry.Manifest.Id == "firstparty.focus");
-        Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
+        await AssertPluginActivationAsync(provider);
         Assert.NotNull(provider.GetRequiredService<FgoPet.App.Dialogue.ConversationOrchestrator>());
         Assert.NotEmpty(provider.GetRequiredService<ConversationCapabilityRouter>().Tools);
         await provider.GetRequiredService<PluginRuntime>().StopAsync();
@@ -101,7 +109,7 @@ public sealed class ServiceRegistrationTests
         Assert.DoesNotContain(providers, item => item.Provider == FgoPet.Core.Speech.SpeechProviderKind.IndexTts);
         Assert.Contains(providers, item => item.Provider == FgoPet.Core.Speech.SpeechProviderKind.OpenAiCompatible);
         Assert.DoesNotContain(providers, item => item.Provider.ToString() == "GptSoVits");
-        Assert.True((await provider.GetRequiredService<PluginRuntime>().StartAsync(default)).Succeeded);
+        await AssertPluginActivationAsync(provider);
         Assert.Contains(provider.GetRequiredService<PluginCatalog>().Plugins, item => item.Manifest.Id == "firstparty.speech");
         await provider.GetRequiredService<PluginRuntime>().StopAsync();
     }
@@ -164,6 +172,12 @@ public sealed class ServiceRegistrationTests
             foreach (var file in Directory.EnumerateFiles(directory)) File.Delete(file);
             Directory.Delete(directory);
         }
+    }
+
+    private static async Task AssertPluginActivationAsync(IServiceProvider provider)
+    {
+        var result = await provider.GetRequiredService<PluginRuntime>().StartAsync(default);
+        Assert.True(result.Succeeded, System.Text.Json.JsonSerializer.Serialize(new { result.ErrorCode, result.Failures }));
     }
 
     private sealed class SmokeLifetime : IAppLifetime

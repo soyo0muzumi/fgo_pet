@@ -1,4 +1,6 @@
 using System.Windows.Threading;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using FgoPet.App.Focus;
 using FgoPet.Extensibility;
 using FgoPet.Core.Focus;
@@ -7,7 +9,8 @@ using FgoPet.Core.Events;
 namespace FgoPet.Plugin.Focus.Desktop;
 
 /// <summary>The capability owns its cadence. Window creation, hiding and replacement never create another timer.</summary>
-public sealed class FocusDesktopPlugin(IFocusSessionService focus, TimeProvider time) : IFgoPetPlugin, ICompanionSignalSource, IDisposable
+public sealed class FocusDesktopPlugin(IFocusSessionService focus, TimeProvider time,
+    IReadOnlyList<IToolProvider>? nativeTools = null) : IFgoPetPlugin, ICompanionSignalSource, IDisposable
 {
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     private ITimer? _timer;
@@ -16,7 +19,11 @@ public sealed class FocusDesktopPlugin(IFocusSessionService focus, TimeProvider 
     private int _queued;
     private int _started;
     public PluginManifest Manifest { get; } = new("firstparty.focus", "1.0.0", 1, []);
-    public PluginContributions Contributions => PluginContributions.Empty with { Signals = [this] };
+    public PluginContributions Contributions => PluginContributions.Empty with
+    {
+        Signals = [this],
+        Tools = nativeTools is null ? ImmutableArray<IToolProvider>.Empty : ImmutableArray.CreateRange(nativeTools),
+    };
     public event Action<CompanionSignal>? Signal;
     private FocusStatus _lastStatus = FocusStatus.Idle;
     public ValueTask StartAsync(CancellationToken stoppingToken)

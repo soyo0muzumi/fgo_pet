@@ -1,12 +1,15 @@
 (() => {
   "use strict";
 
+  const t = window.MarginI18n.t;
   const bridge = window.chrome && window.chrome.webview;
   const maxMessageChars = 12000;
   const draftDelayMs = 140;
   const requestTimeoutMs = 20000;
   const pending = new Map();
   const turnNodes = new Map();
+  let inputCard = null;
+  let approvalCard = null;
   const draftCache = new Map();
   const acceptedDrafts = new Map();
   let requestSerial = 0;
@@ -14,6 +17,11 @@
   let draftTimer = 0;
   let draftQueue = Promise.resolve();
   let submitInProgress = false;
+  let imageImporting = false;
+  let stopInProgress = false;
+  let copyFeedback = null;
+  let copyTimer = 0;
+  let tooltipTarget = null;
   let deferDraftWrites = false;
   let composing = false;
   let hideAfterSubmit = false;
@@ -28,8 +36,6 @@
   const $ = (id) => document.getElementById(id);
   const el = {
     window: $("chat-window"),
-    avatar: $("role-avatar-image"),
-    avatarFallback: $("role-avatar-fallback"),
     roleName: $("role-name"),
     historyToggle: $("history-toggle"),
     historyPanel: $("history-panel"),
@@ -58,14 +64,22 @@
     jumpBottom: $("jump-bottom"),
     sources: $("recalled-sources"),
     sourceItems: $("source-items"),
+    contextBar: $("context-bar"),
     chips: $("context-chips"),
     composer: $("composer"),
+    composerCard: $("composer-card"),
+    composerFeedback: $("composer-feedback"),
+    tooltip: $("chat-tooltip"),
     composerError: $("composer-error"),
     composerCount: $("composer-count"),
     send: $("send-message"),
     stop: $("stop-generation"),
-    project: $("project-select"),
-    refreshProjects: $("refresh-projects"),
+    chooseWorkspace: $("choose-workspace"),
+    chooseImage: $("choose-image"), imageSelection: $("image-selection"), imageLabel: $("image-label"),
+    clearImage: $("clear-image"),
+    workspaceSelection: $("workspace-selection"),
+    workspaceLabel: $("workspace-label"),
+    clearWorkspace: $("clear-workspace"),
     model: $("model-select"),
     pageStatus: $("page-status"),
     pageStatusText: $("page-status-text"),
@@ -80,12 +94,18 @@
 
   function safeErrorText(code) {
     switch (code) {
-      case "CHAT_IDENTITY_STALE": return "对话已切换，请重试刚才的操作。";
-      case "CHAT_TARGET_INVALID": return "目标已变化，请刷新后重试。";
-      case "CHAT_DRAFT_TOO_LONG": return `输入不能超过 ${maxMessageChars.toLocaleString("zh-CN")} 个字符。`;
-      case "CHAT_NOT_AVAILABLE": return "此操作当前不可用。";
-      case "CHAT_COMMAND_INVALID": return "操作未能完成，请重试。";
-      default: return "聊天暂时无法完成此操作，请稍后重试。";
+      case "CHAT_IDENTITY_STALE": return t("chat.this.conversation.has.changed.please.try.again");
+      case "CHAT_TARGET_INVALID": return t("chat.the.selection.has.changed.refresh.and.try.again");
+      case "CHAT_DRAFT_TOO_LONG": return t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")});
+      case "CHAT_NOT_AVAILABLE": return t("chat.this.action.is.currently.unavailable");
+      case "CHAT_COMMAND_INVALID": return t("chat.the.action.could.not.be.completed.try.again");
+      case "CHAT_APPROVAL_STALE":
+      case "CHAT_APPROVAL_BUSY": return t("chat.approval.changed");
+      case "CHAT_APPROVAL_EXPIRED": return t("chat.approval.expired");
+      case "CHAT_INPUT_STALE": return t("chat.input.changed");
+      case "CHAT_INPUT_EXPIRED": return t("chat.input.expired");
+      case "CHAT_INPUT_INVALID": return t("chat.input.complete");
+      default: return t("chat.chat.could.not.complete.this.action.try.again.later");
     }
   }
 
@@ -110,7 +130,7 @@
         pending.delete(requestId);
         logRequest(type, requestId, "timeout", "CHAT_TIMEOUT");
         reject(new Error("CHAT_TIMEOUT"));
-      }, requestTimeoutMs);
+      }, type === "chat.approval.review" ? 960000 : type === "chat.host" && ["chooseWorkspace", "chooseImage", "configureBrowserImages"].includes(payload.action) ? 600000 : requestTimeoutMs);
       pending.set(requestId, { resolve, reject, timer, type });
       try {
         bridge.postMessage({ type, requestId, payload });
@@ -187,15 +207,24 @@
     if (message.type === "chat.snapshot") applySnapshot(message.payload, "event");
   }
 
+  function anchorContentTop(node) {
+    // Entry transforms are visual motion; only layout positions belong in the reading anchor.
+    const layoutTop = element => {
+      let top = 0;
+      for (let current = element; current; current = current.offsetParent) top += current.offsetTop;
+      return top;
+    };
+    return layoutTop(node) - layoutTop(el.scroll);
+  }
+
   function currentAnchor() {
-    const scrollBox = el.scroll.getBoundingClientRect();
     const atBottom = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
     if (atBottom) return { atBottom: true, turnId: "", offset: 0 };
     let anchor = null;
     for (const child of el.messages.children) {
-      const rect = child.getBoundingClientRect();
-      if (rect.bottom > scrollBox.top + 1) {
-        anchor = { atBottom: false, turnId: child.dataset.turnId || "", offset: rect.top - scrollBox.top };
+      const top = anchorContentTop(child) - el.scroll.scrollTop;
+      if (top + child.offsetHeight > 1) {
+        anchor = { atBottom: false, turnId: child.dataset.turnId || "", offset: top };
         break;
       }
     }
@@ -220,18 +249,17 @@
 
   function restoreAnchor(anchor) {
     if (!anchor || anchor.atBottom) {
-      el.scroll.scrollTop = el.scroll.scrollHeight;
+      el.scroll.scrollTo({ top: el.scroll.scrollHeight, behavior: "instant" });
       followingLatest = true;
       el.jumpBottom.hidden = true;
       return;
     }
     const node = anchor.turnId ? turnNodes.get(anchor.turnId)?.article : null;
     if (node && node.isConnected) {
-      const box = el.scroll.getBoundingClientRect();
-      const rect = node.getBoundingClientRect();
-      el.scroll.scrollTop += rect.top - box.top - anchor.offset;
+      el.scroll.scrollTo({ top: anchorContentTop(node) - anchor.offset, behavior: "instant" });
     }
     followingLatest = false;
+    el.jumpBottom.hidden = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
   }
 
   function applyCommandSnapshot(snapshot, expectedIdentityKey, allowIdentityChange = false) {
@@ -273,6 +301,11 @@
         draftCache.delete(previousKey);
       }
     }
+    if (previousKey !== incomingKey) {
+      if (copyTimer) window.clearTimeout(copyTimer);
+      copyFeedback = null;
+      hideTooltip();
+    }
     state = snapshot;
     lastIdentityKey = incomingKey;
     lastVersion = snapshot.version;
@@ -283,11 +316,12 @@
 
     syncComposerFromSnapshot(snapshot, previousKey !== incomingKey);
     renderSnapshot(snapshot);
+    fitComposer();
     // Restore after this render's layout read, before another user scroll can occur.
     // A deferred frame could replay a stale anchor over newer user interaction.
     restoreAnchor(preservedAnchor);
     saveAnchor(snapshot);
-    if (source === "event" && document.visibilityState === "hidden") setPageStatus("有新的聊天内容");
+    if (source === "event" && document.visibilityState === "hidden") setPageStatus(t("chat.new.messages"));
   }
 
   function syncComposerFromSnapshot(snapshot, identityChanged) {
@@ -295,7 +329,7 @@
     const cache = draftCache.get(lastIdentityKey);
     if (cache && cache.revision > draft.revision) {
       if (identityChanged || el.composer.value !== cache.text) el.composer.value = cache.text;
-      showComposerError(cache.text.length > maxMessageChars ? `输入不能超过 ${maxMessageChars.toLocaleString("zh-CN")} 个字符。` : "");
+      showComposerError(cache.text.length > maxMessageChars ? t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}) : "");
       updateComposerControls();
       return;
     }
@@ -343,22 +377,18 @@
     if (!record || record.role !== role) {
       if (record) record.article.remove();
       const article = document.createElement("article");
-      article.className = `turn turn--${role}`;
+      article.className = `turn ${role === "assistant" ? "her" : "user"}`;
       article.dataset.turnId = turn.id;
       article.setAttribute("data-role", role);
       record = { role, article, heading: null, body: null, reasoning: null, actions: null, streaming: null };
       if (role === "assistant") {
         const heading = document.createElement("div");
-        heading.className = "turn-heading";
-        const marker = document.createElement("span");
-        marker.className = "turn-marker";
-        marker.setAttribute("aria-hidden", "true");
-        const name = document.createElement("span");
-        heading.append(marker, name);
+        heading.className = "who";
+
         record.heading = heading;
         article.append(heading);
       }
-      const body = document.createElement("div");
+      const body = document.createElement("p");
       body.className = "chat-message-text";
       article.append(body);
       record.body = body;
@@ -367,7 +397,7 @@
       article.append(record.actions);
       record.streaming = document.createElement("div");
       record.streaming.className = "streaming-indicator";
-      record.streaming.textContent = "正在生成";
+      record.streaming.textContent = t("chat.generating");
       record.streaming.hidden = true;
       article.append(record.streaming);
       turnNodes.set(turn.id, record);
@@ -377,14 +407,14 @@
 
   function renderTurn(turn, presentation) {
     const record = getTurnNode(turn);
-    if (record.heading) setText(record.heading.lastElementChild, presentation.roleName || "助手");
+    if (record.heading) setText(record.heading, presentation.roleName || t("chat.companion"));
     setText(record.body, turn.text);
 
     const reasoningText = typeof turn.reasoningText === "string" ? turn.reasoningText : "";
     if (presentation.showReasoning && (reasoningText || turn.reasoningSummary)) {
       if (!record.reasoning) {
         const details = document.createElement("details");
-        details.className = "turn-reasoning";
+        details.className = "think";
         const summary = document.createElement("summary");
         const text = document.createElement("div");
         text.className = "chat-message-text";
@@ -393,7 +423,7 @@
         record.reasoning = { details, summary, text };
         details.open = Boolean(turn.isReasoningExpanded);
       }
-      const label = [turn.reasoningSummary || "思考过程", turn.reasoningDurationText].filter(Boolean).join(" · ");
+      const label = [turn.reasoningSummary || t("chat.reasoning"), turn.reasoningDurationText].filter(Boolean).join(" · ");
       setText(record.reasoning.summary, label);
       setText(record.reasoning.text, reasoningText);
       record.reasoning.details.hidden = false;
@@ -401,25 +431,31 @@
       record.reasoning.details.hidden = true;
     }
 
+    const copyHadFocus = record.copyButton && document.activeElement === record.copyButton;
     record.actions.replaceChildren();
-    if (turn.canCopy) record.actions.append(makeButton("turn-action turn-copy", "复制消息", "copy", "copyTurn", turn.id));
+    if (turn.canCopy) {
+      record.copyButton ||= makeButton("turn-action turn-copy", t("chat.copy.message"), "copy", "copyTurn", turn.id, t("chat.copy"));
+      applyCopyFeedback(record.copyButton, turn.id);
+      record.actions.append(record.copyButton);
+      if (copyHadFocus) record.copyButton.focus({ preventScroll:true });
+    }
     if (turn.canReadAloud) {
-      const speechLabel = typeof turn.speechActionText === "string" && turn.speechActionText ? turn.speechActionText : "朗读";
+      const speechLabel = window.MarginI18n.speechText(turn.speechActionText) || t("chat.read.aloud");
       const readButton = makeButton("turn-action", speechLabel, "read", "readTurn", turn.id, speechLabel);
       record.actions.append(readButton);
       if (turn.speechStatusText) {
         const speechStatus = document.createElement("span");
         speechStatus.className = "turn-action-text";
         speechStatus.setAttribute("role", "status");
-        setText(speechStatus, turn.speechStatusText);
+        setText(speechStatus, window.MarginI18n.speechText(turn.speechStatusText));
         record.actions.append(speechStatus);
       }
       if (turn.speechNeedsConfiguration) {
-        const settingsButton = makeButton("turn-action", "打开语音设置", null, "openSpeechSettings", undefined, "语音设置");
+        const settingsButton = makeButton("turn-action", t("chat.open.speech.settings"), null, "openSpeechSettings", undefined, t("chat.speech.settings"));
         record.actions.append(settingsButton);
       }
     }
-    if (turn.canOpenWorkspace) record.actions.append(makeButton("turn-action", "查看关联工作项", "folder", "openWorkspace", turn.id, "查看事项"));
+    if (turn.canOpenWorkspace) record.actions.append(makeButton("turn-action", t("chat.open.linked.item"), "folder", "openWorkspace", turn.id, t("chat.view.item")));
     record.actions.hidden = record.actions.childElementCount === 0;
     record.streaming.hidden = !turn.isStreaming;
     record.article.hidden = turn.role !== "user" && !String(turn.text || "").trim()
@@ -436,16 +472,182 @@
       wanted.add(turn.id);
       ordered.push(renderTurn(turn, snapshot.conversation));
     }
+    const questionCard = renderInputCard(snapshot.conversation);
+    if (questionCard) ordered.push(questionCard);
+    const reviewCard = renderApprovalCard(snapshot.conversation);
+    if (reviewCard) ordered.push(reviewCard);
     for (const [id, record] of turnNodes) {
       if (!wanted.has(id)) {
         record.article.remove();
         turnNodes.delete(id);
       }
     }
-    const fragment = document.createDocumentFragment();
-    for (const node of ordered) fragment.append(node);
-    el.messages.append(fragment);
+    // Keep admitted turns mounted: detaching the whole thread restarts the v5
+    // entry animation on every snapshot and shifts the saved reading anchor.
+    ordered.forEach((node, index) => {
+      const current = el.messages.children[index];
+      if (current !== node) el.messages.insertBefore(node, current || null);
+    });
     el.empty.hidden = turns.length > 0;
+  }
+
+  function inputKey(input) {
+    return input ? `${identityOf(state)}\u0000${input.runId}\u0000${input.requestId}\u0000${input.revision}` : "";
+  }
+
+  function renderInputCard(conversation) {
+    const input = conversation && conversation.pendingInput;
+    if (!input || !Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 3) {
+      inputCard?.article.remove(); inputCard = null; return null;
+    }
+    const key = inputKey(input);
+    if (!inputCard || inputCard.key !== key) {
+      inputCard?.article.remove();
+      const article = document.createElement("section");
+      article.id = "user-input-card"; article.className = "turn her user-input-card";
+      article.setAttribute("aria-label", t("chat.input.title"));
+      const heading = document.createElement("div"); heading.className = "who";
+      setText(heading, t("chat.input.title")); article.append(heading);
+      const fields = [];
+      for (const question of input.questions) {
+        const field = document.createElement("fieldset"); field.className = "input-question";
+        field.dataset.questionId = question.id;
+        const legend = document.createElement("legend"); setText(legend, question.text); field.append(legend);
+        const options = [];
+        for (const [index, label] of (question.options || []).entries()) {
+          const option = document.createElement("input");
+          option.type = question.allowMultiple ? "checkbox" : "radio";
+          option.name = `answer-${input.requestId}-${question.id}`; option.value = String(index);
+          const optionLabel = document.createElement("label"); optionLabel.className = "input-option";
+          optionLabel.append(option, document.createTextNode(label)); field.append(optionLabel); options.push(option);
+        }
+        const textLabel = document.createElement("label"); textLabel.className = "input-text-label";
+        setText(textLabel, t(options.length ? "chat.input.detail" : "chat.input.answer"));
+        const textarea = document.createElement("textarea"); textarea.rows = 2; textarea.maxLength = maxMessageChars;
+        textarea.className = "input-answer"; textarea.setAttribute("aria-label", textLabel.textContent);
+        textLabel.append(textarea); field.append(textLabel); article.append(field);
+        fields.push({ id:question.id, options, textarea, labels:question.options || [] });
+      }
+      const error = document.createElement("div"); error.className = "input-error"; error.setAttribute("role", "alert"); error.hidden = true;
+      const actions = document.createElement("div"); actions.className = "turn-actions input-actions";
+      const submit = makeButton("btn primary", t("chat.input.submit"), null, "inputSubmit", undefined, t("chat.input.submit")); submit.id = "user-input-submit";
+      const cancel = makeButton("btn ghost", t("chat.cancel"), null, "inputCancel", undefined, t("chat.cancel")); cancel.id = "user-input-cancel";
+      actions.append(submit, cancel); article.append(error, actions);
+      inputCard = { key, article, fields, error, submit, cancel, busy:false, input };
+    }
+    inputCard.input = input;
+    if (input.errorText) { setText(inputCard.error, input.errorText); inputCard.error.hidden = false; }
+    updateInputControls(inputCard);
+    return inputCard.article;
+  }
+
+  function updateInputControls(card) {
+    const expiresAt = Date.parse(card.input.expiresAt);
+    const expired = !Number.isFinite(expiresAt) || Date.now() >= expiresAt;
+    const busy = card.busy || card.input.isSubmitting === true;
+    for (const field of card.fields) {
+      field.textarea.disabled = busy || expired;
+      for (const option of field.options) option.disabled = busy || expired;
+    }
+    card.submit.disabled = busy || expired; card.cancel.disabled = busy;
+    card.article.setAttribute("aria-busy", String(busy));
+    if (expired) { setText(card.error, t("chat.input.expired")); card.error.hidden = false; }
+  }
+
+  async function submitInputAnswer(cancel) {
+    const card = inputCard;
+    if (!card || card.busy || card.input.isSubmitting || card.key !== inputKey(state?.conversation?.pendingInput)) return;
+    updateInputControls(card);
+    if (!cancel && card.submit.disabled) return;
+    const payload = { runId:card.input.runId, requestId:card.input.requestId, revision:card.input.revision };
+    if (!cancel) {
+      let total = 0;
+      payload.answers = card.fields.map(field => {
+        const selectedOptionIndices = field.options.flatMap((option, index) => option.checked ? [index] : []);
+        const text = field.textarea.value.trim() ? field.textarea.value : null;
+        total += (text?.length || 0) + selectedOptionIndices.reduce((sum, index) => sum + field.labels[index].length, 0);
+        return { questionId:field.id, selectedOptionIndices, text };
+      });
+      if (total > maxMessageChars || payload.answers.some(answer => !answer.selectedOptionIndices.length && !answer.text)) {
+        setText(card.error, t(total > maxMessageChars ? "chat.input.limit" : "chat.input.complete")); card.error.hidden = false; return;
+      }
+    }
+    const identity = identityOf(state);
+    card.busy = true; card.error.hidden = true; updateInputControls(card);
+    try {
+      const result = await post(cancel ? "chat.input.cancel" : "chat.input.answer", appendIdentity(payload));
+      if (result.snapshot) applyCommandSnapshot(result.snapshot, identity, false);
+    } catch (error) {
+      if (inputCard === card && identityOf(state) === identity) {
+        setText(card.error, safeErrorText(error.message)); card.error.hidden = false;
+      }
+    } finally {
+      if (inputCard === card) { card.busy = false; updateInputControls(card); }
+    }
+  }
+
+  function renderApprovalCard(conversation) {
+    const approval = conversation?.pendingApproval;
+    if (!approval || typeof approval.plainTextDetails !== "string" || typeof approval.toolName !== "string") {
+      approvalCard?.article.remove(); approvalCard = null; return null;
+    }
+    const key = inputKey(approval);
+    if (!approvalCard || approvalCard.key !== key) {
+      approvalCard?.article.remove();
+      const article = document.createElement("article"); article.id = "approval-card"; article.className = "turn her user-input-card";
+      const heading = document.createElement("h3"); setText(heading, approval.actionTitle || t("chat.approval.title"));
+      const note = document.createElement("p"); setText(note, t("chat.approval.note"));
+      const summary = document.createElement("p"); summary.className = "approval-summary"; setText(summary, approval.plainTextSummary || "");
+      summary.hidden = !approval.plainTextSummary;
+      const expiry = document.createElement("p"); expiry.className = "approval-expiry";
+      setText(expiry, `${t("chat.approval.expires")} ${approval.expiresAt}`);
+      const technical = document.createElement("details"); technical.className = "approval-technical";
+      technical.open = !approval.plainTextSummary;
+      const disclosure = document.createElement("summary"); setText(disclosure, t("chat.approval.details"));
+      const details = document.createElement("pre"); details.className = "approval-details"; setText(details, approval.plainTextDetails);
+      technical.append(disclosure, details);
+      const error = document.createElement("div"); error.className = "input-error"; error.setAttribute("role", "alert"); error.hidden = true;
+      const actions = document.createElement("div"); actions.className = "turn-actions input-actions";
+      const review = makeButton("btn primary", t("chat.approval.review"), null, "approvalReview", undefined, t("chat.approval.review")); review.id = "approval-review";
+      const deny = makeButton("btn ghost", t("chat.approval.deny"), null, "approvalDeny", undefined, t("chat.approval.deny")); deny.id = "approval-deny";
+      const cancel = makeButton("btn ghost", t("chat.approval.cancel"), null, "approvalCancel", undefined, t("chat.approval.cancel")); cancel.id = "approval-cancel";
+      actions.append(review, deny, cancel); article.append(heading, summary, expiry, note, technical, error, actions);
+      approvalCard = {key, article, error, review, deny, cancel, busy:false, approval};
+    }
+    approvalCard.approval = approval;
+    if (approval.errorText) { setText(approvalCard.error, approval.errorText); approvalCard.error.hidden = false; }
+    updateApprovalControls(approvalCard);
+    return approvalCard.article;
+  }
+
+  function updateApprovalControls(card) {
+    const expiry = Date.parse(card.approval.expiresAt);
+    const expired = !Number.isFinite(expiry) || Date.now() >= expiry;
+    const busy = card.busy || card.approval.isSubmitting === true;
+    card.review.disabled = busy || expired; card.deny.disabled = busy || expired; card.cancel.disabled = busy;
+    card.article.setAttribute("aria-busy", String(busy));
+    if (expired) { setText(card.error, t("chat.approval.expired")); card.error.hidden = false; }
+  }
+
+  async function submitApproval(action) {
+    const card = approvalCard;
+    if (!card || card.busy || card.approval.isSubmitting || card.key !== inputKey(state?.conversation?.pendingApproval)) return;
+    updateApprovalControls(card);
+    if (action !== "cancel" && card.review.disabled) return;
+    const identity = identityOf(state);
+    card.busy = true; card.error.hidden = true; updateApprovalControls(card);
+    try {
+      // A page can request review, reject, or cancel. It can never submit an Allow decision or arguments.
+      const result = await post(`chat.approval.${action}`, appendIdentity({runId:card.approval.runId,
+        requestId:card.approval.requestId, revision:card.approval.revision}));
+      if (result.snapshot) applyCommandSnapshot(result.snapshot, identity, false);
+    } catch (error) {
+      if (approvalCard === card && identityOf(state) === identity) {
+        setText(card.error, safeErrorText(error.message)); card.error.hidden = false;
+      }
+    } finally {
+      if (approvalCard === card) { card.busy = false; updateApprovalControls(card); }
+    }
   }
 
   function renderSources(conversation) {
@@ -460,7 +662,7 @@
       button.className = "source-open";
       button.dataset.action = "openSource";
       button.dataset.targetId = source.id;
-      setText(button, source.title || "打开来源");
+      setText(button, source.title || t("chat.open.source"));
       row.append(button);
       if (source.detail) {
         const detail = document.createElement("span");
@@ -489,7 +691,7 @@
         if (!choice || typeof choice.id !== "string" || !choice.id) continue;
         const option = document.createElement("option");
         option.value = choice.id;
-        option.textContent = typeof choice.label === "string" ? choice.label : "未命名";
+        option.textContent = typeof choice.label === "string" ? choice.label : t("chat.untitled");
         option.selected = choice.id === selectedId || (!selectedId && choice.selected === true);
         selectedFound = selectedFound || option.selected;
         option.disabled = choice.canSelect === false;
@@ -505,17 +707,19 @@
     const presentation = snapshot.presentation || {};
     const conversation = snapshot.conversation || {};
     const actions = presentation.actions || {};
-    const project = conversation.project || null;
-    const projectId = project && typeof project.id === "string" ? project.id : "";
-    const projects = Array.isArray(presentation.projects) ? presentation.projects : [];
     const models = Array.isArray(presentation.models) ? presentation.models : [];
-    appendOptions(el.project, projects, projectId, "暂无可选项目");
-    appendOptions(el.model, models, "", "暂无可用模型");
-    el.refreshProjects.hidden = actions.canRefreshProjects !== true;
-    el.refreshProjects.disabled = presentation.isProjectsLoading === true || conversation.isStreaming === true;
-    el.refreshProjects.title = presentation.isProjectsLoading ? "正在刷新项目" : presentation.projectsStatus || "刷新项目列表";
-    if (presentation.projectsStatus) el.refreshProjects.setAttribute("aria-description", presentation.projectsStatus);
-    else el.refreshProjects.removeAttribute("aria-description");
+    appendOptions(el.model, models, "", t("chat.no.models.available"));
+    el.chooseImage.hidden = !presentation.imageDisclosure;
+    el.chooseImage.disabled = actions.canChooseImage !== true || conversation.isStreaming === true || conversation.hasPendingRun === true;
+    el.imageLabel.textContent = typeof presentation.imageLabel === "string" ? presentation.imageLabel : "";
+    el.imageSelection.hidden = !el.imageLabel.textContent;
+    el.clearImage.disabled = actions.canClearImage !== true;
+    el.imageSelection.title = typeof presentation.imageDisclosure === "string" ? presentation.imageDisclosure : "";
+    el.chooseWorkspace.hidden = actions.canChooseWorkspace !== true && !presentation.workspaceLabel;
+    el.chooseWorkspace.disabled = actions.canChooseWorkspace !== true || conversation.isStreaming === true;
+    el.workspaceLabel.textContent = typeof presentation.workspaceLabel === "string" ? presentation.workspaceLabel : "";
+    el.workspaceSelection.hidden = !el.workspaceLabel.textContent;
+    el.clearWorkspace.disabled = actions.canClearWorkspace !== true || conversation.isStreaming === true;
   }
 
   function renderContextChips(conversation) {
@@ -528,8 +732,8 @@
       const label = document.createElement("span");
       label.className = "context-chip-label";
       setText(label, chip.label);
-      const remove = makeButton("chip-remove", `移除上下文：${chip.label || "此项目"}`, "close", "removeContextChip", chip.id);
-      remove.setAttribute("aria-label", `移除上下文：${chip.label || "此项目"}`);
+      const remove = makeButton("chip-remove", t("chat.removeContext", {label:chip.label || t("chat.this.item")}), "close", "removeContextChip", chip.id);
+      remove.setAttribute("aria-label", t("chat.removeContext", {label:chip.label || t("chat.this.item")}));
       item.append(label, remove);
       el.chips.append(item);
     }
@@ -540,12 +744,12 @@
     const history = snapshot.history || {};
     const items = Array.isArray(history.items) ? history.items : [];
     el.historyFilter.checked = history.onlyCurrentProject === true;
-    setText(el.historyStatus, history.status || (history.isLoading ? "正在读取历史对话…" : items.length === 0 ? "暂无历史对话" : ""));
+    setText(el.historyStatus, history.status || (history.isLoading ? t("chat.loading.conversations") : items.length === 0 ? t("chat.no.conversations.yet") : ""));
     el.historyRetry.hidden = history.isLoading === true || items.length > 0;
     el.historyRetry.disabled = history.isLoading === true;
     el.historyMore.hidden = history.hasMore !== true;
     el.historyMore.disabled = history.isLoading === true;
-    el.historyMore.textContent = history.isLoading ? "正在加载…" : "加载更多";
+    el.historyMore.textContent = history.isLoading ? t("chat.loading") : t("chat.load.more");
     const pendingId = typeof history.pendingDeleteConversationId === "string" ? history.pendingDeleteConversationId : "";
     el.historyItems.replaceChildren();
     let pendingVisible = !pendingId;
@@ -563,7 +767,7 @@
       open.setAttribute("aria-current", String(item.conversationId === snapshot.identity.conversationId));
       const title = document.createElement("span");
       title.className = "history-item-title";
-      setText(title, item.title || "新对话");
+      setText(title, item.title || t("chat.new.conversation"));
       const meta = document.createElement("span");
       meta.className = "history-item-meta";
       setText(meta, [item.updatedText, item.status].filter(Boolean).join(" · "));
@@ -573,47 +777,48 @@
         const confirmation = document.createElement("div");
         confirmation.className = "delete-confirmation";
         confirmation.setAttribute("role", "group");
-        confirmation.setAttribute("aria-label", "确认删除对话");
+        confirmation.setAttribute("aria-label", t("chat.confirm.conversation.deletion"));
         const prompt = document.createElement("span");
-        prompt.textContent = `删除“${item.title || "新对话"}”？`;
+        prompt.textContent = t("chat.deletePrompt", {title:item.title || t("chat.new.conversation")});
         const confirm = document.createElement("button");
         confirm.type = "button";
         confirm.className = "confirm-delete";
         confirm.dataset.action = "confirmDelete";
         confirm.dataset.targetId = pendingId;
-        confirm.textContent = "删除";
+        confirm.textContent = t("chat.delete");
         confirm.disabled = history.canDelete !== true;
         const cancel = document.createElement("button");
         cancel.type = "button";
         cancel.dataset.action = "cancelDelete";
-        cancel.textContent = "取消";
+        cancel.textContent = t("chat.cancel");
         confirmation.append(prompt, confirm, cancel);
         row.append(confirmation);
       } else {
-        const remove = makeButton("history-delete", "删除此对话", "delete", "requestDelete", item.conversationId, "删除");
+        const remove = makeButton("history-delete", t("chat.delete.conversation"), "delete", "requestDelete", item.conversationId, t("chat.delete"));
         remove.disabled = Boolean(pendingId) || history.canDelete !== true;
         row.append(remove);
       }
       el.historyItems.append(row);
     }
     if (pendingId && !pendingVisible) {
-      setText(el.historyStatus, "待确认的对话已不在当前列表中。");
+      setText(el.historyStatus, t("chat.the.conversation.is.no.longer.in.this.list"));
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.className = "text-button";
       cancel.dataset.action = "cancelDelete";
-      cancel.textContent = "取消删除确认";
+      cancel.textContent = t("chat.cancel.deletion");
       el.historyItems.append(cancel);
     }
   }
 
   const hostActionLabels = [
-    ["canOpenFocus", "openFocus", "打开专注模式"],
-    ["canOpenWorkspaceOverview", "openWorkspaceOverview", "打开工作区"],
-    ["canCreateWorkspaceItem", "newWorkspaceItem", "新建工作事项"],
-    ["canOpenPersonalizationSettings", "openPersonalizationSettings", "个性化设置"],
-    ["canOpenSpeechSettings", "openSpeechSettings", "语音设置"],
-    ["canOpenModelSettings", "openModelSettings", "模型设置"]
+    ["canOpenFocus", "openFocus", t("chat.open.focus")],
+    ["canOpenWorkspaceOverview", "openWorkspaceOverview", t("chat.open.notes")],
+    ["canCreateWorkspaceItem", "newWorkspaceItem", t("chat.new.note")],
+    ["canOpenPersonalizationSettings", "openPersonalizationSettings", t("chat.companion.settings")],
+    ["canOpenSpeechSettings", "openSpeechSettings", t("chat.speech.settings")],
+    ["canOpenModelSettings", "openModelSettings", t("chat.model.settings")],
+    ["canConfigureBrowserImages", "configureBrowserImages", t("chat.browser.images")]
   ];
 
   function renderMoreActions(snapshot) {
@@ -630,33 +835,20 @@
       button.textContent = label;
       el.moreActions.append(button);
     }
-    el.moreMenu.hidden = el.moreActions.childElementCount === 0;
+    el.moreMenu.hidden = false;
   }
 
   function renderSnapshot(snapshot) {
     const presentation = snapshot.presentation || {};
     const conversation = snapshot.conversation || {};
     const history = snapshot.history || {};
-    const roleName = typeof presentation.roleName === "string" && presentation.roleName.trim() ? presentation.roleName : "聊天";
+    const roleName = typeof presentation.roleName === "string" && presentation.roleName.trim() ? presentation.roleName : t("chat.chat");
     setText(el.roleName, roleName);
-    setText(el.avatarFallback, [...roleName][0] || "聊");
-    const avatarUrl = typeof presentation.avatarPngDataUrl === "string" && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(presentation.avatarPngDataUrl)
-      ? presentation.avatarPngDataUrl : "";
-    if (avatarUrl) {
-      if (el.avatar.src !== avatarUrl) el.avatar.src = avatarUrl;
-      el.avatar.hidden = false;
-      el.avatarFallback.hidden = true;
-    } else {
-      el.avatar.removeAttribute("src");
-      el.avatar.hidden = true;
-      el.avatarFallback.hidden = false;
-    }
-
     el.window.classList.toggle("is-expanded", window.innerWidth >= 720);
     const expanded = window.innerWidth >= 720;
     el.expand.setAttribute("aria-pressed", String(expanded));
-    el.expand.setAttribute("aria-label", expanded ? "缩小窗口" : "展开窗口");
-    el.expand.title = expanded ? "缩小窗口" : "展开窗口";
+    el.expand.setAttribute("aria-label", expanded ? t("chat.compact.window") : t("chat.expand.window"));
+    el.expand.title = expanded ? t("chat.compact.window") : t("chat.expand.window");
     const expandUse = el.expand.querySelector("use");
     expandUse.setAttribute("href", expanded ? "#icon-collapse" : "#icon-expand");
     el.historyToggle.setAttribute("aria-expanded", String(!el.historyPanel.hidden));
@@ -664,9 +856,10 @@
     setText(el.providerStatus, conversation.providerStatusText);
     setText(el.modelStatus, conversation.modelStatusText);
     const status = conversation.isThinking
-      ? [conversation.thinkingTimerText || "正在思考", conversation.requestStatusText].filter(Boolean).join(" · ")
+      ? [conversation.thinkingTimerText || t("chat.thinking"), conversation.requestStatusText].filter(Boolean).join(" · ")
       : conversation.requestStatusText || "";
     setText(el.conversationStatus, status);
+    el.conversationStatus.hidden = !status;
     setText(el.conversationError, conversation.errorText || "");
     el.conversationError.hidden = !conversation.errorText;
     const capability = conversation.capabilityNotice || {};
@@ -677,12 +870,12 @@
     const actions = presentation.actions || {};
     const canOpenModelSettings = actions.canOpenModelSettings === true || conversation.canOpenModelSettings === true;
     el.capabilitySettings.hidden = !(conversation.configurationRequired === true && canOpenModelSettings);
-    el.stop.hidden = conversation.canStop !== true;
-    el.send.hidden = conversation.canStop === true;
+
     renderMessages(snapshot);
     renderSources(conversation);
     renderContextChips(conversation);
     renderChoices(snapshot);
+    el.contextBar.hidden = el.chooseWorkspace.hidden && el.workspaceSelection.hidden && el.imageSelection.hidden && el.chips.childElementCount === 0;
     renderHistory(snapshot);
     renderMoreActions(snapshot);
     updateComposerControls();
@@ -694,27 +887,43 @@
     el.composer.setAttribute("aria-invalid", String(Boolean(text)));
   }
 
+  function composerCanSend() {
+    if (imageImporting) return false;
+    const text = el.composer.value;
+    const conversation = state && state.conversation;
+    const serverText = state?.draft?.text || "";
+    const localReady = Boolean(text.trim() && text !== serverText && conversation && conversation.configurationRequired !== true);
+    return Boolean(conversation && (conversation.canSend || localReady) && text.trim()
+      && text.length <= maxMessageChars && !conversation.isStreaming && !conversation.hasPendingRun && !submitInProgress && !stopInProgress);
+  }
+
   function updateComposerControls() {
     const text = el.composer.value;
     const overLimit = text.length > maxMessageChars;
     const conversation = state && state.conversation;
-    const serverDraftText = state && state.draft && typeof state.draft.text === "string" ? state.draft.text : "";
-    const localDraftReady = Boolean(text.trim() && text !== serverDraftText && conversation && conversation.configurationRequired !== true);
-    const canSend = Boolean(conversation && conversation.canSend) || localDraftReady;
+
     const streaming = Boolean(state && state.conversation && state.conversation.isStreaming);
-    el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("zh-CN")} / ${maxMessageChars.toLocaleString("zh-CN")}` : "";
+    const stoppable = streaming || Boolean(conversation?.hasPendingRun);
+    el.composerCount.textContent = text.length > maxMessageChars - 500 ? `${text.length.toLocaleString("en-US")} / ${maxMessageChars.toLocaleString("en-US")}` : "";
     el.composer.disabled = !state;
-    el.send.disabled = !canSend || streaming || overLimit || !text.trim() || submitInProgress;
-    el.stop.disabled = !state || !state.conversation || state.conversation.canStop !== true;
+    el.send.hidden = stoppable;
+    el.stop.hidden = !stoppable;
+    el.send.disabled = !composerCanSend();
+    el.stop.disabled = !stoppable || conversation.canStop !== true || stopInProgress;
+    el.send.setAttribute("aria-label", submitInProgress ? t("chat.sending") : t("chat.send"));
+    el.stop.setAttribute("aria-label", stopInProgress ? t("chat.stopping") : t("chat.stop.generation"));
+    el.send.setAttribute("aria-busy", String(submitInProgress));
+    el.stop.setAttribute("aria-busy", String(stopInProgress));
+    setText(el.composerFeedback, submitInProgress ? t("chat.sending") : stopInProgress ? t("chat.stopping") : copyFeedback?.status === "copied" ? t("chat.copied") : copyFeedback?.status === "pending" ? t("chat.copying") : "");
+    if (tooltipTarget && (tooltipTarget.hidden || tooltipTarget.disabled)) hideTooltip();
     if (el.newConversation) el.newConversation.disabled = !state || streaming;
     el.historyNew.disabled = !state || streaming;
-    if (overLimit) showComposerError(`输入不能超过 ${maxMessageChars.toLocaleString("zh-CN")} 个字符。`);
+    if (overLimit) showComposerError(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}));
     else if (!state || !state.draft || state.draft.text !== text) {
-      if (el.composerError.textContent.includes("不能超过")) showComposerError("");
+      if (el.composerError.textContent.includes(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}))) showComposerError("");
     }
     const disableSelections = streaming;
-    el.project.disabled = disableSelections || el.project.options.length === 0;
-    el.model.disabled = disableSelections || el.model.options.length === 0;
+    el.model.disabled = disableSelections || conversation?.hasPendingRun === true || el.model.options.length === 0;
   }
 
   function scheduleDraftWrite() {
@@ -780,13 +989,13 @@
   }
 
   async function submitMessage() {
-    if (submitInProgress || !state || !state.conversation || state.conversation.isStreaming === true) return;
+    if (!composerCanSend()) return;
     const text = el.composer.value;
     if (!text.trim()) return;
     const serverDraftText = state.draft && typeof state.draft.text === "string" ? state.draft.text : "";
     if (state.conversation.canSend !== true && (text === serverDraftText || state.conversation.configurationRequired === true)) return;
     if (text.length > maxMessageChars) {
-      showComposerError(`输入不能超过 ${maxMessageChars.toLocaleString("zh-CN")} 个字符。`);
+      showComposerError(t("chat.inputLimit", {limit:maxMessageChars.toLocaleString("en-US")}));
       el.composer.focus();
       return;
     }
@@ -838,9 +1047,12 @@
     try {
       const result = await post("chat.host", payload);
       if (result.snapshot) applyCommandSnapshot(result.snapshot, expected, false);
+      if (identityOf(state) !== expected) return false;
       setPageStatus("");
+      return true;
     } catch (error) {
       if (identityOf(state) === expected) setPageStatus(safeErrorText(error.message));
+      return false;
     }
   }
 
@@ -904,12 +1116,39 @@
     await commandWithSnapshot(type, payload, false).catch(() => {});
   }
 
+  // Grow into available space while reserving a readable thread and fixed toolbar.
+  // Round the cap to complete text lines; host window geometry remains unchanged.
+  function fitComposer() {
+    const style = getComputedStyle(el.composer);
+    const minimum = parseFloat(style.minHeight) || 34;
+    const section = el.composerCard.closest(".sheet-conversation");
+    const cardStyle = getComputedStyle(el.composerCard);
+    const chrome = el.composerCard.getBoundingClientRect().height - el.composer.getBoundingClientRect().height
+      + parseFloat(cardStyle.marginTop) + parseFloat(cardStyle.marginBottom);
+    const other = Array.from(section.children).filter(node => node !== el.composerCard && !node.classList.contains("thread-viewport"))
+      .reduce((height, node) => height + node.getBoundingClientRect().height, 0);
+    const reserve = Math.min(160, Math.max(72, section.clientHeight * .25));
+    const available = Math.max(minimum, Math.min(section.clientHeight * .55, section.clientHeight - chrome - other - reserve));
+    const lineHeight = parseFloat(style.lineHeight);
+    const maximum = minimum + Math.floor((available - minimum) / lineHeight) * lineHeight;
+    el.composer.style.maxHeight = `${maximum}px`;
+    const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const previousScroll = el.composer.scrollTop;
+    el.composer.style.height = `${minimum}px`;
+    el.composer.style.height = `${Math.min(maximum, Math.max(minimum, el.composer.scrollHeight + borders))}px`;
+    el.composer.scrollTop = previousScroll;
+  }
+
   function onInput() {
+    const anchor = currentAnchor();
     localDraftRevision = Math.max(localDraftRevision, Number(state && state.draft && state.draft.revision) || 0) + 1;
     const identityKey = identityOf(state);
     if (identityKey) draftCache.set(identityKey, { text: el.composer.value, revision: localDraftRevision });
     if (el.composer.value.length <= maxMessageChars) showComposerError("");
     updateComposerControls();
+    fitComposer();
+    restoreAnchor(anchor);
+    saveAnchor();
     scheduleDraftWrite();
   }
 
@@ -920,22 +1159,85 @@
       const expanded = window.innerWidth >= 720;
       el.window.classList.toggle("is-expanded", expanded);
       el.expand.setAttribute("aria-pressed", String(expanded));
-      el.expand.setAttribute("aria-label", expanded ? "缩小窗口" : "展开窗口");
-      el.expand.title = expanded ? "缩小窗口" : "展开窗口";
+      el.expand.setAttribute("aria-label", expanded ? t("chat.compact.window") : t("chat.expand.window"));
+      el.expand.title = expanded ? t("chat.compact.window") : t("chat.expand.window");
       el.expand.querySelector("use").setAttribute("href", expanded ? "#icon-collapse" : "#icon-expand");
       if (el.historyPanel.hidden === false) el.historyBackdrop.hidden = expanded;
+      const anchor = followingLatest ? null : readSavedAnchor(state);
+      fitComposer();
+      restoreAnchor(anchor);
+      saveAnchor();
     });
   }
 
   function onScroll() {
+    // Preserve the new reading intent before an already queued resize frame can restore the old one.
+    followingLatest = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
+    saveAnchor();
     if (scrollFrame) return;
     scrollFrame = requestAnimationFrame(() => {
       scrollFrame = 0;
-      const atBottom = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight <= 42;
-      followingLatest = atBottom;
-      el.jumpBottom.hidden = atBottom;
-      saveAnchor();
+      el.jumpBottom.hidden = followingLatest;
     });
+  }
+
+  function hideTooltip() {
+    if (tooltipTarget) {
+      const ids = (tooltipTarget.getAttribute("aria-describedby") || "").split(" ").filter(id => id && id !== "chat-tooltip");
+      if (ids.length) tooltipTarget.setAttribute("aria-describedby", ids.join(" "));
+      else tooltipTarget.removeAttribute("aria-describedby");
+    }
+    tooltipTarget = null;
+    el.tooltip.hidden = true;
+  }
+
+  function showTooltip(button) {
+    if (button.disabled || button.hidden) return;
+    hideTooltip();
+    tooltipTarget = button;
+    el.tooltip.textContent = button.getAttribute("aria-label") || "";
+    el.tooltip.hidden = false;
+    const root = el.window.getBoundingClientRect(), target = button.getBoundingClientRect();
+    el.tooltip.style.left = `${Math.max(8, Math.min(root.width - el.tooltip.offsetWidth - 8, target.right - root.left - el.tooltip.offsetWidth))}px`;
+    el.tooltip.style.top = `${Math.max(4, target.top - root.top - el.tooltip.offsetHeight - 6)}px`;
+    button.setAttribute("aria-describedby", [button.getAttribute("aria-describedby"), "chat-tooltip"].filter(Boolean).join(" "));
+  }
+
+  function applyCopyFeedback(button, id) {
+    const current = copyFeedback && copyFeedback.identity === identityOf(state) && copyFeedback.targetId === id;
+    const copied = current && copyFeedback.status === "copied";
+    const pendingCopy = current && copyFeedback.status === "pending";
+    // Keep keyboard focus on this command while its acknowledgement is pending.
+    // copyTurn rejects repeated activation; busy is distinct from unavailable.
+    button.setAttribute("aria-busy", String(Boolean(pendingCopy)));
+    button.classList.toggle("is-copied", Boolean(copied));
+    button.setAttribute("aria-label", copied ? t("chat.copied") : pendingCopy ? t("chat.copying") : t("chat.copy.message"));
+    button.removeAttribute("title");
+    if (tooltipTarget === button) el.tooltip.textContent = button.getAttribute("aria-label");
+    button.querySelector("use").setAttribute("href", copied ? "#icon-check" : "#icon-copy");
+    setText(button.querySelector(".turn-action-text"), copied ? t("chat.copied") : pendingCopy ? t("chat.copying") : t("chat.copy"));
+  }
+
+  function refreshCopyFeedback() {
+    for (const [id, record] of turnNodes) if (record.copyButton) applyCopyFeedback(record.copyButton, id);
+    updateComposerControls();
+  }
+
+  async function copyTurn(targetId) {
+    if (!state || !targetId || copyFeedback?.status === "pending") return;
+    if (copyTimer) window.clearTimeout(copyTimer);
+    const feedback = { targetId, identity:identityOf(state), status:"pending" };
+    copyFeedback = feedback;
+    refreshCopyFeedback();
+    const succeeded = await hostAction("copyTurn", { targetId });
+    if (copyFeedback !== feedback || identityOf(state) !== feedback.identity) return;
+    if (!succeeded) { copyFeedback = null; refreshCopyFeedback(); return; }
+    feedback.status = "copied";
+    refreshCopyFeedback();
+    copyTimer = window.setTimeout(() => {
+      if (copyFeedback === feedback) { copyFeedback = null; refreshCopyFeedback(); }
+      copyTimer = 0;
+    }, 2500);
   }
 
   async function handleAction(action, targetId) {
@@ -943,7 +1245,8 @@
       await historyOperation(action, targetId);
       return;
     }
-    const targetActions = new Set(["copyTurn", "readTurn", "openSource", "openWorkspace", "removeContextChip"]);
+    if (action === "copyTurn") { await copyTurn(targetId); return; }
+    const targetActions = new Set(["readTurn", "openSource", "openWorkspace", "removeContextChip"]);
     const extras = targetActions.has(action) ? { targetId } : {};
     await hostAction(action, extras);
   }
@@ -959,8 +1262,13 @@
       void submitMessage();
     });
     el.send.addEventListener("click", () => { void submitMessage(); });
-    el.stop.addEventListener("click", () => {
-      if (state) void commandWithSnapshot("chat.stop", identityPayload(state), false).catch(() => {});
+    el.stop.addEventListener("click", async () => {
+      if (!(state?.conversation?.isStreaming || state?.conversation?.hasPendingRun) || state.conversation.canStop !== true || stopInProgress) return;
+      stopInProgress = true;
+      updateComposerControls();
+      try { await commandWithSnapshot("chat.stop", identityPayload(state), false); }
+      catch { /* commandWithSnapshot presents the safe error. */ }
+      finally { stopInProgress = false; updateComposerControls(); }
     });
     el.newConversation = $("new-conversation");
     el.newConversation.addEventListener("click", () => {
@@ -980,25 +1288,38 @@
     });
     $("hide-window").addEventListener("click", () => { void hideWindow(); });
     el.pageRetry.addEventListener("click", () => { void refreshSnapshot(); });
-    el.refreshProjects.addEventListener("click", () => { void hostAction("refreshProjects"); });
+    el.chooseImage.addEventListener("click", () => { void hostAction("chooseImage"); });
+    el.clearImage.addEventListener("click", () => { void hostAction("clearImage"); });
+    ChatImageImport.install(el.composerCard, {
+      canImport: () => Boolean(state && !el.chooseImage.disabled && !imageImporting),
+      identity: () => state ? identityOf(state) : "",
+      send: (type, data) => commandWithSnapshot(type, appendIdentity(data)),
+      busy: value => { imageImporting = value; updateComposerControls(); },
+      error: kind => showComposerError(t(kind === "unavailable" ? "chat.image.unavailable" : "chat.image.invalid"))
+    });
+    el.chooseWorkspace.addEventListener("click", () => { void hostAction("chooseWorkspace"); });
+    el.clearWorkspace.addEventListener("click", () => { void hostAction("clearWorkspace"); });
     el.capabilityRetry.addEventListener("click", () => {
       if (state) void commandWithSnapshot("chat.retryCapability", identityPayload(state), false).catch(() => {});
     });
     el.capabilitySettings.addEventListener("click", () => { void hostAction("openModelSettings"); });
-    el.project.addEventListener("change", () => { if (el.project.value) void hostAction("selectProject", { targetId: el.project.value }); });
     el.model.addEventListener("change", () => { if (el.model.value) void hostAction("selectModel", { targetId: el.model.value }); });
     el.jumpBottom.addEventListener("click", () => {
-      el.scroll.scrollTop = el.scroll.scrollHeight;
-      followingLatest = true;
-      el.jumpBottom.hidden = true;
+      // Instant restoration avoids intermediate smooth-scroll events disabling
+      // following just as new reply content arrives.
+      restoreAnchor(null);
       saveAnchor();
       el.composer.focus();
     });
     el.scroll.addEventListener("scroll", onScroll, { passive: true });
     el.messages.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
-      if (!button) return;
+      if (!button || button.disabled) return;
       const action = button.dataset.action;
+      if (action === "approvalReview" || action === "approvalDeny" || action === "approvalCancel") {
+        void submitApproval(action === "approvalReview" ? "review" : action === "approvalDeny" ? "deny" : "cancel"); return;
+      }
+      if (action === "inputSubmit" || action === "inputCancel") { void submitInputAnswer(action === "inputCancel"); return; }
       const targetId = button.dataset.targetId;
       if (action === "openSpeechSettings") { void hostAction("openSpeechSettings"); return; }
       void handleAction(action, targetId);
@@ -1024,6 +1345,7 @@
     });
     document.addEventListener("keydown", event => {
       if (event.key !== "Escape" || event.isComposing || composing) return;
+      if (!el.tooltip.hidden) { event.preventDefault(); hideTooltip(); return; }
       if (!el.historyPanel.hidden) {
         event.preventDefault();
         setHistoryOpen(false, false);
@@ -1043,7 +1365,16 @@
       event.preventDefault();
       void hideWindow();
     });
+    const tooltipSelector = ".composer-toolbar button,.turn-copy";
+    document.addEventListener("pointerover", event => { const button = event.target.closest(tooltipSelector); if (button) showTooltip(button); });
+    document.addEventListener("pointerout", event => { if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget)) hideTooltip(); });
+    document.addEventListener("focusin", event => { const button = event.target.closest(tooltipSelector); if (button) showTooltip(button); });
+    document.addEventListener("focusout", event => { if (event.target === tooltipTarget) hideTooltip(); });
     window.addEventListener("resize", resizeState, { passive: true });
+    // Includes history/sidebar changes and notices, not only native window resize.
+    const layoutObserver = new ResizeObserver(resizeState);
+    layoutObserver.observe(el.scroll);
+    layoutObserver.observe(el.composer);
     document.addEventListener("visibilitychange", () => {
       if (!state) return;
       if (document.visibilityState === "hidden") {
@@ -1057,6 +1388,8 @@
       void refreshSnapshot();
     });
     window.addEventListener("pagehide", () => {
+      layoutObserver.disconnect();
+      if (copyTimer) window.clearTimeout(copyTimer);
       if (draftTimer) window.clearTimeout(draftTimer);
       saveAnchor();
       if (state && el.composer.value.length <= maxMessageChars) {
@@ -1075,7 +1408,7 @@
   function start() {
     bindEvents();
     if (!bridge) {
-      setPageStatus("此页面需要在 FGO Pet 中打开。", true);
+      setPageStatus(t("chat.open.this.page.in.fgo.pet"), true);
       el.composer.disabled = true;
       el.send.disabled = true;
       return;

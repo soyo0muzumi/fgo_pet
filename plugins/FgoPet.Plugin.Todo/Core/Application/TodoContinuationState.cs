@@ -14,6 +14,10 @@ public sealed class TodoContinuationState : ITodoDraftWorkflow
     public TodoContinuationState(TodoProposalService proposals) => _proposals = proposals ?? throw new ArgumentNullException(nameof(proposals));
 
     public PendingTodoDraft Replace(string conversationId, string servantId, IReadOnlyList<TodoProposal> proposals)
+        => ReplaceCore(conversationId, servantId, proposals, false);
+    public PendingTodoDraft ReplaceForAgent(string conversationId, string servantId, IReadOnlyList<TodoProposal> proposals)
+        => ReplaceCore(conversationId, servantId, proposals, true);
+    private PendingTodoDraft ReplaceCore(string conversationId, string servantId, IReadOnlyList<TodoProposal> proposals, bool native)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(conversationId);
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
@@ -28,6 +32,8 @@ public sealed class TodoContinuationState : ITodoDraftWorkflow
             var next = _drafts.AddOrUpdate(key,
                 _ => new PendingTodoDraft("draft-" + Guid.NewGuid().ToString("N"), conversationId, servantId, 1, snapshot),
                 (_, current) => current with { Version = checked(current.Version + 1), Proposals = snapshot, Status = TodoDraftStatus.Pending, CreatedItemId = null });
+            next = next with { RequiresNativeConfirmation = native };
+            _drafts[key] = next;
             return next;
         }
     }
@@ -49,7 +55,7 @@ public sealed class TodoContinuationState : ITodoDraftWorkflow
     public string? GetPromptState(string conversationId, string servantId)
     {
         var draft = Get(conversationId, servantId);
-        if (draft is null) return null;
+        if (draft is null || draft.RequiresNativeConfirmation) return null;
         return FormatPromptState(draft.Proposals, draft.Version);
     }
 
@@ -100,6 +106,7 @@ public sealed class TodoContinuationState : ITodoDraftWorkflow
         }
 
         if (!_drafts.TryGetValue(key, out var draft)) return new(TodoDraftResultKind.Stale);
+        if (draft.RequiresNativeConfirmation) return new(TodoDraftResultKind.Stale, draft);
         if (!string.Equals(draft.DraftId, draftId, StringComparison.Ordinal) || draft.Version != version) return new(TodoDraftResultKind.Stale, draft);
         if (draft.Status == TodoDraftStatus.Committed) return new(TodoDraftResultKind.AlreadyCommitted, draft, draft.CreatedItemId is null ? null : _proposals.GetCreated(draft.CreatedItemId));
 

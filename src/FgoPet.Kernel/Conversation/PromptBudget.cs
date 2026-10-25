@@ -7,6 +7,11 @@ public sealed record PromptBudget
     public int OutputTokens { get; private init; }
     public int SafetyMarginTokens { get; private init; }
     public int InputTokens { get; private init; }
+    public PromptBudget ConstrainInput(int maximum)
+    {
+        if(maximum<=0)throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
+        return this with{InputTokens=Math.Min(InputTokens,maximum)};
+    }
 
     // DeepSeek Harness resolveCompactSpec: reserve output and headroom before accepting input.
     public static PromptBudget Resolve(ModelContextLimit limit, int requestedOutputTokens)

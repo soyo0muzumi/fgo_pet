@@ -6,14 +6,23 @@ namespace FgoPet.Plugin.Memory;
 
 public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader sources,
     IMemoryCandidateSink? candidates = null, MemoryExtractionQueue? extractions = null,
-    Func<bool>? enabled = null) : IFgoPetPlugin, IConversationPromptProvider, IPostTurnObserver, IDisposable
+    Func<bool>? enabled = null, IAgentQueryResolver? queryResolver = null)
+    : IFgoPetPlugin, IConversationPromptProvider, IPostTurnObserver, IDisposable
 {
     private int _closed;
     private bool _started;
     private CancellationToken _stopping;
     private bool Enabled => _started && !_stopping.IsCancellationRequested && Volatile.Read(ref _closed) == 0 && (enabled?.Invoke() ?? true);
     public PluginManifest Manifest { get; } = new("firstparty.memory", "1.0.0", 1, []);
-    public PluginContributions Contributions => PluginContributions.Empty with { Prompts = [this], PostTurnObservers = [this] };
+    public PluginContributions Contributions => PluginContributions.Empty with
+    {
+        Tools = [.. NativeMemoryTools.Create(recall, () => Enabled)],
+        Prompts = [this],
+        PostTurnObservers = [this],
+        AgentContexts = queryResolver is null
+            ? []
+            : [new NativeMemoryContext(recall, queryResolver, () => Enabled)]
+    };
     public ValueTask StartAsync(CancellationToken stoppingToken)
     {
         stoppingToken.ThrowIfCancellationRequested();

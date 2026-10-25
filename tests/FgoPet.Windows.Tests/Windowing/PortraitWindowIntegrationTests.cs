@@ -30,6 +30,173 @@ namespace FgoPet.Windows.Tests.Windowing;
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessage(nint hwnd, int message, nint wParam, nint lParam);
+
+    [Theory]
+    [InlineData(1.0, false)]
+    [InlineData(1.5, false)]
+    [InlineData(2.0, false)]
+    [InlineData(1.0, true)]
+    [InlineData(1.5, true)]
+    [InlineData(2.0, true)]
+    public void Today_placement_avoids_visible_focus_controls(double scale, bool running)
+    {
+        StaRun(() =>
+        {
+            var focus = new FakeFocusService();
+            var panel = new AttachedPanelViewModel(TimeProvider.System,
+                new FocusCompactViewModel(focus));
+            var window = new PortraitWindow(panel) { Left = 1200, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                panel.FocusClick();
+                if (running)
+                {
+                    focus.Start(FocusPresetCatalog.Short, "fixture-character");
+                    focus.RaiseChanged();
+                }
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(
+                    new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1600 * scale), (int)(1000 * scale));
+                var controls = window.ArrangeOverlayPanel(geometry, area, dpi);
+                var portrait = window.PortraitScreenBounds;
+                var bounds = new DeviceRect((int)Math.Round(portrait.X * scale),
+                    (int)Math.Round(portrait.Y * scale), (int)Math.Round(portrait.Width * scale),
+                    (int)Math.Round(portrait.Height * scale));
+                var today = TransientSurfacePlacement.Place(window.GetTransientAnchor(bounds), area, dpi, 320, 400);
+                Assert.True(today.Right <= controls.Left || today.Left >= controls.Right
+                    || today.Bottom <= controls.Top || today.Top >= controls.Bottom);
+                if (running) { focus.Stop(); focus.RaiseChanged(); }
+                panel.Escape();
+                panel.Escape();
+                Assert.False(window.IsAttachedPanelVisible);
+                Assert.Equal(bounds, window.GetTransientAnchor(bounds));
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(100, 1.0)]
+    [InlineData(800, 1.0)]
+    [InlineData(100, 1.5)]
+    [InlineData(800, 1.5)]
+    [InlineData(100, 2.0)]
+    [InlineData(800, 2.0)]
+    public void Actual_icon_rail_stays_adjacent_to_portrait_on_either_side(double left, double scale)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System, new FocusCompactViewModel(new FakeFocusService()));
+            var window = new PortraitWindow(panel) { Left = left, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1000 * scale), (int)(800 * scale));
+                var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
+                var view = Assert.IsType<AttachedPanelView>(host.Content);
+                var chat = Assert.IsType<Button>(view.FindName("ChatEntryButton"));
+                var more = Assert.IsType<Button>(view.FindName("MoreEntryButton"));
+                foreach (var state in new[] { 0, 1, 2 })
+                {
+                    if (state == 1) more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    if (state == 2) panel.FocusClick();
+                    var bounds = window.ArrangeOverlayPanel(geometry, area, dpi);
+                    var size = new Size(bounds.Width / scale, bounds.Height / scale);
+                    host.Measure(size);
+                    host.Arrange(new Rect(size));
+                    if (state == 2)
+                    {
+                        Assert.False(chat.IsVisible);
+                        var card = Assert.IsType<Border>(view.FindName("CardSurface"));
+                        var cardLeft = bounds.Left / scale + card.TranslatePoint(new Point(), host).X;
+                        var portraitBounds = window.PortraitScreenBounds;
+                        Assert.True(cardLeft >= portraitBounds.Right || cardLeft + card.ActualWidth <= portraitBounds.X);
+                        continue;
+                    }
+                    var iconLeft = bounds.Left / scale + chat.TranslatePoint(new Point(), host).X;
+                    var portrait = window.PortraitScreenBounds;
+                    var gap = left > 500 ? portrait.X - iconLeft - chat.ActualWidth : iconLeft - portrait.Right;
+                    Assert.Equal(12, gap, 3);
+                    if (state == 2)
+                    {
+                        var card = Assert.IsType<Border>(view.FindName("CardSurface"));
+                        Assert.Equal(Visibility.Visible, card.Visibility);
+                        var cardLeft = bounds.Left / scale + card.TranslatePoint(new Point(), host).X;
+                        var cardGap = left > 500 ? iconLeft - cardLeft - card.ActualWidth : cardLeft - iconLeft - chat.ActualWidth;
+                        Assert.Equal(8, cardGap, 3);
+                    }
+                }
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(600)]
+    public void Expanding_quick_actions_keeps_the_icon_rail_top_fixed_near_the_right_edge(double top)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 800, Top = top };
+            try
+            {
+                panel.PortraitClick();
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, new Dpi2(1, 1));
+                var area = new DeviceRect(0, 0, 1000, 800);
+                var compact = window.ArrangeOverlayPanel(geometry, area, new Dpi2(1, 1));
+                var host = Assert.IsType<ContentControl>(window.FindName("PanelHost"));
+                var view = Assert.IsType<AttachedPanelView>(host.Content);
+                var more = Assert.IsType<Button>(view.FindName("MoreEntryButton"));
+                more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expanded = window.ArrangeOverlayPanel(geometry, area, new Dpi2(1, 1));
+                Assert.True(expanded.Height > compact.Height);
+                Assert.Equal(compact.Top, expanded.Top);
+                Assert.Equal(compact.Left, expanded.Left);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void Panel_side_does_not_oscillate_when_dragging_around_the_right_edge_threshold(double scale)
+    {
+        StaRun(() =>
+        {
+            var panel = new AttachedPanelViewModel(TimeProvider.System);
+            var window = new PortraitWindow(panel) { Left = 519, Top = 100 };
+            try
+            {
+                panel.PortraitClick();
+                var dpi = new Dpi2(scale, scale);
+                var geometry = PortraitLayout.Calculate(new PortraitSourceGeometry(300, 600, 0, 0, 100, 100, 151, 360), 0.5, dpi);
+                var area = new DeviceRect(0, 0, (int)(1000 * scale), (int)(800 * scale));
+                var first = window.ArrangeOverlayPanel(geometry, area, dpi);
+                Assert.True(first.Right <= window.PortraitScreenBounds.X * scale);
+                foreach (var left in new[] { 517, 519, 516, 519 })
+                {
+                    window.MovePortraitToDevice(new DevicePoint((int)(left * scale), (int)(100 * scale)), dpi);
+                    var bounds = window.ArrangeOverlayPanel(geometry, area, dpi);
+                    Assert.True(bounds.Right <= window.PortraitScreenBounds.X * scale);
+                }
+                window.MovePortraitToDevice(new DevicePoint((int)(450 * scale), (int)(100 * scale)), dpi);
+                var returned = window.ArrangeOverlayPanel(geometry, area, dpi);
+                Assert.True(returned.Left >= window.PortraitScreenBounds.Right * scale);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Fact]
     public void Portrait_host_consumes_registered_renderer_content_and_disposal_discards_queued_updates()
     {
@@ -77,6 +244,151 @@ public sealed class PortraitWindowIntegrationTests
         public void Present(FrameworkElement view) { Assert.Same(Content, view); Presents++; }
         public bool IsHit(Point portraitLocalPoint) => true;
         public void ApplyDpi(Dpi2 dpi) { }
+    }
+
+    [Fact]
+    public void User_hidden_character_stays_hidden_on_renderer_updates_and_tray_restores_same_window()
+    {
+        StaRun(() =>
+        {
+            var surface = new SamplePortraitSurface();
+            var portrait = new PortraitWindow();
+            using var coordinator = new PortraitWindowCoordinator(portrait,surface,new MemoryPlacementStore(),new FixedScreenService());
+            using var tray = new TrayService();
+            using var ui = new DesktopAppUi(tray,null!,new FgoPet.App.Settings.SettingsViewModel(),portrait,coordinator,
+                new WindowLifetime(),null!,surface);
+            ui.InitializeTray();
+            surface.RaiseChanged(); StaRunner.Pump();
+            Assert.True(portrait.IsVisible);
+            var view = portrait.PortraitContent;
+            ui.PortraitMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == MarginStrings.Get("entry.hide"))
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            surface.RaiseChanged(); StaRunner.Pump();
+            Assert.False(portrait.IsVisible);
+            tray.HandleDoubleClick();
+            Assert.True(portrait.IsVisible);
+            Assert.Same(view,portrait.PortraitContent);
+            Assert.Equal(1,surface.ViewsCreated);
+            portrait.Close();
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Chat_entry_retains_native_position_and_draft_after_portrait_move_hide_and_minimize(bool constrainedWorkArea)
+    {
+        StaRun(() =>
+        {
+            var vm = FgoPet.Windows.Tests.Dialogue.DialogueWindowIntegrationTests.CreateViewModel();
+            using var chat = new FgoPet.App.Dialogue.DialogueWindow(vm);
+            var surface = new SamplePortraitSurface();
+            var portrait = new PortraitWindow();
+            IScreenLayoutService screen = constrainedWorkArea
+                ? new ConstrainedNativeScreenService()
+                : new WindowsScreenLayoutService();
+            var store = new MemoryPlacementStore();
+            using var coordinator = new PortraitWindowCoordinator(portrait, surface, store, screen);
+            using var tray = new TrayService();
+            using var ui = new DesktopAppUi(tray, null!, new FgoPet.App.Settings.SettingsViewModel(), portrait,
+                coordinator, new WindowLifetime(), null!, surface, dialogueWindow: chat, dialogue: vm,
+                dialoguePlacement: new DialogueWindowPlacementCoordinator(store, screen));
+            var capture = Environment.GetEnvironmentVariable("FGO_PET_ACCEPTANCE_ARTIFACTS");
+            var correlation = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Guid.NewGuid().ToByteArray()))[..12];
+            void Log(string stage, string result)
+            {
+                if (string.IsNullOrWhiteSpace(capture)) return;
+                Directory.CreateDirectory(capture);
+                TransientSurfacePlacement.TryReadNativeBounds(chat, out var bounds);
+                File.AppendAllText(Path.Combine(capture, "placement-native.jsonl"), JsonSerializer.Serialize(new
+                { timestamp = DateTimeOffset.UtcNow, correlation, stage, result, constrainedWorkArea, bounds,
+                    workAreas = screen.GetMonitors().Select(item => item.WorkArea),
+                    state = chat.WindowState.ToString(), width = chat.Width, height = chat.Height }) + Environment.NewLine);
+            }
+            void AssertConstrainedBounds(DeviceRect before, DeviceRect after, double widthDip, double heightDip)
+            {
+                var monitor = TransientSurfacePlacement.SelectMonitor(before, screen.GetMonitors())!;
+                var dpi = screen.GetDpi(monitor.Id);
+                var area = monitor.WorkArea;
+                var marginX = (int)Math.Round(16 * dpi.X);
+                var marginY = (int)Math.Round(16 * dpi.Y);
+                var width = Math.Min((int)Math.Ceiling(widthDip * dpi.X), area.Width - 2 * marginX);
+                var height = Math.Min((int)Math.Ceiling(heightDip * dpi.Y), area.Height - 2 * marginY);
+                // Retain each coordinate when the requested size fits; otherwise move only enough
+                // to fit inside the work area with the existing 16 DIP margin. Check size as well.
+                var expected = new DeviceRect(
+                    Math.Clamp(before.X, area.Left + marginX, area.Right - marginX - width),
+                    Math.Clamp(before.Y, area.Top + marginY, area.Bottom - marginY - height), width, height);
+                Assert.Equal(expected, after);
+            }
+            ui.InitializeTray(); ui.ShowPortrait(); Log("entry.dispatch", "requested");
+            portrait.HandlePortraitClick(); StaRunner.Pump();
+            Log("chat.open", "success");
+            vm.Conversation.InputText = "retained positioned draft";
+            var content = ((ContentControl)chat.FindName("ChatSurface")).Content;
+            chat.Left = 80; chat.Top = 80; StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var selected));
+            portrait.Left += 300; coordinator.ClampPortraitToWorkArea(); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var afterMove));
+            Assert.Equal(selected, afterMove); Log("portrait.move", "chat-retained");
+            chat.Close(); portrait.HandlePortraitClick(); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var reopened));
+            Assert.Equal(selected, reopened); Log("chat.reopen", "retained");
+            chat.WindowState = WindowState.Minimized; StaRunner.Pump();
+            Log("chat.minimized", "ready");
+            ui.ShowDialogueWindow(); StaRunner.Pump(); Log("chat.restore", "returned");
+            Assert.Equal(WindowState.Normal, chat.WindowState);
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var restored));
+            Assert.Equal(selected, restored);
+            chat.SetExpanded(true); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var expanded));
+            AssertConstrainedBounds(selected, expanded, 824, 740);
+            Log("chat.expand", "constrained");
+            chat.SetExpanded(false); StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var compact));
+            AssertConstrainedBounds(expanded, compact, 376, 500);
+            Log("chat.collapse", "constrained");
+            Assert.Same(content, ((ContentControl)chat.FindName("ChatSurface")).Content);
+            Assert.Equal("retained positioned draft", vm.Conversation.InputText);
+            Assert.False(portrait.IsAttachedPanelVisible);
+            // Deliver the OS notification only to this isolated fixture; do not change display settings.
+            chat.Left = -10000; chat.Top = -10000; StaRunner.Pump();
+            SendMessage(new System.Windows.Interop.WindowInteropHelper(chat).Handle, 0x007E, 0, 0);
+            StaRunner.Pump();
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(chat, out var recovered));
+            var monitor = TransientSurfacePlacement.SelectMonitor(recovered, screen.GetMonitors())!;
+            Assert.True(recovered.Left >= monitor.WorkArea.Left && recovered.Top >= monitor.WorkArea.Top);
+            Assert.True(recovered.Right <= monitor.WorkArea.Right && recovered.Bottom <= monitor.WorkArea.Bottom);
+            Log("display.notification", "recovered"); Log("flow.completed", "success");
+            portrait.Close(); vm.Conversation.Dispose();
+        });
+    }
+
+    // Keep real monitor identities and DPI for HWND placement; only the reported work area is smaller.
+    // This reproduces a constrained runner without changing the user's display settings.
+    private sealed class ConstrainedNativeScreenService : IScreenLayoutService
+    {
+        private readonly WindowsScreenLayoutService _native = new();
+
+        public IReadOnlyList<MonitorInfo> GetMonitors() => _native.GetMonitors().Select(monitor =>
+        {
+            var dpi = GetDpi(monitor.Id);
+            return monitor with { WorkArea = new DeviceRect(monitor.WorkArea.X, monitor.WorkArea.Y,
+                Math.Min(monitor.WorkArea.Width, (int)Math.Floor(800 * dpi.X)),
+                Math.Min(monitor.WorkArea.Height, (int)Math.Floor(600 * dpi.Y))) };
+        }).ToArray();
+
+        public Dpi2 GetDpi(string monitorId) => _native.GetDpi(monitorId);
+    }
+
+    private sealed class WindowLifetime : FgoPet.App.Lifetime.IAppLifetime
+    {
+        private Window? _window;
+        public bool IsPetVisible => _window?.IsVisible == true;
+        public void AttachPetWindow(Window window) => _window=window;
+        public void ShowOrHidePet() { if (_window?.IsVisible == true) _window.Hide(); else _window?.Show(); }
+        public void RequestNormalExit() { }
+        public void Shutdown(int exitCode) { }
     }
     [Fact]
     public void PortraitWindow_mounts_panel_and_removes_it_from_layout_when_collapsed()
@@ -276,7 +588,7 @@ public sealed class PortraitWindowIntegrationTests
                 Assert.True(panel.IsCompactSurfaceActive);
                 Assert.True(timerBounds.Height > messageBounds.Height,
                     $"timer body height {timerBounds.Height} must exceed message body height {messageBounds.Height}");
-                // The timer ring is 196 DIP, so the focus surface budget is 220 DIP.
+                // A 142 DIP transparent host reserves room for ribbon hover controls.
                 Assert.True(timerBounds.Height <= 220,
                     $"timer body height {timerBounds.Height} must stay within the focus surface budget");
 
@@ -647,16 +959,18 @@ public sealed class PortraitWindowIntegrationTests
 
                 coordinator.InitializePlacement();
 
-                var portrait = window.PortraitScreenBounds;
-                Assert.Equal(925, portrait.X, precision: 4);
-                Assert.Equal(450, portrait.Y, precision: 4);
+                // FixedScreenService is in device pixels, while this STA window uses
+                // the real desktop DPI. Validate placement in that same physical space.
+                var portrait = coordinator.PortraitDeviceBounds;
+                Assert.Equal(925, portrait.X);
+                Assert.Equal(450, portrait.Y);
 
                 window.MovePortraitToDevice(new DevicePoint(120, 180), new Dpi2(1, 1));
                 coordinator.InitializePlacement();
 
-                portrait = window.PortraitScreenBounds;
-                Assert.Equal(120, portrait.X, precision: 4);
-                Assert.Equal(180, portrait.Y, precision: 4);
+                portrait = coordinator.PortraitDeviceBounds;
+                Assert.Equal(120, portrait.X);
+                Assert.Equal(180, portrait.Y);
             }
             finally
             {

@@ -11,7 +11,7 @@ public static class PromptContracts
     public const int MaxMessageChars = 12_000;
 }
 
-public enum PromptBudgetFailure { PendingDraftTooLarge, InsufficientContext, UserInputTooLarge }
+public enum PromptBudgetFailure { PendingDraftTooLarge, InsufficientContext, UserInputTooLarge, SelectedWindowTooLarge }
 
 public sealed class PromptBudgetException(PromptBudgetFailure failure) : Exception("Prompt context exceeds its bounded budget.")
 {
@@ -31,8 +31,8 @@ public sealed record PromptMessage
 }
 
 /// <summary>
-/// Safe, transient context selected for one dialogue request. It contains display
-/// names and opaque identifiers only; local file paths never belong in this contract.
+/// Transient context selected for one dialogue request. Selected window text is
+/// external untrusted material; it must not become a user instruction or memory.
 /// </summary>
 public sealed record ConversationRequestContext
 {
@@ -41,7 +41,8 @@ public sealed record ConversationRequestContext
         string? projectLabel = null,
         IEnumerable<string>? attachmentNames = null,
         string? intentId = null,
-        string? intentLabel = null)
+        string? intentLabel = null,
+        SelectedWindowContent? selectedWindowContent = null)
     {
         ProjectId = OptionalId(projectId, nameof(projectId));
         ProjectLabel = DisplayName(projectLabel, nameof(projectLabel));
@@ -54,6 +55,7 @@ public sealed record ConversationRequestContext
             .ToArray();
         IntentId = OptionalId(intentId, nameof(intentId), 64);
         IntentLabel = DisplayName(intentLabel, nameof(intentLabel));
+        SelectedWindowContent = selectedWindowContent;
     }
 
     public string ProjectId { get; }
@@ -61,12 +63,14 @@ public sealed record ConversationRequestContext
     public IReadOnlyList<string> AttachmentNames { get; }
     public string IntentId { get; }
     public string IntentLabel { get; }
+    public SelectedWindowContent? SelectedWindowContent { get; }
 
     public bool IsEmpty => ProjectId.Length == 0
         && ProjectLabel.Length == 0
         && AttachmentNames.Count == 0
         && IntentId.Length == 0
-        && IntentLabel.Length == 0;
+        && IntentLabel.Length == 0
+        && SelectedWindowContent is null;
 
     private static string OptionalId(string? value, string parameterName, int maxLength = 128) =>
         string.IsNullOrWhiteSpace(value)
@@ -91,6 +95,25 @@ public sealed record ConversationRequestContext
             ? string.Empty
             : Phase3Validation.Text(normalized, parameterName, 160);
     }
+}
+
+/// <summary>One explicitly previewed window snapshot, sent only with the next admitted desktop request.</summary>
+public sealed record SelectedWindowContent
+{
+    public SelectedWindowContent(string sourceTitle, string application, string text, DateTimeOffset readAtUtc, bool isPartial)
+    {
+        SourceTitle = Phase3Validation.Text(sourceTitle, nameof(sourceTitle), 160);
+        Application = Phase3Validation.Text(application, nameof(application), 160);
+        Text = Phase3Validation.Text(text, nameof(text), FgoPet.Platform.WindowText.WindowTextLimits.MaxTextChars);
+        ReadAtUtc = readAtUtc.ToUniversalTime();
+        IsPartial = isPartial;
+    }
+    public string SourceTitle { get; }
+    public string Application { get; }
+    public string Text { get; }
+    public DateTimeOffset ReadAtUtc { get; }
+    public bool IsPartial { get; }
+    public override string ToString() => $"SelectedWindowContent({Text.Length} characters, partial={IsPartial})";
 }
 public sealed record PromptContext
 {

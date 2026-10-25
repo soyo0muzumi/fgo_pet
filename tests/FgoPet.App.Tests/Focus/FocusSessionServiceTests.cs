@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using FgoPet.App.Focus;
 using FgoPet.App.Runtime;
 using FgoPet.Core.Bond;
@@ -9,6 +10,8 @@ using FgoPet.Infrastructure.Events;
 using FgoPet.Infrastructure.Focus;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Timeline;
+using FgoPet.Extensibility;
+using FgoPet.Plugin.Focus;
 using Xunit;
 
 namespace FgoPet.App.Tests.Focus;
@@ -136,6 +139,68 @@ public sealed class FocusSessionServiceTests : IDisposable
         _service.Tick();
 
         Assert.Equal(1_488, _service.Current.RemainingSeconds);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Native_resume_restores_the_existing_phase_and_cycle_without_offline_time_or_duplicate_writes(bool breakPhase)
+    {
+        var stored = FocusSession.Start("restored-session", "servant-mash", FocusPreset.Create(25, 5, 4), Epoch)
+            with
+            {
+                Status = breakPhase ? FocusStatus.Breaking : FocusStatus.Focusing,
+                Phase = breakPhase ? FocusPhase.Break : FocusPhase.Focus,
+                RemainingSeconds = breakPhase ? 200 : 1_400,
+                PhaseElapsedSeconds = 100,
+                CurrentCycle = 2,
+            };
+        _repository.SaveSnapshot(stored);
+        _time.Advance(TimeSpan.FromHours(8));
+        _service.Restore();
+        var resume = NativeFocusTools.Create(_service, new InlineFocusDispatcher(), () => "servant-mash")
+            .Single(tool => tool.Descriptor.Name == "focus.resume");
+        var scope = new ToolScope("conversation", "servant-mash", null);
+        var invocation = new ToolInvocation(scope, JsonSerializer.SerializeToElement(new { expectedSessionId = stored.SessionId }))
+        {
+            ExecutionContext = new("run", 1, "resume", "resume")
+            {
+                ResourceAuthorization = ((IToolResourceAuthorizationProvider)resume).GetAuthorization(scope),
+            },
+        };
+        var changes = 0;
+        _service.SnapshotChanged += (_, _) => changes++;
+
+        var result = await resume.InvokeAsync(invocation, default);
+        var saved = _repository.LoadCurrent();
+        var replay = await resume.InvokeAsync(invocation, default);
+
+        Assert.True(result.Success);
+        Assert.Equal(ToolExecutionState.Committed, result.ExecutionState);
+        Assert.Equal(result, replay);
+        Assert.Equal(1, changes);
+        Assert.Equal(stored.Status, _service.Current.Status);
+        Assert.Equal(stored.Phase, _service.Current.Phase);
+        Assert.Equal(stored.CurrentCycle, _service.Current.CurrentCycle);
+        Assert.Equal(stored.RemainingSeconds, _service.Current.RemainingSeconds);
+        Assert.Equal(stored.PhaseElapsedSeconds, _service.Current.PhaseElapsedSeconds);
+        Assert.Equal(_service.Current, saved);
+
+        _time.Advance(TimeSpan.FromSeconds(2));
+        _service.Tick();
+        Assert.Equal(stored.RemainingSeconds - 2, _service.Current.RemainingSeconds);
+        Assert.Equal(stored.PhaseElapsedSeconds + 2, _service.Current.PhaseElapsedSeconds);
+        Assert.Equal(2, _service.Current.CurrentCycle);
+    }
+
+    private sealed class InlineFocusDispatcher : IFocusNativeDispatcher
+    {
+        public T Invoke<T>(Func<T> operation) => operation();
+        public ValueTask<T> InvokeAsync<T>(Func<T> operation, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(operation());
+        }
     }
 
     [Fact]

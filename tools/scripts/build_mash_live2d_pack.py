@@ -22,7 +22,7 @@ def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build_local_pack(static_pack: Path, staged_model: Path, project: Path, release: Path) -> Path:
+def build_local_pack(static_pack: Path, staged_model: Path, project: Path, release: Path, *, package_version: str = "1.1.0") -> Path:
     repository = Path(__file__).resolve().parents[2]
     static_pack, staged_model, project, release = (path.resolve() for path in (static_pack, staged_model, project, release))
     for output in (project, release):
@@ -65,7 +65,7 @@ def build_local_pack(static_pack: Path, staged_model: Path, project: Path, relea
         ],
     }
     manifest_path.write_text(json.dumps(appearance, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    package["package_version"] = "1.1.0"
+    package["package_version"] = package_version
     package["capabilities"] = sorted({*package["capabilities"], "portrait.live2d.v1"})
     package["appearances"].append({"appearance_id": "live2d_casual", "manifest_path": "appearances/live2d_casual/manifest.json"})
     package["files"] = sorted(path.relative_to(project).as_posix() for path in project.rglob("*") if path.is_file())
@@ -84,8 +84,9 @@ def main() -> None:
     parser.add_argument("--staged-model", required=True, type=Path)
     parser.add_argument("--project", required=True, type=Path)
     parser.add_argument("--release", required=True, type=Path)
+    parser.add_argument("--package-version", default="1.1.0")
     args = parser.parse_args()
-    print(build_local_pack(args.static_pack, args.staged_model, args.project, args.release))
+    print(build_local_pack(args.static_pack, args.staged_model, args.project, args.release, package_version=args.package_version))
 
 
 if __name__ == "__main__":

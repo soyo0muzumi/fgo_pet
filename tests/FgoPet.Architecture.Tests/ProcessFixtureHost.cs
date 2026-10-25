@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using FgoPet.Tests.Diagnostics;
 
 namespace FgoPet.Architecture.Tests;
 
@@ -23,17 +24,24 @@ internal static class ProcessFixtureHost
         if (args is not [ParentMode, var pidFile]) return 2;
 
         Process? child = null;
+        var phase = "child_start";
         try
         {
             child = Process.Start(CreateStartInfo(ChildMode))
                 ?? throw new InvalidOperationException("process-fixture: child did not start");
+            phase = "readiness_write";
             File.WriteAllText(pidFile + ".tmp", child.Id.ToString(CultureInfo.InvariantCulture));
+            phase = "readiness_publish";
+            SyntheticFileOperationDiagnostics.Record("FGO_PET_ARCH_PROCESS_DIAGNOSTICS", phase, "before", pidFile + ".tmp", pidFile);
             File.Move(pidFile + ".tmp", pidFile);
+            SyntheticFileOperationDiagnostics.Record("FGO_PET_ARCH_PROCESS_DIAGNOSTICS", phase, "completed", pidFile + ".tmp", pidFile);
+            phase = "child_wait";
             child.WaitForExit();
             return child.ExitCode;
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            SyntheticFileOperationDiagnostics.Record("FGO_PET_ARCH_PROCESS_DIAGNOSTICS", phase, "failed", pidFile + ".tmp", pidFile, error);
             Console.Error.WriteLine("process-fixture: host failed before completion");
             return 3;
         }

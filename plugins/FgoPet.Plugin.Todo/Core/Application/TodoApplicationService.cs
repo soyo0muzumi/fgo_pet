@@ -38,6 +38,13 @@ public sealed class TodoApplicationService
     public IReadOnlyList<TodoItem> ListHistoryOn(DateOnly localDate) => _repository.ListCompletedOn(localDate)
         .OrderByDescending(item => item.CompletedAt ?? item.UpdatedAt).ToArray();
     public TodoItem? Get(string id) => _repository.Get(id);
+    public TodoAgentCommitResult CommitAgentCommand(TodoAgentCommit command)
+    {
+        var result = (_repository as ITodoAgentCommandRepository)?.CommitAgentCommand(command)
+            ?? new(TodoAgentCommitKind.Unavailable);
+        if (result.Kind == TodoAgentCommitKind.Committed) NotifyChanged();
+        return result;
+    }
     public void Save(TodoItem todo) => Persist(todo);
 
     public bool IsProtected(TodoItem todo) => todo.Status == TodoStatus.Active;

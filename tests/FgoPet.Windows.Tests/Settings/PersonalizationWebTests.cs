@@ -26,6 +26,12 @@ public sealed class PersonalizationWebTests
         await StaRunner.RunAsync(async () =>
         {
             var previewPath = WriteSmallPng();
+            var packagePreviewPath = Path.Combine(Path.GetTempPath(), "fgopet-contact-sheet-" + Guid.NewGuid().ToString("N") + ".png");
+            var sheet = System.Windows.Media.Imaging.BitmapSource.Create(2, 1, 96, 96,
+                PixelFormats.Bgra32, null, new byte[] { 0, 0, 255, 255, 0, 255, 0, 255 }, 8);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(sheet));
+            using (var output = File.Create(packagePreviewPath)) encoder.Save(output);
             var privateFileName = Path.GetFileName(previewPath);
             var settings = new Store(CharacterSettings.Defaults with
             {
@@ -38,7 +44,7 @@ public sealed class PersonalizationWebTests
             using var theme = CreateTheme(themeStore);
             var portrait = new PortraitController();
             var repository = new Repository(new InstalledServant(
-                "test.package", "test.servant", "测试从者", previewPath, "unverified",
+                "test.package", "test.servant", "测试从者", packagePreviewPath, "unverified",
                 [new ServantAppearance("default", "1.0.0", Path.GetTempPath(), previewPath)])
             { PackageVersion = "1.0.0" });
             var installer = new Installer();
@@ -74,14 +80,49 @@ public sealed class PersonalizationWebTests
 
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelectorAll('main h1#page-title').length"));
-                Assert.Equal("个性化", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Companion", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('[data-role-image]').src.startsWith('data:image/png;base64,')"));
+                Assert.Equal(PersonalizationWebPage.TryCreatePreviewDataUrl(previewPath),
+                    await Script(web, "document.querySelector('[data-role-image]').src"));
                 Assert.Equal("false", await web.CoreWebView2.ExecuteScriptAsync(
                     $"document.body.innerText.includes({JsonSerializer.Serialize(privateFileName)})"));
                 Assert.Equal(1, repository.ListCount);
                 Assert.Equal(0, installer.InstallCount);
                 Assert.Equal(0, portrait.ActivateCount);
+
+                // Only capture this synthetic store/portrait fixture, never a production profile.
+                async Task CaptureScene(string scene)
+                {
+                    if (Environment.GetEnvironmentVariable("FGO_PET_MARGIN_SETTINGS_CAPTURE_DIR") is not { Length: > 0 } directory) return;
+                    Directory.CreateDirectory(directory);
+                    await Task.Delay(300);
+                    using var file = File.Create(Path.Combine(directory, scene + "-webview.png"));
+                    await web.CoreWebView2.CapturePreviewAsync(
+                        Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, file);
+                    File.AppendAllText(Path.Combine(directory, "settings-verification.jsonl"),
+                        JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, request = "offline-settings",
+                            stage = scene, result = "captured", errorCode = (string?)null }) + Environment.NewLine);
+                }
+                window.Width = 824;
+                await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("innerWidth > 650") == "true");
+                await CaptureScene("settings-companion");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=services]').click()");
+                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "services");
+                Assert.Equal("3", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
+                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.overview-rows > [data-page-id=Qq]').disabled"));
+                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').hidden"));
+                await CaptureScene("settings-services");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=privacy]').click()");
+                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "privacy");
+                Assert.Equal("3", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
+                await CaptureScene("settings-privacy");
+                window.Width = 240;
+                await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("innerWidth <= 240") == "true");
+                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.documentElement.scrollWidth <= innerWidth"));
+                await CaptureScene("settings-small-workspace");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=companion]').click()");
+                await WaitUntil(async () => await Script(web, "document.querySelector('[data-role-name]')?.textContent ?? ''") == "测试从者");
 
                 window.Width = 320;
                 await WaitUntil(async () =>
@@ -95,19 +136,23 @@ public sealed class PersonalizationWebTests
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
 
                 await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-page-id=UserProfile]').click()");
+                    "document.querySelector('[data-section=app]').click()");
+                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "app");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-page-id=UserProfile]').click()");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('#profile-display-name')?.value ?? ''") == "原名称");
-                Assert.Equal("用户资料", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Your name", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("App", await Script(web, "document.querySelector('#settings-parent').textContent"));
+                await CaptureScene("settings-detail-back");
                 await web.CoreWebView2.ExecuteScriptAsync(
                     "(() => { const input=document.querySelector('#profile-display-name'); input.value='跨页保存'; input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('[data-action=save]').click(); })()");
                 await WaitUntil(() => settings.Value.UserProfile?.DisplayName == "跨页保存");
 
                 await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-page-id=Personalization]').click()");
+                    "document.querySelector('[data-section=companion]').click()");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('[data-role-name]')?.textContent ?? ''") == "测试从者");
-                Assert.Equal("个性化", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Companion", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelectorAll('main h1#page-title').length"));
 
@@ -124,7 +169,7 @@ public sealed class PersonalizationWebTests
                     "document.querySelector('input[name=pref-theme][value=FgoDark]').click()");
                 await WaitUntil(() => themeStore.Value.Theme == AppTheme.FgoDark);
                 await WaitUntil(() => host.AckedThemeVersion >= 2);
-                Assert.Equal("#23242B", await Script(web,
+                Assert.Equal("#FBFAF8", await Script(web,
                     "getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()"));
                 await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('input[name=pref-theme][value=FgoDark]').checked") == "true");
@@ -143,6 +188,7 @@ public sealed class PersonalizationWebTests
             {
                 if (window.IsVisible) window.Close();
                 if (File.Exists(previewPath)) File.Delete(previewPath);
+                if (File.Exists(packagePreviewPath)) File.Delete(packagePreviewPath);
             }
 
             using var session = factory.CreateSession("Personalization");

@@ -29,6 +29,19 @@ public sealed record ChatWebTurnSnapshot(
     bool SpeechNeedsConfiguration);
 
 public sealed record ChatWebCapabilityNotice(string Text, string Kind);
+public sealed record ChatWebQuestion(string Id, string Text, IReadOnlyList<string> Options, bool AllowMultiple);
+public sealed record ChatWebUserInput(string RunId, string RequestId, long Revision,
+    DateTimeOffset ExpiresAt, IReadOnlyList<ChatWebQuestion> Questions, bool IsSubmitting, string ErrorText);
+
+/// <summary>Frozen owner data, never instructions or editable arguments from the web page.</summary>
+public sealed record ChatWebApproval(string RunId, string RequestId, long Revision, DateTimeOffset ExpiresAt,
+    string ToolName, string PlainTextDetails, bool IsSubmitting, string ErrorText)
+{
+    public string? ActionTitle { get; init; }
+    /// <summary>Exact owner confirmation or host formatting of the frozen resource; never a model summary.</summary>
+    public string? PlainTextSummary { get; init; }
+}
+public enum ChatApprovalDecision { Allow, Deny, Cancel }
 
 public sealed record ChatWebConversationSnapshot(
     IReadOnlyList<ChatWebTurnSnapshot> Turns,
@@ -48,7 +61,12 @@ public sealed record ChatWebConversationSnapshot(
     ChatWebCapabilityNotice CapabilityNotice,
     ChatWebProjectContext Project,
     IReadOnlyList<ChatWebContextChip> ContextChips,
-    IReadOnlyList<ChatWebSource> RecalledSources);
+    IReadOnlyList<ChatWebSource> RecalledSources)
+{
+    public ChatWebUserInput? PendingInput { get; init; }
+    public ChatWebApproval? PendingApproval { get; init; }
+    public bool HasPendingRun { get; init; }
+}
 
 public sealed record ChatWebHistoryItem(
     string ConversationId,

@@ -16,6 +16,58 @@ namespace FgoPet.Windows.Tests.Shell;
 public sealed class TodoPeekSurfaceTests
 {
     [Fact]
+    public async Task Today_shows_the_four_owner_reasons_and_frozen_paper_in_the_real_webview()
+    {
+        await StaRunner.RunAsync(async () =>
+        {
+            var time = TimeProvider.System;
+            var service = new TodoApplicationService(new Repository(), time);
+            var active = service.Create("Finish Margin review", null, TodoPriority.Normal, null);
+            service.Save(active.Activate(time.GetUtcNow()));
+            service.Create("Send weekly report", null, TodoPriority.Normal, time.GetUtcNow());
+            service.Create("Fix voice service", null, TodoPriority.Normal, time.GetUtcNow().AddDays(-1));
+            service.Create("Buy milk", null, TodoPriority.Normal, null);
+            using var feed = new TodoChangeFeed(service);
+            using var factory = new TodoPeekSurfaceFactory(new TodoWebAdapter(service, feed), feed, time,
+                _ => false, Path.Combine(Path.GetTempPath(), "margin-today-" + Guid.NewGuid().ToString("N")));
+            var host = Assert.IsType<WebView2SurfaceHost>(factory.CreateView());
+            var window = new Window { Width = 320, Height = 400, Left = -10000, Top = -10000,
+                ShowInTaskbar = false, Content = host };
+            try
+            {
+                window.Show();
+                await WaitUntil(() => host.State == WebSurfaceState.Ready);
+                var web = Assert.Single(host.Children.OfType<WebView2>());
+                await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.task-reason').length === 4") == "true");
+                Assert.Equal("[\"In progress\",\"Added today\",\"Overdue\",\"Due today\"]",
+                    await web.CoreWebView2.ExecuteScriptAsync("Array.from(document.querySelectorAll('.task-reason'), node => node.textContent)"));
+                Assert.Equal("\"· 4\"", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#progress').textContent"));
+                Assert.Equal("\"rgb(251, 250, 248)\"", await web.CoreWebView2.ExecuteScriptAsync("getComputedStyle(document.body).backgroundColor"));
+                foreach (var width in new[] { 320d, 240d })
+                {
+                    window.Width = width;
+                    await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
+                    await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
+                        "(() => { const row = document.querySelector('.input-row').getBoundingClientRect(); const input = document.getElementById('title').getBoundingClientRect(); const add = document.querySelector('.input-row button').getBoundingClientRect(); return Math.abs(add.right - row.right) < 1 && input.bottom - add.bottom >= 2 && input.width > 80 && document.documentElement.scrollWidth === innerWidth; })()") == "true");
+                }
+                window.Width = 320;
+                await window.Dispatcher.InvokeAsync(() => window.UpdateLayout());
+                var capture = Environment.GetEnvironmentVariable("FGO_PET_MARGIN_FEATURE_CAPTURE_DIR");
+                if (!string.IsNullOrWhiteSpace(capture))
+                {
+                    Directory.CreateDirectory(capture);
+                    using var file = File.Create(Path.Combine(capture, "today-webview.png"));
+                    await web.CoreWebView2.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, file);
+                    File.AppendAllText(Path.Combine(capture, "feature-verification.jsonl"), JsonSerializer.Serialize(new
+                    { at = DateTimeOffset.UtcNow, request = "offline-today-fixture", stage = "projection.webview", result = "rendered" }) + "\n");
+                }
+            }
+            finally { window.Close(); host.Dispose(); }
+            Assert.Equal(0, feed.ActiveSubscriptionCount);
+        });
+    }
+
+    [Fact]
     public async Task Peek_page_quick_add_and_confirmed_changes_share_the_authoritative_service()
     {
         await StaRunner.RunAsync(async () =>

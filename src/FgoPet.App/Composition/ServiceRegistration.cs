@@ -1,4 +1,5 @@
 using FgoPet.Core.Panels;
+using FgoPet.App.Composition;
 using FgoPet.Infrastructure.Speech;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.App.Theming;
@@ -60,11 +61,14 @@ using FgoPet.UiSdk;
 using FgoPet.Extensibility;
 using FgoPet.Plugin.Content;
 using FgoPet.Character.Presentation;
+using FgoPet.Understanding.Desktop;
 
 namespace FgoPet.App.Bootstrap;
 
 public static class ServiceRegistration
 {
+    // Temporary acceptance diagnostics; no listener is installed by the application. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource ShellTiming = new("FgoPet.TestTiming.SettingsFactory");
     public static IServiceCollection AddFgoPet(this IServiceCollection services, string[] args, Func<Task>? normalExit = null, bool includeTodo = true, bool includeFocus = true, bool includeMemory = true, bool includeSpeech = true, bool includeIndexTts = true, bool includeAgentBackend = true)
     {
         var paths = AppPaths.ForCurrentUser();
@@ -73,12 +77,23 @@ public static class ServiceRegistration
         services
         .AddAgentBackendServices(paths.StorageRoot, includeAgentBackend)
         .AddTodoCapability(includeTodo, paths.StorageRoot)
-        .AddFocusCapability(includeFocus)
+        .AddFocusCapability(includeFocus, provider => () => provider.GetRequiredService<AppRuntime>().ActiveRole?.ServantId)
         .AddMemoryCapability(includeMemory, provider => new ProviderMemoryCandidateExtractor(
             connection => provider.GetRequiredService<IChatProviderResolver>().Resolve(connection),
             provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
             provider.GetRequiredService<IMemoryRecall>()),
             provider => () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection)
+        .AddUnderstandingCapability((provider, scope) =>
+        {
+            var role = provider.GetRequiredService<ServantLibraryViewModel>().Servants
+                .FirstOrDefault(item => item.ServantId == scope.ServantId);
+            var context = provider.GetRequiredService<ConversationViewModel>().SessionContext;
+            return new UnderstandingPagePresentation(
+                role?.DisplayName ?? "Current companion",
+                scope.ProjectId is null ? "Across this companion's conversations" :
+                    context.ProjectId == scope.ProjectId && !string.IsNullOrWhiteSpace(context.ProjectLabel) ? context.ProjectLabel : "Current project");
+        })
+        .AddReminderCapability()
         .AddSingleton(TimeProvider.System)
         .AddLogging(builder => builder.AddDebug())
         .AddSingleton<TextWriter>(Console.Out)
@@ -111,6 +126,10 @@ public static class ServiceRegistration
             Path.Combine(paths.StorageRoot, "Live2DSessions"),
             Path.Combine(paths.StorageRoot, "Live2DWebView2")))
         .Replace(ServiceDescriptor.Singleton<FgoPet.Kernel.Presentation.IPortraitBackend>(provider => provider.GetRequiredService<Live2DPortraitController>()))
+        .AddSingleton<IFgoPetPlugin>(provider => new Live2DPresentationPlugin(
+            provider.GetRequiredService<CompanionPresentation>(),
+            () => provider.GetRequiredService<FgoPet.App.Dialogue.ConversationOrchestrator>(),
+            provider.GetRequiredService<Live2DPortraitController>()))
         .AddSingleton<IPortraitSurface>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>() as IPortraitSurface
             ?? throw new InvalidOperationException("The selected portrait backend has no desktop surface."))
         .AddSingleton<IPortraitController>(provider => provider.GetRequiredService<FgoPet.Kernel.Presentation.IPortraitBackend>())
@@ -161,12 +180,21 @@ public static class ServiceRegistration
         // Phase 3 model connection: metadata in JSON, key in Credential Manager.
         .AddSingleton<HttpClient>()
         .AddSpeechServices(includeSpeech)
+        .AddSingleton(provider => new Live2DSpeechBinding(
+            provider.GetRequiredService<AppRuntime>(),
+            provider.GetRequiredService<Live2DPortraitController>().SetSpeechLevel,
+            provider.GetRequiredService<Live2DPortraitController>().MatchesRole))
+        .Replace(ServiceDescriptor.Singleton<FgoPet.Core.Speech.ISpeechAudioPlayer>(provider =>
+            new WpfSpeechAudioPlayer(provider.GetRequiredService<Live2DSpeechBinding>().CreateObserver)))
         .AddSingleton<WindowsCredentialStore>()
         .AddSingleton<ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialStore>(provider => provider.GetRequiredService<WindowsCredentialStore>())
         .AddSingleton<FgoPet.Core.Secrets.ICredentialReader>(provider => provider.GetRequiredService<WindowsCredentialStore>())
-        .AddDialogueRuntime()
+        .AddNativeCapabilities()
+        .AddCompanionAwareness()
+        .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
+        .AddQqChannel(paths.StorageRoot)
         .AddChatWebPresentation()
         .AddModelConnectionSettings()
         .AddSpeechSettings(Path.Combine(paths.StorageRoot, "voices"), includeSpeech)
@@ -195,10 +223,16 @@ public static class ServiceRegistration
             paths.StorageRoot, provider.GetRequiredService<ThemeService>()))
         .AddSingleton<SettingsWindow>(provider =>
         {
-            provider.InitializeMemoryContext();
-            return new SettingsWindow(
-                provider.GetRequiredService<SettingsViewModel>(),
-                provider.GetRequiredService<SettingsWebRootFactory>());
+            using (ShellTiming.StartActivity("settings.factory.initialize_memory_context"))
+                provider.InitializeMemoryContext();
+            SettingsViewModel viewModel;
+            using (ShellTiming.StartActivity("settings.factory.resolve_view_model"))
+                viewModel = provider.GetRequiredService<SettingsViewModel>();
+            SettingsWebRootFactory webFactory;
+            using (ShellTiming.StartActivity("settings.factory.resolve_web_root_factory"))
+                webFactory = provider.GetRequiredService<SettingsWebRootFactory>();
+            using (ShellTiming.StartActivity("settings.factory.construct_window"))
+                return new SettingsWindow(viewModel, webFactory);
         })
         .AddSingleton<UserDataExportService>()
         .AddSingleton<IUserDataExporter>(provider => provider.GetRequiredService<UserDataExportService>())
@@ -217,7 +251,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<TimeProvider>(),
             packageRepository: provider.GetRequiredService<IArtPackageRepository>(),
             safeLog: eventName => provider.GetRequiredService<ILogger<PrivateBackupRestoreService>>()
-                .LogInformation("{BackupEvent}", eventName)))
+                .LogInformation("{BackupEvent}", eventName),
+            derivedData: provider.GetServices<IDerivedConversationData>()))
         .AddSingleton<IPrivacyFilePicker, WpfPrivacyFilePicker>()
         .AddSingleton<ISettingsWebPage>(provider => new PrivacyWebPage(
             provider.GetRequiredService<MemoryViewModel>(),
@@ -231,6 +266,8 @@ public static class ServiceRegistration
             provider.GetRequiredService<ServantLibraryViewModel>(),
             provider.GetRequiredService<SpeechPlaybackCoordinator>(),
             provider.GetRequiredService<IDialogueProjectCatalog>()))
+        .AddSingleton<FgoPet.Platform.WindowText.IWindowTextDiagnostics, WindowTextDiagnostics>()
+        .AddSingleton<FgoPet.Platform.WindowText.IWindowTextReader, FgoPet.Platform.Windows.WindowText.WindowsWindowTextReader>()
         .AddSingleton(provider => new ChatWebSurfaceFactory(
             provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWebSessionFactory>(), paths.StorageRoot,
             provider.GetRequiredService<ThemeService>()))
@@ -241,7 +278,10 @@ public static class ServiceRegistration
             provider.GetRequiredService<IWorkspaceCatalog>(),
             provider.GetRequiredService<FgoPet.Kernel.Companion.CompanionPresentation>(),
             webFactory: provider.GetRequiredService<ChatWebSurfaceFactory>(),
-            workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open))
+            workspaceNavigation: provider.GetRequiredService<WorkspaceWindowCoordinator>().Open,
+            localWorkspace: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>(),
+            selectedImage: provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatImageSelection>(),
+            browserImages: provider.GetRequiredService<FgoPet.Extensibility.IBrowserVisualAccess>()))
         .AddSingleton<DialogueWindowPlacementCoordinator>()
         .AddSingleton(provider =>
         {
@@ -294,4 +334,12 @@ public static class ServiceRegistration
         return services;
     }
 
+    private sealed class WindowTextDiagnostics(ILogger<WindowTextDiagnostics> logger)
+        : FgoPet.Platform.WindowText.IWindowTextDiagnostics
+    {
+        public void Record(FgoPet.Platform.WindowText.WindowTextReadDiagnostic notification) => logger.LogInformation(
+            "Selected window read {Timestamp} {Correlation} {Stage} {Status} {CharacterCount}",
+            notification.TimestampUtc, notification.RequestHash, notification.Stage,
+            notification.Status, notification.CharacterCount);
+    }
 }

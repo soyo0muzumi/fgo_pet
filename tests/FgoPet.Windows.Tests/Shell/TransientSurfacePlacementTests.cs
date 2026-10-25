@@ -14,7 +14,7 @@ public sealed class TransientSurfacePlacementTests
 
         var placed = TransientSurfacePlacement.Place(anchor, workArea, new Dpi2(1.5, 1.5), 320, 400);
 
-        Assert.Equal(1900 - 18 - 480, placed.X);
+        Assert.Equal(1900 - 24 - 480, placed.X);
         Assert.Equal(200, placed.Y);
         Assert.Equal(480, placed.Width);
         Assert.Equal(600, placed.Height);

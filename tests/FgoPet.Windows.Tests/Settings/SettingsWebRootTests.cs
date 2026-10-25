@@ -295,7 +295,7 @@ public sealed class SettingsWebRootTests
                 Assert.IsType<WebView2SurfaceHost>(window.Content);
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelectorAll('main h1#page-title').length"));
-                Assert.Equal("用户资料", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Your name", await Script(web, "document.querySelector('#page-title').textContent"));
 
                 window.Width = 320;
                 var viewport = 0;

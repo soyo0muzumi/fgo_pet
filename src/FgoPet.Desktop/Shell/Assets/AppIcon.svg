@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Mash · minimal avatar · Live2D outfit</title>
+  <desc id="desc">A lavender-pink bob covers the left eye; a single dark capsule eye and rosy cheek sit on an ivory face, above a white pointed collar, red tie, and grey-and-white jacket on a charcoal-purple background.</desc>
+  <!-- Flat fills only. Each named group is independently editable. -->
+  <rect id="background" width="512" height="512" fill="#2E2539"/>
+  <g id="hair-back" fill="#B58BAF">
+    <path d="M247 29 C119 31 42 133 33 265 C28 342 49 402 73 426 L77 405 Q87 448 118 466 L111 429 Q142 465 179 467 L168 442 Q193 460 229 459 L238 423 L337 418 L329 449 Q353 437 365 416 L365 440 Q390 425 401 402 L407 439 Q432 413 439 373 L448 395 Q471 370 472 327 C488 205 412 41 313 31 Q275 16 247 29 Z"/>
+  </g>
+  <!-- Neck and shoulders share the chin axis at x=254, not the hair bounding box. -->
+  <path id="neck" d="M232 426 L279 426 L278 456 Q255 465 233 456 Z" fill="#E8C5C1"/>
+  <g id="outfit">
+    <path id="grey-sleeves" d="M207 451 Q178 457 158 492 L350 492 Q331 461 301 451 L276 451 L232 451 Z" fill="#9B96A1"/>
+    <path id="dark-shirt" d="M229 452 L279 452 L300 492 L208 492 Z" fill="#34323B"/>
+    <path id="white-jacket" d="M222 448 Q202 450 190 462 L208 476 L202 492 L224 492 L238 456 Z M286 448 Q307 450 318 462 L301 476 L308 492 L286 492 L271 456 Z" fill="#F5F3F7"/>
+    <path id="hood-folds" d="M190 462 L213 469 L224 492 L217 469 L222 448 Z M318 462 L295 469 L286 492 L290 469 L286 448 Z" fill="#D4CFD9"/>
+    <path id="red-tie" d="M249 456 L260 456 L264 463 L259 470 L267 492 L242 492 L250 470 L245 463 Z" fill="#BD352F"/>
+    <path id="white-shirt-collar" d="M233 448 Q242 453 254 456 L242 474 L229 458 Z M277 448 Q267 453 254 456 L268 474 L282 458 Z" fill="#FFFFFF"/>
+  </g>
+  <path id="face" d="M168 164 C219 134 286 139 331 177 C369 207 395 272 398 330 C400 375 353 420 290 439 C249 451 193 441 165 420 C127 391 112 333 119 270 C122 219 139 182 168 164 Z" fill="#FFF0DF"/>
+  <g id="face-details">
+    <rect id="eye" x="323" y="253" width="28" height="78" rx="14" fill="#251F2D" transform="rotate(-10 337 292)"/>
+    <ellipse id="blush" cx="362" cy="345" rx="23" ry="13" fill="#F7B8C1" transform="rotate(-20 362 345)"/>
+  </g>
+  <g id="hair-front" fill="#E5BEDD">
+    <path d="M305 31 C275 8 223 16 178 33 C84 67 34 139 23 242 C15 310 25 369 47 399 Q28 343 38 293 Q43 365 67 405 L64 445 Q80 431 82 414 Q91 449 122 469 L111 426 Q131 445 154 449 Q136 429 128 405 Q147 419 171 424 Q153 397 150 374 Q173 396 191 405 Q178 381 177 366 Q193 388 212 397 L217 349 L223 380 Q263 339 272 282 L268 336 Q303 288 296 164 Q313 178 329 191 L300 142 Q318 183 344 248 Q347 222 340 202 L379 266 Q382 319 385 339 L381 365 Q399 350 408 321 Q411 390 400 440 Q430 417 436 367 L445 399 Q459 381 466 346 Q479 365 492 370 Q479 353 475 337 C500 299 485 237 458 181 C416 88 367 27 305 31 Z M470 235 Q493 300 480 333 Q471 310 470 235 Z" fill-rule="evenodd"/>
+    <path d="M296 164 Q298 145 291 126 L329 191 Z" fill="#B58BAF"/>
+    <path d="M340 202 L337 169 Q358 200 379 231 Q375 189 362 146 Q385 185 389 268 Z" fill="#B58BAF"/>
+  </g>
+</svg>

@@ -1,3 +1,106 @@
+const english = {
+  "speech.feedback.initial": "Speech is off by default. Save settings, then preview manually beside a companion reply.",
+  "speech.feedback.voiceSaved": "Voice saved locally. Select it to preview. Reference audio is sent only to your configured local service.",
+  "speech.feedback.recordDeleted": "Voice record deleted. Restored backups do not include local reference audio.",
+  "speech.feedback.copyDeleted": "Local voice copy deleted. Manage the IndexTTS service cache in that service.",
+  "speech.feedback.stopped": "Playback stopped. The local service may still be generating; late audio will not play.",
+  "speech.feedback.saved": "Voice settings saved.",
+  "speech.feedback.savedOff": "Voice settings saved. Speech remains off.",
+  "speech.feedback.previewDone": "Preview completed.",
+  "speech.feedback.keyCleared": "Cloud voice key cleared.",
+  "speech.feedback.voiceLimit": "The limit of 32 voices has been reached.",
+  "speech.feedback.voiceName": "Enter a voice name of 1 to 80 characters.",
+  "speech.feedback.voiceSaveFailed": "Voice could not be saved. Use a WAV up to 20 MB and check local storage permissions.",
+  "speech.feedback.deleteFailed": "Deletion did not complete. If the file was deleted but settings were not saved, delete this record again. Files outside the voice directory will not be deleted.",
+  "speech.feedback.invalidSettings": "Voice settings are invalid. Check the endpoint, language and text length.",
+  "speech.feedback.saveFailed": "Save failed. Check local storage permissions or credential storage.",
+  "speech.feedback.previewFailed": "Preview did not complete.",
+  "speech.feedback.invalidPreview": "Preview settings are invalid. Check the current provider configuration.",
+  "speech.dirty": "You have unsaved changes. Save voice settings to apply them.",
+  "speech.reading": "Speech",
+  "speech.enabled": "Speak replies",
+  "speech.enabledHint": "Read completed replies. Local services must already be running; Margin does not install or start them.",
+  "speech.provider": "Voice Service",
+  "speech.openai": "OpenAI-compatible service",
+  "speech.endpoint": "Endpoint",
+  "speech.endpointAria": "Voice endpoint",
+  "speech.model": "Model",
+  "speech.modelAria": "Voice model",
+  "speech.voice": "Voice",
+  "speech.voiceAria": "Voice name",
+  "speech.key": "API key",
+  "speech.clearKeyAria": "Clear saved key",
+  "speech.clearKey": "Clear key",
+  "speech.indextts": "Local IndexTTS service",
+  "speech.indexEndpoint": "IndexTTS endpoint",
+  "speech.indexHint": "Connect to an IndexTTS service you have already started.",
+  "speech.voices": "Saved voices",
+  "speech.chooseVoice": "Choose a reference voice",
+  "speech.deleteCopy": "Delete selected copy",
+  "speech.confirm": "Confirm deletion",
+  "speech.cancel": "Cancel",
+  "speech.delete": "Delete",
+  "speech.newVoice": "New voice name",
+  "speech.import": "Import WAV",
+  "speech.importHint": "Use a clear recording of one speaker with no background music (WAV, up to 20 MB). A local copy is sent to your local service for voice cloning; no model training is performed.",
+  "speech.playback": "Playback",
+  "speech.rate": "Speed",
+  "speech.volume": "Volume",
+  "speech.autoRead": "Automatically read new replies in this conversation",
+  "speech.dnd": "Do not read automatically during Do Not Disturb",
+  "speech.limit": "Automatic reading limit (characters per reply)",
+  "speech.limitAria": "Automatic reading limit",
+  "speech.limitHint": "Automatic reading is off by default and limited to the current conversation, with at most 300 characters per reply.",
+  "speech.preview": "Preview voice",
+  "speech.stop": "Stop preview",
+  "speech.save": "Save voice settings",
+  "speech.immediateHint": "Preview saves a pending key before playback. Clearing a key, importing a voice and deleting a voice take effect immediately.",
+  "speech.retry": "Retry",
+  "speech.retryChange": "Retry change",
+  "speech.reload": "Reload",
+  "speech.noVoice": "No voice selected",
+  "speech.loadFailed": "Voice settings could not be loaded. Try again.",
+  "speech.notCompleted": "The action did not complete. Current settings were reloaded; you can retry.",
+  "speech.styleFailed": "The page style could not be loaded. Reopen the page.",
+  "speech.advanced": "Playback options",
+  "speech.keySaved": "Key saved in Windows Credential Manager.",
+  "speech.keyNotSaved": "No key saved.",
+  "speech.speedValue": "Speed {value}x",
+  "speech.volumeValue": "Volume {value}%",
+  "speech.deletePrompt": "Delete “{name}” and its local copy? The original imported file is kept.",
+  "speech.provider.IndexTts": "IndexTTS local voice cloning",
+  "speech.provider.OpenAiCompatible": "OpenAI-compatible service"
+};
+const t = (key, values = {}) => (english[key] || key).replace(/\{(\w+)\}/g, (match, name) => values[name] === undefined ? match : String(values[name]));
+
+// Translate only known owner UI feedback. Service names and unrecognized content
+// remain literal text; the owner snapshot and command behavior are unchanged.
+const ownerFeedbackKeys = new Map([
+  ["朗读默认关闭；保存后可在角色消息旁手动试听。", "speech.feedback.initial"],
+  ["音色已保存到本机；选择后可试听。参考音频仅发送给你配置的本机服务。", "speech.feedback.voiceSaved"],
+  ["音色记录已删除；恢复备份不包含本机参考音频。", "speech.feedback.recordDeleted"],
+  ["本机音色副本已删除。IndexTTS 服务自己的缓存需在该服务中管理。", "speech.feedback.copyDeleted"],
+  ["已停止播放；本地服务可能仍在生成，迟到音频不会播放。", "speech.feedback.stopped"],
+  ["朗读设置已保存。", "speech.feedback.saved"],
+  ["朗读设置已保存；当前保持关闭。", "speech.feedback.savedOff"],
+  ["试听完成。", "speech.feedback.previewDone"],
+  ["朗读云端密钥已清除。", "speech.feedback.keyCleared"],
+  ["音色数量已达 32 个。", "speech.feedback.voiceLimit"],
+  ["请填写 1 至 80 字的音色名称。", "speech.feedback.voiceName"],
+  ["音色保存失败。请使用不超过 20 MB 的 WAV，并检查本机存储权限。", "speech.feedback.voiceSaveFailed"],
+  ["删除未完成。若文件已删除但设置未保存，可再次删除此记录；不会删除音色目录外的文件。", "speech.feedback.deleteFailed"],
+  ["朗读设置无效，请检查地址、语言和文本长度。", "speech.feedback.invalidSettings"],
+  ["保存失败，请检查本机存储权限或凭据存储。", "speech.feedback.saveFailed"],
+  ["试听未完成。", "speech.feedback.previewFailed"],
+  ["试听设置无效，请检查当前 provider 的配置。", "speech.feedback.invalidPreview"],
+]);
+function ownerFeedback(text) {
+  const key = ownerFeedbackKeys.get(text);
+  if (key) return t(key);
+
+  return text;
+}
+
 // Speech (voice reading) settings page — Web module, dynamically imported by the
 // unified settings root. Presents the original WPF SpeechConnectionPage capabilities
 // without adding business semantics.
@@ -11,133 +114,133 @@
 // ever expose { id, name }; the on-disk reference audio path is never returned.
 const MARKUP = `
   <div class="sc-page" data-state="loading">
-    <p class="sc-dirty" data-dirty role="status" aria-live="polite" hidden>你有未保存的更改，点“保存朗读设置”后才会生效。</p>
+    <p class="sc-dirty" data-dirty role="status" aria-live="polite" hidden>${t("speech.dirty")}</p>
 
-    <section class="sc-card" aria-label="语音朗读">
+    <section class="sc-card" aria-label="${t("speech.reading")}">
       <label class="sc-switch-row">
         <span class="sc-switch-copy">
-          <span class="sc-switch-title">启用角色朗读</span>
-          <span class="sc-switch-description">首版只朗读已完成的角色回复；不会安装、启动或下载任何本地模型。</span>
+          <span class="sc-switch-title">${t("speech.enabled")}</span>
+          <span class="sc-switch-description">${t("speech.enabledHint")}</span>
         </span>
-        <input type="checkbox" data-field="enabled" aria-label="启用角色朗读">
+        <input type="checkbox" data-field="enabled" aria-label="${t("speech.enabled")}">
         <span class="sc-switch-control" aria-hidden="true"><i></i></span>
       </label>
     </section>
 
     <section class="sc-card" aria-labelledby="sc-provider-heading">
-      <div class="sc-card-heading"><h2 id="sc-provider-heading">朗读服务</h2></div>
+      <div class="sc-card-heading"><h2 id="sc-provider-heading">${t("speech.provider")}</h2></div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-provider">朗读服务</label>
-        <select id="sc-provider" class="sc-input" data-field="provider" aria-label="朗读服务"></select>
+        <label class="sc-label" for="sc-provider">${t("speech.provider")}</label>
+        <select id="sc-provider" class="sc-input" data-field="provider" aria-label="${t("speech.provider")}"></select>
       </div>
     </section>
 
     <section class="sc-card" data-card="openai" aria-labelledby="sc-openai-heading">
-      <div class="sc-card-heading"><h2 id="sc-openai-heading">OpenAI 风格 HTTP</h2></div>
+      <div class="sc-card-heading"><h2 id="sc-openai-heading">${t("speech.openai")}</h2></div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-openai-base">Base URL</label>
+        <label class="sc-label" for="sc-openai-base">${t("speech.endpoint")}</label>
         <input id="sc-openai-base" class="sc-input" type="text" inputmode="url" autocomplete="off"
-               data-field="openAiBaseUrl" aria-label="朗读 Base URL">
+               data-field="openAiBaseUrl" aria-label="${t("speech.endpointAria")}">
       </div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-openai-model">模型</label>
+        <label class="sc-label" for="sc-openai-model">${t("speech.model")}</label>
         <input id="sc-openai-model" class="sc-input" type="text" autocomplete="off"
-               data-field="openAiModel" aria-label="朗读模型">
+               data-field="openAiModel" aria-label="${t("speech.modelAria")}">
       </div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-openai-voice">音色（手动填写）</label>
+        <label class="sc-label" for="sc-openai-voice">${t("speech.voice")}</label>
         <input id="sc-openai-voice" class="sc-input" type="text" autocomplete="off"
-               data-field="openAiVoice" aria-label="朗读音色">
+               data-field="openAiVoice" aria-label="${t("speech.voiceAria")}">
       </div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-key">API Key</label>
+        <label class="sc-label" for="sc-key">${t("speech.key")}</label>
         <div class="sc-key">
           <input id="sc-key" class="sc-input" type="password" autocomplete="new-password" data-field="apiKey"
-                 aria-label="API Key" aria-describedby="sc-key-state">
-          <button type="button" class="sc-button sc-immediate" data-clear-key aria-label="清除已保存密钥">清除密钥</button>
+                 aria-label="${t("speech.key")}" aria-describedby="sc-key-state">
+          <button type="button" class="sc-button sc-immediate" data-clear-key aria-label="${t("speech.clearKeyAria")}">${t("speech.clearKey")}</button>
         </div>
         <p class="sc-field-hint" id="sc-key-state" data-key-state></p>
       </div>
     </section>
 
     <section class="sc-card" data-card="indextts" aria-labelledby="sc-indextts-heading">
-      <div class="sc-card-heading"><h2 id="sc-indextts-heading">IndexTTS 本机服务</h2></div>
+      <div class="sc-card-heading"><h2 id="sc-indextts-heading">${t("speech.indextts")}</h2></div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-indextts-base">IndexTTS 地址</label>
+        <label class="sc-label" for="sc-indextts-base">${t("speech.indexEndpoint")}</label>
         <input id="sc-indextts-base" class="sc-input" type="text" inputmode="url" autocomplete="off"
-               data-field="indexTtsBaseUrl" aria-label="IndexTTS 地址">
+               data-field="indexTtsBaseUrl" aria-label="${t("speech.indexEndpoint")}">
       </div>
-      <p class="sc-field-hint">连接你已启动的 IndexTTS WebUI。不会安装模型或启动服务。</p>
+      <p class="sc-field-hint">${t("speech.indexHint")}</p>
       <div class="sc-field">
-        <label class="sc-label" for="sc-voice">已保存音色</label>
+        <label class="sc-label" for="sc-voice">${t("speech.voices")}</label>
         <div class="sc-voice-row">
-          <select id="sc-voice" class="sc-input" data-voice-select aria-label="选择参考音色"></select>
-          <button type="button" class="sc-button sc-immediate" data-delete-voice hidden>删除所选副本</button>
+          <select id="sc-voice" class="sc-input" data-voice-select aria-label="${t("speech.chooseVoice")}"></select>
+          <button type="button" class="sc-button sc-immediate" data-delete-voice hidden>${t("speech.deleteCopy")}</button>
         </div>
-        <div class="sc-delete-confirm" data-delete-confirm hidden role="group" aria-label="删除确认">
+        <div class="sc-delete-confirm" data-delete-confirm hidden role="group" aria-label="${t("speech.confirm")}">
           <p class="sc-delete-text" data-delete-text></p>
           <div class="sc-delete-actions">
-            <button type="button" class="sc-button" data-delete-cancel>取消</button>
-            <button type="button" class="sc-button sc-immediate" data-delete-confirm-btn>删除</button>
+            <button type="button" class="sc-button" data-delete-cancel>${t("speech.cancel")}</button>
+            <button type="button" class="sc-button sc-immediate" data-delete-confirm-btn>${t("speech.delete")}</button>
           </div>
         </div>
       </div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-voice-name">新音色名称</label>
+        <label class="sc-label" for="sc-voice-name">${t("speech.newVoice")}</label>
         <div class="sc-voice-row">
           <input id="sc-voice-name" class="sc-input" type="text" maxlength="80" autocomplete="off"
-                 data-field="voiceName" aria-label="新音色名称">
-          <button type="button" class="sc-button sc-immediate" data-import-voice>导入 WAV</button>
+                 data-field="voiceName" aria-label="${t("speech.newVoice")}">
+          <button type="button" class="sc-button sc-immediate" data-import-voice>${t("speech.import")}</button>
         </div>
-        <p class="sc-field-hint">使用清晰、单人、无背景音乐的参考音频（WAV，最多 20 MB）。保存本机副本，克隆时发送给本机服务；不进行模型训练。</p>
+        <p class="sc-field-hint">${t("speech.importHint")}</p>
       </div>
     </section>
 
     <section class="sc-card" aria-labelledby="sc-play-heading">
-      <div class="sc-card-heading"><h2 id="sc-play-heading">播放</h2></div>
+      <div class="sc-card-heading"><h2 id="sc-play-heading">${t("speech.playback")}</h2></div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-rate">语速</label>
+        <label class="sc-label" for="sc-rate">${t("speech.rate")}</label>
         <div class="sc-slider-row">
-          <input id="sc-rate" type="range" min="0.5" max="2" step="0.1" data-field="rate" aria-label="语速">
+          <input id="sc-rate" type="range" min="0.5" max="2" step="0.1" data-field="rate" aria-label="${t("speech.rate")}">
           <span class="sc-slider-value" data-rate-value></span>
         </div>
       </div>
       <div class="sc-field">
-        <label class="sc-label" for="sc-volume">音量</label>
+        <label class="sc-label" for="sc-volume">${t("speech.volume")}</label>
         <div class="sc-slider-row">
-          <input id="sc-volume" type="range" min="0" max="1" step="0.05" data-field="volume" aria-label="音量">
+          <input id="sc-volume" type="range" min="0" max="1" step="0.05" data-field="volume" aria-label="${t("speech.volume")}">
           <span class="sc-slider-value" data-volume-value></span>
         </div>
       </div>
       <label class="sc-switch-row">
-        <span class="sc-switch-copy"><span class="sc-switch-title">允许自动朗读当前会话的新回复</span></span>
-        <input type="checkbox" data-field="autoReadEnabled" aria-label="允许自动朗读当前会话的新回复">
+        <span class="sc-switch-copy"><span class="sc-switch-title">${t("speech.autoRead")}</span></span>
+        <input type="checkbox" data-field="autoReadEnabled" aria-label="${t("speech.autoRead")}">
         <span class="sc-switch-control" aria-hidden="true"><i></i></span>
       </label>
       <label class="sc-switch-row">
-        <span class="sc-switch-copy"><span class="sc-switch-title">免打扰时不自动朗读</span></span>
-        <input type="checkbox" data-field="doNotDisturb" aria-label="免打扰时不自动朗读">
+        <span class="sc-switch-copy"><span class="sc-switch-title">${t("speech.dnd")}</span></span>
+        <input type="checkbox" data-field="doNotDisturb" aria-label="${t("speech.dnd")}">
         <span class="sc-switch-control" aria-hidden="true"><i></i></span>
       </label>
       <div class="sc-field">
-        <label class="sc-label" for="sc-limit">自动朗读上限（每条最多字数）</label>
+        <label class="sc-label" for="sc-limit">${t("speech.limit")}</label>
         <input id="sc-limit" class="sc-input sc-input--narrow" type="text" inputmode="numeric" autocomplete="off"
-               data-field="autoReadLimit" aria-label="自动朗读上限">
-        <p class="sc-field-hint" data-limit-hint>自动朗读默认关闭，并严格限制为当前会话、每条最多 300 字。</p>
+               data-field="autoReadLimit" aria-label="${t("speech.limitAria")}">
+        <p class="sc-field-hint" data-limit-hint>${t("speech.limitHint")}</p>
       </div>
     </section>
 
     <div class="sc-actions">
-      <button type="button" class="sc-button sc-immediate" data-preview>试听</button>
-      <button type="button" class="sc-button" data-stop-preview>停止试听</button>
-      <button type="button" class="sc-button sc-button--primary" data-save>保存朗读设置</button>
+      <button type="button" class="sc-button sc-immediate" data-preview>${t("speech.preview")}</button>
+      <button type="button" class="sc-button" data-stop-preview>${t("speech.stop")}</button>
+      <button type="button" class="sc-button sc-button--primary" data-save>${t("speech.save")}</button>
     </div>
-    <p class="sc-test-note">试听会先保存待处理密钥再播放；清除密钥、导入与删除音色立即生效。</p>
+    <p class="sc-test-note">${t("speech.immediateHint")}</p>
 
     <div class="sc-feedback" aria-live="polite" aria-atomic="true">
       <p class="sc-status" role="status" data-status></p>
       <p class="sc-error" role="alert" aria-live="assertive" data-error></p>
-      <button type="button" class="sc-button sc-retry" data-retry hidden>重试</button>
+      <button type="button" class="sc-button sc-retry" data-retry hidden>${t("speech.retry")}</button>
     </div>
   </div>`;
 
@@ -247,12 +350,12 @@ function clampVolume(value) {
 }
 
 function formatRate(value) {
-  return `语速 ${clampRate(value).toFixed(1)}x`;
+  return t("speech.speedValue", { value: clampRate(value).toFixed(1) });
 }
 
 function formatVolume(value) {
   const n = clampVolume(value);
-  return `音量 ${Math.round(n * 100)}%`;
+  return t("speech.volumeValue", { value: Math.round(n * 100) });
 }
 
 export async function mount(container, context) {
@@ -262,6 +365,13 @@ export async function mount(container, context) {
   stylesheet.href = new URL("./speech.css", import.meta.url).href;
   stylesheet.dataset.settingsOwner = "speech";
   container.innerHTML = MARKUP;
+  const advanced = document.createElement("details");
+  advanced.className = "sc-advanced";
+  advanced.open = context?.state?.advancedOpen === true;
+  const advancedLabel = document.createElement("summary");
+  advancedLabel.textContent = t("speech.advanced");
+  advanced.append(advancedLabel, container.querySelector("#sc-play-heading").closest("section"));
+  container.querySelector(".sc-test-note").after(advanced);
 
   let disposed = false;
   let mode = "loading";
@@ -326,7 +436,7 @@ export async function mount(container, context) {
       deleteCancel.disabled = false;
     }
     retry.hidden = mode === "loading" || mode === "busy" || !(localError || (snapshot && snapshot.errorText));
-    retry.textContent = retryCommand ? "重试此更改" : "重试读取";
+    retry.textContent = retryCommand ? t("speech.retryChange") : t("speech.reload");
     retry.disabled = mode === "loading" || mode === "busy";
   }
 
@@ -342,14 +452,14 @@ export async function mount(container, context) {
 
   function renderSnapshot() {
     if (!snapshot) return;
-    status.textContent = snapshot.statusText;
-    error.textContent = localError || snapshot.errorText || styleError;
+    status.textContent = ownerFeedback(snapshot.statusText);
+    error.textContent = localError || ownerFeedback(snapshot.errorText) || styleError;
 
     providerSelect.replaceChildren();
     for (const provider of snapshot.providers) {
       const option = document.createElement("option");
       option.value = provider.id;
-      option.textContent = provider.displayName;
+      option.textContent = english[`speech.provider.${provider.id}`] || provider.displayName;
       providerSelect.append(option);
     }
     providerSelect.value = snapshot.provider;
@@ -357,7 +467,7 @@ export async function mount(container, context) {
     openAiBase.value = snapshot.openAiBaseUrl;
     openAiModel.value = snapshot.openAiModel;
     openAiVoice.value = snapshot.openAiVoice;
-    keyState.textContent = snapshot.keyStateText;
+    keyState.textContent = t("speech." + (snapshot.isKeySaved ? "keySaved" : "keyNotSaved"));
 
     indexTtsBase.value = snapshot.indexTtsBaseUrl;
     renderVoices();
@@ -383,7 +493,7 @@ export async function mount(container, context) {
     voiceSelect.replaceChildren();
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "未选择音色";
+    placeholder.textContent = t("speech.noVoice");
     voiceSelect.append(placeholder);
     for (const voice of snapshot.voices) {
       const option = document.createElement("option");
@@ -402,7 +512,7 @@ export async function mount(container, context) {
     if (!snapshot || !deleting) return;
     const voice = snapshot.voices.find(v => v.id === snapshot.selectedVoiceId);
     if (!voice) { exitDeleteConfirm(); return; }
-    deleteText.textContent = `确认删除“${voice.name}”及其本机副本？原始导入文件不受影响。`;
+    deleteText.textContent = t("speech.deletePrompt", { name: voice.name });
     deleteVoiceButton.hidden = true;
     deleteConfirm.hidden = false;
   }
@@ -449,7 +559,7 @@ export async function mount(container, context) {
       setMode("ready");
     } catch {
       if (disposed) return;
-      localError = "语音朗读设置读取失败，请重试。";
+      localError = t("speech.loadFailed");
       retryCommand = null;
       if (snapshot) renderSnapshot();
       else error.textContent = localError;
@@ -476,7 +586,7 @@ export async function mount(container, context) {
       setMode("ready");
     } catch (caught) {
       if (disposed) return;
-      const message = "操作未完成，已回读当前状态。你可以重试。";
+      const message = t("speech.notCompleted");
       const failedSnapshot = normalizeSnapshot(caught?.details);
       if (failedSnapshot) {
         snapshot = failedSnapshot;
@@ -521,7 +631,7 @@ export async function mount(container, context) {
         localError = failedSnapshot.errorText || "";
         error.textContent = localError || snapshot.errorText;
       } else {
-        error.textContent = "操作未完成，已回读当前状态。你可以重试。";
+        error.textContent = t("speech.notCompleted");
       }
     }
   }
@@ -714,6 +824,7 @@ export async function mount(container, context) {
   function getState() {
     return {
       dirty,
+      advancedOpen: advanced.open,
       // 注意：apiKey 不写入页面状态（只写不读，避免把密钥暂存到内存快照）。
       draft: {
         enabled: enabledSwitch.checked,
@@ -746,7 +857,7 @@ export async function mount(container, context) {
   const stylesheetLoaded = await waitForStylesheet(stylesheet, signal);
   if (disposed) return dispose;
   if (!stylesheetLoaded) {
-    styleError = "语音朗读页面样式加载失败，请重新打开页面。";
+    styleError = t("speech.styleFailed");
     error.textContent = styleError;
   }
   void refreshSnapshot(true);

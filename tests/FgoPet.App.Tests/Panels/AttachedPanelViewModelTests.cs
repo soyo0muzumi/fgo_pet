@@ -328,7 +328,7 @@ public sealed class AttachedPanelViewModelTests
         var vm = new FocusCompactViewModel(new FakeFocusService(FocusSession.Idle));
 
         Assert.False(vm.CanStartFocus);
-        Assert.Equal("请先在角色库导入并激活一个角色。", vm.StartFocusDisabledReason);
+        Assert.Equal("Choose an active character first.", vm.StartFocusDisabledReason);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public sealed class AttachedPanelViewModelTests
         vm.SetActiveServant("800100");
 
         Assert.False(vm.CanStartFocus);
-        Assert.Equal("当前专注处于 暂停（专注），请先恢复或退出后再开始新专注。", vm.StartFocusDisabledReason);
+        Assert.Equal("Paused. Resume or stop the current session before starting another.", vm.StartFocusDisabledReason);
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public sealed class AttachedPanelViewModelTests
 
         Assert.True(vm.IsEditingCustomPreset);
         Assert.False(vm.CanStartFocus);
-        Assert.Equal("请先修正自定义专注/休息/轮次设置在允许范围内。", vm.StartFocusDisabledReason);
+        Assert.Equal("Check duration (5–180 min), break (1–60 min) and cycles (1–12).", vm.StartFocusDisabledReason);
     }
 
     [Fact]

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FgoPet.Plugin.Qq.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.UiSdk/FgoPet.UiSdk.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <InternalsVisibleTo Include="FgoPet.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="ui/qq.js" Link="Desktop/ui/settings/root/pages/qq.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="ui/qq.css" Link="Desktop/ui/settings/root/pages/qq.css" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -7,21 +7,28 @@ using System.Text.Json;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Settings;
 using FgoPet.Infrastructure.Secrets;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Infrastructure.Providers;
 
-public sealed class OpenAiCompatibleChatProvider : IChatProvider
+public sealed class OpenAiCompatibleChatProvider : IChatProvider, IChatImageInputProvider
 {
     private readonly Uri _baseUri;
     private readonly ICredentialReader _credentialReader;
     private readonly HttpClient _httpClient;
+    private readonly IChatDispatchGate? _dispatchGate;
+    private readonly ModelRouteKey _route;
+    private readonly IChatImageResolver? _images;
 
     public OpenAiCompatibleChatProvider(
         string providerId,
         Uri baseUri,
         string modelId,
         ICredentialReader credentialReader,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        IChatDispatchGate? dispatchGate = null,
+        ModelRouteKey? route = null,
+        IChatImageResolver? images = null)
     {
         if (baseUri is null || !baseUri.IsAbsoluteUri || baseUri.Scheme is not ("https" or "http"))
         {
@@ -38,6 +45,12 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         _baseUri = new Uri(baseUri.ToString().TrimEnd('/') + "/", UriKind.Absolute);
         _credentialReader = credentialReader ?? throw new ArgumentNullException(nameof(credentialReader));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _dispatchGate = dispatchGate;
+        var physicalRoute=ModelRouteKey.From(new ModelConnectionSettings(ProviderId,_baseUri.AbsoluteUri,ModelId));
+        if(route is not null&&(route.ProviderId!=physicalRoute.ProviderId||route.ModelId!=physicalRoute.ModelId||route.EndpointKey!=physicalRoute.EndpointKey))
+            throw new ArgumentException("MODEL_DISPATCH_ROUTE_MISMATCH",nameof(route));
+        _route=route??physicalRoute;
+        _images = images;
         CredentialTarget = $"fgo-pet/provider/{ProviderId}";
     }
 
@@ -46,6 +59,9 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     public string ModelId { get; }
 
     public string CredentialTarget { get; }
+
+    public void PrepareImages(ChatRequest request, CancellationToken token) =>
+        ChatImageInputs.Prepare(request, _route, _images, ImageModelCapabilities.Supports(_route), token);
 
     public async Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken cancellationToken)
     {
@@ -92,8 +108,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        PrepareImages(request, cancellationToken);
+        var ordinaryNames = !request.IsAgentRequest && request.Tools is { Count: > 0 }
+            ? new ModelToolNameMap(request.Tools.Select(tool => tool.Name)) : null;
         using var httpRequest = await CreateAuthorizedRequestAsync(HttpMethod.Post, "chat/completions", cancellationToken);
-        var route = ModelRouteKey.From(new ModelConnectionSettings(ProviderId, _baseUri.AbsoluteUri, ModelId));
+        var route = _route;
         httpRequest.Content = new StringContent(
             ChatRequestPayloadWriter.Write(route, request),
             Encoding.UTF8, "application/json");
@@ -101,7 +120,16 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            // Credentials and serialization may await or execute host callbacks. Admission belongs
+            // at this final transport boundary, with no await between its lease and SendAsync.
+            Task<HttpResponseMessage> Send()
+            {
+                return ChatImageInputs.Dispatch(request, route, _images,
+                    () => _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken);
+            }
+            var pending = _dispatchGate is null ? Send()
+                : _dispatchGate.Dispatch(request, route, Send, cancellationToken);
+            response = await pending;
         }
         catch (HttpRequestException error)
         {
@@ -122,11 +150,15 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             }
 
             await EnsureSuccessAsync(response, cancellationToken);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var stream = await OpenResponseStreamAsync(response.Content, cancellationToken);
             using var reader = new StreamReader(stream);
-            var done = false;
             string? lastFinishReason = null;
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            // The local Buddy bridge emits nonzero call indexes (observed single calls
+            // at indexes 1 and 2). Treat those numbers as fragment keys,
+            // scoped to this response. Keep strict Native identity/argument validation.
+            Dictionary<int, int>? buddyIndexes = _baseUri.IsLoopback && ModelId == "buddy/deepseek-v4.1-flash"
+                ? new() : null;
+            await foreach (var line in ReadLinesBoundedAsync(reader, cancellationToken))
             {
                 if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
@@ -140,12 +172,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                     // a literal "stop" here would clobber a real "tool_calls" marker
                     // that arrived earlier in the stream.
                     yield return new ChatStreamChunk(string.Empty, IsComplete: true, FinishReason: lastFinishReason);
-                    done = true;
                     break;
                 }
 
                 string? finishReason = null;
-                ChatToolCallDelta? toolCallDelta = null;
+                IReadOnlyList<ChatToolCallDelta> toolCallDeltas = [];
                 string? textDelta = null;
                 string? reasoningDelta = null;
                 ChatUsage? usage = null;
@@ -153,6 +184,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 {
                     using var document = JsonDocument.Parse(data);
                     var root = document.RootElement;
+                    if (root.TryGetProperty("error", out var streamError) && streamError.ValueKind == JsonValueKind.Object)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        throw ReadStreamError(streamError);
+                    }
                     if (root.TryGetProperty("usage", out var usageElement) && usageElement.ValueKind == JsonValueKind.Object)
                     {
                         var input = ReadNonnegativeInt(usageElement, "prompt_tokens");
@@ -178,7 +214,23 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                             ? content.GetString()
                             : null;
                         reasoningDelta = ReadReasoningDelta(delta);
-                        toolCallDelta = ReadToolCallDelta(delta);
+                        toolCallDeltas = ReadToolCallDeltas(delta);
+                        if (ordinaryNames is not null)
+                            toolCallDeltas = toolCallDeltas.Select(call => call.Name is { } alias && ordinaryNames.TryResolve(alias, out var canonical)
+                                ? new ChatToolCallDelta(call.Index, call.Id, canonical, call.ArgumentsDelta) : call).ToArray();
+                        if (buddyIndexes is not null)
+                        {
+                            toolCallDeltas = toolCallDeltas.Select(call =>
+                            {
+                                if (!buddyIndexes.TryGetValue(call.Index, out var normalized))
+                                {
+                                    if (buddyIndexes.Count >= FgoPet.Kernel.Agent.ModelProtocol.MaxCalls)
+                                        throw new JsonException("Too many calls.");
+                                    buddyIndexes.Add(call.Index, normalized = buddyIndexes.Count);
+                                }
+                                return new ChatToolCallDelta(normalized, call.Id, call.Name, call.ArgumentsDelta);
+                            }).ToArray();
+                        }
                     }
                     else
                     {
@@ -189,11 +241,13 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 }
                 catch (JsonException error)
                 {
-                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error);
+                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error,
+                        httpStatusCode: response.StatusCode, requestWasSent: true);
                 }
                 catch (Exception error) when (error is InvalidOperationException or IndexOutOfRangeException or ArgumentException or KeyNotFoundException)
                 {
-                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error);
+                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型服务返回了无法识别的串流数据。", error,
+                        httpStatusCode: response.StatusCode, requestWasSent: true);
                 }
 
                 if (finishReason is not null)
@@ -203,23 +257,69 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
                 // A single delta may carry content, reasoning, tool calls or a finish
                 // reason together; emitting the first match only would drop the rest.
-                if (!string.IsNullOrEmpty(textDelta) || toolCallDelta is not null
+                if (!string.IsNullOrEmpty(textDelta) || toolCallDeltas.Count > 0
                     || reasoningDelta is not null || finishReason is not null || usage is not null)
                 {
                     yield return new ChatStreamChunk(
                         textDelta ?? string.Empty,
                         IsComplete: false,
                         FinishReason: finishReason,
-                        ToolCallDelta: toolCallDelta,
+                        ToolCallDelta: toolCallDeltas.FirstOrDefault(),
                         ReasoningDelta: reasoningDelta,
                         Usage: usage);
+                    foreach (var call in toolCallDeltas.Skip(1))
+                        yield return new ChatStreamChunk(string.Empty, ToolCallDelta: call);
                 }
             }
 
-            if (!done)
+            // EOF is not the provider's completion marker. Native aggregation rejects a truncated stream.
+        }
+    }
+
+    private static async IAsyncEnumerable<string> ReadLinesBoundedAsync(StreamReader reader,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
+    {
+        // Includes JSON escaping headroom for all allowed deltas, with a finite pre-parse allocation bound.
+        const int maxLineCharacters = 512 * 1024;
+        var buffer = new char[4096];
+        var line = new StringBuilder();
+        int count;
+        while ((count = await ReadResponseBufferAsync(reader, buffer.AsMemory(), token)) > 0)
+            for (var index = 0; index < count; index++)
             {
-                yield return new ChatStreamChunk(string.Empty, IsComplete: true);
+                var character = buffer[index];
+                if (character is '\r' or '\n')
+                {
+                    yield return line.ToString();
+                    line.Clear();
+                    continue;
+                }
+                if (line.Length >= maxLineCharacters)
+                    throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "模型串流数据超出安全上限。", requestWasSent: true);
+                line.Append(character);
             }
+        if (line.Length > 0) yield return line.ToString();
+    }
+
+    private static async Task<Stream> OpenResponseStreamAsync(HttpContent content, CancellationToken token)
+    {
+        try { return await content.ReadAsStreamAsync(token); }
+        catch (IOException error)
+        {
+            token.ThrowIfCancellationRequested();
+            throw new ProviderRequestException(ProviderFailureCategory.Network, "模型响应流中断，请稍后重试。", error,
+                requestWasSent: true);
+        }
+    }
+
+    private static async ValueTask<int> ReadResponseBufferAsync(StreamReader reader, Memory<char> buffer, CancellationToken token)
+    {
+        try { return await reader.ReadAsync(buffer, token); }
+        catch (IOException error)
+        {
+            token.ThrowIfCancellationRequested();
+            throw new ProviderRequestException(ProviderFailureCategory.Network, "模型响应流中断，请稍后重试。", error,
+                requestWasSent: true);
         }
     }
 
@@ -259,18 +359,24 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         return null;
     }
 
-    private static ChatToolCallDelta? ReadToolCallDelta(JsonElement delta)
+    private static IReadOnlyList<ChatToolCallDelta> ReadToolCallDeltas(JsonElement delta)
     {
         if (!delta.TryGetProperty("tool_calls", out var toolCalls) || toolCalls.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return [];
         }
 
+        var calls = new List<ChatToolCallDelta>();
+        if (toolCalls.GetArrayLength() > FgoPet.Kernel.Agent.ModelProtocol.MaxCalls) throw new JsonException("Too many calls.");
         foreach (var call in toolCalls.EnumerateArray())
         {
-            var index = call.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsed)
-                ? parsed
-                : 0;
+            var index = 0;
+            if (call.TryGetProperty("index", out var indexElement))
+            {
+                if (indexElement.ValueKind != JsonValueKind.Number || !indexElement.TryGetInt32(out index) || index < 0)
+                    throw new JsonException("Invalid call index.");
+            }
+            else if (toolCalls.GetArrayLength() > 1) throw new JsonException("Multiple calls require indexes.");
             string? id = call.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
                 ? idElement.GetString()
                 : null;
@@ -291,10 +397,10 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 continue;
             }
 
-            return new ChatToolCallDelta(index, id, name, argumentsDelta);
+            calls.Add(new ChatToolCallDelta(index, id, name, argumentsDelta));
         }
 
-        return null;
+        return calls;
     }
 
     private async Task<HttpRequestMessage> CreateAuthorizedRequestAsync(
@@ -321,13 +427,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             return;
         }
 
-        var category = response.StatusCode switch
-        {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => ProviderFailureCategory.Authentication,
-            HttpStatusCode.TooManyRequests => ProviderFailureCategory.RateLimited,
-            >= HttpStatusCode.InternalServerError => ProviderFailureCategory.ServiceUnavailable,
-            _ => ProviderFailureCategory.InvalidResponse,
-        };
+        var category = FailureCategory(response.StatusCode);
         throw await CreateHttpExceptionAsync(
             response,
             category,
@@ -339,6 +439,27 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
                 _ => "模型服务请求失败。",
             },
             cancellationToken);
+    }
+
+    private static ProviderFailureCategory FailureCategory(HttpStatusCode? status) => status switch
+        {
+            null => ProviderFailureCategory.ServiceUnavailable,
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => ProviderFailureCategory.Authentication,
+            HttpStatusCode.TooManyRequests => ProviderFailureCategory.RateLimited,
+            >= HttpStatusCode.InternalServerError => ProviderFailureCategory.ServiceUnavailable,
+            _ => ProviderFailureCategory.InvalidResponse,
+        };
+
+    private static ProviderRequestException ReadStreamError(JsonElement error)
+    {
+        HttpStatusCode? status = error.TryGetProperty("status", out var reported) && reported.ValueKind == JsonValueKind.Number &&
+            reported.TryGetInt32(out var value) && value is >= 400 and <= 599 ? (HttpStatusCode)value : null;
+        string? providerCode = error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+            code.GetString() is { Length: > 0 and <= 96 } text && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.') ? text : null;
+        // The HTTP stream was accepted; the optional status here is the provider's in-band
+        // error status. Never expose its raw message or turn a later [DONE] into success.
+        return new(FailureCategory(status), "模型服务返回了串流错误。", httpStatusCode: status,
+            providerCode: providerCode, requestWasSent: true);
     }
 
     private static async Task<ProviderRequestException> CreateHttpExceptionAsync(

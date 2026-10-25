@@ -21,7 +21,8 @@ public sealed class TransientSurfaceCoordinator : IDisposable
     public TransientSurfaceCoordinator(ITransientSurfaceCatalog catalog, IScreenLayoutService screen,
         Func<PortraitWindow> owner, Func<PortraitWindowCoordinator> portrait,
         Action<string>? diagnostics = null)
-        : this(catalog, screen, () => owner(), () => portrait().PortraitDeviceBounds, diagnostics)
+        : this(catalog, screen, () => owner(),
+            () => owner().GetTransientAnchor(portrait().PortraitDeviceBounds), diagnostics)
     {
     }
 
@@ -103,8 +104,7 @@ public sealed class TransientSurfaceCoordinator : IDisposable
         DeviceRect anchor)
     {
         var monitors = _screen.GetMonitors();
-        var monitor = monitors.FirstOrDefault(item => anchor.X >= item.WorkArea.Left && anchor.X < item.WorkArea.Right
-                && anchor.Y >= item.WorkArea.Top && anchor.Y < item.WorkArea.Bottom)
+        var monitor = TransientSurfacePlacement.SelectMonitor(anchor, monitors)
             ?? monitors.FirstOrDefault(item => item.IsPrimary) ?? monitors.FirstOrDefault();
         if (monitor is null) throw new InvalidOperationException("TRANSIENT_NO_MONITOR");
         var dpi = _screen.GetDpi(monitor.Id);

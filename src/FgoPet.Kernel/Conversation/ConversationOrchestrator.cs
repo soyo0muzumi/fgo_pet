@@ -17,6 +17,8 @@ public interface IChatProviderResolver
 {
     IChatProvider Resolve();
     IChatProvider Resolve(ModelConnectionSettings settings) => Resolve();
+    IChatProvider Resolve(ModelConnectionSettings settings, IChatDispatchGate dispatchGate) =>
+        throw new InvalidOperationException("MODEL_DISPATCH_GATE_UNSUPPORTED");
 }
 
 public interface IConversationContentResolver
@@ -24,7 +26,7 @@ public interface IConversationContentResolver
     Task<ContentBinding> ResolveAsync(string servantId, CancellationToken cancellationToken);
 }
 
-public sealed class ConversationOrchestrator
+public sealed partial class ConversationOrchestrator
 {
     private readonly IChatProviderResolver _providerResolver;
     private readonly IConversationContentResolver _contentResolver;
@@ -58,7 +60,11 @@ public sealed class ConversationOrchestrator
         IRequestTokenMeter? tokenMeter = null,
         DialogueContextLifetime? lifetime = null,
         IConversationRecall? recall = null,
-        IConversationContextStore? contextStore = null)
+        IConversationContextStore? contextStore = null,
+        NativeConversationRuntime? nativeRuntime = null,
+        FgoPet.Kernel.Agent.IAgentRunStore? agentRuns = null,
+        IAgentFinalDeliveryStore? finalDeliveries = null,
+        Func<ToolScope, bool>? nativeScopeCurrent = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -74,6 +80,12 @@ public sealed class ConversationOrchestrator
         _lifetime = lifetime ?? new DialogueContextLifetime();
         _recall = recall;
         _contextStore = contextStore;
+        _nativeRuntime = nativeRuntime;
+        _agentRuns = agentRuns;
+        _finalDeliveries = finalDeliveries;
+        _nativeScopeCurrent = nativeScopeCurrent;
+        if (nativeRuntime is not null && (agentRuns is null || finalDeliveries is null))
+            throw new ArgumentException("Native runtime requires durable run and final delivery owners.");
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -82,10 +94,14 @@ public sealed class ConversationOrchestrator
         string servantId,
         string userText,
         CancellationToken cancellationToken,
-        ConversationRequestContext? requestContext = null)
+        ConversationRequestContext? requestContext = null,
+        Guid? requestId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(userText);
+        // Capture the identity in callbacks; never stamp late events with mutable current-request state.
+        var correlation = "request-" + (requestId ?? Guid.NewGuid()).ToString("N");
+        void Publish(ConversationUpdate update) => this.Publish(update with { RequestId = correlation });
         using var lease = _lifetime.Acquire(cancellationToken);
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(lease.Token);
         lock (_gate)
@@ -114,6 +130,8 @@ public sealed class ConversationOrchestrator
             stage = "创建会话";
             var scope = new ConversationScope(servantId, requestContext?.ProjectId);
             conversationId = lease.Commit(() => GetOrCreateConversation(servantId, contentContext, scope, requestContext?.ProjectLabel));
+            if (_nativeRuntime?.HasActiveConversation(conversationId) == true)
+                return new(ConversationSendStatus.Failed, conversationId, SafeError: "当前任务仍在等待处理，请先完成或停止该任务。");
             stage = "读取会话历史";
             var allMessages = _conversations.LoadMessages(conversationId, servantId).ToArray();
             var existing = allMessages
@@ -139,22 +157,27 @@ public sealed class ConversationOrchestrator
                 userMessage.Text,
                 ServantId: servantId));
 
-            var capabilityScope = new ToolScope(conversationId, servantId, requestContext?.ProjectId);
+            var capabilityScope = new ToolScope(conversationId, servantId, scope.ProjectId);
             var local = lease.Commit(() => _capabilities?.TryHandleInput(capabilityScope, userText));
             if (local?.Reply is { } localReply)
                 return lease.Commit(() => PersistLocalReply(conversationId, servantId, contentContext,
-                    localReply, local.Outcome, local.CreatedItemId, local.WorkspaceId));
+                    localReply, local.Outcome, Publish, local.CreatedItemId, local.WorkspaceId));
+            if (_nativeRuntime is not null)
+            {
+                stage = "执行原生任务";
+                return await SendNativeAsync(binding, userMessage, capabilityScope, requestContext, Publish, requestCancellation.Token);
+            }
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
             var session = await ConversationModelTurn.CreateAsync(_providerResolver, _settings, _contextResolver, _tokenMeter,
-                _capabilities, Publish, CancelCurrent, requestCancellation.Token);
+                _capabilities, Publish, CancelCurrent, requestCancellation.Token, logger: _logger);
             var recalled = _recall is null ? new ConversationRecallResult(RecallStatus.Empty, []) :
                 await _recall.RetrieveAsync(scope, conversationId, userText, requestCancellation.Token);
             lease.CheckCurrent();
             session.EnsureCurrent(requestCancellation.Token);
             if (recalled.Status == RecallStatus.Ambiguous)
                 return lease.Commit(() => PersistLocalReply(conversationId, servantId, contentContext,
-                    recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None));
+                    recalled.Clarification ?? "你想继续哪一件事？", CapabilityOutcome.None, Publish));
             var sources = recalled.Sources.Where(source => _conversations.IsCurrentSource(scope, source)).ToArray();
             if (sources.Length != recalled.Sources.Count) recalled = new(RecallStatus.Unavailable, sources);
             ComposedPrompt ComposeCurrent(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
@@ -225,28 +248,62 @@ public sealed class ConversationOrchestrator
             }
             var (responseText, aggregatedCall, sawToolCalls, toolsOffered) = streamed;
             ConversationContributionResult? contribution = null;
-            if (aggregatedCall is not null)
+            while (true)
             {
-                if (aggregatedCall.TooManyCalls)
-                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "模型同时调用了多个工具调用。");
-                else if (string.IsNullOrWhiteSpace(aggregatedCall.CallId))
-                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用缺少 call_id。");
-                else if (aggregatedCall.TryGetArguments(out var arguments) && _capabilities is not null)
+                if (aggregatedCall is { } call)
                 {
-                    var result = await lease.Commit(() => _capabilities.InvokeAsync(aggregatedCall.Name,
-                        new(capabilityScope, arguments), requestCancellation.Token));
-                    lease.CheckCurrent();
-                    contribution = result.Conversation ?? new(result.Success ? CapabilityOutcome.None : CapabilityOutcome.InvalidToolCall,
-                        Detail: result.ErrorCode == "TOOL_UNAVAILABLE" ? "模型调用了未知的工具。" : result.Success ? null : "工具调用无法解析。");
+                    if (call.TooManyCalls)
+                    {
+                        var readBatch = session.GetOrdinaryReadBatch();
+                        if (readBatch.IsEmpty || _capabilities is null)
+                            contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "模型同时调用了多个工具调用。");
+                        else
+                        {
+                            var results = new List<ToolResult>(readBatch.Length);
+                            // Validate the complete batch first; sequential reads keep the existing execution concurrency.
+                            foreach (var read in readBatch)
+                            {
+                                if (!read.TryGetArguments(out var readArguments)) throw new InvalidOperationException("MODEL_INVALID_READ_CALL");
+                                results.Add(await lease.Commit(() => _capabilities.InvokeAsync(read.Name,
+                                    new(capabilityScope, readArguments), requestCancellation.Token)));
+                                lease.CheckCurrent();
+                            }
+                            (responseText, aggregatedCall, sawToolCalls, toolsOffered) = await session.ContinueReadsAsync(
+                                prompt, readBatch, responseText.ToString(), results, requestCancellation.Token);
+                            lease.CheckCurrent();
+                            continue;
+                        }
+                    }
+                    else if (string.IsNullOrWhiteSpace(call.CallId))
+                        contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用缺少 call_id。");
+                    else if (call.TryGetArguments(out var arguments) && arguments.ValueKind == System.Text.Json.JsonValueKind.Object && _capabilities is not null)
+                    {
+                        var descriptor = _capabilities.Tools.FirstOrDefault(tool => tool.Name == call.Name);
+                        if (descriptor?.Effect == ToolEffect.ReadOnly)
+                            session.ValidateOrdinaryReadCall(call, responseText.ToString());
+                        var result = await lease.Commit(() => _capabilities.InvokeAsync(call.Name,
+                            new(capabilityScope, arguments), requestCancellation.Token));
+                        lease.CheckCurrent();
+                        if (descriptor?.Effect == ToolEffect.ReadOnly && result.Conversation is null)
+                        {
+                            (responseText, aggregatedCall, sawToolCalls, toolsOffered) = await session.ContinueReadAsync(
+                                prompt, call, responseText.ToString(), result, requestCancellation.Token);
+                            lease.CheckCurrent();
+                            continue;
+                        }
+                        contribution = result.Conversation ?? new(result.Success ? CapabilityOutcome.None : CapabilityOutcome.InvalidToolCall,
+                            Detail: result.ErrorCode == "TOOL_UNAVAILABLE" ? "模型调用了未知的工具。" : result.Success ? null : "工具调用无法解析。");
+                    }
+                    else contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具参数不是有效的 JSON 对象。");
                 }
-                else contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具参数不是有效的 JSON 对象。");
+                else if (sawToolCalls)
+                    contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用未完整返回。");
+                else if (toolsOffered)
+                    contribution = new(CapabilityOutcome.NoProposal);
+                else
+                    contribution = lease.Commit(() => _capabilities?.TryInterpretReply(capabilityScope, responseText.ToString()));
+                break;
             }
-            else if (sawToolCalls)
-                contribution = new(CapabilityOutcome.InvalidToolCall, Detail: "工具调用未完整返回。");
-            else if (toolsOffered)
-                contribution = new(CapabilityOutcome.NoProposal);
-            else
-                contribution = lease.Commit(() => _capabilities?.TryInterpretReply(capabilityScope, responseText.ToString()));
 
             var rawText = responseText.ToString();
             // Tool-call turns carry the reply in tool arguments, not in message
@@ -255,7 +312,7 @@ public sealed class ConversationOrchestrator
                 ? new ValidatedChatOutput(rawText, ExpressionSemantic.Neutral, null, null)
                 : StructuredOutputValidator.Validate(
                     rawText,
-                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal));
+                    ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), userText);
             if (contribution?.Reply is { } capabilityReply)
                 output = output with { Text = capabilityReply };
             // ChatMessage requires non-empty text for a Completed message; a
@@ -316,6 +373,19 @@ public sealed class ConversationOrchestrator
             Publish(new ConversationUpdate(ConversationUpdateType.Cancelled, conversationId, ServantId: servantId));
             return new ConversationSendResult(ConversationSendStatus.Cancelled, conversationId);
         }
+        catch (FgoPet.Kernel.Agent.AgentStateException error) when (_nativeRuntime is not null)
+        {
+            var safeError = error.Code switch
+            {
+                "RUN_HOST_CLOSED" => "模型任务暂不可用，本地功能仍可使用。",
+                "RUN_STATE_QUOTA_EXCEEDED" => "任务存储已达上限，请先通过历史记录入口清理不需要的对话。",
+                _ => "任务结果未能安全保存或确认，请先核对实际状态，再决定是否重试。",
+            };
+            Publish(new(ConversationUpdateType.RequestStage, conversationId, ServantId: servantId,
+                RequestStage: ConversationRequestStage.Failed));
+            Publish(new(ConversationUpdateType.Failed, conversationId, ServantId: servantId, SafeError: safeError));
+            return new(ConversationSendStatus.Failed, conversationId, SafeError: safeError);
+        }
         catch (ProviderRequestException error)
         {
             var safeError = error.Message;
@@ -345,6 +415,7 @@ public sealed class ConversationOrchestrator
             {
                 PromptBudgetFailure.PendingDraftTooLarge => "待确认草稿过大，请取消草稿后分批规划。",
                 PromptBudgetFailure.UserInputTooLarge => "本次输入过长，请缩短后重试。",
+                PromptBudgetFailure.SelectedWindowTooLarge => "所选窗口文字超出单条上下文限制，请移除或重新选择较短内容。",
                 _ => "当前内容超出模型可用上下文，且无法安全压缩。原记录已保留，请缩短输入或调整模型容量后重试。",
             };
             _logger?.LogWarning("Dialogue prompt budget rejected: {Failure}", error.Failure);
@@ -400,6 +471,7 @@ public sealed class ConversationOrchestrator
     public void CancelCurrent()
     {
         _lifetime.Invalidate();
+        _nativeRuntime?.CancelAll();
         lock (_gate)
         {
             _activeCancellation?.Cancel();
@@ -412,6 +484,7 @@ public sealed class ConversationOrchestrator
         ContentContextKey? context,
         string reply,
         CapabilityOutcome outcome,
+        Action<ConversationUpdate> publish,
         string? createdItemId = null, string? workspaceId = null)
     {
         var messageId = "message-" + Guid.NewGuid().ToString("N");
@@ -425,10 +498,10 @@ public sealed class ConversationOrchestrator
             _time.GetUtcNow(),
             context ?? throw new InvalidOperationException("Conversation context is unavailable."),
             _conversations.LoadMessages(conversationId, servantId).Count + 1));
-        Publish(new ConversationUpdate(ConversationUpdateType.AssistantDelta, conversationId, messageId, reply, ServantId: servantId));
-        Publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, messageId, reply,
+        publish(new ConversationUpdate(ConversationUpdateType.AssistantDelta, conversationId, messageId, reply, ServantId: servantId));
+        publish(new ConversationUpdate(ConversationUpdateType.AssistantCompleted, conversationId, messageId, reply,
             ServantId: servantId, ToolOutcome: outcome, CreatedItemId: createdItemId, WorkspaceId: workspaceId));
-        Publish(new ConversationUpdate(ConversationUpdateType.RequestStage, conversationId, RequestStage: ConversationRequestStage.Completed, ServantId: servantId));
+        publish(new ConversationUpdate(ConversationUpdateType.RequestStage, conversationId, RequestStage: ConversationRequestStage.Completed, ServantId: servantId));
         return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, messageId);
     }
 
@@ -474,6 +547,7 @@ public sealed class ConversationOrchestrator
             // state. Wait until it releases the request slot before deleting.
             if (_activeCancellation is not null) return false;
             if (!_conversations.Exists(conversationId, servantId)) return false;
+            _nativeRuntime?.CancelConversation(conversationId);
             var stateKey = ActiveConversationStateKey(servantId);
             _conversations.DeleteConversation(conversationId, servantId, stateKey);
             if (_conversationIds.GetValueOrDefault(servantId) == conversationId)

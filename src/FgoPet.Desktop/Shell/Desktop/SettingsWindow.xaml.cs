@@ -7,6 +7,8 @@ namespace FgoPet.App.Settings;
 /// <summary>Native lifetime and routing for the single Web settings surface.</summary>
 public partial class SettingsWindow : Window, IDisposable
 {
+    // Temporary acceptance diagnostics; enabled only by the target test's listener. Remove before release.
+    private static readonly System.Diagnostics.ActivitySource OperationTiming = new("FgoPet.TestTiming.SettingsWindow");
     private readonly WebView2SurfaceHost _webSurface;
     private readonly SettingsViewModel _viewModel;
     private bool _disposed;
@@ -16,16 +18,25 @@ public partial class SettingsWindow : Window, IDisposable
     {
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         ArgumentNullException.ThrowIfNull(webFactory);
-        InitializeComponent();
-        Width = 1000;
-        Height = 760;
-        MinWidth = 320;
-        MinHeight = 400;
-        _webSurface = webFactory.CreateView(viewModel.SelectedPageId, OnWebNavigated);
-        Content = _webSurface;
-        _webSurface.Ready += OnWebReady;
-        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        Closing += OnClosing;
+        using (OperationTiming.StartActivity("settings.window.initialize_xaml"))
+            InitializeComponent();
+        using (OperationTiming.StartActivity("settings.window.set_dimensions"))
+        {
+            Width = 824;
+            Height = 740;
+            MinWidth = 240;
+            MinHeight = 240;
+        }
+        using (OperationTiming.StartActivity("settings.window.create_view"))
+            _webSurface = webFactory.CreateView(viewModel.SelectedPageId, OnWebNavigated);
+        using (OperationTiming.StartActivity("settings.window.attach_content"))
+            Content = _webSurface;
+        using (OperationTiming.StartActivity("settings.window.subscribe_events"))
+        {
+            _webSurface.Ready += OnWebReady;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            Closing += OnClosing;
+        }
     }
 
     private void OnWebReady(object? sender, EventArgs e) => NavigateToSelectedPage();

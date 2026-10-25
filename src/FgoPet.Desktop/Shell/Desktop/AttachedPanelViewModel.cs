@@ -295,6 +295,8 @@ public sealed partial class AttachedPanelViewModel : ObservableObject, IAttached
             if (_lastSurfaceActive == active) return;
             _lastSurfaceActive = active;
             if (active && AttachedPanelStateMachine.IsExpanded(State)) State = AttachedPanelState.Compact;
+            if (!active && State is AttachedPanelState.Compact or AttachedPanelState.ExpandedFocus)
+                State = AttachedPanelState.Collapsed;
             OnPropertyChanged(nameof(IsCompactSurfaceActive));
         }
         if (args.PropertyName == nameof(ICompactSurface.BlocksAutoCollapse)) OnPropertyChanged(nameof(BlocksAutoCollapse));

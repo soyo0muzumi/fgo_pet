@@ -16,6 +16,128 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class ChatWebSessionTests : IDisposable
 {
+    [Fact]
+    public async Task Image_chunks_need_current_identity_and_completion_and_cannot_send_partial_pixels()
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        var host = new RecordingChatHostActions { Presentation = new("Role", null, [], [], Actions: new(CanChooseImage: true)) };
+        using var session = new ChatWebSession(conversation, host);
+        var identity = session.ReadSnapshot().Identity; var transfer = Guid.NewGuid().ToString("N");
+        string Chunk(int offset, bool complete) => Identity(identity).TrimEnd('}') + JsonSerializer.Serialize(new {
+            transferId = transfer, mimeType = "image/png", offset, data = "AQID", complete }).Replace("{", ",");
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(0, false)), default)).Success);
+        Assert.Empty(host.Imports);
+        Assert.Equal("CHAT_IMAGE_BUSY", (await session.HandleCommandAsync(Message("chat.send", Identity(identity)), default)).ErrorCode);
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).Success);
+        Assert.Equal(new byte[] {1,2,3,1,2,3}, Assert.Single(host.Imports));
+        transfer = Guid.NewGuid().ToString("N");
+        Assert.True((await session.HandleCommandAsync(Message("chat.image", Chunk(0, false)), default)).Success);
+        conversation.NewConversationCommand.Execute(null);
+        Assert.Equal("CHAT_IDENTITY_STALE", (await session.HandleCommandAsync(Message("chat.image", Chunk(3, true)), default)).ErrorCode);
+        Assert.Single(host.Imports);
+    }
+
+    [Theory]
+    [InlineData("\"offset\":\"0\"")]
+    [InlineData("\"offset\":-1")]
+    [InlineData("\"offset\":8388609")]
+    [InlineData("\"offset\":0,\"path\":\"arbitrary\"")]
+    public async Task Image_bridge_rejects_malformed_or_path_bearing_payload(string fields)
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(conversation, new RecordingChatHostActions());
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}') + ",\"transferId\":\"" + Guid.NewGuid().ToString("N")
+            + "\",\"mimeType\":\"image/png\",\"data\":\"AQID\",\"complete\":true," + fields + "}";
+        Assert.Equal("CHAT_COMMAND_INVALID", (await session.HandleCommandAsync(Message("chat.image", payload), default)).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("chat.approval.allow", "")]
+    [InlineData("chat.approval.review", ",\"decision\":\"Allow\"")]
+    [InlineData("chat.approval.review", ",\"allow\":true")]
+    [InlineData("chat.approval.review", ",\"arguments\":{}")]
+    [InlineData("chat.approval.review", ",\"scope\":\"other\"")]
+    [InlineData("chat.approval.review", ",\"requestId\":\"duplicate\"")]
+    public async Task Approval_bridge_never_accepts_page_allow_decision_or_mutable_arguments(string type, string extra)
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}')
+            + ",\"runId\":\"run\",\"requestId\":\"request\",\"revision\":1" + extra + "}";
+        var result = await session.HandleCommandAsync(Message(type, payload), default);
+        Assert.False(result.Success); Assert.Equal("CHAT_COMMAND_INVALID", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task User_input_bridge_rejects_escaped_answer_over_64kib()
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var identity = session.ReadSnapshot().Identity;
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            sessionId = identity.SessionId, servantId = identity.ServantId, conversationId = identity.ConversationId,
+            runId = "run", requestId = "question", revision = 1,
+            answers = new[] { new { questionId = "free", selectedOptionIndices = Array.Empty<int>(), text = new string('中', 11987) } },
+        });
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(payload.GetRawText()) > 65536);
+        var rejected = await session.HandleCommandAsync(new("chat.input.answer", "fixture", payload), default);
+        Assert.False(rejected.Success);
+        Assert.Equal("CHAT_COMMAND_INVALID", rejected.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("\"answers\":[]")]
+    [InlineData("\"answers\":{}")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[\"0\"],\"text\":null}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[2147483648],\"text\":null}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":true}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"\\ud800\"}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"answer\",\"authorize\":true}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"a\",\"text\":\"b\"}]")]
+    [InlineData("\"answers\":[{\"questionId\":\"q\",\"selectedOptionIndices\":[],\"text\":\"answer\"}],\"scope\":\"untrusted\"")]
+    public async Task User_input_bridge_rejects_malformed_closed_answer_schema(string fields)
+    {
+        using var model = TestDialogueFakes.CreateConversation();
+        using var session = new ChatWebSession(model, new RecordingChatHostActions());
+        var identity = session.ReadSnapshot().Identity;
+        var payload = Identity(identity).TrimEnd('}') + ",\"runId\":\"run\",\"requestId\":\"request\",\"revision\":1," + fields + "}";
+        var rejected = await session.HandleCommandAsync(Message("chat.input.answer", payload), default);
+        Assert.False(rejected.Success);
+        Assert.Equal("CHAT_COMMAND_INVALID", rejected.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("chooseWorkspace", ChatWebHostAction.ChooseWorkspace)]
+    [InlineData("clearWorkspace", ChatWebHostAction.ClearWorkspace)]
+    public async Task Workspace_bridge_requires_live_identity_availability_and_has_no_path_payload(string action, ChatWebHostAction expected)
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        var host = new RecordingChatHostActions
+        {
+            Presentation = new("Role", null, [], [], Actions: new(CanChooseWorkspace: true, CanClearWorkspace: true), WorkspaceLabel: "Synthetic workspace"),
+        };
+        using var session = new ChatWebSession(conversation, host);
+        var identity = session.ReadSnapshot().Identity;
+        string Payload(bool injectPath = false) => JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["sessionId"] = identity.SessionId, ["servantId"] = identity.ServantId,
+            ["conversationId"] = identity.ConversationId, ["action"] = action,
+        }.Concat(injectPath ? new Dictionary<string, object?> { ["path"] = "C:\\untrusted" } : []).ToDictionary(pair => pair.Key, pair => pair.Value));
+        Assert.Equal("Synthetic workspace", session.ReadSnapshot().Presentation.WorkspaceLabel);
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload(true)), default)).Success);
+        Assert.Empty(host.Requests);
+        Assert.True((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        Assert.Equal(expected, Assert.Single(host.Requests).Action);
+        conversation.IsStreaming = true;
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        conversation.IsStreaming = false;
+        conversation.NewConversationCommand.Execute(null);
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", Payload()), default)).Success);
+        Assert.Single(host.Requests);
+    }
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-chat-web-{Guid.NewGuid():N}.db");
 
     [Fact]
@@ -84,13 +206,14 @@ public sealed class ChatWebSessionTests : IDisposable
 
         var newer = await session.HandleCommandAsync(Message("chat.draft", Draft(initial, "新输入", 2)), CancellationToken.None);
         var older = await session.HandleCommandAsync(Message("chat.draft", Draft(initial, "迟到输入", 1)), CancellationToken.None);
+        Assert.Equal("新输入", conversation.InputText);
         conversation.SetActiveServant("other-servant");
         var stale = await session.HandleCommandAsync(Message("chat.stop", Identity(initial)), CancellationToken.None);
 
         Assert.True(newer.Success);
         Assert.False(older.Success);
         Assert.False(stale.Success);
-        Assert.Equal("新输入", conversation.InputText);
+        Assert.Empty(conversation.InputText);
     }
 
     [Fact]
@@ -263,6 +386,9 @@ public sealed class ChatWebSessionTests : IDisposable
 
     private sealed class RecordingChatHostActions : IChatWebHostActions
     {
+        public List<byte[]> Imports { get; } = [];
+        public ValueTask<WebSurfaceCommandResult> ImportImageAsync(byte[] bytes, string mimeType, CancellationToken token)
+        { Imports.Add(bytes); return ValueTask.FromResult(new WebSurfaceCommandResult(true)); }
         public List<ChatWebHostRequest> Requests { get; } = [];
         public ChatWebHostPresentation Presentation { get; set; } = new("角色", null, [], []);
         public event EventHandler? Changed { add { } remove { } }

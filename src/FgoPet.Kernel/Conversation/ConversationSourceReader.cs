@@ -15,7 +15,7 @@ public sealed class ConversationSourceReader(IConversationReader conversations) 
         var message = conversations.LoadMessages(scope.ConversationId, scope.RoleId).SingleOrDefault(m => m.MessageId == messageId);
         if (conversation is null || conversation.ProjectId != scope.ProjectId || message is null ||
             message.ServantId != scope.RoleId || message.Status != ChatMessageStatus.Completed ||
-            !Enum.IsDefined(kind) || (kind == ConversationSourceKind.User ? message.Role != ChatMessageRole.User : message.Role != ChatMessageRole.Assistant))
+            kind is not(ConversationSourceKind.User or ConversationSourceKind.Assistant) || (kind == ConversationSourceKind.User ? message.Role != ChatMessageRole.User : message.Role != ChatMessageRole.Assistant))
             throw new InvalidOperationException("Conversation source is no longer current.");
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
             new { message.MessageId, message.Role, message.Text, message.CreatedAtUtc }))));

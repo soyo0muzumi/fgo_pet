@@ -1,0 +1,53 @@
+.understanding-page { display:grid; gap:16px; max-width:760px; min-width:0; color:var(--ink); font:13px/1.65 var(--ui,system-ui); }
+.understanding-page * { box-sizing:border-box; }
+.understanding-page [hidden] { display:none !important; }
+.understanding-page p,.understanding-page h2,.understanding-page h3,.understanding-page h4 { margin:0; overflow-wrap:anywhere; }
+.understanding-intro { display:grid; gap:7px; }
+.understanding-intro h2 { font-size:20px; font-weight:600; line-height:1.35; letter-spacing:-.02em; }
+.understanding-intro>p:last-child,.understanding-caption,.understanding-conditions { color:var(--muted); font-size:12px; }
+.understanding-eyebrow { color:var(--accent); font-size:11px; }
+.understanding-tabs,.understanding-actions,.understanding-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; }
+.understanding-tabs { padding-bottom:12px; border-bottom:1px solid var(--rule,#8884); }
+.understanding-page button { width:auto; min-height:32px; max-width:100%; padding:5px 12px; color:var(--ink-2,var(--ink)); background:transparent; border:1px solid var(--rule-2,#8886); border-radius:4px; font:12px/1.5 var(--ui,system-ui); cursor:pointer; }
+.understanding-page button:hover:not(:disabled) { border-color:var(--accent); background:var(--paper-sunk,#8881); }
+.understanding-page button:disabled { opacity:.5; cursor:default; }
+.understanding-page button:focus-visible,.understanding-page summary:focus-visible,.understanding-page textarea:focus-visible,.understanding-page input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.understanding-page .understanding-primary,.understanding-tabs [aria-pressed=true] { color:var(--accent); border-color:var(--accent); background:var(--accent-soft,#8881); }
+.understanding-page .understanding-danger { color:var(--danger,#ad493d); }
+.understanding-refresh { margin-left:auto; }
+.understanding-entries { display:grid; gap:12px; }
+.understanding-card { display:grid; gap:12px; padding:18px; border:1px solid var(--rule,#8884); border-radius:7px; background:var(--paper-raised,transparent); min-width:0; }
+.understanding-body { font-size:15px; line-height:1.7; white-space:pre-wrap; }
+.understanding-conditions { white-space:pre-wrap; }
+.understanding-tag { padding:2px 7px; border-radius:3px; background:var(--paper-sunk,#8881); color:var(--ink-2); font-size:10px; letter-spacing:.02em; }
+.understanding-details { font-size:11px; color:var(--muted); }
+.understanding-page summary { width:fit-content; cursor:pointer; padding-block:3px; }
+.understanding-details>div,.understanding-setup>details>div { display:grid; gap:9px; padding-top:9px; }
+.understanding-details p { white-space:pre-wrap; }
+.understanding-empty { display:grid; gap:7px; padding:25px 20px; border:1px dashed var(--rule-2,#8886); border-radius:7px; color:var(--muted); }
+.understanding-empty h3 { color:var(--ink); font-size:14px; font-weight:500; }
+.understanding-setup { display:grid; gap:12px; padding-top:20px; margin-top:4px; border-top:1px solid var(--rule,#8884); color:var(--muted); font-size:12px; }
+.understanding-setup h3 { color:var(--ink); font-size:14px; font-weight:600; }
+.understanding-feedback:empty { display:none; }
+.understanding-feedback { padding:9px 12px; border-left:2px solid var(--accent); background:var(--accent-soft,#8881); font-size:12px; }
+.understanding-page [role=alert] { color:var(--danger,#ad493d); border-color:currentColor; }
+.understanding-confirm,.understanding-editor { display:grid; gap:10px; padding:12px; background:var(--paper-sunk,#8881); border:1px solid var(--rule-2,#8886); border-radius:5px; }
+.understanding-editor label { color:var(--ink); font-size:12px; }
+.understanding-editor textarea { width:100%; min-height:110px; resize:vertical; padding:10px; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2,#8886); border-radius:4px; font:13px/1.65 var(--ui,system-ui); }
+.understanding-awareness { display:grid; gap:12px; padding:18px; border:1px solid var(--rule,#8884); border-radius:7px; background:var(--paper-raised,transparent); }
+.understanding-awareness h3 { font-size:15px; font-weight:600; }
+.understanding-awareness>p { color:var(--muted); font-size:12px; }
+.understanding-awareness .understanding-awareness-recipient { color:var(--ink); }
+.understanding-awareness-option { display:flex; align-items:flex-start; gap:10px; cursor:pointer; min-width:0; }
+.understanding-awareness-option input { flex:none; width:16px; height:16px; margin:4px 0 0; accent-color:var(--accent); }
+.understanding-awareness-option>span { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
+.understanding-awareness-option strong { font-size:13px; font-weight:600; }
+.understanding-awareness-budget { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; }
+.understanding-awareness-budget input { width:72px; max-width:100%; padding:5px 8px; border:1px solid var(--rule-2,#8886); border-radius:4px; color:var(--ink); background:var(--paper); font:13px/1.5 var(--ui,system-ui); }
+.understanding-awareness-windows { display:grid; gap:10px; padding-top:14px; border-top:1px solid var(--rule,#8884); min-width:0; }
+.understanding-awareness-windows h4 { font-size:13px; font-weight:600; }
+.understanding-awareness-choices { display:grid; gap:10px; padding:12px; border:1px solid var(--rule-2,#8886); border-radius:5px; background:var(--paper-sunk,#8881); }
+.understanding-awareness-window { display:grid; gap:5px; min-width:0; padding:8px 0; }
+.understanding-awareness-window button { justify-self:start; }
+@media(max-width:440px) { .understanding-card { padding:13px; } .understanding-intro h2 { font-size:18px; } .understanding-actions { gap:7px; } }
+@media(prefers-reduced-motion:reduce) { .understanding-page * { animation:none; transition:none; } }

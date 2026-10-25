@@ -41,6 +41,20 @@ The module owns `SpeechSettings` and `ISpeechSettingsStore`, and consumes the pr
 
 The host's existing explicit factory passes the same `SpeechPlaybackCoordinator` singleton to Desktop Shell's `DialogueWindowViewModel` through `IConfiguredSpeechPlayback`. Settings preview retains its existing implementation-level use within the Speech surface. No second playback instance or alias with a separate lifetime is created. The host owns disposal of synthesis, playback and the audio player; disposing the window consumer only stops its current playback and detaches its own subscriptions.
 
+`WpfSpeechAudioPlayer` optionally obtains one presentation observer per playback.
+`WavSpeechEnvelope` derives bounded 20 ms RMS frames from PCM 8/16/24/32-bit or float
+32/64-bit WAV data in memory. It rejects truncated, unsupported, oversized or overly
+long data for animation while retaining normal playback. No audio or text goes to
+the observer: only normalized energy (including playback volume) or null on stop.
+The player samples against `MediaPlayer.Position` after `MediaOpened`, so opening
+latency and playback rate do not advance the mouth prematurely. Cancellation,
+completion and failure stop the timer and release presentation; superseded sessions
+cannot release the new session's presentation. The configured playback port is unchanged.
+
+The host's `Live2DSpeechBinding` owns role identity and dispatcher delivery. Speech
+does not reference Live2D or the Desktop shell. Both local IndexTTS and external
+OpenAI-compatible services share the same WAV playback path.
+
 ## Validation
 
 Run all three speech test projects plus the affected solution tests and Release build. Project/reference changes also require Phase 4; the workflow includes speech source and Dialogue project-file paths without changing its three-round or failure criteria.
@@ -50,3 +64,5 @@ Core-only tests protect contract availability and the absence of raw-synthesis/d
 Real provider playback, sound quality/latency, DPI, IME, multi-monitor, Narrator, and high-contrast checks remain manual acceptance boundaries. Contract doubles are not device or provider acceptance.
 
 Settings presentation uses `SpeechWebPage` over the existing connection view model and native voice-file picker. The former SpeechConnectionPage XAML is removed; synthesis, credentials and playback ownership remain unchanged.
+
+The Margin detail uses English localization keys and shared paper controls, with playback options under a presentation-only disclosure. Provider-specific connection and voice controls, preview, immediate key operations and explicit voice-deletion confirmation retain their existing owner commands. Known owner feedback is mapped to English keys in the page only; unknown service content and names remain literal text. Keys never enter navigation state. `MarginServiceSettingsWebTests` checks the production page with synthetic data, narrow-window scrolling, retry and command dispatch; it does not contact providers or play audio.

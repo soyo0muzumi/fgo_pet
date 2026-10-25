@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using System.Collections.Immutable;
+using FgoPet.Kernel.Agent;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.UiSdk;
 
@@ -15,7 +17,16 @@ internal sealed record ChatWebCommand(
     string? TargetConversationId = null,
     string? Action = null,
     string? TargetId = null,
-    bool? Expanded = null);
+    bool? Expanded = null,
+    string? RunId = null,
+    string? InputRequestId = null,
+    ImmutableArray<QuestionAnswer> Answers = default,
+    ChatImageChunk? ImageChunk = null,
+    string? View = null,
+    bool? Wide = null,
+    double? ComposerHeight = null);
+
+internal sealed record ChatImageChunk(string Id, string MimeType, long Offset, string Data, bool Complete);
 
 /// <summary>Strictly reads the closed JSON schemas used by the Chat Web bridge.</summary>
 internal static class ChatWebCommandReader
@@ -25,11 +36,22 @@ internal static class ChatWebCommandReader
 
     public static bool TryRead(WebSurfaceMessage message, out ChatWebCommand? command, out string errorCode)
     {
+        try { return TryReadCore(message, out command, out errorCode); }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or ObjectDisposedException)
+        {
+            command = null;
+            errorCode = "CHAT_COMMAND_INVALID";
+            return false;
+        }
+    }
+
+    private static bool TryReadCore(WebSurfaceMessage message, out ChatWebCommand? command, out string errorCode)
+    {
         command = null;
         errorCode = "CHAT_COMMAND_INVALID";
         if (message is null || string.IsNullOrEmpty(message.RequestId)
-            || Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(message.Payload)) > MaxEnvelopeBytes
-            || message.Payload.ValueKind != JsonValueKind.Object)
+            || message.Payload.ValueKind != JsonValueKind.Object
+            || Encoding.UTF8.GetByteCount(message.Payload.GetRawText()) > MaxEnvelopeBytes)
         {
             return false;
         }
@@ -66,9 +88,27 @@ internal static class ChatWebCommandReader
         string? action = null;
         string? targetId = null;
         bool? expanded = null;
+        string? runId = null;
+        string? inputRequestId = null;
+        ImmutableArray<QuestionAnswer> answers = default;
+        ChatImageChunk? imageChunk = null;
+        string? view = null;
+        bool? wide = null;
+        double? composerHeight = null;
 
         switch (message.Type)
         {
+            case "chat.image":
+                if (!Only(fields, "sessionId", "servantId", "conversationId", "transferId", "mimeType", "offset", "data", "complete")
+                    || !ReadString(fields, "transferId", false, 32, out var transferId)
+                    || !Guid.TryParseExact(transferId, "N", out _)
+                    || !ReadString(fields, "mimeType", false, 16, out var mimeType)
+                    || mimeType is not ("image/png" or "image/jpeg")
+                    || !fields["offset"].TryGetInt64(out var offset) || offset is < 0 or > 8388608
+                    || !ReadString(fields, "data", false, 49152, out var data)
+                    || !ReadBoolean(fields, "complete", out var complete)) return false;
+                imageChunk = new(transferId!, mimeType!, offset, data!, complete);
+                break;
             case "chat.draft":
                 if (!Only(fields, "sessionId", "servantId", "conversationId", "text", "revision")
                     || !ReadString(fields, "text", allowEmpty: true, MaxDraftChars, out text)
@@ -76,11 +116,26 @@ internal static class ChatWebCommandReader
                 revision = draftRevision;
                 break;
             case "chat.send":
+            case "chat.image.cancel":
             case "chat.stop":
             case "chat.new":
             case "chat.history.cancelDelete":
             case "chat.retryCapability":
                 if (fields.Count != 3) return false;
+                break;
+            case "chat.input.answer":
+            case "chat.input.cancel":
+            case "chat.approval.review":
+            case "chat.approval.deny":
+            case "chat.approval.cancel":
+                var inputFields = new List<string> { "sessionId", "servantId", "conversationId", "runId", "requestId", "revision" };
+                if (message.Type == "chat.input.answer") inputFields.Add("answers");
+                if (!Only(fields, inputFields.ToArray())
+                    || !ReadString(fields, "runId", false, 128, out runId)
+                    || !ReadString(fields, "requestId", false, 128, out inputRequestId)
+                    || !ReadPositiveInt64(fields, "revision", out var inputRevision)) return false;
+                revision = inputRevision;
+                if (message.Type == "chat.input.answer" && !ReadAnswers(fields["answers"], out answers)) return false;
                 break;
             case "chat.history":
                 if (!Only(fields, "sessionId", "servantId", "conversationId", "onlyCurrentProject", "append")
@@ -103,21 +158,42 @@ internal static class ChatWebCommandReader
                 action = actionName;
                 var targetRequired = actionName is "copyTurn" or "readTurn" or "openSource" or "openWorkspace" or "selectProject" or "selectModel" or "removeContextChip";
                 var expandedRequired = actionName == "setExpanded";
+                var presentationRequired = actionName == "setPresentation";
                 var expected = new List<string> { "sessionId", "servantId", "conversationId", "action" };
                 if (targetRequired) expected.Add("targetId");
                 if (expandedRequired) expected.Add("expanded");
+                if (presentationRequired)
+                {
+                    expected.Add("view"); expected.Add("wide");
+                    if (fields.ContainsKey("composerHeight")) expected.Add("composerHeight");
+                }
                 if (!Only(fields, expected.ToArray())) return false;
                 if (targetRequired && !ReadString(fields, "targetId", allowEmpty: false, 128, out targetId)) return false;
                 var expandedValue = false;
                 if (expandedRequired && !ReadBoolean(fields, "expanded", out expandedValue)) return false;
                 if (expandedRequired) expanded = expandedValue;
+                if (presentationRequired)
+                {
+                    if (!ReadString(fields, "view", false, 12, out view)
+                        || view is not ("composer" or "conversation")
+                        || !ReadBoolean(fields, "wide", out var wideValue)) return false;
+                    wide = wideValue;
+                    if (fields.TryGetValue("composerHeight", out var heightElement))
+                    {
+                        if (heightElement.ValueKind != JsonValueKind.Number
+                            || !heightElement.TryGetDouble(out var height)
+                            || !double.IsFinite(height) || height is < 160 or > 360) return false;
+                        composerHeight = height;
+                    }
+                }
                 break;
             default:
                 return false;
         }
 
         command = new(message.Type, identity, text, revision, onlyCurrentProject, append,
-            targetConversationId, action, targetId, expanded);
+            targetConversationId, action, targetId, expanded, runId, inputRequestId, answers, imageChunk,
+            view, wide, composerHeight);
         errorCode = string.Empty;
         return true;
     }
@@ -129,6 +205,35 @@ internal static class ChatWebCommandReader
             || !ReadString(fields, "servantId", allowEmpty: true, 128, out var servantId)
             || !ReadString(fields, "conversationId", allowEmpty: true, 128, out var conversationId)) return false;
         identity = new(sessionId!, servantId!, conversationId!);
+        return true;
+    }
+
+    private static bool ReadAnswers(JsonElement value, out ImmutableArray<QuestionAnswer> answers)
+    {
+        answers = default;
+        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() is < 1 or > 3) return false;
+        var result = ImmutableArray.CreateBuilder<QuestionAnswer>(value.GetArrayLength());
+        foreach (var answer in value.EnumerateArray())
+        {
+            if (answer.ValueKind != JsonValueKind.Object) return false;
+            var fields = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var property in answer.EnumerateObject()) if (!fields.TryAdd(property.Name, property.Value)) return false;
+            if (!Only(fields, "questionId", "selectedOptionIndices", "text")
+                || !ReadString(fields, "questionId", false, 64, out var id)
+                || fields["selectedOptionIndices"].ValueKind != JsonValueKind.Array
+                || fields["selectedOptionIndices"].GetArrayLength() > 8) return false;
+            var indices = ImmutableArray.CreateBuilder<int>(fields["selectedOptionIndices"].GetArrayLength());
+            foreach (var index in fields["selectedOptionIndices"].EnumerateArray())
+            {
+                if (index.ValueKind != JsonValueKind.Number || !index.TryGetInt32(out var number)) return false;
+                indices.Add(number);
+            }
+            var text = fields["text"];
+            if (text.ValueKind is not (JsonValueKind.Null or JsonValueKind.String)
+                || text.ValueKind == JsonValueKind.String && text.GetString()!.Length > MaxDraftChars) return false;
+            result.Add(new(id!, indices.MoveToImmutable(), text.ValueKind == JsonValueKind.Null ? null : text.GetString()));
+        }
+        answers = result.MoveToImmutable();
         return true;
     }
 
@@ -165,8 +270,10 @@ internal static class ChatWebCommandReader
     }
 
     private static bool IsKnownHostAction(string action) => action is
-        "hide" or "setExpanded" or "copyTurn" or "readTurn" or "openSource" or "openWorkspace"
+        "hide" or "setExpanded" or "setPresentation" or "copyTurn" or "readTurn" or "openSource" or "openWorkspace"
         or "openFocus" or "openWorkspaceOverview" or "newWorkspaceItem"
         or "openPersonalizationSettings" or "openSpeechSettings" or "openModelSettings"
-        or "refreshProjects" or "selectProject" or "selectModel" or "removeContextChip";
+        or "refreshProjects" or "refreshModels" or "selectProject" or "selectModel" or "removeContextChip"
+        or "chooseWindowContext" or "previewWindowContext" or "rereadWindowContext" or "clearWindowContext"
+        or "chooseWorkspace" or "clearWorkspace" or "chooseImage" or "clearImage" or "configureBrowserImages";
 }

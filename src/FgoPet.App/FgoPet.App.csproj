@@ -9,6 +9,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\FgoPet.Desktop\Shell\Assets\AppIcon.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <RootNamespace>FgoPet.App</RootNamespace>
     <CompanionTargetFramework>net8.0-windows</CompanionTargetFramework>
@@ -22,6 +23,17 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/FgoPet.Plugin.Qq.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/Desktop/FgoPet.Plugin.Qq.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Reminders/FgoPet.Plugin.Reminders.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Understanding/Desktop/FgoPet.Plugin.Understanding.Desktop.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Workspace/FgoPet.Plugin.Workspace.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Shell/FgoPet.Plugin.Shell.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Documents/FgoPet.Plugin.Documents.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.Skills/FgoPet.Plugin.Skills.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Todo/Core/FgoPet.Plugin.Todo.Core.csproj" />
 
     <ProjectReference Include="../FgoPet.Platform/Windows/FgoPet.Platform.Windows.csproj" />
@@ -46,10 +58,16 @@
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
   <Target Name="CopySiblingRelay" AfterTargets="Build">
+    <PropertyGroup>
+      <CompanionRelayOutput>$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)</CompanionRelayOutput>
+      <CompanionAdapterOutput>$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)</CompanionAdapterOutput>
+      <CompanionRelayOutput Condition="'$(UseArtifactsOutput)' == 'true'">$(ArtifactsPath)\bin\FgoPet.AgentRelay\$(ArtifactsPivots)</CompanionRelayOutput>
+      <CompanionAdapterOutput Condition="'$(UseArtifactsOutput)' == 'true'">$(ArtifactsPath)\bin\FgoPet.CodexAdapter\$(ArtifactsPivots)</CompanionAdapterOutput>
+    </PropertyGroup>
     <ItemGroup>
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.AgentRelay\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.AgentRelay.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\FgoPet.CodexAdapter.*" />
-      <SiblingRelay Include="$(MSBuildProjectDirectory)\..\..\plugins\providers\FgoPet.Provider.Codex\FgoPet.CodexAdapter\bin\$(Configuration)\$(CompanionTargetFramework)\$(RuntimeIdentifier)\System.Security.Cryptography.ProtectedData.dll" />
+      <SiblingRelay Include="$(CompanionRelayOutput)\FgoPet.AgentRelay.*" />
+      <SiblingRelay Include="$(CompanionAdapterOutput)\FgoPet.CodexAdapter.*" />
+      <SiblingRelay Include="$(CompanionAdapterOutput)\System.Security.Cryptography.ProtectedData.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(SiblingRelay)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>

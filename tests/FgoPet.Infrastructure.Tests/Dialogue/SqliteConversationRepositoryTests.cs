@@ -89,6 +89,118 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
         Assert.Equal("persona-2", message.ContentContext.PersonaVersion);
     }
 
+    [Theory]
+    [InlineData(0, 508, 511)]
+    [InlineData(0, 509, 512)]
+    [InlineData(0, 510, 513)]
+    [InlineData(169, 1, 511)]
+    [InlineData(169, 2, 512)]
+    [InlineData(169, 3, 513)]
+    public void Append_preserves_nul_text_across_utf8_binding_boundaries(int bmpCount, int asciiCount, int expectedBytes)
+    {
+        var repository = CreateRepository();
+        var context = Context("casual");
+        repository.CreateConversation("c1", "800100", context, Now());
+        var original = "P\0" + new string('界', bmpCount) + new string('a', asciiCount) + "Z";
+        Assert.Equal(expectedBytes, System.Text.Encoding.UTF8.GetByteCount(original));
+
+        repository.Append(Message("m1", "c1", "800100", 1, ChatMessageRole.User, original, context));
+
+        using (var connection = new RuntimeDatabase(_path, pooling: false).Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT typeof(text),CAST(text AS BLOB) FROM chat_messages WHERE message_id='m1'";
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal("text", reader.GetString(0));
+            var stored = Assert.IsType<byte[]>(reader.GetValue(1));
+            Assert.Equal(expectedBytes, stored.Length);
+            Assert.Equal(System.Text.Encoding.UTF8.GetBytes(original), stored);
+        }
+        var reopened = new SqliteConversationRepository(new RuntimeDatabase(_path, pooling: false));
+        var saved = Assert.Single(reopened.LoadMessages("c1", "800100"));
+        Assert.Equal(original, saved.Text);
+        Assert.Equal(context, saved.ContentContext);
+        Assert.Equal(Now(), saved.CreatedAtUtc);
+        Assert.Equal(1, saved.Sequence);
+    }
+
+    [Theory]
+    [InlineData(ChatMessageStatus.Cancelled, "UTF-8")]
+    [InlineData(ChatMessageStatus.Failed, "UTF-8")]
+    [InlineData(ChatMessageStatus.Cancelled, "UTF-16le")]
+    [InlineData(ChatMessageStatus.Failed, "UTF-16le")]
+    [InlineData(ChatMessageStatus.Cancelled, "UTF-16be")]
+    [InlineData(ChatMessageStatus.Failed, "UTF-16be")]
+    public void Append_preserves_empty_terminal_text_as_text_instead_of_null(ChatMessageStatus status, string encoding)
+    {
+        var repository = CreateRepository(encoding);
+        var context = Context("casual");
+        repository.CreateConversation("c1", "800100", context, Now());
+        repository.Append(new("m1", "c1", "800100", ChatMessageRole.Assistant, string.Empty, status, Now(), context, 1));
+
+        var saved = Assert.Single(repository.LoadMessages("c1", "800100"));
+        Assert.Equal(string.Empty, saved.Text);
+        Assert.Equal(status, saved.Status);
+        using var connection = new RuntimeDatabase(_path, pooling: false).Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT typeof(text) FROM chat_messages WHERE message_id='m1'";
+        Assert.Equal("text", command.ExecuteScalar());
+    }
+
+    [Theory]
+    [InlineData("UTF-8", false, 0)]
+    [InlineData("UTF-8", true, 0)]
+    [InlineData("UTF-16le", false, 0)]
+    [InlineData("UTF-16le", true, 0)]
+    [InlineData("UTF-16be", false, 0)]
+    [InlineData("UTF-16be", true, 0)]
+    [InlineData("UTF-8", false, 11000)]
+    [InlineData("UTF-8", true, 11000)]
+    [InlineData("UTF-16le", false, 11000)]
+    [InlineData("UTF-16le", true, 11000)]
+    [InlineData("UTF-16be", false, 11000)]
+    [InlineData("UTF-16be", true, 11000)]
+    public void Append_preserves_text_in_existing_database_encodings(string encoding, bool nul, int padding)
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        var repository = CreateRepository(encoding);
+        var context = Context("casual");
+        repository.CreateConversation("c1", "800100", context, Now());
+        var original = "计划😀" + (nul ? "\0" : "a") + new string('界', padding) + "后置原文";
+        Assert.Equal(1, System.Text.Encoding.UTF8.GetByteCount(original) % 2);
+        repository.Append(Message("m1", "c1", "800100", 1, ChatMessageRole.User, original, context));
+
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA encoding";
+            Assert.Equal(encoding, command.ExecuteScalar());
+            command.CommandText = "SELECT typeof(text),CAST(text AS BLOB) FROM chat_messages WHERE message_id='m1'";
+            using var reader = command.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal("text", reader.GetString(0));
+            Assert.Equal(System.Text.Encoding.GetEncoding(encoding).GetBytes(original), Assert.IsType<byte[]>(reader.GetValue(1)));
+        }
+        Assert.Equal(original, Assert.Single(new SqliteConversationRepository(database).LoadMessages("c1", "800100")).Text);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(12000)]
+    public void Over_limit_text_with_nul_is_rejected_before_any_message_is_written(int nulOffset)
+    {
+        var repository = CreateRepository();
+        var context = Context("casual");
+        repository.CreateConversation("c1", "800100", context, Now());
+        var original = new string('x', 12000).Insert(nulOffset, "\0");
+
+        Assert.ThrowsAny<ArgumentException>(() => repository.Append(
+            Message("m1", "c1", "800100", 1, ChatMessageRole.User, original, context)));
+
+        Assert.Empty(repository.LoadMessages("c1", "800100"));
+    }
+
     [Fact]
     public void Delete_conversation_removes_its_messages()
     {
@@ -142,9 +254,16 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
         }
     }
 
-    private SqliteConversationRepository CreateRepository()
+    private SqliteConversationRepository CreateRepository(string encoding = "UTF-8")
     {
         var database = new RuntimeDatabase(_path);
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            // A temporary fixture table persists the selected encoding before migration.
+            command.CommandText = $"PRAGMA encoding='{encoding}'; CREATE TABLE encoding_fixture(value INTEGER); DROP TABLE encoding_fixture;";
+            command.ExecuteNonQuery();
+        }
         new RuntimeDatabaseMigrator(database).Migrate();
         return new SqliteConversationRepository(database);
     }

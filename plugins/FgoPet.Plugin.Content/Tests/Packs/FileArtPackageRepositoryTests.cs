@@ -67,6 +67,18 @@ public sealed class FileArtPackageRepositoryTests : IDisposable
     // ----- scanning -----
 
     [Fact]
+    public async Task Appearance_preview_uses_the_verified_default_expression_not_the_package_sheet()
+    {
+        var root = AddInstalledPack("official.mash", "1.0.0");
+        var servant = Assert.Single(await _repository.ListServantsAsync(CancellationToken.None));
+        Assert.Equal(Path.Combine(root, "appearances", "casual", "runtime", "expressions", "r01c01.png"),
+            Assert.Single(servant.Appearances).PreviewPath);
+        File.WriteAllBytes(Path.Combine(root, "appearances", "casual", "runtime", "expressions", "r01c01.png"), [0]);
+        servant = Assert.Single(await _repository.ListServantsAsync(CancellationToken.None));
+        Assert.Null(Assert.Single(servant.Appearances).PreviewPath);
+    }
+
+    [Fact]
     public async Task Scan_orders_versions_deterministically()
     {
         AddInstalledPack("official.mash", "1.0.0");

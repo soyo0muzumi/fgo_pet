@@ -8,4 +8,5 @@
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
   <ItemGroup><Content Include="ui\todo\**\*" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../../../src/FgoPet.UiSdk/Resources/Web/margin.css" Link="ui/todo/shared/margin.css" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Core.Dialogue;
 using Microsoft.Data.Sqlite;
 
 namespace FgoPet.App.Privacy;
@@ -15,15 +16,21 @@ namespace FgoPet.App.Privacy;
 public sealed class UserDataExportService : IUserDataExporter
 {
     private readonly RuntimeDatabase _database;
+    private readonly IReadOnlyList<IDerivedConversationData> _derivedData;
 
-    public UserDataExportService(RuntimeDatabase database) =>
+    public UserDataExportService(RuntimeDatabase database, IEnumerable<IDerivedConversationData>? derivedData = null)
+    {
         _database = database ?? throw new ArgumentNullException(nameof(database));
+        _derivedData = derivedData?.ToArray() ?? [];
+    }
 
     public async Task ExportAsync(string destinationPath, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
         cancellationToken.ThrowIfCancellationRequested();
         var export = ReadSafeExport(cancellationToken);
+        var document = export.ToJsonObject();
+        if (_derivedData.Count > 0) document["derived_conversation_data"] = _derivedData.Select(p => p.Export()).ToArray();
         var fullPath = Path.GetFullPath(destinationPath);
         var directory = Path.GetDirectoryName(fullPath);
         if (!string.IsNullOrEmpty(directory))
@@ -36,7 +43,7 @@ public sealed class UserDataExportService : IUserDataExporter
         await using var stream = entry.Open();
         await JsonSerializer.SerializeAsync(
             stream,
-            export.ToJsonObject(),
+            document,
             new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping },
             cancellationToken);
     }

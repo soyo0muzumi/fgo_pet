@@ -1,5 +1,6 @@
 using System.IO;
 using System.Globalization;
+using System.Text;
 using FgoPet.Core.Dialogue;
 using FgoPet.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -119,6 +120,15 @@ public sealed class SqliteConversationRepository : IConversationStore
         ArgumentNullException.ThrowIfNull(message);
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
+        Append(connection, transaction, message);
+        transaction.Commit();
+    }
+
+    internal static void Append(SqliteConnection connection, SqliteTransaction transaction, ChatMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(message);
         var conversationServant = ReadConversationServant(connection, transaction, message.ConversationId);
         if (conversationServant is null)
         {
@@ -141,17 +151,28 @@ public sealed class SqliteConversationRepository : IConversationStore
         using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
+            command.CommandText = "PRAGMA encoding";
+            var textEncoding = command.ExecuteScalar() switch
+            {
+                "UTF-8" => Encoding.UTF8,
+                "UTF-16le" => Encoding.Unicode,
+                "UTF-16be" => Encoding.BigEndianUnicode,
+                _ => throw new InvalidDataException("Unsupported database text encoding.")
+            };
             command.CommandText = """
                 INSERT INTO chat_messages(
                   message_id, conversation_id, servant_id, sequence, role, text, status, created_at_utc, binding_id)
-                VALUES($id, $conversation, $servant, $sequence, $role, $text, $status, $created, $binding)
+                VALUES($id, $conversation, $servant, $sequence, $role, $text || '', $status, $created, $binding)
                 """;
             command.Parameters.AddWithValue("$id", message.MessageId);
             command.Parameters.AddWithValue("$conversation", message.ConversationId);
             command.Parameters.AddWithValue("$servant", message.ServantId);
             command.Parameters.AddWithValue("$sequence", message.Sequence);
             command.Parameters.AddWithValue("$role", message.Role.ToString().ToLowerInvariant());
-            command.Parameters.AddWithValue("$text", message.Text);
+            // Byte binding preserves NUL past the driver's 512-byte string boundary.
+            // Concatenation uses the database encoding and yields TEXT without SQLite's
+            // UTF-16 CAST path rounding an odd UTF-8 byte count down before conversion.
+            command.Parameters.AddWithValue("$text", textEncoding.GetBytes(message.Text));
             command.Parameters.AddWithValue("$status", message.Status.ToString().ToLowerInvariant());
             command.Parameters.AddWithValue("$created", message.CreatedAtUtc.ToString("O"));
             command.Parameters.AddWithValue("$binding", bindingId);
@@ -167,8 +188,6 @@ public sealed class SqliteConversationRepository : IConversationStore
             update.Parameters.AddWithValue("$id", message.ConversationId);
             update.ExecuteNonQuery();
         }
-
-        transaction.Commit();
     }
 
     public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId)

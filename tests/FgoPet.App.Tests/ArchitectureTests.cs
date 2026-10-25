@@ -99,14 +99,45 @@ public sealed class ArchitectureTests
     {
         StaTest.Run(() =>
         {
+            StaTest.RecordCurrentPhase("container_shell.application.started");
             _ = Application.Current ?? new Application();
-            using var provider = new ServiceCollection().AddFgoPet([]).BuildServiceProvider(new ServiceProviderOptions
+            StaTest.RecordCurrentPhase("container_shell.application.completed");
+
+            StaTest.RecordCurrentPhase("container_shell.service_collection.started");
+            var services = new ServiceCollection();
+            StaTest.RecordCurrentPhase("container_shell.service_collection.completed");
+
+            StaTest.RecordCurrentPhase("container_shell.registration.started");
+            services.AddFgoPet([]);
+            StaTest.RecordCurrentPhase("container_shell.registration.completed");
+
+            using var componentTimings = ComponentTimingProbe.TryStart(services);
+
+            StaTest.RecordCurrentPhase("container_shell.provider_build.started");
+            var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
                 ValidateOnBuild = true,
                 ValidateScopes = true,
             });
+            StaTest.RecordCurrentPhase("container_shell.provider_build.completed");
 
-            Assert.IsType<DesktopAppShell>(provider.GetRequiredService<IAppShell>());
+            try
+            {
+                StaTest.RecordCurrentPhase("container_shell.resolution.started");
+                var shell = provider.GetRequiredService<IAppShell>();
+                StaTest.RecordCurrentPhase("container_shell.resolution.completed");
+
+                StaTest.RecordCurrentPhase("container_shell.type_assertion.started");
+                Assert.IsType<DesktopAppShell>(shell);
+                StaTest.RecordCurrentPhase("container_shell.type_assertion.completed");
+            }
+            finally
+            {
+                componentTimings?.PrepareDisposal(provider);
+                StaTest.RecordCurrentPhase("container_shell.disposal.started");
+                provider.Dispose();
+                StaTest.RecordCurrentPhase("container_shell.disposal.completed");
+            }
         });
     }
 
@@ -164,6 +195,40 @@ public sealed class ArchitectureTests
         Assert.True(IsOnThisCheckout(projectPath));
     }
 
+    [Theory]
+    [InlineData("docs/internal/reports")]
+    [InlineData("DOCS/INTERNAL/REPORTS")]
+    public void Project_scan_excludes_only_the_checkout_internal_report_tree(string evidenceDirectory)
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "fgo-app-project-scan-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(sandbox, ".worktree", "personal");
+        string[] expected =
+        [
+            "src/FgoPet.Kernel/FgoPet.Kernel.csproj",
+            "src/Second/FgoPet.Kernel.csproj",
+            "src/docs/internal/reports/NestedSource.csproj",
+            "docs/internal/reports-extra/Unclassified.csproj",
+            "tools/Runner/Runner.csproj",
+            "tests/reports/TestProject.csproj",
+        ];
+        try
+        {
+            foreach (var relative in expected.Append(evidenceDirectory + "/before/FgoPet.Kernel.csproj"))
+            {
+                var path = Path.Combine(root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, "<Project />");
+            }
+
+            var actual = FindCsproj(root).Select(path => Path.GetRelativePath(root, path).Replace('\\', '/'));
+            Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox)) Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
     private static string ReadProject(string projectName) =>
         File.ReadAllText(FindCsproj(RepoRoot()).Where(IsOnThisCheckout)
             .Single(path => Path.GetFileName(path).Equals($"{projectName}.csproj", StringComparison.OrdinalIgnoreCase)));
@@ -179,6 +244,7 @@ public sealed class ArchitectureTests
 
     private static IEnumerable<string> FindCsproj(string root)
     {
+        var reportDirectory = Path.GetFullPath(Path.Combine(root, "docs", "internal", "reports"));
         var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".git", ".worktrees", "bin", "obj", ".pytest_cache", "__pycache__", ".venv", "venv",
@@ -215,7 +281,8 @@ public sealed class ArchitectureTests
 
             foreach (var child in children)
             {
-                if (!excluded.Contains(Path.GetFileName(child)))
+                if (!excluded.Contains(Path.GetFileName(child))
+                    && !string.Equals(Path.GetFullPath(child), reportDirectory, StringComparison.OrdinalIgnoreCase))
                 {
                     pending.Push(child);
                 }

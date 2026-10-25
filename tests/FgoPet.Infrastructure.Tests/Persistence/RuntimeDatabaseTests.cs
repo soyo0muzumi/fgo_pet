@@ -181,6 +181,52 @@ public sealed class RuntimeDatabaseTests : IDisposable
         Assert.Equal(5000L, Scalar<long>(connection, "PRAGMA busy_timeout"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Open_during_uncommitted_schema_change_keeps_connections_isolated(bool pooling)
+    {
+        var database = new RuntimeDatabase(_path, pooling);
+        using var owner = database.Open();
+        using var transaction = owner.BeginTransaction();
+        using (var create = owner.CreateCommand())
+        {
+            create.Transaction = transaction;
+            create.CommandText = "CREATE TABLE pending_schema(value INTEGER)";
+            create.ExecuteNonQuery();
+        }
+
+        // Keep the schema write transaction open: shared-cache preparation fails here.
+        // A separate WAL reader must open successfully without seeing uncommitted DDL.
+        using var reader = database.Open();
+        Assert.Equal(0L, Scalar<long>(reader,
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='pending_schema'"));
+        Assert.Equal(1L, Scalar<long>(reader, "PRAGMA foreign_keys"));
+        Assert.Equal("wal", Scalar<string>(reader, "PRAGMA journal_mode"));
+
+        transaction.Commit();
+        Assert.Equal(1L, Scalar<long>(reader,
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='pending_schema'"));
+    }
+
+    [Fact]
+    public void Open_initialization_failure_releases_nonpooled_file_handle_without_changing_data()
+    {
+        var invalidDatabase = System.Text.Encoding.UTF8.GetBytes("synthetic invalid sqlite database");
+        File.WriteAllBytes(_path, invalidDatabase);
+        var database = new RuntimeDatabase(_path, pooling: false);
+
+        var error = Assert.Throws<SqliteException>(() => database.Open());
+
+        Assert.Equal(26, error.SqliteErrorCode); // SQLITE_NOTADB, not a lock or constraint error.
+        // No GC or pool clearing: Open must release its own failed connection before throwing.
+        using var exclusive = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.None);
+        var preserved = new byte[invalidDatabase.Length];
+        exclusive.ReadExactly(preserved);
+        Assert.Equal(invalidDatabase, preserved);
+        Assert.Equal(invalidDatabase.Length, exclusive.Length);
+    }
+
     [Fact]
     public void Enforces_partial_unique_index_on_the_current_session()
     {

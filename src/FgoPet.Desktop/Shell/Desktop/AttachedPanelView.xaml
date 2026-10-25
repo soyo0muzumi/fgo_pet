@@ -42,7 +42,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid ClipToBounds="True" SnapsToDevicePixels="True">
+    <Grid x:Name="PanelContents" HorizontalAlignment="Left" ClipToBounds="True" SnapsToDevicePixels="True">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -64,11 +64,16 @@
 
 
                 <ContentControl x:Name="CompactContentHost" />
+                <Button x:Name="CloseCompactButton" Content="×" Width="22" Height="22"
+                        FontFamily="Segoe UI" FontSize="16" Padding="0" BorderThickness="0"
+                        Background="Transparent" Foreground="#6E6961"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"
+                        Click="OnCloseCompactClick" />
 
             </Grid>
         </Border>
 
-        <StackPanel Grid.Column="0" VerticalAlignment="Top">
+        <StackPanel x:Name="EntryRail" Grid.Column="0" VerticalAlignment="Top">
             <StackPanel x:Name="CompanionControlIsland" Orientation="Vertical" HorizontalAlignment="Left">
                 <Grid>
                     <Button x:Name="ChatEntryButton"

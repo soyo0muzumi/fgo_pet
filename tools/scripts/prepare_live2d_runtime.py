@@ -97,20 +97,136 @@ def prepare(sdk: Path, esbuild: Path, output: Path) -> Path:
       }
     }""")
         model = work / "lappmodel.ts"
+        behavior = repository / "plugins" / "providers" / "FgoPet.Portrait.Live2D" / "Runtime" / "desktop-behavior.mjs"
+        shutil.copy2(behavior, work / "desktop-behavior.mjs")
+        shutil.copy2(behavior.with_name("desktop-state.mjs"), work / "desktop-state.mjs")
+        shutil.copy2(behavior.with_name("desktop-speech.mjs"), work / "desktop-speech.mjs")
+        model.write_text("""import { desktopBehavior, eyeOriginFromModel, projectEyeOrigin, applyGaze, restoreMotionBase, HeadHover, HeadHitRegion, applyHoverBlink, textureAlphaFromImage } from './desktop-behavior.mjs';
+import { ICubismUpdater, CubismUpdateOrder } from '@framework/motion/icubismupdater';
+import { desktopState } from './desktop-state.mjs';
+import { desktopSpeech } from './desktop-speech.mjs';
+""" + model.read_text(encoding="utf-8"), encoding="utf-8")
+        _replace_exact(model, "export class LAppModel extends CubismUserModel {", """export class LAppModel extends CubismUserModel {
+  private _desktopEyeOrigin: any = null;
+  private _desktopEyeViewport = { x: 0.5, y: 0.25 };
+  private _desktopGazeWeight = 1;
+  private _desktopHover = new HeadHover();
+  private _desktopHeadRegion: any = null;
+  private _desktopViewMatrix: any = null;
+  private _desktopHoverFrame = { state: 'outside', triggered: false, tilt: 0, blink: 1 };
+""")
+        _replace_exact(model, "this.getRenderer().bindTexture(modelTextureNumber, textureInfo.id);", """this.getRenderer().bindTexture(modelTextureNumber, textureInfo.id);
+          this._desktopHeadRegion.setTexture(modelTextureNumber, textureAlphaFromImage(textureInfo.img));""")
+        _replace_exact(model, """const eyeBlinkUpdater = new CubismEyeBlinkUpdater(
+          () => this._motionUpdated,
+          this._eyeBlink
+        );""", """const owner = this;
+        const eyeBlinkUpdater = new class extends CubismEyeBlinkUpdater {
+          onLateUpdate(model: any, dt: number): void {
+            if (desktopState.blocksBlink) return;
+            super.onLateUpdate(model, dt);
+            if (!desktopState.blocksGaze && !owner._motionUpdated && owner._motionManager.isFinished()) {
+              applyHoverBlink(model, owner._eyeBlink.getParameterIds(), owner._desktopHoverFrame.blink);
+            }
+          }
+        }(() => this._motionUpdated, this._eyeBlink);""")
+        _replace_exact(model, "this._updateScheduler.addUpdatableList(lookUpdater);", """// Replace sample drag tracking; only the app-owned desktop behavior writes gaze.
+      this._desktopEyeOrigin = eyeOriginFromModel(this._model.getModel());
+      this._desktopHeadRegion = new HeadHitRegion(this._model.getModel());
+      const owner = this;
+      // Decide the reaction before the single blink updater; expressions still run after blink.
+      this._updateScheduler.addUpdatableList(new class extends ICubismUpdater {
+        constructor() { super(CubismUpdateOrder.CubismUpdateOrder_EyeBlink - 1); }
+        onLateUpdate(model: any, dt: number): void {
+          const now = performance.now() / 1000;
+          const inside = now - desktopBehavior.receivedAt <= 0.5
+            && owner._desktopHeadRegion.isHit(desktopBehavior.pointer, owner._desktopViewMatrix);
+          owner._desktopHoverFrame = owner._desktopHover.update(inside,
+            (desktopBehavior.pointer?.x ?? 0.5) - owner._desktopEyeViewport.x,
+            desktopState.blocksGaze || !owner._motionManager.isFinished(), dt, now);
+          if (owner._desktopHoverFrame.triggered) desktopBehavior.interact(now);
+        }
+      }());
+      this._updateScheduler.addUpdatableList(new class extends ICubismUpdater {
+        constructor() { super(CubismUpdateOrder.CubismUpdateOrder_Drag); }
+        onLateUpdate(model: any, dt: number): void {
+          if (!owner._desktopEyeOrigin) return;
+          const gaze = desktopBehavior.update(dt, performance.now() / 1000, owner._desktopEyeViewport);
+          owner._desktopGazeWeight = !desktopState.blocksGaze && owner._motionManager.isFinished()
+            ? Math.min(1, owner._desktopGazeWeight + dt / 0.6) : 0;
+          applyGaze(model, id => CubismFramework.getIdManager().getId(id), gaze, owner._desktopGazeWeight);
+          if (model.getModel().parameters.ids.includes('ParamAngleZ')) {
+            model.addParameterValueById(CubismFramework.getIdManager().getId('ParamAngleZ'),
+              owner._desktopHoverFrame.tilt * owner._desktopGazeWeight);
+          }
+        }
+      }());
+      this._updateScheduler.addUpdatableList(new class extends ICubismUpdater {
+        constructor() { super(CubismUpdateOrder.CubismUpdateOrder_Expression + 1); }
+        onLateUpdate(model: any, dt: number): void {
+          desktopState.applyEffects(model, id => CubismFramework.getIdManager().getId(id), owner._motionManager.isFinished());
+        }
+      }());
+      this._updateScheduler.addUpdatableList(new class extends ICubismUpdater {
+        constructor() { super(CubismUpdateOrder.CubismUpdateOrder_LipSync + 1); }
+        onLateUpdate(model: any, dt: number): void {
+          desktopSpeech.apply(model, id => CubismFramework.getIdManager().getId(id),
+            desktopSpeech.update(dt, performance.now() / 1000));
+        }
+      }());""")
+        # Sample breath also swings head/body strongly. Retain breathing with quiet offsets.
+        _replace_exact(model, "this._idParamAngleX, 0.0, 15.0, 6.5345, 0.5", "this._idParamAngleX, 0.0, 2.0, 6.5345, 0.5")
+        _replace_exact(model, "this._idParamAngleY, 0.0, 8.0, 3.5345, 0.5", "this._idParamAngleY, 0.0, 1.5, 3.5345, 0.5")
+        _replace_exact(model, "this._idParamAngleZ, 0.0, 10.0, 5.5345, 0.5", "this._idParamAngleZ, 0.0, 2.0, 5.5345, 0.5")
+        _replace_exact(model, "          4.0,\n          15.5345,", "          1.0,\n          15.5345,")
+        _replace_exact(model, "matrix.multiplyByMatrix(this._modelMatrix);", """matrix.multiplyByMatrix(this._modelMatrix);
+      if (this._desktopEyeOrigin) this._desktopEyeViewport = projectEyeOrigin(this._desktopEyeOrigin, matrix);""")
+        _replace_exact(model, "this.getRenderer().setMvpMatrix(matrix);", """this._desktopViewMatrix = matrix;
+      this.getRenderer().setMvpMatrix(matrix);""")
+        _replace_exact(model, """      this.startRandomMotion(
+        LAppDefine.MotionGroupIdle,
+        LAppDefine.PriorityIdle
+      );""", """      // Procedural idle owns attention; release the final motion pose smoothly.
+      if (!desktopState.applyBase(this._model)) restoreMotionBase(this._model, deltaTimeSeconds);""")
+        _replace_exact(model, "this._model.loadParameters();", """desktopState.speech(desktopSpeech.active(performance.now() / 1000), performance.now() / 1000);
+    desktopState.sync(this, performance.now() / 1000);
+    this._model.loadParameters();""")
+        _replace_exact(model, "this._model.saveParameters(); // 状態を保存", """if (this._motionUpdated) desktopState.capture(this._model);
+    this._model.saveParameters(); // 状態を保存""")
         _replace_exact(model, "if (this._state != LoadStep.CompleteSetup) return;", """if (this._state != LoadStep.CompleteSetup) return;
     if (!(window as any).__fgoPetReady) {
       (window as any).__fgoPetReady = true;
       (window as any).chrome?.webview?.postMessage({ type: 'live2d.ready' });
     }""")
         manager = work / "lapplive2dmanager.ts"
+        _replace_exact(manager, "    model.update();", """    // Match the padded 531x675 host while retaining the original 483x603
+    // character scale. All extra vertical room belongs above the character.
+    projection.scaleRelative(483 / 531, 483 / 531);
+    projection.translateRelative(0, -72 / 675);
+    model.update();""")
         _replace_exact(manager, "this._sceneIndex = 0;", """this._sceneIndex = 0;
-    (window as any).__fgoPetPlayTap = () => this._models[0]?.startRandomMotion(
-      LAppDefine.MotionGroupTapBody, LAppDefine.PriorityNormal);
+    (window as any).__fgoPetPlayTap = () => {
+      const model = this._models[0];
+      if (!model) return;
+      const play = desktopState.tap(performance.now() / 1000);
+      desktopState.sync(model, performance.now() / 1000);
+      if (play) model.startRandomMotion(LAppDefine.MotionGroupTapBody, LAppDefine.PriorityNormal);
+    };
 """)
+        manager.write_text("import { desktopState } from './desktop-state.mjs';\n" + manager.read_text(encoding="utf-8"), encoding="utf-8")
         main = work / "main.ts"
         main.write_text(main.read_text(encoding="utf-8") + """
+import { desktopBehavior } from './desktop-behavior.mjs';
+import { desktopState } from './desktop-state.mjs';
+import { desktopSpeech } from './desktop-speech.mjs';
 (window as any).chrome?.webview?.addEventListener('message', (event: any) => {
-  if (event.data?.type === 'live2d.tap') (window as any).__fgoPetPlayTap?.();
+  const now = performance.now() / 1000;
+  if (event.data?.type === 'live2d.tap') {
+    desktopBehavior.interact(now);
+    (window as any).__fgoPetPlayTap?.();
+  } else if (!desktopSpeech.receive(event.data, now) && !desktopState.receive(event.data, now)) {
+    if (desktopBehavior.receive(event.data, now) && event.data.active) desktopState.activity(now);
+  }
 });
 """, encoding="utf-8")
         runtime = staging / "runtime"
@@ -128,7 +244,7 @@ def prepare(sdk: Path, esbuild: Path, output: Path) -> Path:
 canvas{width:100vw;height:100vh;display:block}</style>
 <script src="./live2dcubismcore.js"></script><script src="./app.js" defer></script>
 </head><body></body></html>\n""", encoding="utf-8")
-        (runtime / "runtime-info.json").write_text(json.dumps({"sdk": "CubismSdkForWeb-5-r.5", "source": "official TypeScript Demo adapter", "model_data_in_role_pack": True}, indent=2) + "\n", encoding="utf-8")
+        (runtime / "runtime-info.json").write_text(json.dumps({"sdk": "CubismSdkForWeb-5-r.5", "source": "official TypeScript Demo adapter", "model_data_in_role_pack": True, "desktop_behavior": 3, "head_hover": 1, "desktop_states": 1, "speech_lip_sync": 1}, indent=2) + "\n", encoding="utf-8")
         runtime.rename(output)
     return output
 

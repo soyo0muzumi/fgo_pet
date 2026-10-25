@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FgoPet.Kernel/FgoPet.Kernel.csproj" />
+    <ProjectReference Include="../../../src/FgoPet.Platform/Storage/FgoPet.Platform.Storage.csproj" />
+  </ItemGroup>
+</Project>

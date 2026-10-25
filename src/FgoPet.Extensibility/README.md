@@ -4,6 +4,18 @@ Pure .NET contracts and an immutable startup catalog for trusted, statically reg
 
 The catalog validates IDs, API/version compatibility, dependency order and duplicate contributions. Feature state and user data belong to the plugin. Tool effects distinguish read-only, proposal and command behavior; declaring a command never grants execution authorization.
 
+Native agent contributions include typed `ISkillProvider`, `IAgentContextProvider` and `IAgentRunObserver` providers. The immutable catalog captures their descriptors and ownership once; context providers declare whether their blocks may be treated as trusted instructions, and observers receive sanitized run metadata rather than content-bearing request or response DTOs.
+
+An optional `AgentContextBlock.Whole` flag preserves a data entry as one unit under input pressure; the Native assembler may omit it instead of shortening its conditions or correction. Existing data providers retain their previous default behavior. `ConversationSourceSnapshot.SourceRevision` is an optional owner-validated revision alongside the original fingerprint; zero denotes legacy/unattested revisions and does not grant source access or imply read coverage.
+
+`CompanionObservation` and `CompanionContextSnapshot` carry bounded host-owned background data for an exact `ToolScope`: source identity/version, observation and expiry times, snapshot revision and whether content is an interpretation. They grant no read, model, tool or persistence authority. Consumers validate freshness and scope and preserve the distinction between observed facts and tentative interpretations. Source identity alone does not attest complete read coverage; request budgeting can omit or shorten material.
+
+`ICompanionAwarenessControls` is the host port for the existing Understanding Settings page's separate Ambient awareness card. `CompanionAwarenessOptions` defaults to internal activity enabled, application overview and background thought disabled, and six background calls per rolling 24 hours. Status discloses the model recipient, approval state, usage and current window permissions. Configure and window mutations use an opaque host context token and exact revision; web payloads cannot choose a scope or model. Window candidates expose opaque native-source tokens, not handles. The host owns explicit enumeration, approval, revocation, persistence and the 1–24 request-limit validation. These controls neither change saved-Understanding grants nor enable its review worker.
+
+Canonical tool IDs accept bounded dotted segments as well as existing underscore names. Provider wire aliases belong to the model adapter. Optional `ToolInvocation.ExecutionContext` carries host-generated run, step, call and idempotency identity. Optional `ToolResult.ExecutionState` distinguishes proven command commitment, non-execution and uncertainty; these fields preserve existing constructor compatibility and grant no authority.
+
+`ToolResult.Image` optionally carries a `ToolImageReference` for a successful read-only observation. It contains only an opaque identifier, never a path or image bytes, and grants no authority; the current selection owner must authorize every later request. Existing text-only tool constructors remain unchanged.
+
 There is no WPF, database, service locator, external plugin loader, hot reload or security sandbox in this assembly. Stateful provider instances remain owned by their plugin; catalog metadata is captured once.
 
-Validation: `dotnet test tests/FgoPet.Foundation.Tests/FgoPet.Foundation.Tests.csproj -c Release`.
+Validation: `dotnet test tests/FgoPet.Foundation.Tests/FgoPet.Foundation.Tests.csproj -c Release` (including `NativeContributionCatalogTests`).

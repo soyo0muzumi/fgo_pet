@@ -42,7 +42,7 @@ public sealed class TodoPeekSurfaceFactory : ITransientSurfaceViewFactory, IDisp
         var host = new WebView2SurfaceHost(Policy,
             Path.Combine(AppContext.BaseDirectory, "ui", "todo"),
             Path.Combine(_storageRoot, "WebView2", "todo"), HandleCommandAsync);
-        if (_theme is not null) host.SetThemeVersion(_themeVersion, _theme.CaptureWebPalette());
+        host.SetThemeVersion(_themeVersion, MarginVisualResources.WebPalette);
         var subscription = _changes.Subscribe(change => host.PostEvent(new { type = "todo.changed", revision = change.Revision }));
         _views.Add((host, subscription));
         host.Disposed += OnHostDisposed;
@@ -59,7 +59,7 @@ public sealed class TodoPeekSurfaceFactory : ITransientSurfaceViewFactory, IDisp
             {
                 "getPeekSnapshot" => new WebSurfaceCommandResult(true,
                     _adapter.GetPeekSnapshot(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
-                        _time.GetUtcNow(), TimeZoneInfo.Local).DateTime), TimeZoneInfo.Local, cancellationToken)),
+                        _time.GetUtcNow(), _time.LocalTimeZone).DateTime), _time.LocalTimeZone, cancellationToken)),
                 "quickAdd" => QuickAdd(message.Payload, cancellationToken),
                 "setCompletion" => SetCompletion(message.Payload, cancellationToken),
                 "openWorkspace" => _openWorkspace("todo.workspace")
@@ -132,7 +132,7 @@ public sealed class TodoPeekSurfaceFactory : ITransientSurfaceViewFactory, IDisp
     {
         if (_disposed || _theme is null) return;
         var version = Interlocked.Increment(ref _themeVersion);
-        var variables = _theme.CaptureWebPalette();
+        var variables = MarginVisualResources.WebPalette;
         foreach (var view in _views.ToArray()) view.Host.SetThemeVersion(version, variables);
     }
 

@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Persistence;
 
-public sealed class SqliteTodoRepository : ITodoRepository
+public sealed partial class SqliteTodoRepository : ITodoRepository, ITodoAgentCommandRepository
 {
     private readonly RuntimeDatabase _database;
 

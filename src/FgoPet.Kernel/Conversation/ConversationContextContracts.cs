@@ -16,6 +16,12 @@ public sealed record SummaryAttempt(string Text, string? FinishReason, ChatUsage
 public interface IConversationSummarizer
 {
     Task<SummaryAttempt> SummarizeAsync(IChatProvider provider, ChatRequest request, CancellationToken cancellationToken);
+    async Task<SummaryAttempt> SummarizeAsync(IChatProvider provider, ChatRequest request,
+        FgoPet.Kernel.Agent.IModelRequestBudget budget, CancellationToken cancellationToken)
+    {
+        await budget.ReserveAsync(cancellationToken);
+        return await SummarizeAsync(provider, request, cancellationToken);
+    }
 }
 public sealed record ConversationSummary
 {

@@ -175,7 +175,7 @@ try {
         & (Join-Path $repositoryRoot 'tools/scripts\install-codex-adapter.ps1') `
             -InstallRoot $installRoot -CodexHome $testCodexHome -SkipUserPath `
             -SkipPluginRegistration -SkipBuild -PublishedSource $PublishedSource
-        if ($LASTEXITCODE -ne 0) { throw "Isolated installer failed with exit code $LASTEXITCODE." }
+        if (-not $?) { throw 'Isolated installer failed.' }
 
         $markerPath = Join-Path $installRoot '.fgo-pet-codex-adapter.install.json'
         $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
@@ -198,7 +198,7 @@ try {
 
         & (Join-Path $repositoryRoot 'tools/scripts\uninstall-codex-adapter.ps1') `
             -InstallRoot $installRoot -CodexHome $testCodexHome -StateRoot $testStateRoot
-        if ($LASTEXITCODE -ne 0) { throw "Isolated uninstaller failed with exit code $LASTEXITCODE." }
+        if (-not $?) { throw 'Isolated uninstaller failed.' }
         foreach ($name in $requiredFiles + @('.fgo-pet-codex-adapter.install.json')) {
             if (Test-Path -LiteralPath (Join-Path $installRoot $name)) {
                 throw "The isolated uninstaller left an owned file: $name."

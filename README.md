@@ -41,6 +41,9 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 
 - Select the pet controls to open chat and common actions.
 - The workspace sidebar provides chat, Todo, focus, and settings; chat history and new conversations are available in the chat header.
+- Sent messages appear on the right in content-sized bubbles; long text wraps within the available width.
+- Chat first opens beside the character. Drag the compact window's top grip to reposition it; hiding and reopening keeps that position for the current run. Character movement does not pull Chat along, and screen changes keep it within the available work area.
+- Chat uses one input card with editing above a fixed send/stop toolbar. Long drafts grow with available window space, then scroll internally; reading older messages keeps your place. Jump to bottom stays outside reply text, and empty context rows take no space. Copy remains keyboard accessible and confirms successful completion.
 - History shows conversation titles and local times, 50 conversations per page; use Load more for older conversations. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
 - Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. User Profile uses a WebView2 page backed by the existing settings service; other settings pages remain WPF. Returning to a page restores its own scroll position.
 - The system tray can show the pet, open settings, or exit the application.
@@ -50,7 +53,7 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 
 Under **Settings → Capabilities → Model Services**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
 
-The following context and memory changes are on the development branch, with real-provider and native Windows acceptance still pending.
+The following context, memory and ambient awareness changes are on the development branch, with real-provider and native Windows acceptance still pending.
 
 Context capacity comes from a manual override, provider metadata, or known model information, in that order. An unknown model uses a clearly labelled conservative estimate. Requests reserve space for the selected output limit and count the complete prompt and tool definitions; estimates are not exact tokenizer counts.
 
@@ -58,13 +61,44 @@ New conversations can retrieve earlier messages from the same servant and projec
 
 Long conversations compact older complete exchanges while retaining recent raw messages and the current Todo draft. Compaction preserves the original history and survives restart and private backup restore. It also works when long-term memory is disabled. If compaction cannot safely fit the request, the input is retained and the app reports the problem.
 
+Ordinary and Native conversations receive fresh system-clock context directly. Native conversations can also reuse available tool evidence from the same conversation, role and project. Longer tool histories share the existing bounded compaction and retention rules; this is not unlimited archival. Each send permits up to 32 model requests and 64 tool calls, including summary work, with a final-response reservation. Browser access stays disabled until an explicit local grant and Chrome connection approval; the [Chrome integration guide](tools/integrations/chrome-browser/README.md) describes its read/open scope.
+
 Long-term memory candidates show their evidence and scope and require approval. General servant preferences can be recalled across projects; project memories stay within that project. Corrections select an exact memory and version, and edits, disabling and deletion take effect on subsequent requests. Deleting a source conversation preserves approved memories and marks their source unavailable. Storage permits 200 approved items / 40,000 characters per servant, including disabled items; existing data is never evicted to make room. Budgeting, compaction and memory mechanisms draw on the pinned MIT sources in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
+### Ambient awareness (development branch)
+
+Settings → App → Understanding includes a separate **Ambient awareness** card. Activity context defaults on for Focus, reminders and the shared local Todo book; that task book is shared across companions and projects. The clock remains available independently. Application overview defaults off: explicitly save approval for the current model to include application names, foreground status and window counts. This overview does not read window titles or content. Changing the model requires saving approval again.
+
+**Allow a window** lists open window titles only when clicked. Choosing one permits repeated background text reads of that same window during the current app session. Scope, model or window-title changes, closure and revocation invalidate the permission; choosing another window replaces it. The host samples approved sources every 15 seconds, and observations expire after two minutes. Opening the page does not enumerate windows or grant access.
+
+**Allow limited background thought** defaults off. Once explicitly enabled, meaningful changes can trigger a model request without a new user message. Each activity permits at most one request, with a minimum five-minute interval between background requests within one app session and an independent allowance of six calls per rolling 24 hours, adjustable from 1 to 24. Each request is capped at 4,096 input tokens and 384 output tokens, additional to chat and memory extraction. No tools are offered, and this work does not initiate messages or rewrite long-term Understanding. Its tentative result can inform later conversation only while its source context remains current. Input limits may shorten or omit sources; a result does not establish that the whole source was read.
+
+### Understanding review (development branch)
+
+Settings → App → Understanding separates saved interpretations, items waiting for approval and archived items. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Conversation use has a separate explicit choice. Automatic accumulation of these saved interpretations remains unavailable in the default host; opening the page does not itself dispatch a model request or grant permissions.
+
+### Local scene tools (development branch)
+
+Native conversations can inspect a Todo's complete details with `todo.get` and resume the exact paused Focus session with `focus.resume`, retaining the existing owners. Only `focus.resume`, `reminder.create` and `reminder.cancel` use the new per-call native confirmation (default deny); other native Command tools stay denied.
+
+One-shot local reminders require confirmation of the exact message, date/time and time zone. They persist across restarts, notify through the Windows tray while the app is running, and catch up at most 24 hours late on the next start; older reminders expire. The app does not schedule notifications while closed. Submitted, failed and unknown outcomes remain distinct, and unknown outcomes are not automatically retried. Deleting the source conversation removes its reminders; restoring a backup does not re-arm historical reminders.
+
+For image reading, choose, paste or drop one local PNG/JPEG into the chat composer, then Send. Selection alone does not send it. Supported connections are the disclosed official DeepSeek `deepseek-flash` and OpenAI `gpt-4.1-mini` routes, plus the exact local Buddy subscription route (`custom-openai-compatible`, `http://127.0.0.1:8326/v1`, `buddy/deepseek-v4.1-flash`) forwarded to Tencent CodeBuddy CN. Other routes remain disabled. Buddy may save or re-encode attachments, retry requests or switch accounts; the app does not impose a shared upstream request cap. Stop/timeouts cannot recall images already sent. Within FGO Pet, selection expires and is cleared on cancellation or scope/model changes, and image bytes are not saved in history or checkpoints. The Chat menu also offers a separate, default-off webpage-image permission: after reading a page, the model can request one rendered element or viewport capture per run. This does not grant desktop capture or background file access, and low-detail images carry no OCR accuracy guarantee. Native paste and production UI-to-service image quality require separate acceptance from automated protocol and isolated WebView2 drop tests.
+
 ### Agent
+
+A development preview of text-only QQ private chat is available under Settings → Services → QQ, disabled by default. It links one locally paired QQ account to one existing desktop conversation. Unsent desktop images stay private to the desktop send; action approvals remain on the desktop. Completing a clarification or approval there does not automatically send its final answer to QQ. Real QQ account and Windows UI acceptance remain pending; see the [QQ module guide](plugins/FgoPet.Plugin.Qq/README.md).
 
 Under **Settings → Capabilities → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 
 ### Speech
+
+Live2D characters support cursor attention, a gentle head hover reaction, chat Thinking,
+short emotion motions, idle sleep with click-to-wake, and audio-driven lip sync.
+Chat waiting uses an upward side glance; the text answer turns back toward you,
+nods once and keeps a closed-mouth expression.
+Completion or cancellation releases these offsets smoothly. Text alone does not drive lip sync.
+Model and motion data are supplied separately in character packs; available reactions depend on the pack.
 
 Under **Settings → Capabilities → Speech**, select and test a speech provider. Playback supports stop, retry, and long-text splitting, with temporary audio cleaned up by the playback lifecycle.
 

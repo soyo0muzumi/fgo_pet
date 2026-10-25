@@ -20,22 +20,24 @@ public sealed class ChatWebSurfaceFactory
         try
         {
             var host = new WebView2SurfaceHost(new WebSurfacePolicy("https://chat.fgopet.invalid/index.html",
-                ["chat.get", "chat.draft", "chat.send", "chat.stop", "chat.new", "chat.history",
+                ["chat.get", "chat.draft", "chat.image", "chat.image.cancel", "chat.send", "chat.stop", "chat.new", "chat.history",
                  "chat.history.open", "chat.history.requestDelete", "chat.history.cancelDelete",
-                 "chat.history.confirmDelete", "chat.retryCapability", "chat.host"]),
+                 "chat.history.confirmDelete", "chat.retryCapability", "chat.host",
+                 "chat.input.answer", "chat.input.cancel", "chat.approval.review", "chat.approval.deny", "chat.approval.cancel"]),
                 Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "chat"),
                 Path.Combine(_storageRoot, "WebView2", "chat"), session.HandleCommandAsync);
             void Publish(ChatWebSnapshot snapshot) => host.PostEvent(new { type = "chat.snapshot", payload = snapshot });
             session.Changed += Publish;
             host.Ready += (_, _) => Publish(session.ReadSnapshot());
             host.Disposed += (_, _) => { session.Changed -= Publish; session.Dispose(); };
+            host.SetThemeVersion(1, MarginVisualResources.WebPalette);
             if (_theme is not null)
             {
                 var version = 1L;
-                EventHandler changed = (_, _) => host.SetThemeVersion(Interlocked.Increment(ref version), _theme.CaptureWebPalette());
+                EventHandler changed = (_, _) => host.SetThemeVersion(Interlocked.Increment(ref version), MarginVisualResources.WebPalette);
                 _theme.ThemeChanged += changed;
                 host.Disposed += (_, _) => _theme.ThemeChanged -= changed;
-                host.SetThemeVersion(version, _theme.CaptureWebPalette());
+                host.SetThemeVersion(version, MarginVisualResources.WebPalette);
             }
             return host;
         }

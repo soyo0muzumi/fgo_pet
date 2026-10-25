@@ -1,16 +1,18 @@
 using FgoPet.Core.Dialogue;
 using FgoPet.Infrastructure.Providers;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
-public sealed class CompactionCallBudget
+public sealed class CompactionCallBudget(FgoPet.Kernel.Agent.IModelRequestBudget? modelBudget = null, int maxCalls = 3)
 {
+    public FgoPet.Kernel.Agent.IModelRequestBudget? ModelBudget { get; } = modelBudget;
     public int CallsUsed { get; private set; }
-    public bool TryConsume() { if (CallsUsed >= 3) return false; CallsUsed++; return true; }
+    public bool TryConsume() { if (CallsUsed >= Math.Clamp(maxCalls, 0, 3)) return false; CallsUsed++; return true; }
 }
 
 /// <summary>DeepSeek region mechanism: complete groups, asynchronous revalidation, then one atomic projection commit.</summary>
-public sealed class ConversationSummaryService(IConversationContextStore store, IConversationSummarizer summarizer,
+public sealed partial class ConversationSummaryService(IConversationContextStore store, IConversationSummarizer summarizer,
     IRequestTokenMeter meter, TimeProvider clock)
 {
     private static readonly string[] Sections = ["任务目标：", "用户已确认的决定：", "否定、更正及被替代事项：", "尚未解决的问题：", "下一步：", "来源消息："];
@@ -31,18 +33,34 @@ public sealed class ConversationSummaryService(IConversationContextStore store, 
     public async Task<bool> TryCompactAsync(ConversationContextSnapshot source, IChatProvider provider,
         ModelRouteKey route, PromptBudget budget, int inputTokensBefore,
         Func<ConversationSummary, IReadOnlyList<ChatMessage>, ComposedPrompt> composeCandidate,
-        DialogueContextLifetime.Lease lease, Action revalidate, CompactionCallBudget calls, CancellationToken cancellationToken)
+        DialogueContextLifetime.Lease lease, Action revalidate, CompactionCallBudget calls, CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? toolSources = null,
+        Action<ContextBudgetDiagnostic>? diagnostics = null)
     {
+        var selectedCount = 0;
+        void Observe(ContextDiagnosticStage stage, ContextCompactionReason reason) =>
+            ContextBudgetDiagnostics.Emit(diagnostics, new(stage) {
+                Decision = reason, CompactionKind = ContextCompactionKind.ConversationProjection,
+                WindowTokens = budget.ContextWindowTokens, InputBudget = budget.InputTokens,
+                OutputTokens = budget.OutputTokens, TriggerTokens = CompactionPlanner.TriggerTokens(budget),
+                MeasuredInput = inputTokensBefore, MessageCount = source.UncoveredMessages.Count,
+                EligibleGroups = selectedCount, AuxiliaryBudgetReservations = calls.CallsUsed
+            });
+        bool Skip(ContextCompactionReason reason)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, reason); return false; }
+        Observe(ContextDiagnosticStage.CompactionStarted, inputTokensBefore >= CompactionPlanner.TriggerTokens(budget)
+            ? ContextCompactionReason.TokenThreshold : ContextCompactionReason.Caller);
         try
         {
             var groups = Group(source.UncoveredMessages);
             var turns = groups.Select((group, index) => new CompactionTurn(group[0].Sequence, group[^1].Sequence,
-                meter.Measure(route, RawRequest(source, group, null, budget.OutputTokens)).InputTokens,
+                meter.Measure(route, RawRequest(source, group, null, budget.OutputTokens, toolSources: toolSources)).InputTokens,
                 IsSettled(group, index + 1 < groups.Count && groups[index + 1][0].Role == ChatMessageRole.User),
                 HasCompletedReply(group))).ToArray();
             var range = CompactionPlanner.Select(turns, (int)Math.Floor(budget.InputTokens * 0.16d));
-            if (range is null) return false;
+            if (range is null) return Skip(ContextCompactionReason.NoEligibleHistory);
             var selected = groups.Where(group => group[^1].Sequence <= range.LastSequence).ToArray();
+            selectedCount = selected.Length;
             var summaryBudget = PromptBudget.Resolve(new(route, budget.ContextWindowTokens, null, ContextLimitSource.Override, "request-snapshot"),
                 Math.Min(2048, budget.OutputTokens));
             var previous = source.Summary?.SummaryText;
@@ -53,21 +71,25 @@ public sealed class ConversationSummaryService(IConversationContextStore store, 
                 ChatRequest? request = null;
                 while (next < selected.Length)
                 {
-                    var candidate = RawRequest(source, batch.Concat(selected[next]).ToArray(), previous, summaryBudget.OutputTokens, instructions: true);
+                    var candidate = RawRequest(source, batch.Concat(selected[next]).ToArray(), previous, summaryBudget.OutputTokens,
+                        instructions: true, toolSources: toolSources);
                     if (meter.Measure(route, candidate).InputTokens > summaryBudget.InputTokens) break;
                     batch.AddRange(selected[next++]);
                     request = candidate;
                 }
-                if (request is null || !calls.TryConsume()) return false;
+                if (request is null) return Skip(ContextCompactionReason.BatchInputLimit);
+                if (!calls.TryConsume()) return Skip(ContextCompactionReason.AuxiliaryCallLimit);
                 lease.CheckCurrent();
                 revalidate();
-                var attempt = await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);
+                var attempt = calls.ModelBudget is { } shared
+                    ? await summarizer.SummarizeAsync(provider, request, shared, cancellationToken).ConfigureAwait(false)
+                    : await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);
                 lease.CheckCurrent();
                 revalidate();
-                if (!IsValid(attempt, batch[^1].MessageId)) return false;
-                var before = meter.Measure(route, RawRequest(source, batch, previous, summaryBudget.OutputTokens)).InputTokens;
+                if (!IsValid(attempt, batch[^1].MessageId)) return Skip(ContextCompactionReason.InvalidSummary);
+                var before = meter.Measure(route, RawRequest(source, batch, previous, summaryBudget.OutputTokens, toolSources: toolSources)).InputTokens;
                 var after = meter.Measure(route, RawRequest(source, [], attempt.Text, summaryBudget.OutputTokens)).InputTokens;
-                if (after >= before) return false;
+                if (after >= before) return Skip(ContextCompactionReason.NoReduction);
                 if (attempt.Usage is not null) meter.RecordUsage(route, request, attempt.Usage);
                 previous = attempt.Text;
             }
@@ -78,17 +100,22 @@ public sealed class ConversationSummaryService(IConversationContextStore store, 
             var tail = source.UncoveredMessages.Where(message => message.Sequence > end.Sequence).ToArray();
             revalidate();
             var composed = composeCandidate(summary, tail);
-            if (!composed.FitsBudget || composed.Usage.InputTokens >= inputTokensBefore) return false;
-            return lease.Commit(() =>
+            if (!composed.FitsBudget) return Skip(ContextCompactionReason.FinalProjectionLimit);
+            if (composed.Usage.InputTokens >= inputTokensBefore) return Skip(ContextCompactionReason.NoReduction);
+            var committed = lease.Commit(() =>
             {
                 revalidate();
                 return store.TryCommit(new(source, summary, route, inputTokensBefore, composed.Usage.InputTokens));
             });
+            if (committed) Observe(ContextDiagnosticStage.CompactionCommitted, ContextCompactionReason.None);
+            else Observe(ContextDiagnosticStage.CompactionSkipped, ContextCompactionReason.ProjectionChanged);
+            return committed;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException)
+        { Observe(ContextDiagnosticStage.CompactionSkipped, ContextCompactionReason.Cancelled); throw; }
         catch (Exception error) when (error is ProviderRequestException or PromptBudgetException or ArgumentException or System.Data.Common.DbException)
         {
-            return false;
+            return Skip(ContextCompactionReason.Failure);
         }
     }
 
@@ -102,17 +129,31 @@ public sealed class ConversationSummaryService(IConversationContextStore store, 
         (HasCompletedReply(group) || followedByUser);
 
     private static ChatRequest RawRequest(ConversationContextSnapshot source, IReadOnlyList<ChatMessage> messages,
-        string? summary, int output, bool instructions = false)
+        string? summary, int output, bool instructions = false, IReadOnlyDictionary<string, string>? toolSources = null)
     {
         var input = new List<PromptMessage>();
         if (instructions) input.Add(new(ChatMessageRole.System, Instructions +
             "\n任务目标栏目只写原始对话中的任务，不写本次摘要指令。消息ID不可重编号或改写。来源消息栏目必须逐字包含本批最后一条消息的完整ID：" + messages[^1].MessageId));
         if (!string.IsNullOrEmpty(summary)) input.Add(new(ChatMessageRole.User, PromptInjectionGuard.Wrap("previous_summary", summary)));
-        input.AddRange(messages.Select(message => new PromptMessage(ChatMessageRole.User,
+        foreach (var message in messages)
+        {
+            input.Add(new PromptMessage(ChatMessageRole.User,
             PromptInjectionGuard.Wrap($"source:{message.MessageId}:{message.Role}:{message.Status}",
                 string.IsNullOrWhiteSpace(message.Text)
                     ? (message.Status == ChatMessageStatus.Cancelled ? "[请求已取消，未产生完整答复。]" : "[请求失败，未产生完整答复。]")
-                    : message.Text))));
+                    : message.Text)));
+            if (toolSources?.TryGetValue(message.MessageId, out var evidence) == true)
+            {
+                // Split by position only; keep original data, source, status and order.
+                for (var offset = 0; offset < evidence.Length;)
+                {
+                    var length = Math.Min(1500, evidence.Length - offset);
+                    if (char.IsHighSurrogate(evidence[offset + length - 1])) length--;
+                    input.Add(new(ChatMessageRole.User, PromptInjectionGuard.Wrap($"tool_records:{message.MessageId}:{offset}", evidence.Substring(offset, length))));
+                    offset += length;
+                }
+            }
+        }
         // Token accounting of an empty summary payload still has a valid envelope.
         if (input.Count == 0) input.Add(new(ChatMessageRole.User, "未确定"));
         return new(source.Scope.ServantId, source.ConversationId, input,

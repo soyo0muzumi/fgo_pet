@@ -11,6 +11,16 @@ public static class ChatWebRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IChatWebSessionFactory, ChatWebSessionFactory>();
+        services.TryAddSingleton<IChatWorkspaceSelection, ChatWorkspaceSelection>();
+        services.TryAddSingleton<IChatImageSelection, ChatImageSelection>();
+        services.TryAddSingleton<IChatWindowSelection>(provider =>
+        {
+            var conversation = provider.GetRequiredService<ConversationViewModel>();
+            var selection = new ChatWindowSelection(provider.GetRequiredService<FgoPet.Platform.WindowText.IWindowTextReader>(),
+                conversation.WindowContextScopeKey, () => conversation.CanChooseWindowContext);
+            conversation.BindWindowSelection(selection);
+            return selection;
+        });
         return services;
     }
 }

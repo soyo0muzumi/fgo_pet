@@ -47,9 +47,10 @@ public interface IConversationPromptProvider
     IReadOnlyList<ConversationPromptBlock> BuildPrompt(ToolScope scope, string userMessage, bool toolsAvailable);
 }
 
-public enum ConversationSourceKind { User, Assistant }
+public enum ConversationSourceKind { User, Assistant, External }
 public sealed record ConversationSourceSnapshot(ToolScope Scope, string MessageId, string Fingerprint,
-    DateTimeOffset OccurredAtUtc, ConversationSourceKind Kind, string? ProjectLabel);
+    DateTimeOffset OccurredAtUtc, ConversationSourceKind Kind, string? ProjectLabel, long SourceRevision = 0,
+    string? SourceLabel = null, string? Author = null);
 public interface IConversationSourceReader
 {
     ConversationSourceSnapshot Read(ToolScope scope, string messageId, ConversationSourceKind kind);

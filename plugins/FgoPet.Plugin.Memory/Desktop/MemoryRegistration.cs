@@ -56,7 +56,8 @@ public static class MemoryRegistration
             services.AddSingleton<IFgoPetPlugin>(provider => new MemoryPlugin(
                 provider.GetRequiredService<IMemoryRecall>(), provider.GetRequiredService<IConversationSourceReader>(),
                 provider.GetRequiredService<IMemoryCandidateSink>(), provider.GetRequiredService<MemoryExtractionQueue>(),
-                () => provider.GetRequiredService<IMemorySettingsStore>().Load().Enabled));
+                () => provider.GetRequiredService<IMemorySettingsStore>().Load().Enabled,
+                provider.GetService<IAgentQueryResolver>()));
         }
         return services;
     }

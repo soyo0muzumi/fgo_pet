@@ -16,6 +16,10 @@
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+    <None Include="Assets\AppIcon.svg" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="FgoPet.App.Tests" />
     <InternalsVisibleTo Include="FgoPet.Windows.Tests" />
   </ItemGroup>
@@ -120,6 +124,7 @@
     </Compile>
     <Compile Include="Desktop\UserProfileWebFactory.cs" />
     <Compile Include="Desktop\SettingsWebRootFactory.cs" />
+    <Content Include="../../FgoPet.UiSdk/Resources/Web/*" Link="Desktop/ui/settings/root/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\settings\root\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Desktop\ui\settings\user-profile\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="Infrastructure\DialogueWindowPlacementCoordinator.cs">

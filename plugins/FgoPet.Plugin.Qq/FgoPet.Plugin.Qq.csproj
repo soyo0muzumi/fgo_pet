@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Desktop/**/*.cs" />
+    <ProjectReference Include="../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" />
+    <ProjectReference Include="../../src/FgoPet.Platform/Contracts/FgoPet.Platform.Contracts.csproj" />
+    <InternalsVisibleTo Include="FgoPet.Qq.Tests" />
+  </ItemGroup>
+</Project>

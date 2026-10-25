@@ -40,7 +40,7 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
                         slot.AppearanceId,
                         pack.PackageVersion,
                         AppearanceRoot(pack.PackRoot, slot.ManifestPath),
-                        pack.PreviewPath)))
+                        AppearancePreview(pack.PackRoot, slot.ManifestPath))))
                     .ToList();
                 return new InstalledServant(
                     best.PackageId,
@@ -61,6 +61,25 @@ public sealed class FileArtPackageRepository : IArtPackageRepository, IPackScanD
             .ToList();
 
         return Task.FromResult<IReadOnlyList<InstalledServant>>(servants);
+    }
+
+    private static string? AppearancePreview(string packRoot, string manifestPath)
+    {
+        try
+        {
+            var path = ResolvePackFile(packRoot, manifestPath);
+            if (path is null) return null;
+            var root = Path.GetDirectoryName(path)!;
+            var manifest = AppearanceManifestReader.Read(path);
+            if (!AppearanceValidator.ValidateStatic(manifest, root).IsValid) return null;
+            var expression = manifest.Assets.First(asset => asset.AssetType == ArtAssetKind.Expression
+                && asset.StableId == manifest.Composition.DefaultExpressionId);
+            return ResolvePackFile(root, expression.RelativePath);
+        }
+        catch (Exception error) when (error is PackFailureException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public Task<AppearanceLocation?> GetAppearanceAsync(PortraitSelection selection, CancellationToken cancellationToken)

@@ -24,6 +24,7 @@ using Xunit;
 
 namespace FgoPet.App.Tests.Privacy;
 
+[Collection("Backup temporary file isolation")]
 public sealed class PrivateBackupServiceTests : IDisposable
 {
     private const string UnsafeReferenceAudioPath = "C:/Users/Task12/Private/gpt-sovits-reference-audio.wav";
@@ -150,6 +151,73 @@ public sealed class PrivateBackupServiceTests : IDisposable
 
         Assert.Equal(firstBytes, secondBytes);
         Assert.DoesNotContain(Directory.EnumerateFiles(Path.GetDirectoryName(_backupPath)!), path => path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Temporary_copies_are_removed_without_clearing_pools()
+    {
+        var database = CreateDatabase();
+        var temporaryRoot = Path.Combine(_root, "schema-temporary");
+        Directory.CreateDirectory(temporaryRoot);
+        var service = new PrivateBackupService(database, CreateSettingsDocument("cleanup-settings"),
+            new FakePackIndexStore(PackIndexV1.Empty), new RuntimeDatabaseSnapshotService(database), TimeProvider.System, "1.0.0");
+        var oldTmp = Environment.GetEnvironmentVariable("TMP");
+        var oldTemp = Environment.GetEnvironmentVariable("TEMP");
+        try
+        {
+            Environment.SetEnvironmentVariable("TMP", temporaryRoot);
+            Environment.SetEnvironmentVariable("TEMP", temporaryRoot);
+            Assert.Equal(temporaryRoot, Path.TrimEndingDirectorySeparator(Path.GetTempPath()), ignoreCase: true);
+
+            await service.CreateAsync(_backupPath, CancellationToken.None);
+
+            Assert.True(File.Exists(_backupPath));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(temporaryRoot));
+            Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(_backupPath)!, "*.staging"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMP", oldTmp);
+            Environment.SetEnvironmentVariable("TEMP", oldTemp);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancellation_or_destination_failure_preserves_result_and_removes_staging(bool canceled)
+    {
+        var database = CreateDatabase();
+        Directory.CreateDirectory(Path.GetDirectoryName(_backupPath)!);
+        File.WriteAllText(_backupPath, "old destination", Encoding.UTF8);
+        using var cancellation = new CancellationTokenSource();
+        var snapshotService = new RuntimeDatabaseSnapshotService(database, _ =>
+        {
+            if (canceled) cancellation.Cancel();
+        });
+        var service = new PrivateBackupService(database, CreateSettingsDocument("failure-cleanup-settings"),
+            new FakePackIndexStore(PackIndexV1.Empty), snapshotService, TimeProvider.System, "1.0.0");
+
+        Exception? failure;
+        using (var destinationLock = canceled ? null : File.Open(_backupPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            failure = await Record.ExceptionAsync(() => service.CreateAsync(_backupPath, cancellation.Token));
+        }
+
+        if (canceled)
+            Assert.Equal(cancellation.Token, Assert.IsAssignableFrom<OperationCanceledException>(failure).CancellationToken);
+        else
+        {
+            var wrapped = Assert.IsType<BackupException>(failure);
+            Console.WriteLine("BACKUP_DESTINATION_FAILURE_METADATA_ONLY " + JsonSerializer.Serialize(new
+            {
+                code = wrapped.Code.ToString(), innerType = wrapped.InnerException?.GetType().Name,
+                innerHResult = wrapped.InnerException?.HResult,
+            }));
+            Assert.Equal(BackupFailureCode.DatabaseInvalid, wrapped.Code);
+        }
+        Assert.Equal("old destination", File.ReadAllText(_backupPath));
+        Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(_backupPath)!, "*.staging"));
     }
 
     [Fact]

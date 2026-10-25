@@ -1,4 +1,6 @@
 using FgoPet.Extensibility;
+using FgoPet.Dialogue.Contracts;
+using FgoPet.Kernel.Agent;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
@@ -43,7 +45,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private bool _filterHistoryByProject = true;
     partial void OnFilterHistoryByProjectChanged(bool value) => LoadHistory();
     private bool _acceptRequestUpdates;
+    private string? _activeRequestId;
     private string _activeConversationId = string.Empty;
+    // Composer drafts belong to a conversation and live only for this UI process.
+    private readonly Dictionary<(string ServantId, string ConversationId), string> _conversationDrafts = new();
     public string CurrentConversationId => _activeConversationId;
     private bool _configurationRequired;
     private long _sessionGeneration;
@@ -55,17 +60,33 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     public event Action<FgoPet.Core.Portraits.ExpressionSemantic>? ExpressionRequested;
     private long _thinkingStartedTicks;
     private System.Timers.Timer? _thinkingTimer;
+    private readonly TimeProvider _time;
+    private readonly UserInputBroker _inputValidator;
+    private string? _waitingRunId;
+    private ToolScope? _waitingScope;
+    private long _waitingGeneration;
+    private CancellationTokenSource? _inputExpiryCancellation;
+    internal UserInputRequest? PendingInput { get; private set; }
+    internal ApprovalRequest? PendingApproval { get; private set; }
+    internal bool IsApprovalReviewing => _approvalReviewCancellation is not null;
+    private CancellationTokenSource? _approvalReviewCancellation;
+    internal bool IsInputSubmitting { get; private set; }
+    internal string InputErrorText { get; private set; } = string.Empty;
+    public bool HasPendingRun => _waitingRunId is not null;
 
     public ConversationViewModel(
         ConversationOrchestrator orchestrator,
         IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
-        IConversationHistoryQuery? history = null)
+        IConversationHistoryQuery? history = null,
+        TimeProvider? time = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _modelConnection = modelConnection;
         _history = history ?? orchestrator.HistoryQuery;
+        _time = time ?? TimeProvider.System;
+        _inputValidator = new UserInputBroker(_time);
         _modelAuthority = modelConnection is null ? null : new DialogueModelConnectionSource(modelConnection);
         if (_modelConnection is not null)
         {
@@ -80,10 +101,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _configurationRequired = model is null;
         SendCommand = new AsyncRelayCommand(SendAsync, () => CanSend);
         SendOrStopCommand = new AsyncRelayCommand(SendOrStopAsync, () => CanSendOrStop);
-        StopCommand = new RelayCommand(Stop, () => IsStreaming);
+        StopCommand = new RelayCommand(Stop, () => CanStop);
         NewConversationCommand = new RelayCommand(NewConversation);
         OpenSettingsCommand = new RelayCommand(OpenSettings);
-        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => !IsStreaming && !_configurationRequired && !string.IsNullOrWhiteSpace(_lastUserMessage) && !string.IsNullOrWhiteSpace(ActiveServantId));
+        RetryCapabilityCommand = new AsyncRelayCommand(RetryCapabilityAsync, () => CanSendBase);
         NewWorkspaceItemCommand = new RelayCommand(() => NewWorkspaceItemRequested?.Invoke());
         RetryHistoryCommand = new RelayCommand(LoadHistory);
         LoadMoreHistoryCommand = new RelayCommand(() => LoadHistoryPage(append: true), () => HasMoreHistory && !IsHistoryLoading && !_disposed);
@@ -169,20 +190,20 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         || ErrorText.Contains("模型 API Key", StringComparison.Ordinal)
         || ErrorText.Contains("无法连接模型服务", StringComparison.Ordinal)
         || ErrorText.Contains("对话服务暂时不可用", StringComparison.Ordinal);
-    public bool CanSend => !_disposed && !IsStreaming
+    public bool CanSend => !_disposed && !IsStreaming && !HasPendingRun
         && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(InputText);
 
-    public bool CanStop => IsStreaming;
+    public bool CanStop => IsStreaming || HasPendingRun;
 
     public bool CanSendOrStop => CanSend || CanStop;
 
-    public string ActionLabel => IsStreaming ? "停止生成" : "发送消息";
+    public string ActionLabel => CanStop ? "停止生成" : "发送消息";
 
     public bool SelectModelForFutureRequests(string modelId)
     {
-        if (IsStreaming || string.IsNullOrWhiteSpace(modelId)) return false;
+        if (IsStreaming || HasPendingRun || string.IsNullOrWhiteSpace(modelId)) return false;
         var current = _settings.Load().ModelConnection;
         if (current is null) return false;
         var normalized = modelId.Trim();
@@ -190,10 +211,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (string.Equals(current.ModelId, normalized, StringComparison.Ordinal)) return true;
         _settings.Save(_settings.Load() with
         {
-            ModelConnection = new ModelConnectionSettings(
-                current.ProviderId, current.BaseUrl, normalized, current.ToolsSupported),
+            ModelConnection = new ModelConnectionSettings(current.ProviderId, current.BaseUrl, normalized,
+                current.ToolsSupported, current.ContextWindowOverride, current.MaxOutputTokens),
         });
         ModelStatusText = normalized;
+        ClearWindowSelection();
         return true;
     }
 
@@ -212,6 +234,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     /// <summary>Raised when the active conversation identity is about to change.</summary>
     public event Action? SessionChanged;
+    public event Action? RequestCancelled;
+    internal event Action<string>? DesktopMessagePersisted;
+    private string? _desktopRequestId;
+    internal bool IsExternalRequest => _activeRequestId is not null && _desktopRequestId != _activeRequestId;
 
     public CapabilityNoticeState CapabilityNotice => _capabilityNotice;
 
@@ -265,6 +291,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             return;
         }
 
+        RememberCurrentDraft();
+        InputText = string.Empty;
         InvalidateSession();
         SessionChanged?.Invoke();
         Turns.Clear();
@@ -377,6 +405,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         CancelHistoryDeletion();
         try
         {
+            RememberCurrentDraft();
+            InputText = string.Empty;
             InvalidateSession();
             SessionChanged?.Invoke();
             var messages = _orchestrator.LoadConversation(conversationId, ActiveServantId);
@@ -385,6 +415,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
             RestoreProjectContext(_orchestrator.GetConversation(conversationId, ActiveServantId));
             _activeConversationId = conversationId;
+            InputText = _conversationDrafts.GetValueOrDefault((ActiveServantId, conversationId), string.Empty);
             foreach (var message in messages.Where(m => m.Role is ChatMessageRole.User or ChatMessageRole.Assistant))
             {
                 if (message.Role == ChatMessageRole.Assistant
@@ -451,7 +482,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private async Task<bool> SendCoreAsync(string text)
     {
-        if (_disposed) return false;
+        var result = await SendCoreResultAsync(text, desktopInput: true);
+        return result?.Status is ConversationSendStatus.Completed or ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval;
+    }
+
+    private async Task<ConversationSendResult?> SendCoreResultAsync(string text, CancellationToken cancellationToken = default,
+        bool desktopInput = false)
+    {
+        if (_disposed) return null;
         var generation = _sessionGeneration;
         var servant = ActiveServantId;
         ErrorText = string.Empty;
@@ -460,15 +498,20 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _pendingReasoning.Clear();
         IsStreaming = true;
         _acceptRequestUpdates = true;
+        var requestId = Guid.NewGuid();
+        _activeRequestId = "request-" + requestId.ToString("N");
+        _desktopRequestId = desktopInput ? _activeRequestId : null;
         try
         {
             _lastUserMessage = text;
             var result = await _orchestrator.SendAsync(
                 servant,
                 text,
-                CancellationToken.None,
-                SessionContext.ToRequestContext());
-            if (!IsCurrent()) return false;
+                cancellationToken,
+                SessionContext.ToRequestContext(desktopInput ? _windowSelection?.CurrentContent : null), requestId);
+            if (!IsCurrent()) return null;
+            result = await ApplyInputResultAsync(result);
+            if (!IsCurrent()) return null;
             if (result.Status is ConversationSendStatus.ConfigurationRequired or ConversationSendStatus.Failed)
             {
                 ErrorText = result.SafeError ?? "对话暂时不可用。";
@@ -480,6 +523,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             else
             {
                 SessionContext.ClearTransient();
+                if (desktopInput) ClearWindowSelection();
                 _configurationRequired = false;
                 OnPropertyChanged(nameof(IsConfigurationRequired));
                 OnPropertyChanged(nameof(IsConfigurationStateVisible));
@@ -489,13 +533,16 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 SendOrStopCommand.NotifyCanExecuteChanged();
             }
 
-            return result.Status == ConversationSendStatus.Completed;
+            // The initial user message is already persisted when a run waits.
+            // Clear only its accepted draft; later drafts survive input resumption.
+            return result;
         }
         finally
         {
-            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; }
+            if (IsCurrent()) { IsStreaming = false; _acceptRequestUpdates = false; if (!HasPendingRun) _activeRequestId = null; }
         }
-        bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId;
+        bool IsCurrent() => !_disposed && generation == _sessionGeneration && servant == ActiveServantId
+            && _activeRequestId == "request-" + requestId.ToString("N");
     }
 
     private void ApplyToolOutcome(CapabilityOutcome outcome, string? detail, string? structuredResponse)
@@ -532,24 +579,386 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private async Task RetryCapabilityAsync()
     {
-        if (IsStreaming || string.IsNullOrWhiteSpace(_lastUserMessage) || !CanSendBase)
+        var text = _lastUserMessage;
+        if (!CanSendBase || string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
         SetCapabilityNotice(string.Empty, CapabilityNoticeKind.None);
-        await SendCoreAsync(_lastUserMessage);
+        await SendCoreAsync(text);
     }
 
-    private bool CanSendBase => !IsStreaming && !_configurationRequired
+    private bool CanSendBase => !_disposed && !IsStreaming && !HasPendingRun && !_configurationRequired
         && !string.IsNullOrWhiteSpace(ActiveServantId)
         && !string.IsNullOrWhiteSpace(_lastUserMessage);
 
-    private void Stop() => _orchestrator.CancelCurrent();
+    private void Stop()
+    {
+        RequestCancelled?.Invoke();
+        if (HasPendingRun && !IsStreaming) { _ = CancelInputWaitAsync("已取消。"); return; }
+        _orchestrator.CancelCurrent();
+    }
+
+    private ToolScope CurrentInputScope() => new(CurrentConversationId, ActiveServantId,
+        string.IsNullOrWhiteSpace(SessionContext.ProjectId) ? null : SessionContext.ProjectId);
+
+    private async Task<ConversationSendResult> ApplyInputResultAsync(ConversationSendResult result)
+    {
+        if (result.Status is not (ConversationSendStatus.WaitingUserInput or ConversationSendStatus.WaitingApproval))
+        {
+            ClearInputWait();
+            return result;
+        }
+        var generation = _sessionGeneration;
+        var scope = CurrentInputScope();
+        AgentInteractionSnapshot? interaction = null;
+        try
+        {
+            if (result.RunId is { } runId) interaction = await _orchestrator.GetAgentInteractionAsync(runId, scope, CancellationToken.None);
+        }
+        catch (AgentStateException) { }
+        if (_disposed || generation != _sessionGeneration || scope != CurrentInputScope()) return result;
+        if (interaction is null || result.Status == ConversationSendStatus.WaitingUserInput && interaction.Input is null
+            || result.Status == ConversationSendStatus.WaitingApproval && (interaction.Approval is null || !SupportedApproval(interaction.Approval)))
+        {
+            if (result.RunId is { } runId) await _orchestrator.CancelAgentRunAsync(runId, scope, CancellationToken.None);
+            return result with { Status = ConversationSendStatus.Failed, SafeError = "本次问题已不可用，请重新发起请求。" };
+        }
+        _waitingRunId = result.RunId;
+        _waitingScope = scope;
+        _waitingGeneration = generation;
+        PendingInput = interaction.Input;
+        PendingApproval = interaction.Approval;
+        InputErrorText = string.Empty;
+        StopThinkingTimer();
+        RequestStatusText = PendingApproval is not null ? "等待你确认具体操作…" : "等待你的回答…";
+        StartInputExpiry();
+        NotifyInputWait();
+        return result;
+    }
+
+    internal bool TryAnswerInput(UserInputReply reply, out string errorCode)
+    {
+        if (!PrepareInputReply(reply, out errorCode)) return false;
+        _ = ResumeInputReplyAsync(reply, _sessionGeneration, _activeRequestId);
+        return true;
+    }
+
+    private bool PrepareInputReply(UserInputReply reply, out string errorCode)
+    {
+        if (!MatchInput(reply.RunId, reply.RequestId, reply.ExpectedRevision, out errorCode)) return false;
+        try { _inputValidator.Validate(PendingInput!, reply, CurrentInputScope()); }
+        catch (AgentStateException error)
+        {
+            errorCode = error.Code == "RUN_INVALID_ANSWERS" ? "CHAT_INPUT_INVALID" : "CHAT_INPUT_STALE";
+            InputErrorText = "请完整回答这些问题，或取消本次任务。";
+            NotifyInputWait();
+            return false;
+        }
+        IsInputSubmitting = true;
+        CancelInputExpiry();
+        IsStreaming = true;
+        _acceptRequestUpdates = true;
+        InputErrorText = string.Empty;
+        NotifyInputWait();
+        return true;
+    }
+
+    internal bool TryCancelInput(string runId, string requestId, long revision, out string errorCode)
+    {
+        if (!MatchInput(runId, requestId, revision, out errorCode, allowExpired: true)) return false;
+        _ = CancelInputWaitAsync("已取消。");
+        return true;
+    }
+
+    private bool MatchInput(string runId, string requestId, long revision, out string errorCode, bool allowExpired = false)
+    {
+        errorCode = "CHAT_INPUT_STALE";
+        if (_disposed || IsInputSubmitting || PendingInput is not { } input || _activeRequestId is null
+            || _waitingGeneration != _sessionGeneration || _waitingScope != CurrentInputScope()
+            || input.Binding.Identity.RunId != runId || input.Binding.RequestId != requestId || input.Binding.WaitingRevision != revision)
+            return false;
+        if (!allowExpired && _time.GetUtcNow() >= input.Binding.ExpiresAt)
+        {
+            errorCode = "CHAT_INPUT_EXPIRED";
+            return false;
+        }
+        errorCode = string.Empty;
+        return true;
+    }
+
+    private static bool SupportedApproval(ApprovalRequest approval) => (approval.Tool.PluginId, approval.Tool.ToolName) switch
+    {
+        ("reminders", "reminder.create" or "reminder.cancel") =>
+            !string.IsNullOrWhiteSpace(approval.Tool.BusinessConfirmation?.PlainTextSummary),
+        ("firstparty.focus", "focus.resume") => approval.Tool.Resource is not null,
+        _ => false,
+    };
+
+    internal ChatWebApproval? ReadApproval() => PendingApproval is { } approval ? new(
+        approval.Binding.Identity.RunId, approval.Binding.RequestId, approval.Binding.WaitingRevision,
+        approval.Binding.ExpiresAt, approval.Tool.ToolName,
+        $"操作 / Tool: {approval.Tool.ToolName}\n插件 / Owner: {approval.Tool.PluginId} {approval.Tool.PluginVersion}\n"
+        + (approval.Tool.ToolName == "focus.resume" ? "恢复指定专注会话。不会新建会话或更改计划。\n" : "")
+        + (approval.Tool.BusinessConfirmation is { } business
+            ? $"{business.PlainTextSummary}\n确认草稿 / Confirmation draft: {business.DraftId}\n确认版本 / Confirmation version: {business.Version}\n" : "")
+        + (approval.Tool.Resource is { } resource ? $"资源 / Resource: {resource.Id}\n版本 / Revision: {resource.Revision}\n" : "")
+        + $"完整冻结参数 / Frozen arguments:\n{approval.NormalizedArgumentsJson}\n"
+        + $"确认有效期 / Expires (UTC): {approval.Binding.ExpiresAt.UtcDateTime:O}",
+        IsInputSubmitting || IsApprovalReviewing, InputErrorText)
+        {
+            ActionTitle = approval.Tool.ToolName switch
+            {
+                "reminder.create" => "Create reminder", "reminder.cancel" => "Cancel reminder",
+                "focus.resume" => "Resume focus session", _ => null,
+            },
+            PlainTextSummary = approval.Tool.ToolName switch
+            {
+                "reminder.create" or "reminder.cancel" => approval.Tool.BusinessConfirmation?.PlainTextSummary,
+                "focus.resume" when approval.Tool.Resource is { } frozen =>
+                    $"Resume this paused focus session, keeping its phase, remaining time and cycle. No new session or plan change.\nSession: {frozen.Id}\nRevision: {frozen.Revision}",
+                _ => null,
+            },
+        } : null;
+
+    private bool MatchApproval(string runId, string requestId, long revision, out string errorCode,
+        bool allowExpired = false)
+    {
+        errorCode = "CHAT_APPROVAL_STALE";
+        if (_disposed || IsInputSubmitting || PendingApproval is not { } approval || !SupportedApproval(approval)
+            || _activeRequestId is null || _waitingGeneration != _sessionGeneration || _waitingScope != CurrentInputScope()
+            || approval.Binding.Identity.RunId != runId || approval.Binding.RequestId != requestId
+            || approval.Binding.WaitingRevision != revision) return false;
+        if (!allowExpired && _time.GetUtcNow() >= approval.Binding.ExpiresAt)
+        { errorCode = "CHAT_APPROVAL_EXPIRED"; return false; }
+        errorCode = string.Empty;
+        return true;
+    }
+
+    internal bool TryCancelApproval(string runId, string requestId, long revision, out string errorCode)
+    {
+        if (!MatchApproval(runId, requestId, revision, out errorCode, allowExpired: true)) return false;
+        _ = CancelInputWaitAsync("已取消，未批准操作。");
+        return true;
+    }
+
+    internal bool TryDenyApproval(string runId, string requestId, long revision, out string errorCode)
+    {
+        if (!MatchApproval(runId, requestId, revision, out errorCode)) return false;
+        _approvalReviewCancellation?.Cancel();
+        ResumeApproval(ApprovalDecision.Deny);
+        return true;
+    }
+
+    internal async ValueTask<string?> ReviewApprovalAsync(string runId, string requestId, long revision,
+        Func<ChatWebApproval, CancellationToken, ValueTask<ChatApprovalDecision>> nativeReview, CancellationToken token)
+    {
+        if (IsApprovalReviewing) return "CHAT_APPROVAL_BUSY";
+        if (!MatchApproval(runId, requestId, revision, out var error)) return error;
+        var request = PendingApproval;
+        var generation = _sessionGeneration;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _approvalReviewCancellation = cancellation;
+        NotifyInputWait();
+        try
+        {
+            var decision = await nativeReview(ReadApproval()!, cancellation.Token);
+            if (cancellation.IsCancellationRequested || generation != _sessionGeneration || !ReferenceEquals(request, PendingApproval)
+                || !MatchApproval(runId, requestId, revision, out error)) return "CHAT_APPROVAL_STALE";
+            switch (decision)
+            {
+                case ChatApprovalDecision.Allow: ResumeApproval(ApprovalDecision.Allow); break;
+                case ChatApprovalDecision.Deny: ResumeApproval(ApprovalDecision.Deny); break;
+                default: await CancelInputWaitAsync("已取消，未批准操作。"); break;
+            }
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return "CHAT_APPROVAL_STALE"; }
+        catch (Exception) { return "CHAT_APPROVAL_UNAVAILABLE"; }
+        finally
+        {
+            if (ReferenceEquals(_approvalReviewCancellation, cancellation)) _approvalReviewCancellation = null;
+            NotifyInputWait();
+        }
+    }
+
+    private void ResumeApproval(ApprovalDecision decision)
+    {
+        var binding = PendingApproval!.Binding;
+        var reply = new ApprovalReply(binding.Identity.RunId, binding.RequestId, binding.WaitingRevision, decision);
+        IsInputSubmitting = true;
+        CancelInputExpiry();
+        IsStreaming = true;
+        _acceptRequestUpdates = true;
+        InputErrorText = string.Empty;
+        NotifyInputWait();
+        _ = ResumeInteractionAsync(reply.RunId, scope => _orchestrator.ResumeAgentApprovalAsync(reply, scope, CancellationToken.None),
+            _sessionGeneration, _activeRequestId);
+    }
+
+    private Task<ConversationSendResult?> ResumeInputReplyAsync(UserInputReply reply, long generation, string? requestId,
+        CancellationToken cancellationToken = default) =>
+        ResumeInteractionAsync(reply.RunId, scope => _orchestrator.ResumeAgentInputAsync(reply, scope, cancellationToken), generation, requestId);
+
+    private async Task<ConversationSendResult?> ResumeInteractionAsync(string runId, Func<ToolScope, Task<ConversationSendResult>> resume,
+        long generation, string? requestId)
+    {
+        bool IsCurrent() => !_disposed && generation == _sessionGeneration && requestId == _activeRequestId;
+        var scope = CurrentInputScope();
+        try
+        {
+            var result = await resume(scope);
+            if (!IsCurrent()) return null;
+            result = await ApplyInputResultAsync(result);
+            if (!IsCurrent()) return null;
+            if (result.Status == ConversationSendStatus.Failed) ErrorText = result.SafeError ?? "本次任务未完成，请重新发起请求。";
+            else if (result.Status == ConversationSendStatus.Cancelled) RequestStatusText = "已取消。";
+            return result;
+        }
+        catch (AgentStateException)
+        {
+            await RestoreWaitAsync("本次问题已不可用，请重新发起请求。");
+        }
+        catch (Exception)
+        {
+            await RestoreWaitAsync("本次回答未能完成，请核对状态后重试或取消。");
+        }
+        finally
+        {
+            if (IsCurrent())
+            {
+                IsStreaming = false;
+                IsInputSubmitting = false;
+                _acceptRequestUpdates = false;
+                if (!HasPendingRun) _activeRequestId = null;
+                else StartInputExpiry();
+                NotifyInputWait();
+            }
+        }
+
+        return null;
+
+        async Task RestoreWaitAsync(string error)
+        {
+            if (!IsCurrent()) return;
+            AgentInteractionSnapshot? interaction = null;
+            try { interaction = await _orchestrator.GetAgentInteractionAsync(runId, scope, CancellationToken.None); }
+            catch (AgentStateException) { /* A rejected scope or registration is no longer actionable. */ }
+            catch (Exception)
+            {
+                // A failed status read does not prove the live wait ended. Keep the stop/retry route.
+                if (IsCurrent()) InputErrorText = error;
+                return;
+            }
+            if (!IsCurrent()) return;
+            if (interaction is { Snapshot.Status: AgentRunStatus.WaitingUserInput, Input: not null }
+                or { Snapshot.Status: AgentRunStatus.WaitingApproval })
+            {
+                PendingInput = interaction.Input;
+                PendingApproval = interaction.Approval is { } approval && SupportedApproval(approval) ? approval : null;
+                InputErrorText = error;
+                return;
+            }
+            ClearInputWait();
+            ErrorText = error;
+            RequestStatusText = "本次任务已结束。";
+        }
+    }
+
+    private async Task CancelInputWaitAsync(string status)
+    {
+        if (_waitingRunId is not { } runId || _waitingScope is not { } scope || IsInputSubmitting) return;
+        RequestCancelled?.Invoke();
+        _approvalReviewCancellation?.Cancel();
+        var generation = _sessionGeneration;
+        CancelInputExpiry();
+        IsInputSubmitting = true;
+        NotifyInputWait();
+        try
+        {
+            await _orchestrator.CancelAgentRunAsync(runId, scope, CancellationToken.None);
+            if (!_disposed && generation == _sessionGeneration && _waitingRunId == runId)
+            {
+                ClearInputWait();
+                _activeRequestId = null;
+                _acceptRequestUpdates = false;
+                RequestStatusText = status;
+            }
+        }
+        catch (Exception)
+        {
+            if (!_disposed && generation == _sessionGeneration)
+            {
+                IsInputSubmitting = false;
+                InputErrorText = "本次任务未能结束，请重试停止。";
+                NotifyInputWait();
+            }
+        }
+    }
+
+    private void ClearInputWait()
+    {
+        ClearExternalOwnership();
+        CancelInputExpiry();
+        _waitingRunId = null;
+        _waitingScope = null;
+        PendingInput = null;
+        PendingApproval = null;
+        _approvalReviewCancellation?.Cancel();
+        IsInputSubmitting = false;
+        InputErrorText = string.Empty;
+        NotifyInputWait();
+    }
+
+    private void StartInputExpiry()
+    {
+        CancelInputExpiry();
+        var binding = PendingInput?.Binding ?? PendingApproval?.Binding;
+        if (binding is null) return;
+        var cancellation = new CancellationTokenSource();
+        _inputExpiryCancellation = cancellation;
+        _ = ObserveInputExpiryAsync(binding, _sessionGeneration, cancellation);
+    }
+
+    private void CancelInputExpiry()
+    {
+        var cancellation = _inputExpiryCancellation;
+        _inputExpiryCancellation = null;
+        cancellation?.Cancel();
+    }
+
+    private async Task ObserveInputExpiryAsync(InteractionBinding binding, long generation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var remaining = binding.ExpiresAt - _time.GetUtcNow();
+            if (remaining > TimeSpan.Zero) await Task.Delay(remaining, _time, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && !_disposed && generation == _sessionGeneration
+                && (PendingInput?.Binding ?? PendingApproval?.Binding) == binding && !IsInputSubmitting)
+                await CancelInputWaitAsync("本次确认或问题已过期，请重新发起请求。");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(_inputExpiryCancellation, cancellation)) _inputExpiryCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    private void NotifyInputWait()
+    {
+        foreach (var name in new[] { nameof(HasPendingRun), nameof(PendingInput), nameof(PendingApproval), nameof(IsApprovalReviewing), nameof(IsInputSubmitting), nameof(InputErrorText),
+            nameof(CanSend), nameof(CanStop), nameof(CanSendOrStop), nameof(ActionLabel) }) OnPropertyChanged(name);
+        SendCommand.NotifyCanExecuteChanged();
+        SendOrStopCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
+        RetryCapabilityCommand.NotifyCanExecuteChanged();
+    }
 
     private async Task SendOrStopAsync()
     {
-        if (IsStreaming)
+        if (CanStop)
         {
             Stop();
             return;
@@ -591,6 +1000,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         }
         CancelHistoryDeletion();
         if (_activeConversationId == item.ConversationId) ResetConversationView();
+        _conversationDrafts.Remove((ActiveServantId, item.ConversationId));
         LoadHistory();
         HistoryStatus = "对话已删除。" + HistoryStatus;
         return true;
@@ -609,6 +1019,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void ResetConversationView(bool clearContext = true)
     {
+        RememberCurrentDraft();
+        InputText = string.Empty;
         InvalidateSession();
         CancelHistoryDeletion();
         SessionChanged?.Invoke();
@@ -638,9 +1050,17 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         SendOrStopCommand.NotifyCanExecuteChanged();
     }
 
+    private void RememberCurrentDraft()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveServantId) || string.IsNullOrWhiteSpace(_activeConversationId)) return;
+        var key = (ActiveServantId, _activeConversationId);
+        if (string.IsNullOrEmpty(InputText)) _conversationDrafts.Remove(key);
+        else _conversationDrafts[key] = InputText;
+    }
+
     private void OnConversationUpdated(ConversationUpdate update)
     {
-        if (_disposed || !_acceptRequestUpdates) return;
+        if (_disposed || !_acceptRequestUpdates || update.RequestId != _activeRequestId) return;
         if (!string.IsNullOrWhiteSpace(update.ServantId)
             && !string.Equals(update.ServantId, ActiveServantId, StringComparison.Ordinal))
         {
@@ -655,6 +1075,9 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             }
 
             _activeConversationId = update.ConversationId;
+            if (_desktopRequestId == update.RequestId && !string.IsNullOrWhiteSpace(update.MessageId))
+                DesktopMessagePersisted?.Invoke(update.MessageId);
+            OnPropertyChanged(nameof(CurrentConversationId));
             RequestStatusText = "正在准备请求…";
             ErrorText = string.Empty;
             Turns.Add(new ConversationTurnViewModel(
@@ -882,8 +1305,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void InvalidateSession()
     {
+        RequestCancelled?.Invoke();
         _sessionGeneration++;
         _acceptRequestUpdates = false;
+        _activeRequestId = null;
+        ClearInputWait();
         _orchestrator.CancelCurrent();
         IsStreaming = false;
         _lastUserMessage = null;
@@ -905,6 +1331,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (_modelConnection is not null)
         {
             _modelConnection.ConnectionSaved -= OnConnectionSaved;
+            (_modelAuthority as IDisposable)?.Dispose();
             _modelConnection.ShowReasoningChanged -= OnShowReasoningChanged;
         }
         StopThinkingTimer();

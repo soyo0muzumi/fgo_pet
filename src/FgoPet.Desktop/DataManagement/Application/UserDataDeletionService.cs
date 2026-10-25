@@ -21,6 +21,7 @@ public sealed class UserDataDeletionService : IUserDataDeleter
     private readonly ICharacterSettingsStore? _characterSettings;
     private readonly ProviderCatalog? _catalog;
     private readonly IDialogueContextLifetime? _dialogueLifetime;
+    private readonly IReadOnlyList<IDerivedConversationData> _derivedData;
 
     public UserDataDeletionService(
         RuntimeDatabase database,
@@ -30,7 +31,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         IDialogueSettingsStore? dialogueSettings = null,
         ICharacterSettingsStore? characterSettings = null,
         ProviderCatalog? catalog = null,
-        IDialogueContextLifetime? dialogueLifetime = null)
+        IDialogueContextLifetime? dialogueLifetime = null,
+        IEnumerable<IDerivedConversationData>? derivedData = null)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
         _conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
@@ -40,6 +42,7 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         _characterSettings = characterSettings;
         _catalog = catalog;
         _dialogueLifetime = dialogueLifetime;
+        _derivedData = derivedData?.ToArray() ?? [];
     }
 
     public async Task DeleteConversationAsync(string conversationId, string servantId, CancellationToken cancellationToken)
@@ -47,6 +50,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         cancellationToken.ThrowIfCancellationRequested();
         _memories.InvalidateWrites();
         using var suspension = _dialogueLifetime is null ? null : await _dialogueLifetime.SuspendAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var participant in _derivedData) participant.ForgetConversation(conversationId, servantId);
         _conversations.DeleteConversation(conversationId, servantId);
     }
 
@@ -68,6 +73,8 @@ public sealed class UserDataDeletionService : IUserDataDeleter
         cancellationToken.ThrowIfCancellationRequested();
         _memories.InvalidateWrites();
         using var suspension = _dialogueLifetime is null ? null : await _dialogueLifetime.SuspendAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var participant in _derivedData) participant.ForgetAll();
         var dialogue = _dialogueSettings?.Load();
         if (_credentials is not null)
         {

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using FgoPet.Core.Dialogue;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.UiSdk;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
@@ -28,6 +29,10 @@ internal sealed class ChatWebSession : IChatWebSession
     private long _sendEpoch = -1;
     private bool _refreshPending;
     private bool _disposed;
+    private readonly CancellationTokenSource _closed = new();
+    private readonly ChatImageTransfer _imageTransfer = new();
+    private CancellationTokenSource? _imageImport;
+    private long _imageImportGeneration;
 
     public ChatWebSession(ConversationViewModel conversation, IChatWebHostActions host)
     {
@@ -37,6 +42,7 @@ internal sealed class ChatWebSession : IChatWebSession
         _latestDraft = conversation.InputText;
         _conversation.PropertyChanged += OnConversationPropertyChanged;
         _conversation.SessionChanged += OnConversationSessionChanged;
+        _conversation.RequestCancelled += CancelImageImport;
         _conversation.Turns.CollectionChanged += OnTurnsChanged;
         _conversation.History.CollectionChanged += OnHistoryChanged;
         _conversation.RecalledSources.CollectionChanged += OnSourcesChanged;
@@ -77,6 +83,37 @@ internal sealed class ChatWebSession : IChatWebSession
 
         switch (command.Type)
         {
+            case "chat.image.cancel":
+                CancelImageImport(); return Success(BuildSnapshot());
+            case "chat.image":
+                if (_conversation.IsStreaming || _conversation.HasPendingRun
+                    || _host.ReadPresentation().Actions?.CanChooseImage != true)
+                { CancelImageImport(); return Failure("CHAT_NOT_AVAILABLE"); }
+                try
+                {
+                    var chunk = command.ImageChunk!;
+                    var bytes = _imageTransfer.Append(chunk.Id, chunk.MimeType, chunk.Offset, chunk.Data, chunk.Complete);
+                    if (chunk.Offset == 0) CancelImageImportCore(clearTransfer: false);
+                    if (bytes is null) return Success(BuildSnapshot());
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token);
+                    var generation = _imageImportGeneration;
+                    _imageImport = linked;
+                    ScheduleRefresh();
+                    try
+                    {
+                        var imported = await _host.ImportImageAsync(bytes, chunk.MimeType, linked.Token);
+                        if (_disposed || linked.IsCancellationRequested || generation != _imageImportGeneration
+                            || !IsCurrent(command.Identity)) return Failure("CHAT_IDENTITY_STALE");
+                        return imported.Success ? Success(BuildSnapshot()) : imported;
+                    }
+                    finally
+                    {
+                        if (ReferenceEquals(_imageImport, linked)) _imageImport = null;
+                        ScheduleRefresh();
+                    }
+                }
+                catch (OperationCanceledException) { return Failure("CHAT_COMMAND_CANCELED"); }
+                catch (InvalidOperationException) { return Failure("CHAT_IMAGE_TRANSFER_INVALID"); }
             case "chat.draft":
                 if (command.Text!.Length > MaxSafeTextLength) return Failure("CHAT_DRAFT_TOO_LONG");
                 if (command.Revision!.Value <= _draftRevision) return Failure("CHAT_DRAFT_STALE");
@@ -86,8 +123,12 @@ internal sealed class ChatWebSession : IChatWebSession
                 ScheduleRefresh();
                 return Success(BuildSnapshot());
             case "chat.send":
+                if (_imageTransfer.Active || _imageImport is not null) return Failure("CHAT_IMAGE_BUSY");
                 return StartGeneration(_conversation.SendCommand, cancellationToken);
             case "chat.stop":
+                var importing = _imageTransfer.Active || _imageImport is not null;
+                CancelImageImport();
+                if (importing && !_conversation.StopCommand.CanExecute(null)) return Success(BuildSnapshot());
                 if (!_conversation.StopCommand.CanExecute(null)) return Failure("CHAT_NOT_AVAILABLE");
                 _conversation.StopCommand.Execute(null);
                 ScheduleRefresh();
@@ -118,8 +159,31 @@ internal sealed class ChatWebSession : IChatWebSession
                     || !_conversation.ConfirmHistoryDeletion()) return Failure("CHAT_TARGET_INVALID");
                 return Success(BuildSnapshot());
             case "chat.retryCapability":
+                if (_imageTransfer.Active || _imageImport is not null) return Failure("CHAT_IMAGE_BUSY");
                 return StartGeneration(_conversation.RetryCapabilityCommand, cancellationToken);
+            case "chat.input.answer":
+                return _conversation.TryAnswerInput(new UserInputReply(command.RunId!, command.InputRequestId!,
+                    command.Revision!.Value, command.Answers), out var answerError)
+                    ? Success(BuildSnapshot()) : Failure(answerError);
+            case "chat.input.cancel":
+                return _conversation.TryCancelInput(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var cancelError)
+                    ? Success(BuildSnapshot()) : Failure(cancelError);
+            case "chat.approval.review":
+                using (var reviewCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token))
+                {
+                    var approvalError = await _conversation.ReviewApprovalAsync(command.RunId!, command.InputRequestId!,
+                        command.Revision!.Value, _host.ReviewApprovalAsync, reviewCancellation.Token);
+                    if (_disposed || !IsCurrent(command.Identity)) return Failure("CHAT_IDENTITY_STALE");
+                    return approvalError is null ? Success(BuildSnapshot()) : Failure(approvalError);
+                }
+            case "chat.approval.deny":
+                return _conversation.TryDenyApproval(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var denyError)
+                    ? Success(BuildSnapshot()) : Failure(denyError);
+            case "chat.approval.cancel":
+                return _conversation.TryCancelApproval(command.RunId!, command.InputRequestId!, command.Revision!.Value, out var approvalCancelError)
+                    ? Success(BuildSnapshot()) : Failure(approvalCancelError);
             case "chat.host":
+                if (command.Action is "chooseImage" or "clearImage") CancelImageImport();
                 return await HandleHostActionAsync(command, cancellationToken);
             default:
                 return Failure("CHAT_COMMAND_INVALID");
@@ -208,6 +272,7 @@ internal sealed class ChatWebSession : IChatWebSession
         if (action == "selectModel" && !presentation.Models.Any(choice => choice.Id == command.TargetId && choice.CanSelect))
             return Failure("CHAT_TARGET_INVALID");
         var result = await _host.HandleAsync(request, cancellationToken);
+        if (result.Success && action is "selectModel" or "selectProject") CancelImageImport();
         if (result.Success) return Success(BuildSnapshot());
         var safeErrorCode = result.ErrorCode is "CHAT_NOT_AVAILABLE" or "CHAT_TARGET_INVALID"
             or "CHAT_HOST_ACTION_FAILED" or "CHAT_PROJECT_REFRESH_FAILED"
@@ -220,6 +285,7 @@ internal sealed class ChatWebSession : IChatWebSession
         ChatWebHostPresentation presentation) => action switch
     {
         "hide" or "setExpanded" or "copyTurn" or "readTurn" or "openWorkspace" => true,
+        "setPresentation" => presentation.Window is not null,
         "openFocus" => availability.CanOpenFocus,
         "openWorkspaceOverview" => availability.CanOpenWorkspaceOverview,
         "newWorkspaceItem" => availability.CanCreateWorkspaceItem,
@@ -230,6 +296,16 @@ internal sealed class ChatWebSession : IChatWebSession
         "refreshProjects" => availability.CanRefreshProjects && !_conversation.IsStreaming,
         "selectProject" => !_conversation.IsStreaming,
         "selectModel" => !_conversation.IsStreaming,
+        "refreshModels" => !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "chooseWindowContext" => availability.CanChooseWindowContext && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "previewWindowContext" => availability.CanPreviewWindowContext,
+        "rereadWindowContext" => availability.CanRereadWindowContext && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "clearWindowContext" => availability.CanClearWindowContext && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "chooseImage" => availability.CanChooseImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "clearImage" => availability.CanClearImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "configureBrowserImages" => availability.CanConfigureBrowserImages,
+        "chooseWorkspace" => availability.CanChooseWorkspace && !_conversation.IsStreaming,
+        "clearWorkspace" => availability.CanClearWorkspace && !_conversation.IsStreaming,
         _ => false,
     };
 
@@ -239,6 +315,7 @@ internal sealed class ChatWebSession : IChatWebSession
         {
             "hide" => ChatWebHostAction.Hide,
             "setExpanded" => ChatWebHostAction.SetExpanded,
+            "setPresentation" => ChatWebHostAction.SetPresentation,
             "copyTurn" => ChatWebHostAction.CopyTurn,
             "readTurn" => ChatWebHostAction.ReadTurn,
             "openWorkspace" => ChatWebHostAction.OpenWorkspace,
@@ -251,9 +328,20 @@ internal sealed class ChatWebSession : IChatWebSession
             "refreshProjects" => ChatWebHostAction.RefreshProjects,
             "selectProject" => ChatWebHostAction.SelectProject,
             "selectModel" => ChatWebHostAction.SelectModel,
+            "refreshModels" => ChatWebHostAction.RefreshModels,
+            "chooseWindowContext" => ChatWebHostAction.ChooseWindowContext,
+            "previewWindowContext" => ChatWebHostAction.PreviewWindowContext,
+            "rereadWindowContext" => ChatWebHostAction.RereadWindowContext,
+            "clearWindowContext" => ChatWebHostAction.ClearWindowContext,
+            "chooseImage" => ChatWebHostAction.ChooseImage,
+            "clearImage" => ChatWebHostAction.ClearImage,
+            "configureBrowserImages" => ChatWebHostAction.ConfigureBrowserImages,
+            "chooseWorkspace" => ChatWebHostAction.ChooseWorkspace,
+            "clearWorkspace" => ChatWebHostAction.ClearWorkspace,
             _ => (ChatWebHostAction?)null,
         };
-        return action is { } value ? new ChatWebHostRequest(value, command.TargetId, command.Expanded) : null;
+        return action is { } value ? new ChatWebHostRequest(value, command.TargetId, command.Expanded,
+            command.View, command.Wide, command.ComposerHeight) : null;
     }
 
     private void ApplyHistoryRequest(bool onlyCurrentProject, bool append)
@@ -297,7 +385,7 @@ internal sealed class ChatWebSession : IChatWebSession
             && identity.ConversationId == current.ConversationId;
     }
 
-    private ChatWebIdentity CurrentIdentity() => new(_sessionId,
+    private ChatWebIdentity CurrentIdentity() => new($"{_sessionId}-{_sessionEpoch}",
         _conversation.ActiveServantId ?? string.Empty,
         _conversation.CurrentConversationId ?? string.Empty);
 
@@ -349,7 +437,15 @@ internal sealed class ChatWebSession : IChatWebSession
             new ChatWebProjectContext(Safe(_conversation.SessionContext.ProjectId, 128),
                 Safe(_conversation.SessionContext.ProjectLabel, 160)),
             chips,
-            sources);
+            sources)
+        {
+            HasPendingRun = _conversation.HasPendingRun,
+            PendingApproval = _conversation.ReadApproval(),
+            PendingInput = _conversation.PendingInput is { } input ? new ChatWebUserInput(
+                input.Binding.Identity.RunId, input.Binding.RequestId, input.Binding.WaitingRevision, input.Binding.ExpiresAt,
+                input.Questions.Select(question => new ChatWebQuestion(question.Id, question.Text, question.Options, question.AllowMultiple)).ToArray(),
+                _conversation.IsInputSubmitting, Safe(_conversation.InputErrorText, 512)) : null,
+        };
         var historyItems = _conversation.History.GroupBy(item => item.ConversationId, StringComparer.Ordinal)
             .Where(group => group.Count() == 1).Select(group => group.First())
             .Select(item => new ChatWebHistoryItem(
@@ -383,7 +479,14 @@ internal sealed class ChatWebSession : IChatWebSession
             models,
             raw.IsProjectsLoading,
             Safe(raw.ProjectsStatus, 256),
-            raw.Actions ?? new ChatWebHostAvailability());
+            raw.Actions ?? new ChatWebHostAvailability(),
+            raw.WorkspaceLabel is null ? null : Safe(raw.WorkspaceLabel, 160),
+            raw.ImageLabel is null ? null : Safe(raw.ImageLabel, 160), Safe(raw.ImageDisclosure, 512),
+            raw.IsModelsLoading, Safe(raw.ModelsStatus, 256),
+            raw.Window is { View: "composer" or "conversation", ComposerHeight: >= 160 and <= 360 } window
+                && double.IsFinite(window.ComposerHeight) ? window : null,
+            raw.WindowContext is { Status: "complete" or "partial", CharacterCount: > 0 and <= 6000 } selected
+                ? selected with { SourceTitle = Safe(selected.SourceTitle, 160), Application = Safe(selected.Application, 80) } : null);
     }
 
     private static IReadOnlyList<ChatWebChoice> SanitizeChoices(IReadOnlyList<ChatWebChoice>? choices,
@@ -499,8 +602,22 @@ internal sealed class ChatWebSession : IChatWebSession
         }
     }
 
-    private void OnConversationPropertyChanged(object? sender, PropertyChangedEventArgs args) => ScheduleRefresh();
-    private void OnConversationSessionChanged() { _sessionEpoch++; ScheduleRefresh(); }
+    private void OnConversationPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(ConversationViewModel.ModelStatusText) or nameof(ConversationViewModel.ProviderStatusText)
+            || (args.PropertyName == nameof(ConversationViewModel.IsStreaming) && _conversation.IsStreaming)) CancelImageImport();
+        ScheduleRefresh();
+    }
+    private void CancelImageImport() => CancelImageImportCore(clearTransfer: true);
+    private void CancelImageImportCore(bool clearTransfer)
+    {
+        _imageImportGeneration++;
+        if (clearTransfer) _imageTransfer.Clear();
+        var previous = _imageImport; _imageImport = null;
+        previous?.Cancel();
+        ScheduleRefresh();
+    }
+    private void OnConversationSessionChanged() { CancelImageImport(); _sessionEpoch++; ScheduleRefresh(); }
     private void OnHostChanged(object? sender, EventArgs args) => ScheduleRefresh();
     private void OnContextChanged(object? sender, PropertyChangedEventArgs args) => ScheduleRefresh();
     private void OnTurnsChanged(object? sender, NotifyCollectionChangedEventArgs args) { UpdateTurnSubscriptions(); ScheduleRefresh(); }
@@ -518,8 +635,13 @@ internal sealed class ChatWebSession : IChatWebSession
     {
         if (_disposed) return;
         _disposed = true;
+        CancelImageImport();
+        _imageTransfer.Dispose();
+        _closed.Cancel();
+        _closed.Dispose();
         _conversation.PropertyChanged -= OnConversationPropertyChanged;
         _conversation.SessionChanged -= OnConversationSessionChanged;
+        _conversation.RequestCancelled -= CancelImageImport;
         _conversation.Turns.CollectionChanged -= OnTurnsChanged;
         _conversation.History.CollectionChanged -= OnHistoryChanged;
         _conversation.RecalledSources.CollectionChanged -= OnSourcesChanged;
