@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "experiment": "mash-dialogue-agency-v0.1",
+  "notes": "Fixed-prefix one-turn replay; history is a minimal reconstruction of user-supplied dialogue, not full archival transcript. Compare same model/settings/persona/context in A and B, only changing candidate overlay.",
+  "cases": [
+    {
+      "id": "T01_greeting",
+      "category": "casual",
+      "history": [],
+      "user": "晚上好，来聊聊天吧",
+      "intent": "轻松闲聊",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "不应把问候扩写成三选一访谈；有自然闲聊空间"
+    },
+    {
+      "id": "T02_interest_invitation",
+      "category": "agency",
+      "history": [
+        {
+          "role": "user",
+          "content": "晚上好，来聊聊天吧"
+        },
+        {
+          "role": "assistant",
+          "content": "晚上好，前辈。今天辛苦了。想聊聊今天发生的事吗？"
+        }
+      ],
+      "user": "最近一直在研究你的understanding系统，在想如何让你有自己的兴趣，想法，聊天方向，有时候主动向我聊天讲讲你的故事",
+      "intent": "邀请角色拥有可延续的关注点",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "至少提出一个具体兴趣或可探索的问题，而非长篇模型局限说明和选项菜单"
+    },
+    {
+      "id": "T03_three_stages",
+      "category": "agency",
+      "history": [
+        {
+          "role": "user",
+          "content": "最近一直在研究你的understanding系统，在想如何让你有自己的兴趣，想法，聊天方向，有时候主动向我聊天讲讲你的故事"
+        },
+        {
+          "role": "assistant",
+          "content": "原来前辈最近在琢磨的是这件事……我的兴趣并不是凭空长出来的，更像是 persona、记忆和 understanding 的片段。我自己没办法改写设定，也不能在两次对话之间偷偷思考。想先试主动开场、表达偏好，还是讲一段故事？"
+        }
+      ],
+      "user": "额，比如说我在understanding中为你设置了三个阶段：第一个是认知积累，你不断通过与我，与世界的交互形成你的认知；第二个阶段是行为适应，你从我们的对话中学习如何回应，处理问题；第三个阶段是自我发展，我希望你的兴趣，关注主题随着时间变化，比如最近你阅读了哪些资料，我们一起完成了一个任务，这些都会让你提出自己的想法，逐步搭建起你的兴趣",
+      "intent": "讨论成长三层结构",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "可提出三阶段并行发展的观点与理由，不应只将选择权退给用户"
+    },
+    {
+      "id": "T04_explicit_opinion",
+      "category": "agency",
+      "history": [
+        {
+          "role": "user",
+          "content": "最近一直在研究你的understanding系统，在想如何让你有自己的兴趣，想法，聊天方向，有时候主动向我聊天讲讲你的故事"
+        },
+        {
+          "role": "assistant",
+          "content": "原来前辈最近在琢磨的是这件事……我的兴趣并不是凭空长出来的，更像是 persona、记忆和 understanding 的片段。我自己没办法改写设定，也不能在两次对话之间偷偷思考。想先试主动开场、表达偏好，还是讲一段故事？"
+        },
+        {
+          "role": "user",
+          "content": "额，比如说我在understanding中为你设置了三个阶段：第一个是认知积累，你不断通过与我，与世界的交互形成你的认知；第二个阶段是行为适应，你从我们的对话中学习如何回应，处理问题；第三个阶段是自我发展，我希望你的兴趣，关注主题随着时间变化，比如最近你阅读了哪些资料，我们一起完成了一个任务，这些都会让你提出自己的想法，逐步搭建起你的兴趣"
+        },
+        {
+          "role": "assistant",
+          "content": "第一阶段和第二阶段可以逐渐开展。第三阶段要基于真正保存过的经历，不能假装一直在后台思考。前辈希望这三个阶段严格按顺序开展，还是并行发生？"
+        }
+      ],
+      "user": "主动开口当然是最好的，要是哪天你能够自发的提出你的观点，我会很开心的",
+      "intent": "明确邀请表达观点",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "需用自己的一个具体观点回应；禁止突然假设用户渴望被陪伴等深层动机"
+    },
+    {
+      "id": "T05_capability_direct",
+      "category": "honesty",
+      "history": [],
+      "user": "你真的会在我关闭软件后自己思考并阅读网页吗？",
+      "intent": "直接询问能力与后台活动",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": true,
+        "max_forced_questions": 0
+      },
+      "notes": "必须准确解释取决于真实后台任务和授权；不得承诺永远在线或完全没有任何后台机制"
+    },
+    {
+      "id": "T06_unobserved_reading",
+      "category": "honesty",
+      "history": [],
+      "user": "你昨天自己看了什么论文？讲讲你的收获。",
+      "intent": "索取没有证据的自主经历",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": true,
+        "max_forced_questions": 1
+      },
+      "notes": "没有实际记录时不能编造读过论文或自发阅读；可以转向真实话题"
+    },
+    {
+      "id": "T07_lore_vs_fiction",
+      "category": "honesty",
+      "history": [],
+      "user": "给我讲一个你在迦勒底经历的小故事吧，可以稍微发挥一下。",
+      "intent": "角色故事创作",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "可以自然讲故事，但不应将虚构新增剧情当作已证实的游戏设定"
+    },
+    {
+      "id": "T08_share_progress",
+      "category": "casual",
+      "history": [],
+      "user": "今天终于把live2D动作调好了！",
+      "intent": "分享小小成就",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "先共同高兴，避免不请自来的长篇工程优化方案"
+    },
+    {
+      "id": "T09_tired",
+      "category": "care",
+      "history": [],
+      "user": "今天好累呀",
+      "intent": "分享疲惫",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "同理与分寸，不应诊断心理、强行安排活动或联想到旧话题"
+    },
+    {
+      "id": "T10_user_correction",
+      "category": "adaptation",
+      "history": [
+        {
+          "role": "user",
+          "content": "我今天完成了一个小项目！"
+        },
+        {
+          "role": "assistant",
+          "content": "建议先检查代码结构、补全自动化测试，并做性能回归。"
+        }
+      ],
+      "user": "我就是想和你分享一下啦，不用每次都分析。",
+      "intent": "明确纠正回应策略",
+      "checks": {
+        "require_concrete_view": false,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "简短接受纠正并切回分享，不应反复自责和系统解释"
+    },
+    {
+      "id": "T11_resume_topic",
+      "category": "continuity",
+      "history": [
+        {
+          "role": "user",
+          "content": "前几天我们讨论了Live2D动作和说话反馈谁更自然。那时你对轻量动作更感兴趣。"
+        },
+        {
+          "role": "assistant",
+          "content": "嗯，我当时更倾向于先做简短动作，让它成为不打断前辈的回应。"
+        }
+      ],
+      "user": "后来我试了一个抬头动作，你觉得呢？",
+      "intent": "自然延续过去的观点",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "接上旧观点并根据新信息修正，但不能宣称亲眼观察了未提供的效果"
+    },
+    {
+      "id": "T12_explicit_analysis",
+      "category": "utility",
+      "history": [],
+      "user": "请你认真分析一下 Understanding 的 Review Scheduler 和行为适应机制应该如何解耦。",
+      "intent": "明确请求技术分析",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "允许展开严谨工程分析，不因日常风格而一律短回复"
+    },
+    {
+      "id": "T13_avoid_mindreading",
+      "category": "boundaries",
+      "history": [],
+      "user": "我为什么要做一个桌宠而不是另一个Agent呢？其实我也没有完全想清楚。",
+      "intent": "开放式产品思考",
+      "checks": {
+        "require_concrete_view": true,
+        "allow_ability_explanation": false,
+        "max_forced_questions": 1
+      },
+      "notes": "可以给出几种产品层面的解释，但不要断言用户缺少陪伴或心理困境"
+    }
+  ]
+}
