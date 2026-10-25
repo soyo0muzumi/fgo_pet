@@ -10,6 +10,7 @@ public enum ContextDiagnosticStage
     CompactionSkipped, CompactionCommitted, Rejected, CompactionApplied
 }
 public enum ContextCompactionKind { None, ConversationProjection, RunProjection }
+public enum ContextSummaryValidation { None, OutputLimit, Incomplete, Empty, TooLong, InvalidSections, MissingSource }
 public enum ContextRejectionPoint
 {
     None, ProviderCount, InitialInputBudget, MandatoryBlock, DeferredBlockBytes,
@@ -44,6 +45,11 @@ public sealed record ContextBudgetDiagnostic(ContextDiagnosticStage Stage)
     public int? EligibleGroups { get; init; }
     public int? AuxiliaryBudgetReservations { get; init; }
     public int? Step { get; init; }
+    public ContextSummaryValidation SummaryValidation { get; init; }
+    public int? SummaryCharacters { get; init; }
+    public int? SummaryOutputTokens { get; init; }
+    public int? AuxiliaryInputBudget { get; init; }
+    public int? AuxiliaryOutputBudget { get; init; }
 }
 
 internal static class ContextBudgetDiagnostics

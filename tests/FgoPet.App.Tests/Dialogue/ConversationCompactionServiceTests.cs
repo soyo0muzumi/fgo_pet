@@ -12,6 +12,52 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class ConversationCompactionServiceTests
 {
     [Fact]
+    public async Task Summary_preserves_constrained_input_and_reports_independent_budgets()
+    {
+        var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256)
+            .ConstrainInput(15000);
+        var store = new Store();
+        var summaries = new Summarizer();
+        var meter = new RequestTokenMeter();
+        var diagnostics = new List<ContextBudgetDiagnostic>();
+        var service = new ConversationSummaryService(store, summaries, meter, TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.True(await service.TryCompactAsync(store.Source, new Provider(), Route, budget, 30000, Compose,
+            lease, () => { }, new CompactionCallBudget(), default, diagnostics: diagnostics.Add));
+        Assert.All(summaries.Requests, request => {
+            Assert.Equal(8192, request.MaxOutputTokens);
+            Assert.InRange(meter.Measure(Route, request).InputTokens, 1, 15000);
+        });
+        var completed = Assert.Single(diagnostics.Where(d => d.Stage == ContextDiagnosticStage.CompactionCommitted));
+        Assert.Equal(8192, completed.AuxiliaryOutputBudget);
+        Assert.Equal(15000, completed.AuxiliaryInputBudget);
+        Assert.Equal(256, completed.OutputTokens);
+    }
+
+    [Theory]
+    [InlineData(null, 2048)]
+    [InlineData(4096, 2048)]
+    [InlineData(2048, 2048)]
+    [InlineData(1024, 1024)]
+    public async Task Buddy_summary_has_separate_bounded_output_reservation(int? providerMaximum, int expectedOutput)
+    {
+        var route = ModelRouteKey.From(new("custom-openai-compatible", "http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash"));
+        var budget = PromptBudget.Resolve(new(route, 32768, providerMaximum, ContextLimitSource.Override, "fixture"), 256);
+        var store = new Store();
+        var summaries = new Summarizer();
+        var meter = new RequestTokenMeter();
+        var service = new ConversationSummaryService(store, summaries, meter, TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.True(await service.TryCompactAsync(store.Source, new Provider(), route, budget, 30000, Compose,
+            lease, () => { }, new CompactionCallBudget(), default));
+        Assert.Equal(256, budget.OutputTokens);
+        Assert.All(summaries.Requests, request => {
+            Assert.Equal(expectedOutput, request.MaxOutputTokens);
+            Assert.True(meter.Measure(route, request).InputTokens + expectedOutput + budget.SafetyMarginTokens <= budget.ContextWindowTokens);
+        });
+    }
+
+    [Fact]
     public async Task Summary_uses_raw_sources_and_commits_only_a_smaller_complete_prompt()
     {
         var store = new Store();

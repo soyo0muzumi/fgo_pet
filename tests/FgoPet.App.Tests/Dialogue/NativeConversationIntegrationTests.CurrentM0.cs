@@ -81,7 +81,7 @@ public sealed partial class NativeConversationIntegrationTests
         var result = await host.Orchestrator.SendAsync(SourcePersonaRole, "合成验收：请简短回应。", default, new(ProjectId));
         var expected = tools.Select(t => ModelToolNameMap.GetWireName(t.Descriptor.Name)).ToHashSet(StringComparer.Ordinal);
         expected.UnionWith(new[] { "skill.load", "user.ask", "response.finalize" }.Select(ModelToolNameMap.GetWireName));
-        Assert.Equal(36, expected.Count);
+        Assert.Equal(38, expected.Count);
         Assert.Equal(ConversationSendStatus.Completed, result.Status); Assert.Equal(2, scripted.Requests.Count);
         Assert.Contains(meter.Measurements, m => expected.SetEquals(m.ToolNames));
         Assert.All(meter.Dispatches, d => Assert.InRange(d.EstimatedInputTokens, 1, budget.InputTokens));
@@ -107,7 +107,7 @@ public sealed partial class NativeConversationIntegrationTests
         var visual=Assert.Single(tools,t=>t.Descriptor.Name=="browser.inspect_image");
         Assert.Equal(ToolEffect.ReadOnly,visual.Descriptor.Effect);
         Assert.Contains(native?ModelToolNameMap.GetWireName("browser.inspect_image"):"browser.inspect_image",expected);
-        Assert.Equal(native?36:21,expected.Count);
+        Assert.Equal(native?38:23,expected.Count);
         var basis=meter.Measurements.Where(m=>expected.SetEquals(m.ToolNames)).ToArray();Assert.NotEmpty(basis);
         Assert.Equal(native?ConversationSendStatus.Failed:ConversationSendStatus.Completed,result.Status);
         Assert.Equal(native?0:1,scripted.Requests.Count);

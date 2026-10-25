@@ -51,7 +51,7 @@ public sealed class ConversationCompactionEndToEndTests : IDisposable
         Assert.DoesNotContain("raw-01", sent);
         Assert.Contains("raw-13", sent);
         Assert.Contains("raw-16", sent);
-        Assert.All(provider.SummaryRequests, request => { Assert.Null(request.Tools); Assert.Equal(2048, request.MaxOutputTokens); });
+        Assert.All(provider.SummaryRequests, request => { Assert.Null(request.Tools); Assert.Equal(1024, request.MaxOutputTokens); });
         Assert.Equal(18, _conversations.LoadMessages("c", "mash").Count);
         var snapshot = new SqliteConversationContextStore(new RuntimeDatabase(_path, pooling: false)).Read(Scope, "c");
         Assert.NotNull(snapshot.Summary);

@@ -18,7 +18,7 @@ public sealed class SqliteConversationContextStore(RuntimeDatabase database) : I
         return Read(connection, transaction, scope, conversationId);
     }
 
-    private static ConversationContextSnapshot Read(SqliteConnection connection, SqliteTransaction transaction,
+    internal static ConversationContextSnapshot Read(SqliteConnection connection, SqliteTransaction transaction,
         ConversationScope scope, string conversationId)
     {
         using var command = connection.CreateCommand();
@@ -58,7 +58,7 @@ public sealed class SqliteConversationContextStore(RuntimeDatabase database) : I
         var summary = commit.Summary;
         if (commit.InputTokensBefore <= 0 || commit.InputTokensAfter < 0 || commit.InputTokensAfter >= commit.InputTokensBefore ||
             summary.ConversationId != source.ConversationId || summary.ServantId != source.Scope.ServantId ||
-            summary.SummaryText.Length > 6000 || string.IsNullOrWhiteSpace(summary.SummaryText)) return false;
+            summary.SummaryText.Length > ConversationSummary.MaxTextChars || string.IsNullOrWhiteSpace(summary.SummaryText)) return false;
         using var connection = database.Open();
         using var transaction = connection.BeginTransaction();
         ConversationContextSnapshot current;

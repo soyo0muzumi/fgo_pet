@@ -44,7 +44,7 @@ public sealed class ServiceRegistrationTests
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         await AssertPluginActivationAsync(provider);
         var readTools = provider.GetRequiredService<ConversationCapabilityRouter>().Tools;
-        Assert.Equal(new[] { "browser.inspect_image", "browser.open", "browser.read", "browser.tabs", "context.time", "document.read", "experience.read", "experience.search", "image.read", "reminder.list", "understanding.query", "web.search", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
+        Assert.Equal(new[] { "browser.inspect_image", "browser.open", "browser.read", "browser.tabs", "context.time", "document.read", "experience.read", "experience.search", "history.read", "history.search", "image.read", "reminder.list", "understanding.query", "web.search", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
             readTools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal));
         Assert.All(readTools, tool => Assert.Equal(ToolEffect.ReadOnly, tool.Effect));
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);

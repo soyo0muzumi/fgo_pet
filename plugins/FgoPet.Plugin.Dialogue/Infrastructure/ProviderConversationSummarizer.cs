@@ -27,7 +27,7 @@ public sealed class ProviderConversationSummarizer : IConversationSummarizer
         await foreach (var chunk in provider.StreamAsync(request, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (chunk.ToolCallDelta is not null || text.Length + chunk.TextDelta.Length > 6000)
+            if (chunk.ToolCallDelta is not null || text.Length + (long)chunk.TextDelta.Length > ConversationSummary.MaxTextChars)
                 throw new ProviderRequestException(ProviderFailureCategory.InvalidResponse, "摘要内容不完整或超出限制。");
             text.Append(chunk.TextDelta);
             finish = chunk.FinishReason ?? finish;

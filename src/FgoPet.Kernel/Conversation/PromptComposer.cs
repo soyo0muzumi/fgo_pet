@@ -84,10 +84,8 @@ public sealed class PromptComposer
         }
         if (context.ConversationSummary is { } summary)
         {
-            var wrapped = PromptInjectionGuard.Wrap("conversation_summary", summary.SummaryText);
-            if (wrapped.Length > PromptContracts.MaxMessageChars)
-                throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
-            messages.Add(new(ChatMessageRole.System, wrapped));
+            messages.AddRange(PromptInjectionGuard.WrapChunks("conversation_summary", summary.SummaryText)
+                .Select(wrapped => new PromptMessage(ChatMessageRole.System, wrapped)));
         }
         if (context.RecalledHistory.Count > 0 || context.RecallStatus != RecallStatus.Empty)
             messages.Add(new(ChatMessageRole.System, "优先回答当前用户消息。历史召回默认仅作静默背景，不要求用户选择历史会话；普通闲聊、新话题和语义自洽的问题直接回应。用户询问系统为何追问历史时，回答当前问题，不再进行历史消歧，不编造系统原因。只有明确引用过去内容且多个高置信候选无法唯一解析时才可澄清。"));

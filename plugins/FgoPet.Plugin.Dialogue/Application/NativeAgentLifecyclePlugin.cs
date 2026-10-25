@@ -19,12 +19,27 @@ public sealed class NativeAgentLifecyclePlugin(Func<SqliteAgentRunStore> runs,
     Func<IAgentFinalDeliveryStore> deliveries, Func<NativeConversationRuntime> runtime,
     Func<ConversationCapabilityRouter> capabilities, IConversationReader conversations,
     IDialogueSettingsStore settings, NativeAgentAvailability availability,
-    ILogger<NativeAgentLifecyclePlugin>? logger = null) : IFgoPetPlugin, IApplicationReadyObserver, IDisposable
+    ILogger<NativeAgentLifecyclePlugin>? logger = null,
+    ICompactedHistoryRepository? compactedHistory = null,
+    Func<ToolScope, bool>? activeScopeGuard = null) : IFgoPetPlugin, IApplicationReadyObserver, IDisposable
 {
     private NativeConversationRuntime? owned;
+    private int started;
+    private CancellationToken stopping;
     public PluginManifest Manifest { get; } = new("firstparty.native-agent", "1.0.0", 1, []);
-    public PluginContributions Contributions => PluginContributions.Empty;
-    public ValueTask StartAsync(CancellationToken stoppingToken) { stoppingToken.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
+    public PluginContributions Contributions => PluginContributions.Empty with
+    {
+        Tools = compactedHistory is null ? [] : [.. NativeCompactedHistoryTools.Create(compactedHistory,
+            scope => Volatile.Read(ref started) != 0 && !stopping.IsCancellationRequested &&
+                (activeScopeGuard?.Invoke(scope) ?? true))]
+    };
+    public ValueTask StartAsync(CancellationToken stoppingToken)
+    {
+        stoppingToken.ThrowIfCancellationRequested();
+        stopping = stoppingToken;
+        Volatile.Write(ref started, 1);
+        return ValueTask.CompletedTask;
+    }
     public async ValueTask OnApplicationReadyAsync(ApplicationReadiness readiness, CancellationToken token)
     {
         availability.SetReady(false);
@@ -65,12 +80,14 @@ public sealed class NativeAgentLifecyclePlugin(Func<SqliteAgentRunStore> runs,
     }
     public async ValueTask StopAsync(CancellationToken token)
     {
+        Volatile.Write(ref started, 0);
         availability.SetReady(false);
         if (owned is not null) await owned.DisposeAsync();
     }
     public ValueTask DisposeAsync() => StopAsync(CancellationToken.None);
     public void Dispose()
     {
+        Volatile.Write(ref started, 0);
         availability.SetReady(false);
         owned?.Dispose();
     }

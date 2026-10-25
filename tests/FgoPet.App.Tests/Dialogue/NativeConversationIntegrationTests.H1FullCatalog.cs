@@ -26,11 +26,12 @@ public sealed class H1FullCatalogCollection;
 public sealed class H1FullCatalogMeasurementTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Full_production_catalog_is_measured_offline_with_preflight_and_dispatch_separated(bool subscription)
+    [InlineData(false, 16384)]
+    [InlineData(false, 128 * 1024)]
+    [InlineData(true, 1_000_000)]
+    public async Task Full_production_catalog_is_measured_offline_with_preflight_and_dispatch_separated(bool subscription, int windowTokens)
     {
-        var prefix = subscription ? "buddy-" : "";
+        var prefix = subscription ? "buddy-" : windowTokens == 16384 ? "" : "128k-";
         var originalRoot = Environment.GetEnvironmentVariable("FGO_PET_STATE_ROOT");
         var root = Path.Combine(Path.GetTempPath(), "fgo-h1-full-catalog-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -74,7 +75,7 @@ public sealed class H1FullCatalogMeasurementTests
                 };
                 WriteEvidence(prefix + "production-catalog.json", inventory);
                 foreach (var native in new[] { false, true })
-                    await NativeConversationIntegrationTests.MeasureH1FullCatalogAsync(tools, native, subscription);
+                    await NativeConversationIntegrationTests.MeasureH1FullCatalogAsync(tools, native, subscription, windowTokens);
                 Assert.All(tools, tool => Assert.Equal(0, tool.Invocations));
                 Assert.Equal(0, credentials.Reads);
                 Assert.Equal(0, processes.Attempts);
@@ -138,16 +139,16 @@ public sealed class H1FullCatalogMeasurementTests
 
 public sealed partial class NativeConversationIntegrationTests
 {
-    internal static async Task MeasureH1FullCatalogAsync(IReadOnlyList<IToolProvider> tools, bool native, bool subscription = false)
+    internal static async Task MeasureH1FullCatalogAsync(IReadOnlyList<IToolProvider> tools, bool native, bool subscription = false, int windowTokens = 16384)
     {
         var binding = ResolveSourcePersona();
         var settings = new TestSettingsStore(DialogueSettings.Defaults with
         {
             ModelConnection = subscription
                 ? new("custom-openai-compatible", "http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash",
-                    contextWindowOverride: 1_000_000, maxOutputTokens: 128_000)
+                    contextWindowOverride: windowTokens, maxOutputTokens: 128_000)
                 : new ModelConnectionSettings("fixture", "https://fixture.invalid/v1", "fixture-model",
-                    contextWindowOverride: 16384, maxOutputTokens: 2048),
+                    contextWindowOverride: windowTokens, maxOutputTokens: 2048),
         });
         var route = ModelRouteKey.From(settings.Load().ModelConnection!);
         var meter = new FullCatalogMeter();
@@ -183,7 +184,7 @@ public sealed partial class NativeConversationIntegrationTests
             exclusions = "production plugin lifecycle, context/prompt/observer contributions, grants, tool execution, review adapter and real transport",
             native, result = result.Status.ToString(), hostRunStatusCodes,
             syntheticProviderCalls = provider.Requests.Count, realProviderCalls = 0,
-            inputLimit = subscription ? inputBudget : 16000, warningLimit = subscription ? inputBudget * 0.6 : 9600,
+            inputLimit = inputBudget, warningLimit = inputBudget * 0.6,
             outputLimit = connection.MaxOutputTokens, contextWindow = connection.ContextWindowOverride,
             configuredRoute = route, capacitySource = "declared host override; installed adapter is separately pinned by validation host; not provider usage",
             actualHostInputBudget = inputBudget,
@@ -191,15 +192,20 @@ public sealed partial class NativeConversationIntegrationTests
             fullRegisteredCatalog = true, reviewAdapterVerified = false,
             measurements = meter.Measurements, dispatches = meter.Dispatches,
         };
-        H1FullCatalogMeasurementTests.WriteEvidence((subscription ? "buddy-" : "") +
+        H1FullCatalogMeasurementTests.WriteEvidence((subscription ? "buddy-" : windowTokens == 16384 ? "" : "128k-") +
             (native ? "native-full-catalog.json" : "ordinary-full-catalog.json"), metadata);
-        // The complete Native schema already exceeds this frozen context. Prove fail-closed admission,
-        // while keeping its measurement distinct from an actual scripted or real provider dispatch.
-        if (native && !subscription)
+        // With current-history retrieval, both complete catalogs exceed this frozen 16k window.
+        // Keep the small-window admission guard; the separate 128k case must actually dispatch.
+        if (!subscription && windowTokens == 16384)
         {
             Assert.Equal(ConversationSendStatus.Failed, result.Status);
             Assert.Empty(provider.Requests);
-            Assert.Contains("Failed:RUN_CONTEXT_TOO_LARGE", hostRunStatusCodes, StringComparison.Ordinal);
+            Assert.Empty(meter.Dispatches);
+            if (native)
+                Assert.Contains("Failed:RUN_CONTEXT_TOO_LARGE", hostRunStatusCodes, StringComparison.Ordinal);
+            else
+                Assert.All(meter.Measurements.Where(m => expected.SetEquals(m.ToolNames)),
+                    m => Assert.True(m.EstimatedInputTokens > inputBudget));
             Assert.Contains(meter.Measurements, m => m.ToolCount == expected.Count && m.EstimatedInputTokens > inputBudget);
         }
         else

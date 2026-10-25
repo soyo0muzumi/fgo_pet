@@ -16,11 +16,17 @@ An explicit SSE `error` object terminates the response as a sent provider failur
 
 For the exact local Buddy route (`custom-openai-compatible`, `http://127.0.0.1:8326/v1`, `buddy/deepseek-v4.1-flash`), host-created `fgo_auxiliary=understanding_review` requests use the gateway's supported `reasoning_effort=low`. Primary requests and other routes retain their defaults; metering and dispatch include the same field. Review and classification keep their existing shared deadline.
 
+Summary output uses the shared model-window policy documented in Kernel, preserving known output caps and narrower task input ceilings.
+
 `LocalReferenceRequestTokenMeter` can be explicitly composed with a host-owned pinned counter for the exact approved official DeepSeek flash route/revision, primary 2048-output wire policy and verified full envelopes. It labels counts `LocalReferenceEstimate`, checks input/wire/policy hashes, keeps only a bounded hash/count cache and preserves exact provider usage precedence. Unverified bindings, formats, counts or unavailable counters fall back to `RequestTokenMeter`. Default product registration remains conservative and does not start a tokenizer process; the offline validation executable owns its experimental runtime and assets.
 
 `IExperienceTimeline.ScanHeads` supplies bounded completed-original metadata with a `(source revision, message ID)` cursor, preserving tied revisions after scope changes. Invalid/oversized bodies are not qualifying intervals and do not block later heads. `InputRevision` is exact role/project scoped. The conversation readers reject External labels for stored assistant/user messages; separate source adapters must preserve their own document label, author, time and version.
 
 Kernel publishes conversation/request/context contracts and typed provider failures, and coordinates turn admission, persistence and bounded model calls against those contracts. Dialogue preserves their established namespaces and uses Kernel context lifetime to reject stale requests and commits. Original messages remain authoritative; summaries and search projections are rebuildable.
+
+`SqliteCompactedHistoryRepository` validates the active summary fingerprint and reads its covered original messages in one SQLite read transaction. The native lifecycle plugin contributes the scoped `history.search`/`history.read` tools; no model argument can change the conversation, role or project. Deleted sources and invalidated coverage are not returned. Coverage follows the persisted conversation summary; compacting only the transient native working transcript does not extend it. These tools read semantic user/assistant originals, not a permanent archive of tool output. The budget and pagination contracts are documented in [Kernel](../../src/FgoPet.Kernel/README.md).
+
+Runtime schema 16 raises the summary storage safety ceiling to 65,536 characters while preserving summary IDs, active projection pointers, source messages and foreign keys in one transaction. Existing schemas migrate on normal storage initialization; older builds reject the newer schema. This does not change the original-message retention policy. The existing schema 15 search-trigger repair is retained.
 
 Original-message writes preserve embedded NUL within the existing 12,000 UTF-16-unit contract, including long Unicode text and UTF-8/UTF-16 databases. Storage remains SQLite TEXT, with unchanged conversation scope, content binding and transaction ownership; native final delivery uses the same append path.
 

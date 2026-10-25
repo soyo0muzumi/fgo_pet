@@ -25,6 +25,8 @@ public interface IConversationSummarizer
 }
 public sealed record ConversationSummary
 {
+    // Storage and streaming safety ceiling; token budgets govern individual model requests.
+    public const int MaxTextChars = 65_536;
     public ConversationSummary(
         string summaryId,
         string conversationId,
@@ -44,7 +46,7 @@ public sealed record ConversationSummary
         SummaryId = Phase3Validation.Id(summaryId, nameof(summaryId));
         ConversationId = Phase3Validation.Id(conversationId, nameof(conversationId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
-        SummaryText = Phase3Validation.Text(summaryText, nameof(summaryText), 6_000);
+        SummaryText = Phase3Validation.Text(summaryText, nameof(summaryText), MaxTextChars);
         CoveredThroughSequence = coveredThroughSequence;
         CoveredThroughMessageId = Phase3Validation.Id(coveredThroughMessageId, nameof(coveredThroughMessageId));
         ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));

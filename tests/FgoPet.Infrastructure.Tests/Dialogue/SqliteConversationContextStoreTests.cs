@@ -40,6 +40,21 @@ public sealed class SqliteConversationContextStoreTests : IDisposable
     }
 
     [Fact]
+    public void Larger_summary_round_trips_without_rewriting_original_messages()
+    {
+        var source = _store.Read(Scope, "c");
+        var old = Commit(source);
+        var text = new string('x', 8000) + "更正：91；禁止发布。😀";
+        var summary = new ConversationSummary(old.Summary.SummaryId, "c", "mash", text, 4, "m4", Key,
+            old.Summary.CreatedAtUtc, old.Summary.UpdatedAtUtc);
+        Assert.True(_store.TryCommit(old with { Summary = summary }));
+        var reopened = new SqliteConversationContextStore(new RuntimeDatabase(_path, pooling: false)).Read(Scope, "c");
+        Assert.Equal(text, reopened.Summary!.SummaryText);
+        Assert.Equal(8, _conversations.LoadMessages("c", "mash").Count);
+        Assert.Equal(new[] { "m5", "m6", "m7", "m8" }, reopened.UncoveredMessages.Select(m => m.MessageId));
+    }
+
+    [Fact]
     public void Failure_between_summary_insert_and_pointer_update_rolls_back_everything()
     {
         using (var connection = _database.Open())

@@ -77,7 +77,10 @@ public static class ModelConnectionRegistration
             () => provider.GetRequiredService<SqliteAgentRunStore>(), () => provider.GetRequiredService<IAgentFinalDeliveryStore>(),
             () => provider.GetRequiredService<NativeConversationRuntime>(), () => provider.GetRequiredService<ConversationCapabilityRouter>(),
             provider.GetRequiredService<IConversationReader>(), provider.GetRequiredService<IDialogueSettingsStore>(),
-            provider.GetRequiredService<NativeAgentAvailability>(), provider.GetRequiredService<ILogger<NativeAgentLifecyclePlugin>>()))
+            provider.GetRequiredService<NativeAgentAvailability>(), provider.GetRequiredService<ILogger<NativeAgentLifecyclePlugin>>(),
+            provider.GetRequiredService<ICompactedHistoryRepository>(),
+            scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope)))
+        .AddSingleton<ICompactedHistoryRepository, SqliteCompactedHistoryRepository>()
         .AddSingleton<IConversationRecallRepository, SqliteConversationRecallRepository>()
         .AddSingleton<IExperienceSourceReader, SqliteExperienceSourceReader>()
         .AddSingleton<IExperienceTimeline, SqliteExperienceTimeline>()

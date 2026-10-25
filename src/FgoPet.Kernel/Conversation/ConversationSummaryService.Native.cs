@@ -26,13 +26,18 @@ public sealed partial class ConversationSummaryService
         token.ThrowIfCancellationRequested();
         int? observedInput = null;
         var selectedGroups = 0;
+        var summaryBudget = SummaryBudget(route, budget);
+        var summaryValidation = ContextSummaryValidation.None;
+        int? summaryCharacters = null, summaryOutputTokens = null;
         void Observe(ContextDiagnosticStage stage, ContextCompactionReason reason) =>
             ContextBudgetDiagnostics.Emit(diagnostics, new(stage) {
                 Decision = reason, CompactionKind = ContextCompactionKind.RunProjection,
                 WindowTokens = budget.ContextWindowTokens, InputBudget = budget.InputTokens,
                 OutputTokens = budget.OutputTokens, TriggerTokens = CompactionPlanner.TriggerTokens(budget),
                 MeasuredInput = observedInput, MessageCount = messages.Length,
-                EligibleGroups = selectedGroups, AuxiliaryBudgetReservations = calls.CallsUsed
+                EligibleGroups = selectedGroups, AuxiliaryBudgetReservations = calls.CallsUsed,
+                SummaryValidation = summaryValidation, SummaryCharacters = summaryCharacters, SummaryOutputTokens = summaryOutputTokens,
+                AuxiliaryInputBudget = summaryBudget.InputTokens, AuxiliaryOutputBudget = summaryBudget.OutputTokens
             });
         ImmutableArray<ModelMessage> Keep(ContextCompactionReason reason)
         { Observe(ContextDiagnosticStage.CompactionSkipped, reason); return messages; }
@@ -66,8 +71,8 @@ public sealed partial class ConversationSummaryService
                     var remaining = Math.Min(1500, source.Content.Length - offset);
                     if (remaining > 0 && offset + remaining < source.Content.Length && char.IsHighSurrogate(source.Content[offset + remaining - 1])) remaining--;
                     var fragment = new NativeFragment(source, offset, source.Content.Substring(offset, remaining));
-                    var candidate = NativeSummaryRequest(batch.Append(fragment), previous, servantId, conversationId, budget);
-                    if (meter.Measure(route, candidate).InputTokens <= budget.InputTokens)
+                    var candidate = NativeSummaryRequest(batch.Append(fragment), previous, servantId, conversationId, summaryBudget);
+                    if (meter.Measure(route, candidate).InputTokens <= summaryBudget.InputTokens)
                     {
                         batch.Add(fragment);
                         request = candidate;
@@ -84,8 +89,8 @@ public sealed partial class ConversationSummaryService
                     {
                         var length = low + (high - low + 1) / 2;
                         var probe = fragment with { Text = source.Content.Substring(offset, length) };
-                        var probeRequest = NativeSummaryRequest(batch.Append(probe), previous, servantId, conversationId, budget);
-                        if (meter.Measure(route, probeRequest).InputTokens <= budget.InputTokens) low = length;
+                        var probeRequest = NativeSummaryRequest(batch.Append(probe), previous, servantId, conversationId, summaryBudget);
+                        if (meter.Measure(route, probeRequest).InputTokens <= summaryBudget.InputTokens) low = length;
                         else high = length - 1;
                     }
                     // Keep a UTF-16 surrogate pair together when a boundary falls inside a rune.
@@ -94,7 +99,7 @@ public sealed partial class ConversationSummaryService
                     {
                         batch.Add(fragment with { Text = source.Content.Substring(offset, low) });
                         offset += low;
-                        request = NativeSummaryRequest(batch, previous, servantId, conversationId, budget);
+                        request = NativeSummaryRequest(batch, previous, servantId, conversationId, summaryBudget);
                     }
                     break;
                 }
@@ -105,22 +110,25 @@ public sealed partial class ConversationSummaryService
                     ? await summarizer.SummarizeAsync(provider, request, shared, token).ConfigureAwait(false)
                     : await summarizer.SummarizeAsync(provider, request, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                if (!IsValid(attempt, batch[^1].Id)) return Keep(ContextCompactionReason.InvalidSummary);
-                var raw = NativeSummaryDataRequest(batch, previous, servantId, conversationId, budget);
-                var condensed = NativeSummaryDataRequest([], attempt.Text, servantId, conversationId, budget);
+                summaryValidation = ValidateSummary(attempt, batch[^1].Id, summaryBudget.OutputTokens);
+                summaryCharacters = attempt.Text.Length;
+                summaryOutputTokens = attempt.Usage?.OutputTokens;
+                if (summaryValidation != ContextSummaryValidation.None) return Keep(ContextCompactionReason.InvalidSummary);
+                var raw = NativeSummaryDataRequest(batch, previous, servantId, conversationId, summaryBudget);
+                var condensed = NativeSummaryDataRequest([], attempt.Text, servantId, conversationId, summaryBudget);
                 if (meter.Measure(route, condensed).InputTokens >= meter.Measure(route, raw).InputTokens)
                     return Keep(ContextCompactionReason.NoReduction);
                 if (attempt.Usage is not null) meter.RecordUsage(route, request, attempt.Usage);
                 previous = attempt.Text;
             }
 
-            var replacement = new ModelMessage(ModelMessageRole.User,
-                PromptInjectionGuard.Wrap("run_context_summary", previous!), []);
+            var replacement = PromptInjectionGuard.WrapChunks("run_context_summary", previous!)
+                .Select(wrapped => new ModelMessage(ModelMessageRole.User, wrapped, [])).ToArray();
             var selectedIndexes = selected.ToHashSet();
             var projection = ImmutableArray.CreateBuilder<ModelMessage>();
             for (var index = 0; index < messages.Length; index++)
             {
-                if (index == selected[0]) projection.Add(replacement);
+                if (index == selected[0]) projection.AddRange(replacement);
                 if (!selectedIndexes.Contains(index)) projection.Add(messages[index]);
             }
             var result = projection.ToImmutable();
@@ -182,24 +190,18 @@ public sealed partial class ConversationSummaryService
         var data = NativeSummaryData(batch, previous);
         return new(servantId, conversationId, new[] { instruction }.Concat(data).ToArray(),
             metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "context_summary" },
-            maxOutputTokens: Math.Min(2048, budget.OutputTokens));
+            maxOutputTokens: budget.OutputTokens);
     }
 
     private static ChatRequest NativeSummaryDataRequest(IEnumerable<NativeFragment> fragments, string? previous,
         string servantId, string conversationId, PromptBudget budget) => new(servantId, conversationId,
-            NativeSummaryData(fragments, previous), maxOutputTokens: Math.Min(2048, budget.OutputTokens));
+            NativeSummaryData(fragments, previous), maxOutputTokens: budget.OutputTokens);
 
     private static IReadOnlyList<PromptMessage> NativeSummaryData(IEnumerable<NativeFragment> fragments, string? previous)
     {
         var data = new List<PromptMessage>();
-        if (previous is not null)
-            for (var offset = 0; offset < previous.Length;)
-            {
-                var length = Math.Min(1500, previous.Length - offset);
-                if (offset + length < previous.Length && char.IsHighSurrogate(previous[offset + length - 1])) length--;
-                data.Add(new(ChatMessageRole.User, PromptInjectionGuard.Wrap("previous_summary", previous.Substring(offset, length))));
-                offset += length;
-            }
+        if (previous is not null) data.AddRange(PromptInjectionGuard.WrapChunks("previous_summary", previous)
+            .Select(wrapped => new PromptMessage(ChatMessageRole.User, wrapped)));
         data.AddRange(fragments.Select(fragment => new PromptMessage(ChatMessageRole.User,
             PromptInjectionGuard.Wrap($"native-source:{fragment.Id}:{fragment.Source.Role}", fragment.Text))));
         return data;

@@ -7,6 +7,26 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class PromptBudgetTests
 {
     [Theory]
+    [InlineData(512, 32, null, 128)]
+    [InlineData(4096, 256, null, 512)]
+    [InlineData(131072, 256, null, 8192)]
+    [InlineData(131072, 4096, 6000, 6000)]
+    [InlineData(524288, 4096, null, 16384)]
+    public void Summary_policy_preserves_model_cap_and_explicit_input_constraints(int window, int reply, int? maximum, int expected)
+    {
+        var limit = new ModelContextLimit(new("test", "endpoint", "same", "v1"),
+            window, maximum, ContextLimitSource.ProviderMetadata, "fixture");
+        var primary = PromptBudget.Resolve(limit, reply);
+        var summary = SummaryBudgetPolicy.Resolve(primary);
+        Assert.Equal(expected, summary.OutputTokens);
+        Assert.Equal(maximum, summary.ModelMaxOutputTokens);
+        Assert.True(summary.InputTokens > 0);
+        Assert.True(summary.InputTokens + summary.OutputTokens + summary.SafetyMarginTokens <= window);
+        Assert.Equal(70, SummaryBudgetPolicy.Resolve(primary.ConstrainInput(70)).InputTokens);
+        Assert.Equal(reply, primary.OutputTokens);
+    }
+
+    [Theory]
     [InlineData(32768, 4096, 656, 28016)]
     [InlineData(131072, 4096, 2622, 124354)]
     public void Reserves_output_and_margin_from_actual_window(int window, int output, int margin, int input)

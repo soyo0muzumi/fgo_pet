@@ -13,6 +13,104 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class NativeTranscriptCompactionTests
 {
+    [Fact]
+    public async Task Native_summary_retains_explicit_input_limit_in_every_auxiliary_batch()
+    {
+        var fixture = new Fixture();
+        var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256)
+            .ConstrainInput(10000);
+        var input = Transcript(20000);
+        Assert.NotEqual(input, await fixture.Compact(input, budget));
+        Assert.InRange(fixture.Summaries.Requests.Count, 2, 3);
+        Assert.All(fixture.Summaries.Requests, request => {
+            Assert.Equal(8192, request.MaxOutputTokens);
+            Assert.InRange(fixture.Meter.Measure(Route, request).InputTokens, 1, 10000);
+        });
+        var completed = Assert.Single(fixture.Diagnostics.Where(d => d.Stage == ContextDiagnosticStage.CompactionApplied));
+        Assert.Equal(10000, completed.AuxiliaryInputBudget);
+        Assert.Equal(8192, completed.AuxiliaryOutputBudget);
+        Assert.Equal(256, completed.OutputTokens);
+    }
+
+    [Fact]
+    public async Task Reported_native_output_limit_rejection_preserves_projection_and_diagnostics()
+    {
+        var fixture = new Fixture(new Summarizer("output-over-budget"));
+        var input = Transcript();
+        Assert.Equal(input, await fixture.Compact(input, Budget()));
+        var rejected = Assert.Single(fixture.Diagnostics.Where(d => d.Decision == ContextCompactionReason.InvalidSummary));
+        Assert.Equal(ContextSummaryValidation.OutputLimit, rejected.SummaryValidation);
+        Assert.Equal(2000, rejected.SummaryOutputTokens);
+        Assert.Equal(1125, rejected.AuxiliaryOutputBudget);
+    }
+
+    [Theory]
+    [InlineData(256)]
+    [InlineData(4096)]
+    public async Task Native_summary_reserves_independent_output_and_input_budget(int replyTokens)
+    {
+        var fixture = new Fixture();
+        var budget = PromptBudget.Resolve(new(Route, 131072, 6000, ContextLimitSource.Override, "fixture"), replyTokens);
+        var input = Transcript(110000);
+        Assert.NotEqual(input, await fixture.Compact(input, budget));
+        Assert.All(fixture.Summaries.Requests, request => {
+            Assert.Equal(6000, request.MaxOutputTokens);
+            Assert.InRange(fixture.Meter.Measure(Route, request).InputTokens, 1, 122450);
+        });
+    }
+
+    [Fact]
+    public async Task Large_native_summary_chunks_remain_data_and_preserve_latest_real_user()
+    {
+        var fixture = new Fixture(new Summarizer("long-valid"));
+        var input = Transcript(105000).RemoveAt(5);
+        var result = await fixture.Compact(input, Budget(131072));
+        Assert.NotEqual(input, result);
+        ModelProtocol.ValidateTranscript(result);
+        var parts = result.Where(m => m.Content.StartsWith("<data source=\"run_context_summary\">", StringComparison.Ordinal)).ToArray();
+        Assert.True(parts.Length > 1);
+        Assert.All(parts, p => Assert.InRange(p.Content.Length, 1, 12000));
+        Assert.Equal(1300, Regex.Matches(string.Concat(parts.Select(p => WebUtility.HtmlDecode(p.Content))), "😀").Count);
+        Assert.Contains(input[1], result);
+        var later = result.Add(new(ModelMessageRole.Assistant, "next", [new("more-call", "fixture.read", "{}")]))
+            .Add(new(ModelMessageRole.Tool, new string('x', 105000), [], "more-call"))
+            .Add(Message(ModelMessageRole.Assistant, "latest reply"));
+        var compactedAgain = await new Fixture().Compact(later, Budget(131072));
+        Assert.NotEqual(later, compactedAgain);
+        Assert.Contains(input[1], compactedAgain);
+        ModelProtocol.ValidateTranscript(compactedAgain);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash", 8192, 512)]
+    [InlineData("http://127.0.0.1:8327/v1", "buddy/deepseek-v4.1-flash", 131072, 8192)]
+    [InlineData("http://127.0.0.1:8326/v1", "other-model", 131072, 8192)]
+    public void Auxiliary_output_policy_scales_all_routes_without_expanding_input_constraints(string endpoint, string model, int window, int output)
+    {
+        var route = ModelRouteKey.From(new("custom-openai-compatible", endpoint, model));
+        var primary = PromptBudget.Resolve(new(route, window, null, ContextLimitSource.Override, "fixture"), 2048).ConstrainInput(5000);
+        var summary = ConversationSummaryService.SummaryBudget(route, primary);
+        Assert.Equal(output, summary.OutputTokens);
+        Assert.Equal(5000, summary.InputTokens);
+        Assert.Equal(window, summary.ContextWindowTokens);
+    }
+
+    [Fact]
+    public async Task Buddy_native_summary_batches_against_its_own_output_reservation()
+    {
+        var route = ModelRouteKey.From(new("custom-openai-compatible", "http://127.0.0.1:8326/v1", "buddy/deepseek-v4.1-flash"));
+        var budget = PromptBudget.Resolve(new(route, 32768, null, ContextLimitSource.Override, "fixture"), 2048);
+        var fixture = new Fixture(route: route);
+        var input = Transcript(32000);
+        Assert.NotEqual(input, await fixture.Compact(input, budget));
+        Assert.Equal(2048, budget.OutputTokens);
+        Assert.InRange(fixture.Summaries.Requests.Count, 2, 3);
+        Assert.All(fixture.Summaries.Requests, request => {
+            Assert.Equal(2048, request.MaxOutputTokens);
+            Assert.True(fixture.Meter.Measure(route, request).InputTokens + 2048 + budget.SafetyMarginTokens <= budget.ContextWindowTokens);
+        });
+    }
+
     private static readonly ModelRouteKey Route = new("test", "endpoint", "fixture", "1");
     private static PromptBudget Budget(int window = 18000) => PromptBudget.Resolve(
         new(Route, window, null, ContextLimitSource.Override, "fixture"), 1024);
@@ -258,17 +356,19 @@ public sealed class NativeTranscriptCompactionTests
         public CompactionCallBudget Calls { get; }
         public List<ContextBudgetDiagnostic> Diagnostics { get; } = [];
         private readonly ConversationSummaryService _service;
-        public Fixture(Summarizer? summaries = null)
+        private readonly ModelRouteKey _route;
+        public Fixture(Summarizer? summaries = null, ModelRouteKey? route = null)
         {
+            _route = route ?? Route;
             Summaries = summaries ?? new();
             Calls = new(RunBudget);
             _service = new(new UnusedStore(), Summaries, Meter, TimeProvider.System);
         }
-        public int Measure(ImmutableArray<ModelMessage> messages) => Meter.Measure(Route,
+        public int Measure(ImmutableArray<ModelMessage> messages) => Meter.Measure(_route,
             ChatRequest.CreateAgent("fixture", "conversation", messages)).InputTokens;
         public Task<ImmutableArray<ModelMessage>> Compact(ImmutableArray<ModelMessage> messages, PromptBudget budget, CancellationToken token = default)
         {
-            return _service.TryCompactNativeAsync(messages, new Provider(), Route, budget, Measure,
+            return _service.TryCompactNativeAsync(messages, new Provider(), _route, budget, Measure,
                 "fixture", "conversation", Calls, token, Diagnostics.Add);
         }
     }
@@ -285,9 +385,11 @@ public sealed class NativeTranscriptCompactionTests
             Assert.NotEmpty(sources);
             var source = mode == "wrong-source" ? "wrong" : sources[^1].Value;
             var text = "任务目标：保留事实\n用户已确认的决定：未确定\n否定、更正及被替代事项：未确定\n尚未解决的问题：partial\n下一步：继续\n来源消息：" + source;
-            if (mode == "large") text += new string('x', 6001);
+            if (mode == "large") text += new string('x', 65537);
+            if (mode == "long-valid") text += string.Concat(Enumerable.Repeat("\"<&😀", 1300));
             return Task.FromResult(new SummaryAttempt(text,
-                mode == "length" || mode == "second-fails" && Requests.Count == 2 ? "length" : "stop", mode == "usage" ? new ChatUsage(111, 22) : null));
+                mode == "length" || mode == "second-fails" && Requests.Count == 2 ? "length" : "stop",
+                mode == "usage" ? new ChatUsage(111, 22) : mode == "output-over-budget" ? new ChatUsage(111, 2000) : null));
         }
     }
 

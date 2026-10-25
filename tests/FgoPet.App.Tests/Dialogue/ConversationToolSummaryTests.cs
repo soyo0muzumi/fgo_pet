@@ -13,6 +13,81 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class ConversationToolSummaryTests
 {
+    [Theory]
+    [InlineData(256, 131072, null, 8192)]
+    [InlineData(4096, 131072, null, 8192)]
+    [InlineData(256, 65536, null, 4096)]
+    [InlineData(256, 131072, 3000, 3000)]
+    [InlineData(4096, 524288, null, 16384)]
+    public async Task Summary_output_budget_tracks_window_and_provider_independently_of_reply(int reply, int window, int? providerCap, int expected)
+    {
+        var store = new Store();
+        var provider = new CapturingProvider();
+        var budget = PromptBudget.Resolve(new(Route, window, providerCap, ContextLimitSource.Override, "fixture"), reply);
+        var service = new ConversationSummaryService(store, new ProviderConversationSummarizer(), new RequestTokenMeter(), TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        await service.TryCompactAsync(store.Source, provider, Route, budget, window, Compose,
+            lease, () => { }, new CompactionCallBudget(), default,
+            new Dictionary<string, string> { ["m9"] = new string('x', 100000) });
+        Assert.Equal(expected, Assert.Single(provider.Requests).MaxOutputTokens);
+    }
+
+    [Fact]
+    public async Task Large_summary_survives_streaming_projection_and_escaped_prompt_without_loss()
+    {
+        var store = new Store();
+        var provider = new CapturingProvider(summaryBody: new string('x', 6300) + string.Concat(Enumerable.Repeat("\"<&😀", 40)));
+        var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256);
+        var service = new ConversationSummaryService(store, new ProviderConversationSummarizer(), new RequestTokenMeter(), TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.True(await service.TryCompactAsync(store.Source, provider, Route, budget, 60000, Compose,
+            lease, () => { }, new CompactionCallBudget(), default,
+            new Dictionary<string, string> { ["m1"] = new string('x', 20000), ["m9"] = new string('x', 25000) }));
+        var summary = Assert.IsType<ConversationSummary>(store.Commit?.Summary);
+        Assert.True(summary.SummaryText.Length > 6000);
+        var prompt = Compose(summary, []);
+        var parts = prompt.Messages.Where(m => m.Text.StartsWith("<data source=\"conversation_summary", StringComparison.Ordinal)).ToArray();
+        Assert.True(parts.Length > 1);
+        Assert.All(parts, p => Assert.InRange(p.Text.Length, 1, 12000));
+        Assert.Equal(summary.SummaryText, string.Concat(parts.Select(p => WebUtility.HtmlDecode(p.Text[(p.Text.IndexOf('\n', p.Text.IndexOf('\n') + 1) + 1)..^"\n</data>".Length]))));
+    }
+
+    [Fact]
+    public async Task Reported_output_exceeding_independent_token_budget_cannot_replace_original_projection()
+    {
+        var store = new Store();
+        var provider = new CapturingProvider(summaryBody: new string('x', 300), outputTokens: 9000);
+        var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256);
+        var service = new ConversationSummaryService(store, new ProviderConversationSummarizer(), new RequestTokenMeter(), TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.False(await service.TryCompactAsync(store.Source, provider, Route, budget, 60000, Compose,
+            lease, () => { }, new CompactionCallBudget(), default,
+            new Dictionary<string, string> { ["m1"] = new string('x', 30000), ["m9"] = new string('x', 25000) }));
+        Assert.Single(provider.Requests);
+        Assert.Null(store.Commit);
+    }
+
+    [Fact]
+    public async Task Previous_large_summary_is_split_before_escaping_and_passed_in_full()
+    {
+        var store = new Store();
+        var text = string.Concat(Enumerable.Repeat("<&\"😀", 1600));
+        var previous = new ConversationSummary("previous", "c", "mash", text, 0, "m0", Key,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        var source = store.Source with { Summary = previous };
+        var provider = new CapturingProvider();
+        var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256);
+        var service = new ConversationSummaryService(store, new ProviderConversationSummarizer(), new RequestTokenMeter(), TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.True(await service.TryCompactAsync(source, provider, Route, budget, 100000, Compose,
+            lease, () => { }, new CompactionCallBudget(), default,
+            new Dictionary<string, string> { ["m9"] = new string('x', 25000) }));
+        var parts = Assert.Single(provider.Requests).Messages.Where(m => m.Text.StartsWith("<data source=\"previous_summary", StringComparison.Ordinal)).ToArray();
+        Assert.True(parts.Length > 1);
+        Assert.All(parts, p => Assert.InRange(p.Text.Length, 1, 12000));
+        Assert.Equal(text, string.Concat(parts.Select(p => WebUtility.HtmlDecode(p.Text[(p.Text.IndexOf('\n', p.Text.IndexOf('\n') + 1) + 1)..^"\n</data>".Length]))));
+    }
+
     private static readonly ModelRouteKey Route = new("test", "endpoint", "fixture", "1");
     private static readonly ContentContextKey Key = new("mash", "test", "1", "default", "1", "1");
     private static readonly PromptBudget Budget = PromptBudget.Resolve(
@@ -122,7 +197,7 @@ public sealed class ConversationToolSummaryTests
         public bool TryCommit(CompactionCommit commit) { CommitAttempts++; Commit = commit; return true; }
     }
 
-    private sealed class CapturingProvider(string finishReason = "stop") : IChatProvider
+    private sealed class CapturingProvider(string finishReason = "stop", string summaryBody = "保留合成工具结果", int? outputTokens = null) : IChatProvider
     {
         public List<ChatRequest> Requests { get; } = [];
         public string ProviderId => "test";
@@ -134,8 +209,16 @@ public sealed class ConversationToolSummaryTests
             await Task.Yield();
             cancellationToken.ThrowIfCancellationRequested();
             Requests.Add(request);
-            yield return new("任务目标：保留合成工具结果\n用户已确认的决定：未确定\n否定、更正及被替代事项：未确定\n尚未解决的问题：命令结果未知\n下一步：继续\n来源消息：m1 m2 m3 m4 m5 m6", FinishReason: finishReason);
-            yield return new(string.Empty, IsComplete: true, FinishReason: finishReason);
+            var text = "任务目标：" + summaryBody + "\n用户已确认的决定：未确定\n否定、更正及被替代事项：未确定\n尚未解决的问题：命令结果未知\n下一步：继续\n来源消息：m1 m2 m3 m4 m5 m6";
+            for (var offset = 0; offset < text.Length;)
+            {
+                var length = Math.Min(1024, text.Length - offset);
+                if (offset + length < text.Length && char.IsHighSurrogate(text[offset + length - 1])) length--;
+                yield return new(text.Substring(offset, length));
+                offset += length;
+            }
+            yield return new(string.Empty, IsComplete: true, FinishReason: finishReason,
+                Usage: outputTokens is int count ? new ChatUsage(100, count) : null);
         }
     }
 }

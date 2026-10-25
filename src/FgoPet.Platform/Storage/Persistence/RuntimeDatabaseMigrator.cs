@@ -420,6 +420,42 @@ public sealed class RuntimeDatabaseMigrator
                 SELECT new.rowid,new.text WHERE old.rowid<>new.rowid OR old.text IS NOT new.text;
               UPDATE conversations SET context_revision=context_revision+1 WHERE conversation_id IN (old.conversation_id,new.conversation_id);
             END;
+            """),
+        new(16, """
+            -- Rebuild the parent and its sole dependent together. The surrounding migration
+            -- transaction preserves both data and active projection pointers on failure.
+            CREATE TABLE conversation_contexts_backup AS SELECT * FROM conversation_contexts;
+            DROP TABLE conversation_contexts;
+            CREATE TABLE conversation_summaries_expanded(
+              summary_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              servant_id TEXT NOT NULL,
+              summary_text TEXT NOT NULL CHECK(length(summary_text) <= 65536),
+              covered_through_sequence INTEGER NOT NULL CHECK(covered_through_sequence >= 0),
+              binding_id TEXT NULL REFERENCES content_bindings(binding_id) ON DELETE SET NULL,
+              created_at_utc TEXT NOT NULL,
+              updated_at_utc TEXT NOT NULL,
+              covered_through_message_id TEXT NOT NULL DEFAULT '');
+            INSERT INTO conversation_summaries_expanded
+              SELECT summary_id,conversation_id,servant_id,summary_text,covered_through_sequence,
+                binding_id,created_at_utc,updated_at_utc,covered_through_message_id FROM conversation_summaries;
+            DROP TABLE conversation_summaries;
+            ALTER TABLE conversation_summaries_expanded RENAME TO conversation_summaries;
+            CREATE INDEX ix_conversation_summaries_servant ON conversation_summaries(servant_id,conversation_id);
+            CREATE TABLE conversation_contexts(
+              conversation_id TEXT PRIMARY KEY REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+              summary_id TEXT NOT NULL REFERENCES conversation_summaries(summary_id) ON DELETE CASCADE,
+              projection_revision INTEGER NOT NULL CHECK(projection_revision>0),
+              source_revision INTEGER NOT NULL,
+              covered_through_sequence INTEGER NOT NULL,
+              covered_through_message_id TEXT NOT NULL,
+              prefix_fingerprint TEXT NOT NULL,
+              route_key TEXT NOT NULL,
+              input_tokens_before INTEGER NOT NULL,
+              input_tokens_after INTEGER NOT NULL,
+              updated_at_utc TEXT NOT NULL);
+            INSERT INTO conversation_contexts SELECT * FROM conversation_contexts_backup;
+            DROP TABLE conversation_contexts_backup;
             """)
     };
 

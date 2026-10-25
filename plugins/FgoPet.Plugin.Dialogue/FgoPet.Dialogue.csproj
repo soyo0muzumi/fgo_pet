@@ -122,6 +122,7 @@
     <Compile Include="Infrastructure/SqliteExperienceSourceReader.cs" />
     <Compile Include="Infrastructure/SqliteExperienceTimeline.cs" />
     <Compile Include="Infrastructure/SqliteConversationContextStore.cs" />
+    <Compile Include="Infrastructure/SqliteCompactedHistoryRepository.cs" />
     <Compile Include="Infrastructure/ProviderConversationSummarizer.cs" />
   </ItemGroup>
 </Project>

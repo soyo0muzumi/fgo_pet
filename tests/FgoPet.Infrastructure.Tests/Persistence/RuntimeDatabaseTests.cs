@@ -386,6 +386,73 @@ public sealed class RuntimeDatabaseTests : IDisposable
         using var final = database.Open();
         Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, RuntimeDatabaseMigrator.ReadVersion(final));
     }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(14)]
+    [InlineData(15)]
+    public void Larger_summary_migration_preserves_active_projection_and_foreign_keys(int schema)
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        if (schema > 0) CreateLegacy(database, schema);
+        else new RuntimeDatabaseMigrator(database).Migrate();
+        SeedActiveSummary(database);
+        new RuntimeDatabaseMigrator(database).Migrate();
+        new RuntimeDatabaseMigrator(database).Migrate();
+        using var connection = database.Open();
+        Assert.Equal("original summary", Scalar<string>(connection, "SELECT summary_text FROM conversation_summaries"));
+        Assert.Equal("fingerprint", Scalar<string>(connection, "SELECT prefix_fingerprint FROM conversation_contexts"));
+        Assert.Equal(3L, Scalar<long>(connection, "SELECT projection_revision FROM conversation_contexts"));
+        Assert.Equal("original message", Scalar<string>(connection, "SELECT text FROM chat_messages"));
+        using var update = connection.CreateCommand();
+        update.CommandText = "UPDATE conversation_summaries SET summary_text=$text";
+        update.Parameters.AddWithValue("$text", new string('x', 65536));
+        Assert.Equal(1, update.ExecuteNonQuery());
+        update.Parameters["$text"].Value = new string('x', 65537);
+        Assert.Throws<SqliteException>(() => update.ExecuteNonQuery());
+        Assert.Equal(0L, Scalar<long>(connection, "SELECT COUNT(*) FROM pragma_foreign_key_check"));
+        Assert.Contains("old.text IS NOT new.text", Scalar<string>(connection, "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='chat_message_search_update'"));
+        Execute(connection, "DELETE FROM conversations WHERE conversation_id='compact-old'");
+        Assert.Equal(0L, Scalar<long>(connection, "SELECT COUNT(*) FROM conversation_summaries"));
+        Assert.Equal(0L, Scalar<long>(connection, "SELECT COUNT(*) FROM conversation_contexts"));
+    }
+
+    [Fact]
+    public void Larger_summary_migration_failure_restores_old_tables_and_can_retry()
+    {
+        var database = new RuntimeDatabase(_path, pooling: false);
+        CreateLegacy(database, 15);
+        SeedActiveSummary(database);
+        using (var connection = database.Open())
+            Execute(connection, "CREATE TRIGGER fail_summary_migration BEFORE INSERT ON schema_migrations WHEN new.version=16 BEGIN SELECT RAISE(ABORT,'fixture'); END");
+        Assert.Throws<SqliteException>(() => new RuntimeDatabaseMigrator(database).Migrate());
+        using (var connection = database.Open())
+        {
+            Assert.Equal(15L, RuntimeDatabaseMigrator.ReadVersion(connection));
+            Assert.Equal("original summary", Scalar<string>(connection, "SELECT summary_text FROM conversation_summaries"));
+            Assert.Equal("fingerprint", Scalar<string>(connection, "SELECT prefix_fingerprint FROM conversation_contexts"));
+            Assert.Equal(0L, Scalar<long>(connection, "SELECT COUNT(*) FROM pragma_foreign_key_check"));
+            Execute(connection, "DROP TRIGGER fail_summary_migration");
+        }
+        new RuntimeDatabaseMigrator(database).Migrate();
+        using var final = database.Open();
+        Assert.Equal(16L, RuntimeDatabaseMigrator.ReadVersion(final));
+        Assert.Equal(1L, Scalar<long>(final, "SELECT COUNT(*) FROM conversation_contexts"));
+    }
+
+    private static void SeedActiveSummary(RuntimeDatabase database)
+    {
+        using var connection = database.Open();
+        Execute(connection, """
+            INSERT INTO conversations(conversation_id,servant_id,created_at_utc,updated_at_utc,status)
+              VALUES('compact-old','mash','2026-09-23','2026-09-23','active');
+            INSERT INTO chat_messages(message_id,conversation_id,servant_id,sequence,role,text,status,created_at_utc)
+              VALUES('original','compact-old','mash',1,'user','original message','completed','2026-09-23');
+            INSERT INTO conversation_summaries(summary_id,conversation_id,servant_id,summary_text,covered_through_sequence,created_at_utc,updated_at_utc,covered_through_message_id)
+              VALUES('summary','compact-old','mash','original summary',1,'2026-09-23','2026-09-23','original');
+            INSERT INTO conversation_contexts VALUES('compact-old','summary',3,1,1,'original','fingerprint','route',1000,100,'2026-09-23');
+            """);
+    }
+
     private static T Scalar<T>(SqliteConnection connection, string sql)
     {
         using var command = connection.CreateCommand();
