@@ -133,7 +133,7 @@ internal static class CompanionAwarenessRegistration
         return CompanionAwarenessHost.Observe("desktop.applications", content, clock.GetUtcNow(), TimeSpan.FromMinutes(2));
     }
 
-    private sealed class CompanionAwarenessPlugin(IServiceProvider services) : IFgoPetPlugin, IApplicationReadyObserver
+    private sealed class CompanionAwarenessPlugin(IServiceProvider services) : IFgoPetPlugin, IApplicationReadyObserver, IDisposable
     {
         private CancellationToken _processStopping;
         private CompanionAwarenessHost? _host;
@@ -165,13 +165,22 @@ internal static class CompanionAwarenessRegistration
         private void OnRoleChanged(object? sender, AppStateChangedEventArgs<ActiveRoleState> args) => _host?.ContextChanged();
         private void OnChanged() => _host?.ContextChanged();
         private void OnModelChanged(FgoPet.Core.Settings.ModelConnectionSettings _) => _host?.ContextChanged();
+        public void Dispose()
+        {
+            Detach();
+            _host?.Dispose();
+        }
         public async ValueTask StopAsync(CancellationToken token)
+        {
+            Detach();
+            if (_host is not null) await _host.DisposeAsync().ConfigureAwait(false);
+        }
+        private void Detach()
         {
             if (_signals is not null) _signals.Signal -= OnSignal;
             if (_runtime is not null) _runtime.ActiveRoleChanged -= OnRoleChanged;
             if (_todos is not null) _todos.Changed -= OnChanged;
             if (_modelSettings is not null) _modelSettings.ConnectionSaved -= OnModelChanged;
-            if (_host is not null) await _host.DisposeAsync().ConfigureAwait(false);
         }
         public ValueTask DisposeAsync() => StopAsync(default);
     }
