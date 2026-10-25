@@ -82,7 +82,7 @@ public sealed class PortraitWindowCoordinator : IDisposable
         };
         _window.PreviewMouseMove += (_, e) =>
         {
-            if (OnPointerMove(e.GetPosition(_window)))
+            if (OnPointerMove(e.GetPosition(_window), Mouse.LeftButton == MouseButtonState.Pressed))
             {
                 e.Handled = true;
             }
@@ -230,13 +230,24 @@ public sealed class PortraitWindowCoordinator : IDisposable
         return true;
     }
 
-    private bool OnPointerMove(Point windowPoint)
+    internal bool OnPointerMove(Point windowPoint, bool primaryButtonPressed)
     {
+        if (!primaryButtonPressed)
+        {
+            _gesture.Cancel();
+            _pressWasOnPortrait = false;
+            return false;
+        }
         if (_gesture.Move(windowPoint) == GestureEvent.DragStart && !_dragging)
         {
             _dragging = true;
-            _window.DragMove();
-            _dragging = false;
+            try { _window.DragMove(); }
+            finally
+            {
+                _dragging = false;
+                _gesture.Cancel();
+                _pressWasOnPortrait = false;
+            }
             ClampPortraitToWorkArea();
             SavePlacement();
             return true;

@@ -30,6 +30,30 @@ namespace FgoPet.Windows.Tests.Windowing;
 [Trait("Category", "WindowsIntegration")]
 public sealed class PortraitWindowIntegrationTests
 {
+    [Fact]
+    public void Released_pointer_cancels_stale_press_before_window_drag()
+    {
+        StaRun(() =>
+        {
+            var window = new PortraitWindow(new AttachedPanelViewModel(TimeProvider.System));
+            var controller = new PortraitController(new EmptyRepository(), new ExpressionResolver(),
+                new PortraitSnapshotCache(), new Dpi2(1, 1));
+            using var coordinator = new PortraitWindowCoordinator(window, controller,
+                new MemoryPlacementStore(), new FixedScreenService());
+            try
+            {
+                var field = typeof(PortraitWindowCoordinator).GetField("_gesture",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                var gesture = Assert.IsType<PointerGestureRecognizer>(field.GetValue(coordinator));
+                gesture.Press(new Point(0, 0), isSecondary: false);
+                Assert.False(coordinator.OnPointerMove(new Point(50, 50), primaryButtonPressed: false));
+                Assert.Equal(GestureEvent.None, gesture.Release(new Point(50, 50)));
+                Assert.False(coordinator.OnPointerMove(new Point(100, 100), primaryButtonPressed: true));
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern nint SendMessage(nint hwnd, int message, nint wParam, nint lParam);
 
