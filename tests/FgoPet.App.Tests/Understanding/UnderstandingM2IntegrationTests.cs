@@ -22,6 +22,60 @@ namespace FgoPet.App.Tests.Understanding;
 [Collection("H1 full catalog isolation")]
 public sealed class UnderstandingM2IntegrationTests
 {
+    [Theory][InlineData(false)][InlineData(true)]
+    public async Task Daily_exhaustion_between_review_and_classification_preserves_work_until_allowance_recovers(bool nextDay)
+    {
+        await using var host=new Host(approved:false);await host.StartAsync();
+        var access=host.Provider.GetRequiredService<DailyReviewBudgetAccess>();
+        var ledger=host.Provider.GetRequiredService<DailyReviewLedger>();
+        var scheduler=host.Provider.GetRequiredService<UnderstandingReviewScheduler>();
+        var route=access.Status(host.Scope).RouteHash!;
+        access.Configure(host.Scope,0,new(UnderstandingMode.Bounded,ReadSources:true,ExternalProcessing:true,SaveCandidates:true,UseInDialogue:true),
+            host.Provider.GetRequiredService<IExperienceTimeline>().Boundary(host.Scope),route,2,default);
+        // An earlier unknown dispatch remains charged, leaving only the review call's allowance.
+        var earlier=Assert.IsType<ReviewCallReservation>(ledger.TryReserve(new(ReviewBatch.Formal,"daily",host.Scope.Key,"earlier-unknown",
+            route,"review",UnderstandingMode.Bounded,host.Owner.State(host.Scope).Generation,new('A',64),1000)));
+        ledger.Complete(earlier.RequestHash,ReviewCallOutcome.Unknown);
+        host.Append();host.Clock.Advance(120);await scheduler.PulseAsync();
+
+        Assert.Equal(1,host.Http.Sends);Assert.Equal(2,access.Status(host.Scope).Budget!.Used);
+        Assert.Equal("UNDERSTANDING_BUDGET_LIMITED",access.Status(host.Scope).Code);
+        Assert.Equal(2,host.Owner.WorkSummary(host.Scope).PendingSources);
+        Assert.DoesNotContain(host.Owner.WorkSummary(host.Scope).Batches,b=>b.State==ReviewWorkState.Failed);
+        Assert.Empty(host.Owner.Query(host.Scope,"").Items);Assert.Empty(host.Owner.List(host.Scope,true));
+        host.Clock.Advance(300);await scheduler.PulseAsync();
+        Assert.Equal(1,host.Http.Sends);Assert.Equal(2,access.Status(host.Scope).Budget!.Used);
+        Assert.Equal(2,host.Owner.WorkSummary(host.Scope).PendingSources);
+
+        if(nextDay)host.Clock.Advance(86400);
+        else
+        {
+            var state=host.Owner.State(host.Scope);
+            access.Configure(host.Scope,state.Revision,state.Policy,host.Provider.GetRequiredService<IExperienceTimeline>().Boundary(host.Scope),route,4,default);
+            host.Clock.Advance(300);
+        }
+        await scheduler.PulseAsync();
+        Assert.Equal(3,host.Http.Sends);
+        Assert.Equal(nextDay?2:4,access.Status(host.Scope).Budget!.Used);
+        Assert.Equal(0,host.Owner.WorkSummary(host.Scope).PendingSources);
+        Assert.DoesNotContain(host.Owner.WorkSummary(host.Scope).Batches,b=>b.State==ReviewWorkState.Failed);
+        Assert.Equal(UnderstandingEffect.Bounded,Assert.Single(host.Owner.Query(host.Scope,"").Items).Effect);
+    }
+    [Theory][InlineData(UnderstandingMode.Proposals,1)][InlineData(UnderstandingMode.Bounded,2)]
+    public async Task Daily_host_runs_the_production_pipeline_and_only_bounded_results_enter_replies(UnderstandingMode mode,int calls)
+    {
+        await using var host=new Host(approved:false);await host.StartAsync();
+        var access=host.Provider.GetRequiredService<DailyReviewBudgetAccess>();
+        access.Configure(host.Scope,0,new(mode,ReadSources:true,ExternalProcessing:true,SaveCandidates:true,UseInDialogue:true),
+            host.Provider.GetRequiredService<IExperienceTimeline>().Boundary(host.Scope),access.Status(host.Scope).RouteHash!,12,default);
+        host.Append();host.Clock.Advance(120);
+        await host.Provider.GetRequiredService<UnderstandingReviewScheduler>().PulseAsync();
+        Assert.Equal(calls,host.Http.Sends);Assert.Equal(calls,access.Status(host.Scope).Budget!.Used);
+        Assert.Equal(mode==UnderstandingMode.Bounded?1:0,host.Owner.Query(host.Scope,"").Items.Count);
+        Assert.Equal(mode==UnderstandingMode.Proposals?1:0,host.Owner.List(host.Scope,true).Count);
+        host.Owner.Configure(host.Scope,host.Owner.State(host.Scope).Revision,host.Owner.State(host.Scope).Policy with{UseInDialogue=false});
+        Assert.Empty(host.Owner.Query(host.Scope,"").Items);
+    }
     [Fact] public async Task App_registration_uses_real_worker_adapter_http_ledger_and_bounded_projection()
     {
         await using var host=new Host(approved:true);await host.StartAsync();host.Enable();host.Append();
@@ -102,7 +156,7 @@ public sealed class UnderstandingM2IntegrationTests
         {try{await Plugin.StopAsync(default);await Provider.DisposeAsync();}finally{Environment.SetEnvironmentVariable("FGO_PET_STATE_ROOT",_oldRoot);Http.Dispose();}}
     }
     private sealed class Settings:IDialogueSettingsStore
-    {public DialogueSettings Load()=>new(new("deepseek","https://api.deepseek.com/v1","deepseek-flash"),true);public void Save(DialogueSettings s)=>throw new NotSupportedException();}
+    {public DialogueSettings Load()=>new(new("deepseek","https://api.deepseek.com/v1","deepseek-flash",contextWindowOverride:131072),true);public void Save(DialogueSettings s)=>throw new NotSupportedException();}
     private sealed class Authority(ConversationScope scope):IConversationScopeAuthority
     {public ConversationScope? Current=>scope;public bool IsActive(ToolScope s)=>s.RoleId==scope.ServantId&&s.ProjectId==scope.ProjectId;}
     private sealed class Access(ReviewBudgetUse use):IReviewBudgetAccess{public ReviewBudgetUse? Get(ConversationScope scope)=>use;}

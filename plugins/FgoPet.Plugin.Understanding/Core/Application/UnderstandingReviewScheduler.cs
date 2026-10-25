@@ -11,6 +11,7 @@ public sealed class UnderstandingReviewScheduler(UnderstandingService owner,IExp
     private readonly object _activityGate=new();
     private readonly Dictionary<string,long> _activity=[];
     private readonly Dictionary<string,long> _oldest=[];
+    private readonly Dictionary<string,long> _attempted=[];
     private readonly long _started=clock.GetTimestamp();
     private CancellationTokenSource? _stopping;
     private Task? _loop;
@@ -38,6 +39,8 @@ public sealed class UnderstandingReviewScheduler(UnderstandingService owner,IExp
             foreach(var scope in owner.AutomaticScopes())
             {
                 token.ThrowIfCancellationRequested();
+                var cooldown=reviews.Status(scope)?.Stage=="failed"?TimeSpan.FromMinutes(5):TimeSpan.FromMinutes(2);
+                if(_attempted.TryGetValue(scope.Key,out var previous)&&clock.GetElapsedTime(previous,clock.GetTimestamp())<cooldown)continue;
                 for(var scan=0;scan<8&&owner.Accumulate(timeline,scope,token:token);scan++) { }
                 var work=owner.WorkSummary(scope);
                 if(work.PendingSources==0){_oldest.Remove(scope.Key);continue;}
@@ -45,6 +48,7 @@ public sealed class UnderstandingReviewScheduler(UnderstandingService owner,IExp
                 long activity;lock(_activityGate)activity=_activity.GetValueOrDefault(scope.Key,_started);
                 var idle=clock.GetElapsedTime(activity,now);var age=clock.GetElapsedTime(oldest,now);
                 if(idle<TimeSpan.FromSeconds(120)&&age<TimeSpan.FromMinutes(15)&&work.CompletedTurns<6&&(long)work.PendingScalars*3<6000)continue;
+                _attempted[scope.Key]=clock.GetTimestamp();
                 await reviews.ProcessNextAsync(scope,token).ConfigureAwait(false);
             }
         }

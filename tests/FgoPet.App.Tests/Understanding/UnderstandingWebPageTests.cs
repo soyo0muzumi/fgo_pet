@@ -17,6 +17,41 @@ namespace FgoPet.App.Tests.Understanding;
 
 public sealed class UnderstandingWebPageTests : IDisposable
 {
+    [Fact] public async Task Explicit_automation_command_binds_recipient_boundary_and_independent_dialogue_permission()
+    {
+        var settings = new AutomationSettings();
+        var ledger = new DailyReviewLedger(Path.Combine(_root,"daily.db"),TimeProvider.System);
+        var access = new DailyReviewBudgetAccess(ledger,settings,_owner);
+        var page = new UnderstandingWebPage(_owner,()=>_scope,_lifetime,_timeline,automation:access);
+        var get = await page.HandleCommandAsync(new("understanding.get","get",JsonSerializer.SerializeToElement(new{pageId="Understanding"})),default);
+        var snapshot = JsonSerializer.SerializeToElement(get.Payload,new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var binding = snapshot.GetProperty("contextToken").GetString();
+        var route = access.Status(_scope!).RouteHash;
+        var policy = new {mode="bounded",enabled=true,readSources=true,externalProcessing=true,saveCandidates=true,useInDialogue=false};
+        var payload = JsonSerializer.SerializeToElement(new{pageId="Understanding",contextToken=binding,revision=0,policy,dailyLimit=12,routeHash=route});
+        Assert.Null(access.Get(_scope!));
+        Assert.True((await page.HandleCommandAsync(new("understanding.automation","enable",payload),default)).Success);
+        Assert.Equal(71,_owner.State(_scope!).AutoSince);
+        Assert.Equal(FgoPet.Understanding.Contracts.UnderstandingMode.Bounded,_owner.State(_scope!).Policy.Mode);
+        Assert.False(_owner.State(_scope!).Policy.UseInDialogue);
+        Assert.NotNull(access.Get(_scope!));
+        Assert.False((await page.HandleCommandAsync(new("understanding.automation","replay",payload),default)).Success);
+        settings.Connection = new("deepseek","https://different.example/v1","deepseek-flash");
+        Assert.Null(access.Get(_scope!));
+        var refreshed = await page.HandleCommandAsync(new("understanding.get","refresh",JsonSerializer.SerializeToElement(new{pageId="Understanding"})),default);
+        var current = JsonSerializer.SerializeToElement(refreshed.Payload,new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var changedPayload = JsonSerializer.SerializeToElement(new{pageId="Understanding",contextToken=current.GetProperty("contextToken").GetString(),
+            revision=_owner.State(_scope!).Revision,policy,dailyLimit=12,routeHash=route});
+        var suspensions=_lifetime.Suspensions;
+        Assert.False((await page.HandleCommandAsync(new("understanding.automation","stale-route",changedPayload),default)).Success);
+        Assert.Equal(suspensions,_lifetime.Suspensions);
+    }
+    private sealed class AutomationSettings:FgoPet.Dialogue.Settings.IDialogueSettingsStore
+    {
+        public FgoPet.Core.Settings.ModelConnectionSettings Connection = new("deepseek","https://synthetic.example/v1","deepseek-flash");
+        public FgoPet.Dialogue.Settings.DialogueSettings Load()=>new(Connection,true);
+        public void Save(FgoPet.Dialogue.Settings.DialogueSettings settings)=>throw new NotSupportedException();
+    }
     private readonly string _root = Path.Combine(Path.GetTempPath(), "fgo-understanding-page-" + Guid.NewGuid().ToString("N"));
     private readonly UnderstandingService _owner;
     private readonly Lifetime _lifetime = new();

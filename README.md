@@ -69,7 +69,7 @@ Long-term memory candidates show their evidence and scope and require approval. 
 
 ### Understanding review (development branch)
 
-Settings → App → Understanding separates saved interpretations, items waiting for approval and archived items. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Conversation use has a separate explicit choice. Automatic accumulation is currently unavailable in the default host; opening this page sends no model request or grants permissions.
+Settings → Understanding separates saved interpretations, items waiting for approval and archived items. Automatic understanding is opt-in for the current companion/project and model recipient, starting with new material. Proposals require review; Bounded mode permits independently checked low-impact interpretations to take effect provisionally. Reading, external processing, saving and conversation use remain separate choices. The adjustable daily allowance defaults to 12 background dispatches shared across scopes, including classification and retries; proxy-internal retries may add upstream calls. Foreground chat takes priority. Correcting does not approve a candidate; forgetting removes its versions while keeping original messages. Opening the page does not grant permissions or trigger a model request.
 
 ### Local scene tools (development branch)
 

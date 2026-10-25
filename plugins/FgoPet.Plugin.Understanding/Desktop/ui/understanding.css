@@ -33,6 +33,8 @@
 .understanding-page [role=alert] { color:var(--danger,#ad493d); border-color:currentColor; }
 .understanding-confirm,.understanding-editor { display:grid; gap:10px; padding:12px; background:var(--paper-sunk,#8881); border:1px solid var(--rule-2,#8886); border-radius:5px; }
 .understanding-editor label { color:var(--ink); font-size:12px; }
+.understanding-choice { display:flex; align-items:flex-start; gap:8px; color:var(--ink); }
+.understanding-confirm select,.understanding-confirm input[type=number] { max-width:100%; min-width:0; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2,#8886); padding:6px; border-radius:4px; }
 .understanding-editor textarea { width:100%; min-height:110px; resize:vertical; padding:10px; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2,#8886); border-radius:4px; font:13px/1.65 var(--ui,system-ui); }
 @media(max-width:440px) { .understanding-card { padding:13px; } .understanding-intro h2 { font-size:18px; } .understanding-actions { gap:7px; } }
 @media(prefers-reduced-motion:reduce) { .understanding-page * { animation:none; transition:none; } }

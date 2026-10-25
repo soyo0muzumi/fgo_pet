@@ -172,6 +172,37 @@ export async function mount(container, context) {
       button(row, "Cancel", () => { confirm.hidden = true; }).focus();
     });
   }
+  function automaticSetup() {
+    const confirm = find("[data-policy-confirm]"); confirm.replaceChildren(); confirm.hidden = false;
+    const policy = snapshot.state.policy, service = snapshot.automation;
+    const binding = { contextToken: snapshot.contextToken, revision: snapshot.state.revision, routeHash: service?.routeHash };
+    add(confirm, "p", `为 ${snapshot.presentation.roleName} · ${snapshot.presentation.projectName} 开启自动理解。发送给 ${snapshot.presentation.modelRecipient}。首次开启只整理开启后的新内容，同角色和项目的新对话可共享有效理解。`);
+    const modeLabel = add(confirm, "label", "生效方式 "); const mode = add(modeLabel, "select"); mode.setAttribute("aria-label", "生效方式");
+    for (const [value, text] of [["bounded", "有限自动生效：低影响理解经校验后用于回复"], ["proposals", "仅生成候选：确认后才能用于回复"]]) {
+      const option = add(mode, "option", text); option.value = value;
+    }
+    mode.value = policy.mode === "proposals" ? "proposals" : "bounded";
+    const choices = {};
+    for (const [key, text] of [["readSources", "允许读取此角色和项目的对话来源"], ["externalProcessing", "允许将所选对话片段发送给上述模型分析"], ["saveCandidates", "允许保存带来源的理解与待确认候选"], ["useInDialogue", "允许在后续回复中使用有效理解（待确认内容除外）"]]) {
+      const label = add(confirm, "label", null, "understanding-choice"); const box = add(label, "input"); box.type = "checkbox";
+      box.checked = Boolean(policy[key]); add(label, "span", text); choices[key] = box;
+    }
+    const limitLabel = add(confirm, "label", "每日后台派发上限（所有角色和项目共用） ");
+    const limit = add(limitLabel, "input"); limit.type = "number"; limit.min = "1"; limit.max = "10000"; limit.step = "1";
+    limit.setAttribute("aria-label", "每日后台派发上限"); limit.value = String(service?.budget?.limit || 12);
+    add(confirm, "p", "理解、独立分类和重试分别计数，失败或取消不退还额度。代理内部重试可能增加实际上游调用与费用。更改上限影响全部角色和项目，已用次数不会清零。");
+    const row = add(confirm, "div", null, "understanding-actions");
+    const start = button(row, "确认自动理解设置", () => {
+      if (!Number.isInteger(Number(limit.value)) || !limit.checkValidity()) return;
+      void send("understanding.automation", { ...binding, dailyLimit: Number(limit.value), policy: {
+        mode: mode.value, enabled: true, ...Object.fromEntries(Object.entries(choices).map(([key, box]) => [key, box.checked]))
+      } }, "自动理解设置已保存。后台会在满足条件时整理新内容。");
+    }, "understanding-primary");
+    const validate = () => { start.disabled = !binding.routeHash || !choices.readSources.checked || !choices.externalProcessing.checked || !choices.saveCandidates.checked || !limit.checkValidity(); };
+    for (const box of Object.values(choices)) box.addEventListener("change", validate);
+    limit.addEventListener("input", validate); validate();
+    button(row, "取消", () => { confirm.hidden = true; });
+  }
   function render() {
     const policy = snapshot.state.policy, display = snapshot.presentation || {};
     find("[data-scope]").textContent = `${display.roleName || "Current companion"} · ${display.projectName || "Current project"}`;
@@ -190,24 +221,36 @@ export async function mount(container, context) {
       add(empty, "p", view === "accumulated" ? "Nothing has been saved for this companion and project." : "Items will appear here when their status changes.");
     }
     for (const item of items) renderEntry(item);
-    find("[data-readiness]").textContent = "Automatic understanding is not available yet. You can review saved interpretations here.";
+    const automation = snapshot.automation, budget = automation?.budget, run = snapshot.lastRun;
+    const automatic = policy.enabled && policy.mode !== "off" && policy.readSources && policy.externalProcessing && policy.saveCandidates;
+    const reasons = { UNDERSTANDING_MODEL_UNAVAILABLE: "尚未配置模型", UNDERSTANDING_BUDGET_UNAUTHORIZED: "需要确认当前模型的后台调用授权", UNDERSTANDING_BUDGET_LIMITED: "今日额度已用尽", UNDERSTANDING_CLOCK_ROLLBACK: "系统时间回退，暂停派发", UNDERSTANDING_DAILY_STORE_UNAVAILABLE: "额度记录不可用，已停止派发" };
+    find("[data-readiness]").textContent = !display.automaticReviewAvailable ? "Automatic understanding is not available yet. You can review saved interpretations here."
+      : !automatic ? "自动理解已关闭或暂停。"
+      : automation?.code ? reasons[automation.code] || "后台暂不可用"
+      : run?.stage === "running" ? "正在整理理解…"
+      : run?.stage === "failed" ? `最近整理失败：${run.code}。可重试任务将等待退避时间。`
+      : run?.stage === "waiting_foreground" ? "等待前台对话结束。"
+      : snapshot.pendingSources > 0 ? "等待空闲或下一次整理时机。" : "等待新内容。";
+    if (run && run.stage !== "running") find("[data-readiness]").textContent += ` 最近处理：${new Date(run.at).toLocaleString()}，新增 ${run.newItems || 0} 条。`;
     find("[data-permission-note]").textContent = !policy.enabled ? "Understanding is paused. Saved items are kept out of replies."
       : !policy.readSources || !policy.useInDialogue ? "Saved items are currently kept out of replies."
       : "Eligible saved items may be used in this companion's replies. Pending items stay out.";
     const actions = find("[data-policy-actions]"); actions.replaceChildren();
+    if (display.automaticReviewAvailable) button(actions, automatic ? "自动理解设置" : "开启自动理解", automaticSetup, "understanding-primary");
     const hasAccess = policy.readSources || policy.externalProcessing || policy.saveCandidates || policy.useInDialogue || policy.mode !== "off";
-    if (hasAccess && !policy.enabled) policyAction(actions, "Resume understanding", "Resume the existing access choices shown below. This does not add a model budget or enable automatic accumulation.", p => ({ ...p, enabled: true }));
+    if (hasAccess && !policy.enabled) policyAction(actions, "Resume understanding", "Resume the existing access choices shown below. Previously authorized automatic understanding may resume within its remaining budget.", p => ({ ...p, enabled: true }));
     else if (hasAccess && policy.enabled) {
       if (all.length && policy.readSources && !policy.useInDialogue) policyAction(actions, "Use in replies", "Allow eligible saved interpretations to be selected for this companion's replies in the current project and sent to the configured model with your conversation. Pending interpretations stay excluded. Approved versions and any previously authorized bounded items follow the existing access choices shown below.", p => ({ ...p, useInDialogue: true }));
+      if (policy.useInDialogue) policyAction(actions, "停止用于回复", "停止把已保存的理解用于后续回复，保留其他授权和已保存内容。", p => ({ ...p, useInDialogue: false }));
       policyAction(actions, "Pause understanding", "Pause local review and conversation use. Keep saved interpretations and existing access choices.", p => ({ ...p, enabled: false }));
     }
     if (hasAccess)
       policyAction(actions, "Turn off & revoke access", "Stop understanding and revoke source access, external processing, candidate saving and conversation use for this scope. Saved interpretations remain; originals are not deleted.", () => ({ mode: "off", enabled: false, readSources: false, externalProcessing: false, saveCandidates: false, useInDialogue: false }));
     find("[data-policy-confirm]").hidden = true;
     const access = find("[data-access]"); access.replaceChildren();
-    add(access, "p", "Automatic review has no authorized host budget connected. Opening this page sends no model request.");
+    add(access, "p", display.automaticReviewAvailable ? `后台日额度：${budget?.used ?? 0} / ${budget?.limit ?? 12} 次。页面打开或刷新不会触发模型请求。${budget ? ` 重置时间：${new Date(budget.resetsAt).toLocaleString()}。` : ""}` : "Automatic review has no authorized host budget connected. Opening this page sends no model request.");
     add(access, "p", `Configured conversation recipient: ${display.modelRecipient || "Unavailable"}.`);
-    add(access, "p", `Existing mode: ${policy.mode}. Source validation: ${policy.readSources ? "allowed" : "off"}. External review processing: ${policy.externalProcessing ? "allowed, but no host budget is connected" : "off"}. Candidate saving: ${policy.saveCandidates ? "allowed" : "off"}. Conversation use: ${policy.useInDialogue ? "allowed" : "off"}.`);
+    add(access, "p", `Existing mode: ${policy.mode}. Source validation: ${policy.readSources ? "allowed" : "off"}. External review processing: ${policy.externalProcessing ? "allowed; dispatch also requires recipient authorization and remaining budget" : "off"}. Candidate saving: ${policy.saveCandidates ? "allowed" : "off"}. Conversation use: ${policy.useInDialogue ? "allowed" : "off"}.`);
     add(access, "p", "Existing permissions are preserved until you explicitly change them. Approval is permission to use an interpretation, not proof that it is true.");
   }
   for (const tab of root.querySelectorAll("[data-view]")) tab.addEventListener("click", () => { if (!busy) { view = tab.dataset.view; if (snapshot) render(); } });

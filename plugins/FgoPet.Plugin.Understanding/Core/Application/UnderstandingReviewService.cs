@@ -4,33 +4,42 @@ using System.Text;
 
 namespace FgoPet.Understanding;
 
+public sealed record UnderstandingRunStatus(DateTimeOffset At, string Stage, string? Code = null, int NewItems = 0);
+
 public sealed class UnderstandingReviewService(UnderstandingService owner,IExperienceTimeline timeline,
     IExperienceSourceReader originals,IReviewModelFactory models,IDialogueContextLifetime lifetime,TimeProvider clock)
 {
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string,UnderstandingRunStatus> _status = new();
+    public UnderstandingRunStatus? Status(ConversationScope scope) => _status.GetValueOrDefault(scope.Key);
+    private void SetStatus(ConversationScope scope,string stage,string? code=null,int items=0) => _status[scope.Key]=new(clock.GetUtcNow(),stage,code,items);
     public async Task<bool> ProcessNextAsync(ConversationScope scope,CancellationToken token=default)
     {
-        token.ThrowIfCancellationRequested();if(!models.Available(scope))return false;
-        using var lease=lifetime.TryAcquireBackground(token);if(lease is null)return false;
+        token.ThrowIfCancellationRequested();if(!models.Available(scope)){SetStatus(scope,"waiting_budget");return false;}
+        using var lease=lifetime.TryAcquireBackground(token);if(lease is null){SetStatus(scope,"waiting_foreground");return false;}
         var batch=owner.ClaimWork(scope,timeline.InputRevision(scope));if(batch is null)return false;
+        SetStatus(scope,"running");
         try
         {
             // Receipt recovery wins even when a process died after commit and before queue acknowledgement.
             var receipt=owner.Receipt(scope,batch.Id)??await RunAsync(batch.Id,scope,batch.Items,false,lease,lease.Token).ConfigureAwait(false);
             if(receipt.Items.Any(i=>i.Code=="UNDERSTANDING_STALE_INPUT"))owner.PauseWork(batch,"UNDERSTANDING_STALE_INPUT",newInput:true);
-            else owner.FinishWork(batch,receipt);return true;
+            else owner.FinishWork(batch,receipt);
+            var code=receipt.Items.FirstOrDefault(i=>i.Code is not null)?.Code;
+            SetStatus(scope,code is null?"completed":"failed",code,receipt.Items.Count(i=>i.Outcome is UnderstandingOutcome.Applied or UnderstandingOutcome.ProposedPending));return true;
         }
         catch(OperationCanceledException)
-        {owner.PauseWork(batch,"UNDERSTANDING_CANCELLED");token.ThrowIfCancellationRequested();return true;}
+        {owner.PauseWork(batch,"UNDERSTANDING_CANCELLED");SetStatus(scope,"interrupted","UNDERSTANDING_CANCELLED");token.ThrowIfCancellationRequested();return true;}
         catch(InvalidOperationException error)
         {
             if(error.Message=="UNDERSTANDING_STALE_INPUT")owner.PauseWork(batch,error.Message,newInput:true);
-            else if(error.Message is "UNDERSTANDING_SOURCE_UNAVAILABLE" or "UNDERSTANDING_BUDGET_LIMITED")owner.PauseWork(batch,error.Message);
-            else owner.DeferWork(batch,"UNDERSTANDING_REVIEW_REFUSED",transient:false);return true;
+            else if(error.Message is "UNDERSTANDING_SOURCE_UNAVAILABLE" or "UNDERSTANDING_BUDGET_LIMITED" or "UNDERSTANDING_BUDGET_UNAVAILABLE")owner.PauseWork(batch,error.Message);
+            else owner.DeferWork(batch,"UNDERSTANDING_REVIEW_REFUSED",transient:false);
+            SetStatus(scope,"failed",error.Message is "UNDERSTANDING_STALE_INPUT" or "UNDERSTANDING_SOURCE_UNAVAILABLE" or "UNDERSTANDING_BUDGET_LIMITED" or "UNDERSTANDING_BUDGET_UNAVAILABLE" ? error.Message : "UNDERSTANDING_REVIEW_REFUSED");return true;
         }
         catch(TimeoutException)
-        {owner.DeferWork(batch,"UNDERSTANDING_REVIEW_TIMEOUT",transient:true);return true;}
+        {owner.DeferWork(batch,"UNDERSTANDING_REVIEW_TIMEOUT",transient:true);SetStatus(scope,"failed","UNDERSTANDING_REVIEW_TIMEOUT");return true;}
         catch(Exception)
-        {owner.DeferWork(batch,"UNDERSTANDING_REVIEW_FAILED",transient:true);return true;}
+        {owner.DeferWork(batch,"UNDERSTANDING_REVIEW_FAILED",transient:true);SetStatus(scope,"failed","UNDERSTANDING_REVIEW_FAILED");return true;}
     }
     public async Task<UnderstandingReceipt> ManualAsync(ConversationScope scope,string operationId,IReadOnlyList<ExperienceSourceHead> selection,
         CancellationToken token=default)

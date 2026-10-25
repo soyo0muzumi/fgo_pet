@@ -23,6 +23,13 @@ public sealed class ReviewSchedulerTests
         _scheduler=new(_owner,_sources,new(_owner,_sources,_sources,_models,new DialogueContextLifetime(),_clock),_clock);
     }
     private void Enable()=>_owner.Configure(_scope,0,new(UnderstandingMode.Proposals,ReadSources:true,ExternalProcessing:true,SaveCandidates:true));
+    [Fact] public async Task A_large_backlog_does_not_dispatch_again_on_every_five_second_tick()
+    {
+        Enable();_sources.Add(20);_clock.Advance(120);await _scheduler.PulseAsync();
+        Assert.Equal(1,_models.Dispatches);
+        _clock.Advance(5);await _scheduler.PulseAsync();Assert.Equal(1,_models.Dispatches);
+        _clock.Advance(115);await _scheduler.PulseAsync();Assert.Equal(2,_models.Dispatches);
+    }
     [Fact] public async Task Idle_uses_monotonic_time_and_wall_clock_jumps_do_not_trigger_review()
     {
         Enable();_sources.Add(2);await _scheduler.PulseAsync();Assert.Equal(0,_models.Dispatches);

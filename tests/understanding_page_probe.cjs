@@ -36,7 +36,7 @@ const { chromium } = require(process.argv[2]);
           window.sent.push({ type, payload: structuredClone(payload) });
           if (window.failNext) { window.failNext = false; throw new Error('synthetic unavailable'); }
           if (type !== 'understanding.get' && payload.contextToken !== snapshot.contextToken) throw new Error('stale context');
-          if (type === 'understanding.configure') {
+          if (type === 'understanding.configure' || type === 'understanding.automation') {
             snapshot.state.policy = payload.policy; snapshot.state.revision++;
             snapshot.contextToken = 'fixture-context-' + (snapshot.state.revision + 1);
           }
@@ -93,6 +93,23 @@ const { chromium } = require(process.argv[2]);
     await page.evaluate(() => { window.failNext = true; });
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     assert.equal(await page.locator('[data-error]').isVisible(), true);
+    await page.evaluate(() => {
+      fixture.presentation.automaticReviewAvailable = true;
+      fixture.automation = {routeHash:'a'.repeat(64),budget:{limit:12,used:0,resetsAt:'2026-10-25T00:00:00Z'},code:'UNDERSTANDING_BUDGET_UNAUTHORIZED'};
+    });
+    await page.getByRole('button', {name:'Refresh',exact:true}).click();
+    await page.getByRole('button', {name:'开启自动理解',exact:true}).click();
+    assert.equal(await page.getByLabel('生效方式').inputValue(), 'bounded');
+    assert.equal(await page.getByRole('button',{name:'确认自动理解设置'}).isDisabled(),true);
+    await page.getByLabel('允许将所选对话片段发送给上述模型分析').check();
+    await page.getByLabel('允许保存带来源的理解与待确认候选').check();
+    assert.equal(await page.getByLabel('允许在后续回复中使用有效理解（待确认内容除外）').isChecked(),false);
+    await page.getByLabel('每日后台派发上限').fill('18');
+    await page.getByRole('button',{name:'确认自动理解设置'}).click();
+    await page.waitForFunction(()=>fixture.state.policy.mode==='bounded');
+    const auto = await page.evaluate(()=>sent.find(r=>r.type==='understanding.automation').payload);
+    assert.equal(auto.dailyLimit,18); assert.equal(auto.policy.useInDialogue,false); assert.equal(auto.routeHash,'a'.repeat(64));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: path.join(output, 'understanding-fixture.png'), fullPage: true });
     await page.evaluate(() => window.controller.abort());
     assert.equal(await page.locator('button:not(:disabled)').count(), 0); assert.equal(unexpected, 0);

@@ -1,6 +1,6 @@
 # Understanding owner
 
-Derived interpretations, their revisions, review and effective-state policy belong here. Confirmed user facts remain owned by Memory; original messages remain owned by Dialogue. Read originals through published Kernel ports, never Dialogue private tables. The Review model adapter only produces candidates; it grants no dispatch, commit or coverage authority. The registered worker requires an explicit host budget; the default budget access denies every dispatch.
+Derived interpretations, their revisions, review and effective-state policy belong here. Confirmed user facts remain owned by Memory; original messages remain owned by Dialogue. Read originals through published Kernel ports, never Dialogue private tables. The Review model adapter only produces candidates; it grants no dispatch, commit or coverage authority. The registered worker requires an explicit recipient-bound daily budget grant; ungranted scopes deny every dispatch. Daily accounting is separate from conversation backup/forget and immutable experimental trial ledgers.
 
 Default mode is OFF. Source access, external processing, saving and dialogue use are independent grants. Pending entries never enter ordinary/Native context or model-facing query. All review operations bind an exact revision and current policy/source generations. Logs contain only hashed identifiers, stages and safe codes.
 

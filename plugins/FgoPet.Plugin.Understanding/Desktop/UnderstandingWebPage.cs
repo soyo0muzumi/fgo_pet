@@ -11,15 +11,16 @@ public sealed record UnderstandingPagePresentation(string RoleName = "Current co
 /// <summary>Host-scoped review adapter. Payloads cannot choose another role/project.</summary>
 public sealed class UnderstandingWebPage(UnderstandingService owner, Func<ConversationScope?> currentScope,
     IDialogueContextLifetime lifetime, IExperienceTimeline timeline,
-    Func<ConversationScope, UnderstandingPagePresentation>? presentation = null) : ISettingsWebPage
+    Func<ConversationScope, UnderstandingPagePresentation>? presentation = null,
+    DailyReviewBudgetAccess? automation = null, UnderstandingReviewService? reviews = null) : ISettingsWebPage
 {
     private ConversationScope? _boundScope;
     private long _boundGeneration = -1, _boundPolicyGeneration = -1;
     private string? _contextToken;
     public string SettingsPageId => "Understanding";
     public string ModulePath => "pages/understanding.js";
-    public IReadOnlyList<string> Commands => ["understanding.get", "understanding.configure", "understanding.review"];
-    public ISettingsWebPage CreateSession() => new UnderstandingWebPage(owner, currentScope, lifetime, timeline, presentation);
+    public IReadOnlyList<string> Commands => ["understanding.get", "understanding.configure", "understanding.review", "understanding.automation"];
+    public ISettingsWebPage CreateSession() => new UnderstandingWebPage(owner, currentScope, lifetime, timeline, presentation, automation, reviews);
     public async ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken token)
     {
         try
@@ -43,11 +44,23 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
                 !Text(payload, "contextToken", out var contextToken) || contextToken != _contextToken)
                 return new(false, ErrorCode: "UNDERSTANDING_SCOPE_CHANGED");
             UnderstandingPolicy? newPolicy = null; long expectedState = 0;
+            var automatic = message.Type == "understanding.automation";
+            int dailyLimit = 0; string routeHash = "";
             string operationId = "", id = ""; int version = 0; UnderstandingAction action = default; string? correction = null;
-            if (message.Type == "understanding.configure")
+            if (message.Type == "understanding.configure" || automatic)
             {
-                if (!Only(payload, "pageId", "contextToken", "revision", "policy") || !payload.TryGetProperty("revision", out var rev) || !rev.TryGetInt64(out expectedState) ||
+                var fields = automatic ? new[]{"pageId", "contextToken", "revision", "policy", "dailyLimit", "routeHash"} : new[]{"pageId", "contextToken", "revision", "policy"};
+                if (!Only(payload, fields) || !payload.TryGetProperty("revision", out var rev) || !rev.TryGetInt64(out expectedState) ||
                     !payload.TryGetProperty("policy", out var policy) || !TryPolicy(policy, out var value)) return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                if (automatic)
+                {
+                    if (automation is null || !payload.TryGetProperty("dailyLimit", out var limit) || !limit.TryGetInt32(out dailyLimit) ||
+                        !Text(payload, "routeHash", out routeHash) || value.Mode == UnderstandingMode.Off || !value.Enabled ||
+                        !value.ReadSources || !value.ExternalProcessing || !value.SaveCandidates)
+                        return new(false, ErrorCode: "SETTINGS_INVALID_INPUT");
+                    DailyReviewLedger.ValidateLimit(dailyLimit);
+                    if (automation.Status(scope).RouteHash != routeHash) return new(false, ErrorCode: "UNDERSTANDING_MODEL_CHANGED");
+                }
                 newPolicy = value;
             }
             else if (message.Type == "understanding.review")
@@ -71,7 +84,12 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
             if (newPolicy is { } configured)
             {
                 var boundary = configured.Mode != UnderstandingMode.Off && configured.ReadSources ? timeline.Boundary(scope) : 0;
-                owner.Configure(scope, expectedState, configured, boundary, token);
+                if (automatic) automation!.Configure(scope, expectedState, configured, boundary, routeHash, dailyLimit, token);
+                else
+                {
+                    owner.Configure(scope, expectedState, configured, boundary, token);
+                    automation?.RevokeIfRequired(scope, configured);
+                }
             }
             else
             {
@@ -92,8 +110,10 @@ public sealed class UnderstandingWebPage(UnderstandingService owner, Func<Conver
         if (_boundScope != scope || _boundGeneration != lifetime.Generation || _boundPolicyGeneration != state.Generation)
             _contextToken = Guid.NewGuid().ToString("N");
         _boundScope = scope; _boundGeneration = lifetime.Generation; _boundPolicyGeneration = state.Generation;
-        var display = presentation?.Invoke(scope) ?? new(ProjectName: scope.ProjectId is null ? "Across this companion's conversations" : "Current project");
+        var display = (presentation?.Invoke(scope) ?? new(ProjectName: scope.ProjectId is null ? "Across this companion's conversations" : "Current project"))
+            with { AutomaticReviewAvailable = automation is not null };
         return new { Scope = scope, State = state, ContextToken = _contextToken, Presentation = display,
+            Automation = automation?.Status(scope), LastRun = reviews?.Status(scope), PendingSources = owner.WorkSummary(scope).PendingSources,
             EffectiveIds = owner.Query(scope, "").Items.Select(e => e.Id).ToArray(), Accumulated = accumulated, Pending = pending,
             Changes = accumulated.Concat(pending).ToDictionary(e => e.Id, e => owner.Changes(scope, e.Id), StringComparer.Ordinal) };
     }

@@ -14,6 +14,27 @@ namespace FgoPet.Plugin.Understanding.Tests;
 
 public sealed class ReviewClassificationTests
 {
+    [Fact] public async Task Daily_classification_respects_actual_small_capacity_before_any_dispatch()
+    {
+        var settings=new Settings();var resolver=new Resolver(true);
+        var ledger=new ReviewCallLedger(Path.Combine(Path.GetTempPath(),"fgo-capacity-review-"+Guid.NewGuid().ToString("N"),"ledger.db"));
+        var use=new ReviewBudgetUse(ledger,ReviewBatch.Formal,"synthetic","scope");
+        var scope=new ConversationScope("mash","p");use=use with{ScopeKey=scope.Key};
+        var factory=new ConfiguredReviewModelFactory(settings,resolver,new RequestTokenMeter(),new Access(use),contexts:new SmallContext());
+        var root=new ConversationSourceSnapshot(new("c","mash","p"),"a",new('B',64),DateTimeOffset.UtcNow,ConversationSourceKind.Assistant,"Synthetic",1);
+        var coverage=new UnderstandingSourceCoverage(root,0,4,4);
+        var proposal=new UnderstandingProposal("p",UnderstandingDomain.Self,UnderstandingKind.CurrentInterest,"assistant","Synthetic current interest","today",[root]);
+        var input=new ReviewModelInput("op",scope,[new(root,"text",coverage)],[],_=>{});
+        var result=new ReviewModelResult([proposal],[coverage],new(100,10),new(100,TokenCountKind.Estimated,new('C',64)),new('D',64));
+        await Assert.ThrowsAsync<FgoPet.Kernel.Agent.AgentProtocolException>(()=>factory.ClassifyAsync(input,result,
+            new(new(UnderstandingMode.Bounded,ReadSources:true,ExternalProcessing:true),1,1,0),new Gate(),default));
+        Assert.Equal(0,resolver.Sends);Assert.Equal(0,ledger.Snapshot().TotalUsed);
+    }
+    private sealed class SmallContext:IModelContextResolver
+    {
+        public Task<ModelContextLimit> ResolveAsync(ModelConnectionSettings connection,CancellationToken token)=>
+            Task.FromResult(new ModelContextLimit(ModelRouteKey.From(connection),768,256,ContextLimitSource.ProviderMetadata,"synthetic"));
+    }
     private readonly ConversationScope _scope=new("mash","p");
     [Theory][InlineData(true)][InlineData(false)]
     public async Task Independent_classification_is_bound_to_actual_material_and_charged_separately(bool allow)

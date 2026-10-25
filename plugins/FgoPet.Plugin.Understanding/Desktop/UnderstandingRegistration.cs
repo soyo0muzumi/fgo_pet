@@ -16,7 +16,10 @@ public static class UnderstandingRegistration
     public static IServiceCollection AddUnderstandingCapability(this IServiceCollection services,
         Func<IServiceProvider, ConversationScope, UnderstandingPagePresentation>? presentation = null)
     {
-        services.TryAddSingleton<IReviewBudgetAccess,UnavailableReviewBudget>();
+        services.TryAddSingleton(p=>new DailyReviewLedger(System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(p.GetRequiredService<RuntimeDatabase>().DatabasePath)!,"understanding-daily-budget.db"),p.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<DailyReviewBudgetAccess>();
+        services.TryAddSingleton<IReviewBudgetAccess>(p=>p.GetRequiredService<DailyReviewBudgetAccess>());
         services.AddSingleton(provider => new UnderstandingService(provider.GetRequiredService<RuntimeDatabase>(),
             provider.GetRequiredService<IExperienceTimeline>(), provider.GetRequiredService<TimeProvider>(),
             diagnostics: d => provider.GetRequiredService<ILogger<UnderstandingService>>().LogInformation(
@@ -25,7 +28,8 @@ public static class UnderstandingRegistration
             .AddSingleton<IUnderstandingReader>(p => p.GetRequiredService<UnderstandingService>())
             .AddSingleton<IReviewModelFactory>(p=>new ConfiguredReviewModelFactory(p.GetRequiredService<IDialogueSettingsStore>(),
                 p.GetRequiredService<IChatProviderResolver>(),p.GetRequiredService<IRequestTokenMeter>(),p.GetRequiredService<IReviewBudgetAccess>(),
-                d=>p.GetRequiredService<ILogger<ConfiguredReviewModelFactory>>().LogInformation("Understanding {At} {Correlation} {Stage} {Code}",d.At,d.Correlation,d.Stage,d.Code)))
+                d=>p.GetRequiredService<ILogger<ConfiguredReviewModelFactory>>().LogInformation("Understanding {At} {Correlation} {Stage} {Code}",d.At,d.Correlation,d.Stage,d.Code),
+                p.GetRequiredService<IReviewBudgetAccess>() is DailyReviewBudgetAccess ? p.GetRequiredService<IModelContextResolver>() : null))
             .AddSingleton(p=>new UnderstandingReviewService(p.GetRequiredService<UnderstandingService>(),
                 p.GetRequiredService<IExperienceTimeline>(),p.GetRequiredService<IExperienceSourceReader>(),p.GetRequiredService<IReviewModelFactory>(),
                 p.GetRequiredService<IDialogueContextLifetime>(),p.GetRequiredService<TimeProvider>()))
@@ -51,9 +55,8 @@ public static class UnderstandingRegistration
                         Uri.TryCreate(connection.BaseUrl, UriKind.Absolute, out var buddy) && buddy.Host == "127.0.0.1" && buddy.Port == 8326 &&
                         buddy.AbsolutePath.TrimEnd('/') == "/v1")
                         recipient += " → Tencent CodeBuddy CN; local forwarding may write or re-encode attachments";
-                    // The default host has no review budget. This page never dispatches a review.
-                    return display with { ModelRecipient = recipient, AutomaticReviewAvailable = false };
-                }));
+                    return display with { ModelRecipient = recipient, AutomaticReviewAvailable = true };
+                },p.GetRequiredService<DailyReviewBudgetAccess>(),p.GetRequiredService<UnderstandingReviewService>()));
         return services;
     }
 }
