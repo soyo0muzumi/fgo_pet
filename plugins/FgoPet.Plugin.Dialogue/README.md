@@ -120,6 +120,8 @@ The concrete provider/WPF conversation presentation mix remains to be narrowed. 
 
 ## Chat Web presentation
 
+`Desktop/ui/chat/native-chat.css` maintains native presentation adjustments after the imported React stylesheet. User-message copy actions sit below the bubble, with space reserved before the next message.
+
 `AddChatWebPresentation` publishes `IChatWebSessionFactory` through `FgoPet.Dialogue.Contracts`. Each lightweight session projects the existing shared `ConversationViewModel`; disposing the projection never disposes or cancels that owner. `IChatWebHostActions` supplies bounded role/selector metadata and finite native presentation actions. Draft revisions and live session/role/conversation identities reject stale commands; model and history strings render as plain text in `Desktop/ui/chat`.
 
 `ConversationViewModel` allocates a fresh request GUID before each send and accepts only matching `ConversationUpdate.RequestId` events. Kernel owns the request identity contract; queued portrait consumers must check it again when applying an update. A Chat Web command's transport request ID is separate from the model-send identity. Uncorrelated events are not accepted as current streaming feedback.

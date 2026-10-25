@@ -1,0 +1,12 @@
+/* Native Chat adjustments kept separate from the imported React build. */
+.message-user:has(> .message-actions) {
+  position: relative;
+  margin-bottom: 36px;
+}
+
+.message-user > .message-actions {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin: 5px 0 0;
+}
