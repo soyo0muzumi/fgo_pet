@@ -6,15 +6,17 @@ namespace FgoPet.Infrastructure.Tests.Providers;
 
 public sealed class RequestTokenMeterTests
 {
-    [Fact]
-    public void Buddy_understanding_auxiliary_uses_the_supported_low_reasoning_effort()
+    [Theory]
+    [InlineData("understanding_review")]
+    [InlineData("context_summary")]
+    public void Buddy_bounded_auxiliary_uses_the_supported_low_reasoning_effort(string purpose)
     {
         var route=ModelRouteKey.From(new("custom-openai-compatible","http://127.0.0.1:8326/v1","buddy/deepseek-v4.1-flash"));
         var request=new ChatRequest("mash","c",[new(ChatMessageRole.User,"Synthetic review.")],
-            metadata:new Dictionary<string,string>{{"fgo_auxiliary","understanding_review"}},maxOutputTokens:128000);
+            metadata:new Dictionary<string,string>{{"fgo_auxiliary",purpose}},maxOutputTokens:2048);
         using var json=System.Text.Json.JsonDocument.Parse(ChatRequestPayloadWriter.Write(route,request));
         Assert.Equal("low",json.RootElement.GetProperty("reasoning_effort").GetString());
-        Assert.Equal(128000,json.RootElement.GetProperty("max_tokens").GetInt32());
+        Assert.Equal(2048,json.RootElement.GetProperty("max_tokens").GetInt32());
     }
     [Theory]
     [InlineData("http://127.0.0.1:8326/v1","buddy/deepseek-v4.1-flash",false)]

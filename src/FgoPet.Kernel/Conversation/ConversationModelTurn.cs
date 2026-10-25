@@ -106,7 +106,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
         var provider = connection is null ? providerResolver.Resolve() : providerResolver.Resolve(connection);
         var route = connection is null ? new ModelRouteKey(provider.ProviderId, "unconfigured", provider.ModelId, "default") : ModelRouteKey.From(connection);
         var limit = connection is null
-            ? new ModelContextLimit(route, 8192, null, ContextLimitSource.ConservativeFallback, "fallback-v1")
+            ? ModelContextLimit.CreateFallback(route)
             : await contextResolver.ResolveAsync(connection, cancellationToken);
         var workingBudget=PromptBudget.Resolve(limit,connection?.MaxOutputTokens??2048);
         if(provider is IChatInputLimit taskLimit)workingBudget=workingBudget.ConstrainInput(taskLimit.MaxInputTokens);

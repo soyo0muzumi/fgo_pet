@@ -18,7 +18,7 @@ internal sealed class NativeRunDiagnosticLog(string path)
     internal void RecordContext(ContextBudgetDiagnostic value)
     {
         if (!Enum.IsDefined(value.Stage) || !Enum.IsDefined(value.Point) || !Enum.IsDefined(value.Decision)
-            || !Enum.IsDefined(value.CompactionKind)
+            || !Enum.IsDefined(value.CompactionKind) || !Enum.IsDefined(value.SummaryValidation)
             || value.CapacitySource is { } source && !Enum.IsDefined(source)) return;
         static int? Count(int? count) => count is >= 0 ? count : null;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new {
@@ -33,6 +33,9 @@ internal sealed class NativeRunDiagnosticLog(string path)
             transcriptInput = Count(value.TranscriptInput), mandatoryLowerBoundInput = Count(value.MandatoryLowerBoundInput),
             blockUtf8Bytes = Count(value.BlockUtf8Bytes), eligibleGroups = Count(value.EligibleGroups),
             auxiliaryBudgetReservations = Count(value.AuxiliaryBudgetReservations), step = Count(value.Step),
+            summaryValidation = value.SummaryValidation.ToString(),
+            summaryCharacters = Count(value.SummaryCharacters), summaryOutputTokens = Count(value.SummaryOutputTokens),
+            auxiliaryInputBudget = Count(value.AuxiliaryInputBudget), auxiliaryOutputBudget = Count(value.AuxiliaryOutputBudget),
             measurementBasis = MeasurementBasis.IndependentEnvelopesNotAdditive.ToString()
         });
         Append(Path.Combine(Path.GetDirectoryName(file)!, "native-context-diagnostics.jsonl"), bytes);

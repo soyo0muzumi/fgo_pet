@@ -184,6 +184,26 @@ public sealed class NativeTranscriptCompactionTests
         var input = Transcript();
         Assert.Equal(input, await fixture.Compact(input, Budget()));
         Assert.Equal(1, fixture.RunBudget.Reservations);
+        if (mode != "exception")
+        {
+            var skipped = Assert.Single(fixture.Diagnostics.Where(d => d.Decision == ContextCompactionReason.InvalidSummary));
+            Assert.Equal(mode switch {
+                "length" => ContextSummaryValidation.OutputLimit,
+                "wrong-source" => ContextSummaryValidation.MissingSource,
+                _ => ContextSummaryValidation.TooLong
+            }, skipped.SummaryValidation);
+            Assert.NotNull(skipped.SummaryCharacters);
+        }
+    }
+
+    [Theory]
+    [InlineData("", "length", ContextSummaryValidation.OutputLimit)]
+    [InlineData("", "incomplete", ContextSummaryValidation.Incomplete)]
+    [InlineData("", "stop", ContextSummaryValidation.Empty)]
+    [InlineData("unstructured", "stop", ContextSummaryValidation.InvalidSections)]
+    public void Summary_rejections_have_content_free_categories(string text, string finish, ContextSummaryValidation expected)
+    {
+        Assert.Equal(expected, ConversationSummaryService.ValidateSummary(new(text, finish, null), "synthetic-source"));
     }
 
     [Fact]

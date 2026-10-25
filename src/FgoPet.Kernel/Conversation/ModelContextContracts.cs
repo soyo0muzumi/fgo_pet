@@ -24,12 +24,15 @@ public sealed record ModelRouteKey(string ProviderId, string EndpointKey, string
 public sealed record ModelContextLimit(ModelRouteKey Route, int WindowTokens, int? MaxOutputTokens,
     ContextLimitSource Source, string SourceRevision)
 {
+    public static ModelContextLimit CreateFallback(ModelRouteKey route) =>
+        new(route, 128 * 1024, null, ContextLimitSource.ConservativeFallback, "fallback-v2");
+
     public string DisplayText => Source switch
     {
         ContextLimitSource.Override => $"上下文上限 {WindowTokens:N0} tokens · 手工设置",
         ContextLimitSource.ProviderMetadata => $"上下文上限 {WindowTokens:N0} tokens · 服务提供方",
         ContextLimitSource.KnownModel => $"上下文上限 {WindowTokens:N0} tokens · 已知模型资料",
-        _ => $"未获取到上限，暂按 {WindowTokens:N0} tokens 保守估算",
+        _ => $"未获取到上限，暂按 {WindowTokens:N0} tokens 默认估算",
     };
 }
 

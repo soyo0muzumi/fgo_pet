@@ -40,7 +40,7 @@ public sealed class ModelContextResolver(
         catch (HttpRequestException) { }
         cancellationToken.ThrowIfCancellationRequested();
         limit ??= KnownModelContextCatalog.Find(settings)
-            ?? new ModelContextLimit(route, 8192, null, ContextLimitSource.ConservativeFallback, "fallback-v1");
+            ?? ModelContextLimit.CreateFallback(route);
         if (_cache.Count >= 64) _cache.Clear();
         _cache[route] = (limit, _clock.GetUtcNow().AddMinutes(30));
         return limit;

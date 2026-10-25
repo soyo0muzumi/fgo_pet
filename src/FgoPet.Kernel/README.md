@@ -1,5 +1,7 @@
 # Kernel
 
+Unknown model capacity defaults to 128 Ki tokens (131,072) through `ModelContextLimit.CreateFallback`. Manual settings, valid provider metadata and the known-model catalog retain precedence. Output reservations, safety headroom, provider input constraints and compaction checks still apply; the fallback is an application assumption, not a provider capability claim. Settings display and unconfigured model turns use the same default.
+
 Pure .NET foundation for current role identity, user profile and character preferences, semantic companion presentation, conversation execution, context lifetime, and process shutdown. `AppRuntime` owns the active role; `CompanionPresentation` publishes neutral expression and text state. Context lifetime and shutdown coordination own their respective lifecycle boundaries.
 
 ConversationOrchestrator owns turn admission, authoritative message persistence, capability coordination and completion. ConversationModelTurn owns one bounded model turn, stream aggregation, bounded attempts, tool downgrade and connection-change fencing. PromptComposer, input token metering, model capacity resolution, original-message recall and transactional summary planning compile here against published interfaces. Original messages remain authoritative; summaries and token anchors are rebuildable. Token anchors are process-local and invalidate on route, input, output reservation or request metadata changes.

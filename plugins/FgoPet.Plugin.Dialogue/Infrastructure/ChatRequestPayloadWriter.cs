@@ -29,10 +29,11 @@ public static class ChatRequestPayloadWriter
             payload[officialOpenAi ? "max_completion_tokens" : "max_tokens"] = output;
         if (officialOpenAi) payload["stream_options"] = new { include_usage = true };
         // This gateway advertises low/high/max rather than disabled thinking. Its default
-        // high effort exhausted the existing combined review/classification deadline.
+        // high effort can exhaust bounded auxiliary output before any summary is emitted.
         if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&
             route.ModelId == "buddy/deepseek-v4.1-flash" &&
-            request.Metadata.TryGetValue("fgo_auxiliary", out var buddyPurpose) && buddyPurpose == "understanding_review")
+            request.Metadata.TryGetValue("fgo_auxiliary", out var buddyPurpose) &&
+            buddyPurpose is "understanding_review" or "context_summary")
             payload["reasoning_effort"] = "low";
         // DeepSeek defaults to thinking, which can exhaust a bounded auxiliary response
         // before any JSON/summary content is emitted. Primary chats retain provider defaults.

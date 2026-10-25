@@ -78,7 +78,7 @@ public sealed class ModelContextResolverTests
     {
         var resolver = new ModelContextResolver(_ => new ModelsProvider(null));
         var limit = await resolver.ResolveAsync(new("openai", "https://proxy.test/v1", "gpt-4.1-mini"), default);
-        Assert.Equal(8192, limit.WindowTokens);
+        Assert.Equal(131072, limit.WindowTokens);
         Assert.Equal(ContextLimitSource.ConservativeFallback, limit.Source);
     }
 
@@ -120,7 +120,7 @@ public sealed class ModelContextResolverTests
         var limit = await resolution.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(providerToken.IsCancellationRequested);
         Assert.Equal(ContextLimitSource.ConservativeFallback, limit.Source);
-        Assert.Equal(8192, limit.WindowTokens);
+        Assert.Equal(131072, limit.WindowTokens);
         pending.SetResult([new("same", contextWindowTokens: 131072)]);
     }
 
@@ -182,7 +182,7 @@ public sealed class ModelContextResolverTests
         pending.SetResult([new("same", contextWindowTokens: 131072)]);
         var cached = await resolver.ResolveAsync(settings, default);
         Assert.Equal(ContextLimitSource.ConservativeFallback, cached.Source);
-        Assert.Equal(8192, cached.WindowTokens);
+        Assert.Equal(131072, cached.WindowTokens);
         Assert.Equal(1, calls);
         clock.Advance(TimeSpan.FromMinutes(30));
         var fresh = await resolver.ResolveAsync(settings, default);

@@ -16,8 +16,41 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed partial class NativeConversationIntegrationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Oversized_history_before_first_step_reports_context_limit_without_primary_dispatch(bool enableSummary)
+    {
+        var provider = new CapacityCatalogProvider();
+        var tool = new RecordingTool(ToolEffect.ReadOnly);
+        var summaries = new NativeSummaryRecorder(fails: true);
+        var records = new List<ContextBudgetDiagnostic>();
+        await using var host = await TestHost.CreateAsync(provider, tool, new RecordingObserver(),
+            TestSettingsStore.Create(8192), enableSummary: enableSummary, summarizer: summaries,
+            tokenMeter: new CharacterTokenMeter(), contextDiagnostics: records.Add);
+        host.SeedHistoryForCompaction();
+        var before = host.Conversations.LoadMessages("summary-conversation", RoleId).ToArray();
+
+        var result = await host.Orchestrator.SendAsync(RoleId, "Continue the synthetic task", default, new(ProjectId));
+
+        Assert.Equal(ConversationSendStatus.Failed, result.Status);
+        var run = (await host.Runs.LoadAsync(result.RunId!, default))!;
+        Assert.Equal("RUN_CONTEXT_TOO_LARGE", run.Snapshot.ErrorCode);
+        Assert.Equal(0, run.Snapshot.StepNumber);
+        Assert.Empty(provider.Requests);
+        Assert.Empty(tool.Invocations);
+        Assert.Equal(before, host.Conversations.LoadMessages(result.ConversationId, RoleId).Take(before.Length));
+        Assert.Equal(enableSummary, summaries.Requests.Count > 0);
+        if (enableSummary) Assert.Null(host.ContextStore!.Read(new(RoleId, ProjectId), result.ConversationId).Summary);
+        var rejection = Assert.Single(records.Where(record => record.Stage == ContextDiagnosticStage.Rejected));
+        Assert.Equal(ContextRejectionPoint.ConversationPreparationInputBudget, rejection.Point);
+        Assert.True(rejection.MeasuredInput > rejection.InputBudget);
+        Assert.Equal(0, rejection.Step);
+        Assert.Equal(0, rejection.ToolCount);
+    }
+
     [Fact]
-    public async Task Empty_session_full_registered_tools_records_fallback_and_exact_rejection_without_dispatch()
+    public async Task Empty_session_full_registered_tools_preserves_explicit_small_window_rejection_without_dispatch()
     {
         // Catalog construction only: never start real plugins, credentials, transports or tools.
         await using var composition = new ServiceCollection().AddFgoPet([]).BuildServiceProvider();
@@ -25,10 +58,9 @@ public sealed partial class NativeConversationIntegrationTests
         var tools = descriptors.Select(descriptor => (IToolProvider)new DescriptorOnlyTool(descriptor)).ToArray();
         var settings = new TestSettingsStore(DialogueSettings.Defaults with {
             ModelConnection = new ModelConnectionSettings("custom-openai-compatible", "http://127.0.0.1:8326/v1",
-                "buddy/deepseek-v4.1-flash", maxOutputTokens: 2048)
+                "buddy/deepseek-v4.1-flash", contextWindowOverride: 8192, maxOutputTokens: 2048)
         });
-        // Installed Buddy listModels emits id/name/modalities, without context_window.
-        // A synthetic provider supplies that absence; no local gateway or upstream is contacted.
+        // An explicit small window must still reject; no local gateway or upstream is contacted.
         var provider = new CapacityCatalogProvider();
         var records = new List<ContextBudgetDiagnostic>();
         var meter = new EmptySessionMeter();
@@ -46,10 +78,10 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.All(meter.Requests, request => Assert.DoesNotContain("OLD_SESSION_RAW_CANARY",
             ChatRequestInputEnvelope.Write("fixture", request), StringComparison.Ordinal));
         var capacity = Assert.Single(records.Where(record => record.Stage == ContextDiagnosticStage.CapacityResolved));
-        Assert.Equal(ContextLimitSource.ConservativeFallback, capacity.CapacitySource);
+        Assert.Equal(ContextLimitSource.Override, capacity.CapacitySource);
         Assert.Equal(8192, capacity.WindowTokens);
         Assert.Equal(5888, capacity.InputBudget);
-        Assert.Equal(1, provider.MetadataReads);
+        Assert.Equal(0, provider.MetadataReads);
         var rejected = Assert.Single(records.Where(record => record.Stage == ContextDiagnosticStage.Rejected));
         Assert.True(rejected.MeasuredInput > rejected.InputBudget);
         Assert.Equal(descriptors.Length + 3, rejected.ToolCount);
@@ -57,6 +89,37 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(ContextRejectionPoint.FinalStepInputBudget, rejected.Point);
         Assert.Equal("RUN_CONTEXT_TOO_LARGE", (await host.Runs.LoadAsync(result.RunId!, default))!.Snapshot.ErrorCode);
         SaveCapacityEvidence(records, descriptors.Length, meter.Requests.MaxBy(request => request.Tools?.Count ?? 0)!.Tools!);
+    }
+
+    [Fact]
+    public async Task Unknown_capacity_128k_fallback_accepts_empty_session_with_full_tools_and_no_old_raw_text()
+    {
+        await using var composition = new ServiceCollection().AddFgoPet([]).BuildServiceProvider();
+        var tools = composition.GetRequiredService<PluginCatalog>().Tools
+            .Select(tool => (IToolProvider)new DescriptorOnlyTool(tool.Descriptor)).ToArray();
+        var provider = new CapacityCatalogProvider(allowDispatch: true);
+        var settings = new TestSettingsStore(DialogueSettings.Defaults with {
+            ModelConnection = new ModelConnectionSettings("custom-openai-compatible", "http://127.0.0.1:8326/v1",
+                "buddy/deepseek-v4.1-flash", maxOutputTokens: 2048)
+        });
+        var records = new List<ContextBudgetDiagnostic>();
+        await using var host = await TestHost.CreateAsync(provider, null, new RecordingObserver(), settings,
+            extraTools: tools, questions: true, skills: true, contextDiagnostics: records.Add);
+        SeedOldSession(host);
+        host.Orchestrator.StartNewConversation(RoleId);
+
+        var result = await host.Orchestrator.SendAsync(RoleId, "你好", default);
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        var capacity = Assert.Single(records.Where(record => record.Stage == ContextDiagnosticStage.CapacityResolved));
+        Assert.Equal(ContextLimitSource.ConservativeFallback, capacity.CapacitySource);
+        Assert.Equal(131072, capacity.WindowTokens);
+        Assert.Equal(126402, capacity.InputBudget);
+        Assert.Equal(1, provider.MetadataReads);
+        Assert.Contains(provider.Requests, request => request.Tools?.Count == tools.Length + 3);
+        Assert.All(provider.Requests, request => Assert.DoesNotContain("OLD_SESSION_RAW_CANARY",
+            ChatRequestInputEnvelope.Write("fixture", request)));
+        Assert.DoesNotContain(records, record => record.Stage == ContextDiagnosticStage.Rejected);
     }
 
     [Fact]
@@ -123,7 +186,7 @@ public sealed partial class NativeConversationIntegrationTests
             => throw new InvalidOperationException("OFFLINE_TOOL_EXECUTION_FORBIDDEN");
     }
 
-    private sealed class CapacityCatalogProvider(int? window = null) : IChatProvider
+    private sealed class CapacityCatalogProvider(int? window = null, bool allowDispatch = false) : IChatProvider
     {
         private readonly ScriptedProvider script = new(ProviderTurn.Final("你好。"));
         public string ProviderId => "custom-openai-compatible";
@@ -138,7 +201,7 @@ public sealed partial class NativeConversationIntegrationTests
         public IAsyncEnumerable<ChatStreamChunk> StreamAsync(ChatRequest request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
-            if (window is not null) return script.StreamAsync(request, cancellationToken);
+            if (window is not null || allowDispatch) return script.StreamAsync(request, cancellationToken);
             throw new InvalidOperationException("OFFLINE_MODEL_DISPATCH_FORBIDDEN");
         }
     }

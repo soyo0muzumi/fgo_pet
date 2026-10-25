@@ -41,12 +41,17 @@ public sealed class ContextBudgetDiagnosticTests
         using var temp = new Temp();
         var sink = new NativeRunDiagnosticLog(Path.Combine(temp.Root, "failures.jsonl"));
         sink.RecordContext(new((ContextDiagnosticStage)999));
+        sink.RecordContext(new(ContextDiagnosticStage.CompactionSkipped) { SummaryValidation = (ContextSummaryValidation)999 });
         Assert.False(File.Exists(temp.Log));
         sink.RecordContext(new(ContextDiagnosticStage.CapacityResolved) {
-            CapacitySource = ContextLimitSource.ConservativeFallback, WindowTokens = 8192, InputBudget = -1 });
+            CapacitySource = ContextLimitSource.ConservativeFallback, WindowTokens = 8192, InputBudget = -1,
+            SummaryValidation = ContextSummaryValidation.OutputLimit, SummaryCharacters = 0, SummaryOutputTokens = 2048 });
         using var json = JsonDocument.Parse(File.ReadAllText(temp.Log));
         Assert.Equal(8192, json.RootElement.GetProperty("windowTokens").GetInt32());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("inputBudget").ValueKind);
+        Assert.Equal("OutputLimit", json.RootElement.GetProperty("summaryValidation").GetString());
+        Assert.Equal(0, json.RootElement.GetProperty("summaryCharacters").GetInt32());
+        Assert.Equal(2048, json.RootElement.GetProperty("summaryOutputTokens").GetInt32());
     }
 
     [Fact]

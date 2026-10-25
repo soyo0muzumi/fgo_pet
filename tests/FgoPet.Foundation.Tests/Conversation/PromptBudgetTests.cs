@@ -26,6 +26,21 @@ public sealed class PromptBudgetTests
         Assert.Equal(reply, primary.OutputTokens);
     }
 
+    [Fact]
+    public void Auxiliary_output_preserves_model_cap_input_constraints_and_primary_budget()
+    {
+        var limit = new ModelContextLimit(new("test", "endpoint", "model", "v1"),
+            32768, 8192, ContextLimitSource.ProviderMetadata, "fixture");
+        var primary = PromptBudget.Resolve(limit, 2048);
+        var summary = primary.WithOutputReservation(8192);
+        Assert.Equal(23920, summary.InputTokens);
+        Assert.Equal(2048, primary.OutputTokens);
+        Assert.Equal(30064, primary.InputTokens);
+        Assert.Equal(16000, primary.ConstrainInput(16000).WithOutputReservation(8192).InputTokens);
+        Assert.Throws<PromptBudgetException>(() => primary.WithOutputReservation(8193));
+        Assert.Throws<PromptBudgetException>(() => primary.WithOutputReservation(0));
+    }
+
     [Theory]
     [InlineData(32768, 4096, 656, 28016)]
     [InlineData(131072, 4096, 2622, 124354)]

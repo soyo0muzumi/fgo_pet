@@ -116,10 +116,18 @@ public sealed class ConversationCompactionServiceTests
     {
         var store = new Store();
         var service = new FgoPet.App.Dialogue.ConversationSummaryService(store, new Summarizer(mode), new RequestTokenMeter(), TimeProvider.System);
+        var diagnostics = new List<ContextBudgetDiagnostic>();
         using var lease = new DialogueContextLifetime().Acquire(default);
         Assert.False(await service.TryCompactAsync(store.Source, new Provider(), Route, Budget, 30000, Compose,
-            lease, () => { }, new CompactionCallBudget(), default));
+            lease, () => { }, new CompactionCallBudget(), default, diagnostics: diagnostics.Add));
         Assert.Null(store.Commit);
+        var rejected = Assert.Single(diagnostics.Where(d => d.Decision == ContextCompactionReason.InvalidSummary));
+        Assert.Equal(mode switch {
+            "length" => ContextSummaryValidation.OutputLimit,
+            "empty" => ContextSummaryValidation.Empty,
+            "unstructured" => ContextSummaryValidation.InvalidSections,
+            _ => ContextSummaryValidation.MissingSource
+        }, rejected.SummaryValidation);
     }
 
     private static readonly ModelRouteKey Route = new("test", "endpoint", "m", "1");

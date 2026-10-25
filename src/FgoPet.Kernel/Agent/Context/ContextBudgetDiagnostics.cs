@@ -14,7 +14,7 @@ public enum ContextSummaryValidation { None, OutputLimit, Incomplete, Empty, Too
 public enum ContextRejectionPoint
 {
     None, ProviderCount, InitialInputBudget, MandatoryBlock, DeferredBlockBytes,
-    FinalAssemblyInputBudget, NoTruncatableData, FinalStepInputBudget
+    FinalAssemblyInputBudget, NoTruncatableData, FinalStepInputBudget, ConversationPreparationInputBudget
 }
 public enum ContextCompactionReason
 {

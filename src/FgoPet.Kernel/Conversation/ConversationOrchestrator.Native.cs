@@ -186,8 +186,17 @@ public sealed partial class ConversationOrchestrator
                 var projected = Project(prompt.Messages, snapshot?.UncoveredMessages ?? rawHistory);
                 var compacted = await CompactStep(new(projected, []), budget, lease.Token);
                 lease.CheckCurrent(); CheckCurrent();
-                if (model.MeasureInputTokens(compacted) > model.Budget.InputTokens)
-                    throw new PromptBudgetException(PromptBudgetFailure.InsufficientContext);
+                var preparedInput = model.MeasureInputTokens(compacted);
+                if (preparedInput > model.Budget.InputTokens)
+                {
+                    ContextBudgetDiagnostics.Observe(contextDiagnostics, new(ContextDiagnosticStage.Rejected) {
+                        Point = ContextRejectionPoint.ConversationPreparationInputBudget,
+                        CapacitySource = model.CapacitySource, WindowTokens = model.Budget.ContextWindowTokens,
+                        InputBudget = model.Budget.InputTokens, OutputTokens = model.Budget.OutputTokens,
+                        MeasuredInput = preparedInput, Step = 0
+                    }, compacted, model.MeasureInputTokens);
+                    throw new AgentProtocolException("RUN_CONTEXT_TOO_LARGE");
+                }
                 Publish(new(ConversationUpdateType.HistorySources, scope.ConversationId, ServantId: scope.RoleId,
                     HistorySources: sources.Where(hit => prompt.Messages.Any(message => message.Text.Contains(
                         $"recalled:{hit.Anchor.ConversationId}:{hit.Anchor.MessageId}", StringComparison.Ordinal))).ToArray()));

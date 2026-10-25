@@ -143,7 +143,7 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
         if (metadata?.ContextWindowTokens is int window)
             return new(route, window, metadata.MaxOutputTokens, ContextLimitSource.ProviderMetadata, "provider-model-list");
         return KnownModelContextCatalog.Find(connection) ??
-            new ModelContextLimit(route, 8192, null, ContextLimitSource.ConservativeFallback, "fallback-v1");
+            ModelContextLimit.CreateFallback(route);
     }
 
     [ObservableProperty]
