@@ -14,7 +14,6 @@ namespace FgoPet.Windows.Tests.Settings;
 public sealed class MarginServiceSettingsWebTests
 {
     [Theory]
-    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Known_owner_feedback_is_English_and_unknown_content_remains_literal(string pageId, string prefix)
     {
@@ -66,7 +65,6 @@ public sealed class MarginServiceSettingsWebTests
     }
 
     [Theory]
-    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Service_details_disclose_options_preserve_commands_and_keep_keys_write_only(string pageId, string prefix)
     {
@@ -156,7 +154,6 @@ public sealed class MarginServiceSettingsWebTests
     }
 
     [Theory]
-    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Failed_read_keeps_retry_and_write_only_key_usable(string pageId, string prefix)
     {

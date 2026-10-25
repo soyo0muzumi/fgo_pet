@@ -62,6 +62,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
     partial void OnSelectedProviderIdChanged(string value)
     {
         _draftVersion++;
+        // A draft secret belongs to the provider for which it was entered.
+        _pendingApiKey = string.Empty;
+        IsKeySaved = false;
         var provider = Providers.FirstOrDefault(candidate => candidate.ProviderId == value);
         if (provider is null)
         {
@@ -205,7 +208,9 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        IsKeySaved = await _credentials.ExistsAsync(CredentialTarget(), cancellationToken);
+        var providerId = SelectedProviderId;
+        var saved = await _credentials.ExistsAsync($"fgo-pet/provider/{providerId}", cancellationToken);
+        if (providerId == SelectedProviderId) IsKeySaved = saved;
     }
 
     private async Task TestAsync()
@@ -256,9 +261,11 @@ public sealed partial class ModelConnectionViewModel : ObservableObject
                 _pendingApiKey = string.Empty;
                 _draftVersion++;
             }
-            else if (!IsKeySaved)
+            else
             {
-                throw new ProviderRequestException(ProviderFailureCategory.Configuration, "请先输入 API Key。");
+                await InitializeAsync();
+                if (!IsKeySaved)
+                    throw new ProviderRequestException(ProviderFailureCategory.Configuration, "请先输入 API Key。");
             }
 
             lock (_settings)

@@ -69,6 +69,7 @@
     <Content Include="Desktop\ui\settings\theme\theme.js">
       <Link>Desktop\ui\settings\root\pages\theme.js</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="Desktop\ui\settings\theme\theme.css">
       <Link>Desktop\ui\settings\root\pages\theme.css</Link>

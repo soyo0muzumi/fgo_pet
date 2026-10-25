@@ -20,6 +20,8 @@ the source. No character-pack artwork or runtime files are needed to load this i
 
 `SettingsWebRootFactory` composes a single Web surface from catalog metadata and owner-supplied `ISettingsWebPage` modules. It restricts commands to the active page, isolates mutable handlers per host, and cancels outstanding page work on navigation or closure. It is the only SettingsWindow entry.
 
+Theme and ModelConnection use the React ESM modules built from `tools/integrations/margin-settings/`. Shell packages their shared assets under the Settings root's `margin/` directory and allows only local fonts in its existing CSP. These two modules use the available content width for responsive columns; other module layouts, routing and command ownership are unchanged. Build and publish both copy the shared assets and owner entry points.
+
 ## Boundaries and remaining dependencies
 
 The host composes modules and owns cross-cutting data-management workflows, not duplicate module state or feature rules. DesktopShell still has direct project references to Character and Dialogue; those implementation references remain to be consolidated, so the full module boundary migration is not complete. DataManagement still references the Dialogue and Memory implementations for its existing privacy services and page; Memory no longer references a host assembly.

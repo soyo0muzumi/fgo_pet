@@ -18,6 +18,26 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class ModelConnectionWebPageTests
 {
     [Fact]
+    public async Task Provider_ack_reports_the_selected_providers_key_state()
+    {
+        var credentials = new FakeCredentials();
+        credentials.Values["fgo-pet/provider/openai"] = "synthetic-existing-key";
+        var page = new ModelConnectionWebPage(CreateViewModel(new FakeSettings(), credentials));
+        await Send(page, "modelConnection.get", "{\"pageId\":\"ModelConnection\"}");
+        var switched = await Send(page, "modelConnection.setDraft",
+            "{\"pageId\":\"ModelConnection\",\"field\":\"providerId\",\"value\":\"deepseek\"}");
+        Assert.True(switched.Success);
+        using var absent = JsonDocument.Parse(JsonSerializer.Serialize(switched.Payload));
+        Assert.False(absent.RootElement.GetProperty("isKeySaved").GetBoolean());
+        switched = await Send(page, "modelConnection.setDraft",
+            "{\"pageId\":\"ModelConnection\",\"field\":\"providerId\",\"value\":\"openai\"}");
+        Assert.True(switched.Success);
+        using var saved = JsonDocument.Parse(JsonSerializer.Serialize(switched.Payload));
+        Assert.True(saved.RootElement.GetProperty("isKeySaved").GetBoolean());
+        Assert.DoesNotContain("synthetic-existing-key", JsonSerializer.Serialize(switched.Payload));
+    }
+
+    [Fact]
     public async Task Get_returns_full_snapshot_and_does_not_write()
     {
         var settings = new FakeSettings();

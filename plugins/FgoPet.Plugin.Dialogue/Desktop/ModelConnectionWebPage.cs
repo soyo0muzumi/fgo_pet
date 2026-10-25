@@ -54,7 +54,7 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
             return message.Type switch
             {
                 "modelConnection.get" => await GetAsync(message.Payload, cancellationToken).ConfigureAwait(true),
-                "modelConnection.setDraft" => SetDraft(message.Payload, cancellationToken),
+                "modelConnection.setDraft" => await SetDraftAsync(message.Payload, cancellationToken).ConfigureAwait(true),
                 "modelConnection.setShowReasoning" => SetShowReasoning(message.Payload, cancellationToken),
                 "modelConnection.test" => await TestAsync(message.Payload, cancellationToken).ConfigureAwait(true),
                 "modelConnection.refreshModels" => await RefreshModelsAsync(message.Payload, cancellationToken).ConfigureAwait(true),
@@ -83,7 +83,7 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
         return Success(Snapshot());
     }
 
-    private WebSurfaceCommandResult SetDraft(JsonElement payload, CancellationToken cancellationToken)
+    private async ValueTask<WebSurfaceCommandResult> SetDraftAsync(JsonElement payload, CancellationToken cancellationToken)
     {
         if (!HasOnlyProperties(payload, "pageId", "field", "value")
             || !payload.TryGetProperty("field", out var fieldElement)
@@ -99,6 +99,7 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
                     string.Equals(candidate.ProviderId, providerId, StringComparison.Ordinal)):
                 cancellationToken.ThrowIfCancellationRequested();
                 _viewModel.SelectedProviderId = providerId;
+                await _viewModel.InitializeAsync(cancellationToken).ConfigureAwait(true);
                 break;
             case "baseUrl" when TryGetString(valueElement, out var baseUrl):
                 cancellationToken.ThrowIfCancellationRequested();

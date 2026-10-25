@@ -1,0 +1,37 @@
+{
+  "source": "tools/integrations/margin-settings",
+  "files": [
+    {
+      "path": "pages/theme.js",
+      "sha256": "0730ee91ecb49b57b225c9c1d85050a622810b98a800c272b73d49d4dcc4477b"
+    },
+    {
+      "path": "pages/model-connection.js",
+      "sha256": "a551ed41d53513577f4f1a1eda33789dca68b6d428ea381289fc325d1c613d6b"
+    },
+    {
+      "path": "margin/assets/settings-TJeN9eHX.js",
+      "sha256": "3620c1d20810cdb1a481922a4166854f1122a19a4bc7f32f944d2f2befc46ee5"
+    },
+    {
+      "path": "margin/fonts/dm-sans-latin-variable-Xz1IZZA0.woff2",
+      "sha256": "9fea608a947e67020c33cad9a6fe3d60c54119dfb8cff87768a8117a15ed7543"
+    },
+    {
+      "path": "margin/fonts/dm-serif-display-latin-C5_t9oOD.woff2",
+      "sha256": "fdf61e20fd2c0108e0ea28da4daca0035205b4b7fc031a3974b865b704de160a"
+    },
+    {
+      "path": "margin/fonts/OFL-DM-Sans.txt",
+      "sha256": "9af36190332437f5ecd09974de43c1f7c77a310a996cdd8ceb25628b458840e1"
+    },
+    {
+      "path": "margin/fonts/OFL-DM-Serif-Display.txt",
+      "sha256": "a3e5cdd67d4571dd0a24fcc968de0efde7ae97ef752daf0906e4767619dd7231"
+    },
+    {
+      "path": "margin/margin-settings.css",
+      "sha256": "7be29c8c37edeb63a720756ea84df3c8abba0c2f2bc76aea93cc4f16ca77a1e9"
+    }
+  ]
+}

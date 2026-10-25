@@ -15,6 +15,31 @@ namespace FgoPet.App.Tests.Settings;
 public sealed class ModelConnectionViewModelTests
 {
     [Fact]
+    public async Task Provider_switch_discards_unsaved_key_and_rechecks_saved_key_before_save()
+    {
+        var settings = new FakeSettings();
+        var credentials = new FakeCredentials();
+        var model = CreateViewModel(settings, credentials);
+        model.SetApiKey("synthetic-old-provider-key");
+        model.SelectedProviderId = "deepseek";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Null(settings.Saved);
+        Assert.False(credentials.Values.ContainsKey("fgo-pet/provider/deepseek"));
+
+        credentials.Values["fgo-pet/provider/openai"] = "synthetic-saved-key";
+        model.SelectedProviderId = "openai";
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Equal("openai", settings.Saved?.ModelConnection?.ProviderId);
+        Assert.True(model.IsKeySaved);
+
+        model.SelectedProviderId = "deepseek";
+        Assert.False(model.IsKeySaved);
+        await model.SaveCommand.ExecuteAsync(null);
+        Assert.Equal("openai", settings.Saved?.ModelConnection?.ProviderId);
+        Assert.NotEmpty(model.ErrorText);
+    }
+
+    [Fact]
     public void Draft_models_never_authorize_saved_chat_connection()
     {
         var model = CreateViewModel(new FakeSettings(), new FakeCredentials());

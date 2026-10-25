@@ -45,13 +45,13 @@ Role packages cannot execute code. FGO Pet validates their manifest, compatibili
 - Chat first opens beside the character. Drag the compact window's top grip to reposition it; hiding and reopening keeps that position for the current run. Character movement does not pull Chat along, and screen changes keep it within the available work area.
 - Chat uses one input card with editing above a fixed send/stop toolbar. Long drafts grow with available window space, then scroll internally; reading older messages keeps your place. Jump to bottom stays outside reply text, and empty context rows take no space. Copy remains keyboard accessible and confirms successful completion.
 - History shows conversation titles and local times, 50 conversations per page; use Load more for older conversations. Select a title to continue chatting, or confirm deletion of one conversation. Deletion is unavailable while a reply is running and preserves approved memories. Data settings provide export, backup and restore, and bulk cleanup.
-- Settings groups pages into Appearance and Roles, Capabilities, and General and Data. Capabilities contains model services, speech, and Agent connections. User Profile uses a WebView2 page backed by the existing settings service; other settings pages remain WPF. Returning to a page restores its own scroll position.
+- Settings uses a separate window with Companion, Services, App, and Privacy & Safety groups. Appearance and model connection use Margin forms with responsive layouts; connection testing and saving remain separate actions. Theme selection previews the effective colors locally; it does not recolor all windows.
 - The system tray can show the pet, open settings, or exit the application.
 - `Esc` closes the current overlay or returns one level; primary controls expose keyboard focus and visible state feedback.
 
 ### AI model
 
-Under **Settings → Capabilities → Model Services**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports.
+Under **Settings → Services → Model**, enter the provider, Base URL, model, and API key. Connection testing does not save the draft; only an explicit save activates the new configuration. API keys are stored in Windows Credential Manager, not settings files or exports. Switching providers discards an unsaved key; saved keys are never shown in the form.
 
 The following context and memory changes are on the development branch, with real-provider and native Windows acceptance still pending.
 

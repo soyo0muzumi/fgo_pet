@@ -96,6 +96,7 @@
     <Content Include="Desktop\ui\settings\model-connection\model-connection.js">
       <Link>Desktop\ui\settings\root\pages\model-connection.js</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="Desktop\ui\settings\model-connection\model-connection.css">
       <Link>Desktop\ui\settings\root\pages\model-connection.css</Link>
