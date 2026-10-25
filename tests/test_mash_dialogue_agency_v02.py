@@ -45,7 +45,7 @@ def test_continuity_does_not_bypass_review_or_prewrite_model_output():
     assert all(s["user"] and s["after_turn"] for s in e["sessions"])
     gates = " ".join(e["gating"])
     assert "不得捏造条目" in gates
-    assert "原始" in gates
+    assert "不能从隐藏历史" in gates
     assert "不得为实验直接打开访问权限" in gates
 
 
