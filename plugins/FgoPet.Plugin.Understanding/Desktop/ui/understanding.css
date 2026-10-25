@@ -11,7 +11,7 @@
 .understanding-page button { width:auto; min-height:32px; max-width:100%; padding:5px 12px; color:var(--ink-2,var(--ink)); background:transparent; border:1px solid var(--rule-2,#8886); border-radius:4px; font:12px/1.5 var(--ui,system-ui); cursor:pointer; }
 .understanding-page button:hover:not(:disabled) { border-color:var(--accent); background:var(--paper-sunk,#8881); }
 .understanding-page button:disabled { opacity:.5; cursor:default; }
-.understanding-page button:focus-visible,.understanding-page summary:focus-visible,.understanding-page textarea:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.understanding-page button:focus-visible,.understanding-page summary:focus-visible,.understanding-page textarea:focus-visible,.understanding-page input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .understanding-page .understanding-primary,.understanding-tabs [aria-pressed=true] { color:var(--accent); border-color:var(--accent); background:var(--accent-soft,#8881); }
 .understanding-page .understanding-danger { color:var(--danger,#ad493d); }
 .understanding-refresh { margin-left:auto; }
@@ -36,5 +36,20 @@
 .understanding-choice { display:flex; align-items:flex-start; gap:8px; color:var(--ink); }
 .understanding-confirm select,.understanding-confirm input[type=number] { max-width:100%; min-width:0; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2,#8886); padding:6px; border-radius:4px; }
 .understanding-editor textarea { width:100%; min-height:110px; resize:vertical; padding:10px; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2,#8886); border-radius:4px; font:13px/1.65 var(--ui,system-ui); }
+.understanding-awareness { display:grid; gap:12px; padding:18px; border:1px solid var(--rule,#8884); border-radius:7px; background:var(--paper-raised,transparent); }
+.understanding-awareness h3 { font-size:15px; font-weight:600; }
+.understanding-awareness>p { color:var(--muted); font-size:12px; }
+.understanding-awareness .understanding-awareness-recipient { color:var(--ink); }
+.understanding-awareness-option { display:flex; align-items:flex-start; gap:10px; cursor:pointer; min-width:0; }
+.understanding-awareness-option input { flex:none; width:16px; height:16px; margin:4px 0 0; accent-color:var(--accent); }
+.understanding-awareness-option>span { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
+.understanding-awareness-option strong { font-size:13px; font-weight:600; }
+.understanding-awareness-budget { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px; }
+.understanding-awareness-budget input { width:72px; max-width:100%; padding:5px 8px; border:1px solid var(--rule-2,#8886); border-radius:4px; color:var(--ink); background:var(--paper); font:13px/1.5 var(--ui,system-ui); }
+.understanding-awareness-windows { display:grid; gap:10px; padding-top:14px; border-top:1px solid var(--rule,#8884); min-width:0; }
+.understanding-awareness-windows h4 { font-size:13px; font-weight:600; }
+.understanding-awareness-choices { display:grid; gap:10px; padding:12px; border:1px solid var(--rule-2,#8886); border-radius:5px; background:var(--paper-sunk,#8881); }
+.understanding-awareness-window { display:grid; gap:5px; min-width:0; padding:8px 0; }
+.understanding-awareness-window button { justify-self:start; }
 @media(max-width:440px) { .understanding-card { padding:13px; } .understanding-intro h2 { font-size:18px; } .understanding-actions { gap:7px; } }
 @media(prefers-reduced-motion:reduce) { .understanding-page * { animation:none; transition:none; } }

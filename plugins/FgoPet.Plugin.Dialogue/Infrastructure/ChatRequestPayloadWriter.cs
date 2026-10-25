@@ -29,11 +29,11 @@ public static class ChatRequestPayloadWriter
             payload[officialOpenAi ? "max_completion_tokens" : "max_tokens"] = output;
         if (officialOpenAi) payload["stream_options"] = new { include_usage = true };
         // This gateway advertises low/high/max rather than disabled thinking. Its default
-        // high effort can exhaust bounded auxiliary output before any summary is emitted.
+        // high effort can exhaust bounded auxiliary output or deadlines before content is emitted.
         if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&
             route.ModelId == "buddy/deepseek-v4.1-flash" &&
             request.Metadata.TryGetValue("fgo_auxiliary", out var buddyPurpose) &&
-            buddyPurpose is "understanding_review" or "context_summary")
+            buddyPurpose is "understanding_review" or "context_summary" or "companion_activity")
             payload["reasoning_effort"] = "low";
         // DeepSeek defaults to thinking, which can exhaust a bounded auxiliary response
         // before any JSON/summary content is emitted. Primary chats retain provider defaults.
@@ -41,10 +41,10 @@ public static class ChatRequestPayloadWriter
         if (route.ProviderId == "deepseek" && OfficialDeepSeekEndpoints.Contains(route.EndpointKey) &&
             route.ModelId is "deepseek-flash" or "deepseek-v4-pro" &&
             request.Metadata.TryGetValue("fgo_auxiliary", out var purpose) &&
-            purpose is "history_recall" or "context_summary" or "memory_extraction" or "understanding_review")
+            purpose is "history_recall" or "context_summary" or "memory_extraction" or "understanding_review" or "companion_activity")
         {
             payload["thinking"] = new { type = "disabled" };
-            if (purpose is "history_recall" or "memory_extraction" or "understanding_review")
+            if (purpose is "history_recall" or "memory_extraction" or "understanding_review" or "companion_activity")
                 payload["response_format"] = new { type = "json_object" };
         }
         return JsonSerializer.Serialize(payload, Options);

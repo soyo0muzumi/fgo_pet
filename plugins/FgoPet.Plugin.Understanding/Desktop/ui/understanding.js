@@ -2,6 +2,14 @@
 const drafts = new Map();
 const operations = new Map();
 const domains = { user: "About you", relationship: "Your relationship", self: "Your companion", world: "The world" };
+const activityStates = new Map([
+  ["disabled", "Background thought is off."], ["waiting_for_change", "Waiting for a meaningful change in approved context."],
+  ["started", "Preparing a background thought."], ["dispatched", "A background thought is in progress."],
+  ["completed", "The latest background thought is ready to inform conversation."], ["no_change", "The last check found nothing useful to add."],
+  ["cancelled", "The last background thought stopped because its context changed."], ["timed_out", "The last background thought timed out."],
+  ["storage_unavailable", "Background thought is paused because its saved settings are unavailable."],
+  ["COMPANION_ACTIVITY_BUDGET_UNAVAILABLE", "Background thought is paused because its request allowance is unavailable or used up."]
+]);
 
 export async function mount(container, context) {
   const style = document.createElement("link");
@@ -12,6 +20,7 @@ export async function mount(container, context) {
       <p>Interpretations from your conversations. You can correct or forget them. They can be mistaken.</p></header>
     <p class="understanding-feedback" role="alert" data-error hidden></p>
     <p class="understanding-feedback" role="status" aria-live="polite" data-status>Loading understanding…</p>
+    <section class="understanding-awareness" aria-labelledby="understanding-awareness-title" data-awareness hidden></section>
     <nav class="understanding-tabs" aria-label="Understanding views">
       <button type="button" data-view="accumulated" aria-pressed="true">Saved</button>
       <button type="button" data-view="pending" aria-pressed="false">To review</button>
@@ -27,7 +36,7 @@ export async function mount(container, context) {
     </section></section>`;
   const root = container.querySelector(".understanding-page");
   const find = selector => root.querySelector(selector);
-  let snapshot, view = "accumulated", disposed = false, busy = false;
+  let snapshot, view = "accumulated", disposed = false, busy = false, awarenessDraft, windowChoices;
   const disabled = new WeakMap();
   function add(parent, tag, text, className) {
     const el = document.createElement(tag); if (text != null) el.textContent = text;
@@ -43,15 +52,19 @@ export async function mount(container, context) {
   function scopeKey() { return JSON.stringify([snapshot?.scope?.servantId, snapshot?.scope?.projectId]); }
   function draftKey(item) { return scopeKey() + ":" + item.id; }
   function entryElement(item) { return [...root.querySelectorAll("[data-entry-id]")].find(el => el.dataset.entryId === item.id); }
-  async function send(type, payload = {}, notice = "") {
+  async function send(type, payload = {}, notice = "", receive) {
     if (disposed || busy) return false;
     busy = true; root.setAttribute("aria-busy", "true"); feedback("", true);
     for (const el of root.querySelectorAll("button,input,textarea")) { disabled.set(el, el.disabled); el.disabled = true; }
     try {
       const next = await context.request(type, payload);
       if (disposed) return false;
-      if (!next?.state?.policy || typeof next.contextToken !== "string") throw new Error("invalid snapshot");
-      snapshot = next; render(); feedback(notice); return true;
+      if (receive) receive(next);
+      else {
+        if (!next?.state?.policy || typeof next.contextToken !== "string") throw new Error("invalid snapshot");
+        snapshot = next; render();
+      }
+      feedback(notice); return true;
     } catch {
       if (!disposed) {
         feedback("", false);
@@ -203,9 +216,100 @@ export async function mount(container, context) {
     limit.addEventListener("input", validate); validate();
     button(row, "取消", () => { confirm.hidden = true; });
   }
+  function renderAwareness() {
+    const card = find("[data-awareness]"), status = snapshot.awareness;
+    card.replaceChildren(); card.hidden = !status;
+    if (!status) { awarenessDraft = null; windowChoices = null; return; }
+    if (!awarenessDraft || awarenessDraft.contextToken !== status.contextToken || awarenessDraft.revision !== status.revision) {
+      awarenessDraft = { contextToken: status.contextToken, revision: status.revision, options: {
+        activityContextEnabled: status.options?.activityContextEnabled !== false,
+        applicationsEnabled: status.options?.applicationsEnabled === true,
+        backgroundEnabled: status.options?.backgroundEnabled === true,
+        dailyRequestLimit: status.options?.dailyRequestLimit ?? 6
+      } };
+      windowChoices = null;
+    }
+    const draft = awarenessDraft, available = status.available === true;
+    add(card, "h3", "Ambient awareness").id = "understanding-awareness-title";
+    add(card, "p", "Let your companion use approved context and continue a thought without a new message. These choices are separate from saved interpretations and do not enable automatic understanding review.");
+    add(card, "p", `Companion: ${snapshot.presentation?.roleName || "Current companion"}. Scope: ${snapshot.presentation?.projectName || "Current project"}.`, "understanding-caption");
+    add(card, "p", `Model recipient: ${status.modelRecipient || "No model configured"}.`, "understanding-awareness-recipient");
+    if (!available) add(card, "p", "Ambient awareness is unavailable for the current context. Refresh to check this companion and scope.", "understanding-caption");
+    else if (!status.modelApprovalCurrent) add(card, "p", "Source approval is not current for this model. Save the choices below to approve them for the displayed recipient.", "understanding-caption");
+    function choice(name, title, description) {
+      const label = add(card, "label", null, "understanding-awareness-option");
+      const input = add(label, "input"); input.type = "checkbox"; input.checked = draft.options[name]; input.disabled = !available;
+      input.dataset.awarenessOption = name;
+      const text = add(label, "span"); add(text, "strong", title); add(text, "span", description, "understanding-caption");
+      input.addEventListener("change", () => { draft.options[name] = input.checked; });
+    }
+    choice("activityContextEnabled", "Use activity context", "Use summaries of Focus, reminders, and the shared local task book. The task book is shared across companions and projects. The clock remains available independently.");
+    choice("applicationsEnabled", "Use application overview", "Application names, which app is in front, and window counts only. Window titles and content need separate window permission below.");
+    choice("backgroundEnabled", "Allow limited background thought", "Allow extra model requests using approved context when there is a useful reason to continue. These requests are additional to chat and memory extraction; they do not require a new message from you.");
+    const budget = add(card, "div", null, "understanding-awareness-budget");
+    const budgetLabel = add(budget, "label", "Model calls per rolling 24 hours"); budgetLabel.htmlFor = "understanding-awareness-limit";
+    const limit = add(budget, "input"); limit.id = budgetLabel.htmlFor; limit.type = "number"; limit.min = "1"; limit.max = "24"; limit.step = "1";
+    limit.value = String(draft.options.dailyRequestLimit); limit.disabled = !available;
+    const used = Number.isInteger(status.requestsUsed) && status.requestsUsed >= 0 ? status.requestsUsed : "unavailable";
+    add(card, "p", `Default: 6 calls; choose 1–24. Each request is limited to 4,096 input tokens and 384 output tokens. Used in the current rolling 24 hours: ${used}.`, "understanding-caption");
+    add(card, "p", "Saving approves these source and resource choices for this companion, scope and current model. A model change requires saving again. Background thought stays off unless you select it.", "understanding-caption");
+    const actions = add(card, "div", null, "understanding-actions");
+    const save = button(actions, "Save & approve awareness", () => void send("understanding.awareness.configure", {
+      contextToken: draft.contextToken, revision: draft.revision, options: { ...draft.options }
+    }, "Ambient awareness choices saved for the current model."), "understanding-primary");
+    function validateLimit() {
+      draft.options.dailyRequestLimit = limit.valueAsNumber;
+      save.disabled = !available || !Number.isInteger(draft.options.dailyRequestLimit) || draft.options.dailyRequestLimit < 1 || draft.options.dailyRequestLimit > 24;
+    }
+    limit.addEventListener("input", validateLimit); validateLimit();
+    add(card, "p", !status.options?.backgroundEnabled ? "Background thought is off." : !status.modelApprovalCurrent
+      ? "Background thought is paused until you approve the current model."
+      : activityStates.get(status.activityStatus) || "Background thought is currently unavailable. Refresh to check its state.", "understanding-caption");
+    const windows = add(card, "section", null, "understanding-awareness-windows"); add(windows, "h4", "Allowed windows");
+    add(windows, "p", "Allow a window lists open window titles only when you click it. A window you choose may then be read in the background until its title changes or it closes, this scope changes, or you clear access. You do not need to request each read. Choosing another window replaces the current permission.", "understanding-caption");
+    for (const allowed of status.windows || []) {
+      const row = add(windows, "div", null, "understanding-awareness-window");
+      add(row, "p", allowed.title || "Untitled window"); add(row, "p", allowed.application || "Unknown application", "understanding-caption");
+    }
+    if (!status.windows?.length) add(windows, "p", "No windows allowed.", "understanding-caption");
+    const windowActions = add(windows, "div", null, "understanding-actions");
+    const choose = button(windowActions, "Allow a window", () => {
+      const binding = { contextToken: status.contextToken, revision: status.revision };
+      windowChoices = null; renderAwareness();
+      void send("understanding.awareness.windows", { contextToken: binding.contextToken }, "Choose one window to allow background reading.", next => {
+        if (next?.contextToken !== binding.contextToken || !Array.isArray(next.windows) ||
+            snapshot.awareness?.contextToken !== binding.contextToken || snapshot.awareness?.revision !== binding.revision) throw new Error("stale window choices");
+        windowChoices = { ...binding, windows: next.windows }; renderAwareness();
+      });
+    });
+    choose.disabled = !available || !status.modelApprovalCurrent;
+    if (available && !status.modelApprovalCurrent) add(windows, "p", "Save the choices for this model before allowing a window.", "understanding-caption");
+    if (status.windows?.length) {
+      const clear = button(windowActions, "Clear window access", () => void send("understanding.awareness.clearWindows", {
+        contextToken: status.contextToken, revision: status.revision
+      }, "Window access cleared. Background window reading stopped."));
+      clear.disabled = !available;
+    }
+    if (windowChoices) {
+      const choices = add(windows, "div", null, "understanding-awareness-choices");
+      add(choices, "p", "Choose a window to allow background reading. Its title and visible text can be used with the model recipient shown above.");
+      if (!windowChoices.windows.length) add(choices, "p", "No eligible windows are available.");
+      const binding = windowChoices;
+      for (const candidate of binding.windows) {
+        const row = add(choices, "div", null, "understanding-awareness-window");
+        add(row, "p", candidate.title || "Untitled window"); add(row, "p", candidate.application || "Unknown application", "understanding-caption");
+        const allow = button(row, "Allow this window", () => void send("understanding.awareness.allowWindow", {
+          contextToken: binding.contextToken, revision: binding.revision, candidateToken: candidate.token
+        }, "Window allowed for background reading in the current scope."));
+        allow.disabled = !available || !status.modelApprovalCurrent;
+      }
+      button(choices, "Close window choices", () => { windowChoices = null; renderAwareness(); });
+    }
+  }
   function render() {
     const policy = snapshot.state.policy, display = snapshot.presentation || {};
     find("[data-scope]").textContent = `${display.roleName || "Current companion"} · ${display.projectName || "Current project"}`;
+    renderAwareness();
     const all = [...(snapshot.accumulated || []), ...(snapshot.pending || [])];
     const archived = item => item.review === "rejected" || item.life !== "active";
     const pending = item => !archived(item) && item.effect === "pending" && item.review === "unreviewed";

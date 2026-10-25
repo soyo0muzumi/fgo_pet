@@ -54,12 +54,19 @@ public partial class App : Application
                 ReleaseHostAsync, () => Shutdown(_exitCode), _provider.GetRequiredService<PluginRuntime>());
             var pendingRestore = _provider.GetRequiredService<PendingBackupRestoreService>();
             var restored = await pendingRestore.ApplyBeforeStartupAsync(
-                () => _provider.GetRequiredService<PrivateBackupRestoreService>(), _processLifetime.StoppingToken);
+                () =>
+                {
+                    // Fence consent before a restore can replace data or remove its pending marker.
+                    // A corrupt awareness ledger still permits this independent revocation marker.
+                    if (!_provider.GetRequiredService<Companion.CompanionAwarenessHost>().ResetAfterRestore())
+                        throw new InvalidOperationException("AMBIENT_RESTORE_PERMISSION_FENCE_UNAVAILABLE");
+                    return _provider.GetRequiredService<PrivateBackupRestoreService>();
+                }, _processLifetime.StoppingToken);
             if (restored is not null)
             {
                 var message = restored.Status switch
                 {
-                    BackupRestoreStatus.Restored => "私有备份已恢复。缺失的角色包需重新安装；Agent 连接与任务请重新核对。历史提醒不会重新启用，请按需重新创建。",
+                    BackupRestoreStatus.Restored => "私有备份已恢复。缺失的角色包需重新安装；Agent 连接与任务请重新核对。历史提醒不会重新启用，请按需重新创建。场外感知来源和后台额度许可需重新保存。",
                     BackupRestoreStatus.RolledBack => "恢复未完成，已回滚原数据。",
                     BackupRestoreStatus.RecoveryRequired => "恢复未能安全完成，已保留备份和回滚材料。应用已停止启动，请先恢复数据后再打开。",
                     _ => "备份未通过恢复校验，原数据保持不变。",

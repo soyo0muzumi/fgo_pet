@@ -24,8 +24,6 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
     ];
 
     private readonly ModelConnectionViewModel _viewModel;
-    private readonly object _initGate = new();
-    private Task? _initTask;
 
     public ModelConnectionWebPage(ModelConnectionViewModel viewModel)
     {
@@ -78,7 +76,7 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
         if (!HasOnlyProperties(payload, "pageId"))
             return Failure("SETTINGS_INVALID_INPUT");
 
-        await EnsureKeyStateAsync().ConfigureAwait(true);
+        await _viewModel.InitializeAsync(cancellationToken).ConfigureAwait(true);
         cancellationToken.ThrowIfCancellationRequested();
         return Success(Snapshot());
     }
@@ -161,7 +159,7 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
             return Failure("SETTINGS_INVALID_INPUT");
 
         cancellationToken.ThrowIfCancellationRequested();
-        await _viewModel.RefreshModelsCommand.ExecuteAsync(null).ConfigureAwait(true);
+        await _viewModel.EnsureModelsAsync(cancellationToken).ConfigureAwait(true);
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.IsNullOrEmpty(_viewModel.ErrorText))
             return new WebSurfaceCommandResult(false, new { snapshot = Snapshot() }, "SETTINGS_TEST_FAILED");
@@ -222,15 +220,6 @@ public sealed class ModelConnectionWebPage : ISettingsWebPage
         statusText = _viewModel.StatusText,
         errorText = _viewModel.ErrorText,
     };
-
-    private Task EnsureKeyStateAsync()
-    {
-        lock (_initGate)
-        {
-            _initTask ??= _viewModel.InitializeAsync(CancellationToken.None);
-            return _initTask;
-        }
-    }
 
     private static bool TryGetString(JsonElement element, out string value)
     {

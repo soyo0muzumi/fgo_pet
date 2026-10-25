@@ -56,7 +56,7 @@ public static class UnderstandingRegistration
                         buddy.AbsolutePath.TrimEnd('/') == "/v1")
                         recipient += " → Tencent CodeBuddy CN; local forwarding may write or re-encode attachments";
                     return display with { ModelRecipient = recipient, AutomaticReviewAvailable = true };
-                },p.GetRequiredService<DailyReviewBudgetAccess>(),p.GetRequiredService<UnderstandingReviewService>()));
+                },p.GetRequiredService<DailyReviewBudgetAccess>(),p.GetRequiredService<UnderstandingReviewService>(), p.GetService<ICompanionAwarenessControls>()));
         return services;
     }
 }

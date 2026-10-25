@@ -13,6 +13,39 @@ namespace FgoPet.Windows.Tests.Settings;
 /// <summary>Production page modules with synthetic bridge data; never contacts a service or reads credentials.</summary>
 public sealed class MarginServiceSettingsWebTests
 {
+    [Fact]
+    public async Task Model_list_loads_on_entry_and_open_and_provider_change_clears_key_input()
+    {
+        await StaRunner.RunAsync(async () =>
+        {
+            var owner = new FixtureOwner("ModelConnection");
+            using var host = Factory(owner).CreateView("ModelConnection");
+            var window = Window(host);
+            try
+            {
+                window.Show();
+                await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
+                var web = Assert.Single(host.Children.OfType<WebView2>());
+                await ReadyModel(web);
+                await Wait(() => Task.FromResult(owner.Calls.Contains("modelConnection.refreshModels")));
+                await Wait(async () => await Script(web, "!Array.from(document.querySelectorAll('.settings-model-picker button')).some(b=>b.disabled)") == "true");
+                var count = owner.Calls.Count(call => call == "modelConnection.refreshModels");
+                await Script(web, "document.querySelector('[aria-label=查看可用模型]').click()");
+                await Wait(() => Task.FromResult(owner.Calls.Count(call => call == "modelConnection.refreshModels") > count));
+                await Wait(async () => await Script(web, "!Array.from(document.querySelectorAll('.settings-model-picker button')).some(b=>b.disabled)") == "true");
+
+                await Script(web, "var key=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(key,'fixture-provider-a');key.dispatchEvent(new Event('input',{bubbles:true}))");
+                await ReadyModel(web);
+                await Script(web, "Array.from(document.querySelectorAll('.settings-provider-options button')).find(b=>b.textContent==='Local provider').click()");
+                await Wait(async () => await Script(web, "document.querySelector('input[type=password]').value==='' && Array.from(document.querySelectorAll('.settings-provider-options button')).some(b=>b.textContent==='Local provider'&&b.getAttribute('aria-pressed')==='true')") == "true");
+                await ReadyModel(web);
+                Assert.DoesNotContain("modelConnection.test", owner.Calls);
+                Assert.DoesNotContain("modelConnection.save", owner.Calls);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Theory]
     [InlineData("Speech", "sc")]
     public async Task Known_owner_feedback_is_English_and_unknown_content_remains_literal(string pageId, string prefix)
@@ -188,6 +221,8 @@ public sealed class MarginServiceSettingsWebTests
         { Content = host, Width = 824, Height = 740, ShowInTaskbar = false, Left = -10000, Top = -10000 };
     private static Task Ready(WebView2 web, string prefix) => Wait(async () =>
         await Text(web, $"document.querySelector('.{prefix}-page')?.dataset.state ?? ''") == "ready");
+    private static Task ReadyModel(WebView2 web) => Wait(async () => await Script(web,
+        "!!document.querySelector('.connection-page') && document.querySelector('.settings-native-entry').getAttribute('aria-busy')==='false' && !document.querySelector('.settings-primary-button').disabled") == "true");
     private static Task<string> Script(WebView2 web, string script) => web.CoreWebView2.ExecuteScriptAsync(script);
     private static async Task<string> Text(WebView2 web, string script) =>
         JsonSerializer.Deserialize<string>(await Script(web, script)) ?? "";

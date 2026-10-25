@@ -9,6 +9,21 @@ namespace FgoPet.App.Dialogue;
 public sealed class ConversationScopeAuthority(Func<ConversationViewModel> currentModel, AppRuntime runtime,
     SqliteConversationRepository conversations) : IConversationScopeAuthority
 {
+    public ToolScope? ActiveConversation
+    {
+        get
+        {
+            var role = runtime.ActiveRole?.ServantId;
+            if (role is null) return null;
+            var id = conversations.ReadState($"LastActiveConversationId:{role}");
+            if (id is null) return null;
+            var conversation = conversations.GetConversation(id, role);
+            if (conversation is not { IsArchived: false }) return null;
+            var scope = new ToolScope(id, role, conversation.ProjectId);
+            return IsActive(scope) ? scope : null;
+        }
+    }
+
     public ConversationScope? Current
     {
         get
