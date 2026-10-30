@@ -38,8 +38,12 @@ public sealed class ServiceRegistrationTests
         Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
             provider.GetRequiredService<IWorkspaceAuthorizationManager>());
         Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
-        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
+        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.expression-inbox", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
+        var expression = Assert.Single(provider.GetRequiredService<PluginCatalog>().Plugins,
+            p => p.Manifest.Id == "firstparty.expression-inbox");
+        Assert.Empty(expression.Instance.Contributions.Tools);
+        Assert.Empty(expression.Instance.Contributions.Prompts);
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         await AssertPluginActivationAsync(provider);

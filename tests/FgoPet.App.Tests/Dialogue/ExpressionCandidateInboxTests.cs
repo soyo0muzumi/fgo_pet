@@ -81,8 +81,10 @@ public sealed class ExpressionCandidateInboxTests
         Assert.Empty(inbox.ReadInbox(Source().Scope));
     }
 
-    [Fact]
-    public async Task Registered_observer_reads_only_authoritative_user_original_and_stops_with_lifecycle()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Registered_observer_reads_only_authoritative_user_original_and_stops_with_lifecycle(bool synchronousDispose)
     {
         var db = Database(); var repo = new SqliteConversationRepository(db); var inbox = new ExpressionCandidateInbox(db);
         var scope = Source().Scope; var now = DateTimeOffset.UtcNow;
@@ -100,6 +102,11 @@ public sealed class ExpressionCandidateInboxTests
         await plugin.StopAsync(default);
         repo.Append(new("u3", scope.ConversationId, scope.RoleId, ChatMessageRole.User, "不要总结", ChatMessageStatus.Completed, now, key, 4));
         plugin.Observe(new(scope, "u3", "不要总结", "a3", "", null, null, default));
+        Assert.Single(inbox.ReadInbox(scope));
+        await plugin.StartAsync(default);
+        if (synchronousDispose) plugin.Dispose(); else await plugin.DisposeAsync();
+        repo.Append(new("u4", scope.ConversationId, scope.RoleId, ChatMessageRole.User, "不要总结", ChatMessageStatus.Completed, now, key, 5));
+        plugin.Observe(new(scope, "u4", "不要总结", "a4", "", null, null, default));
         Assert.Single(inbox.ReadInbox(scope));
     }
 

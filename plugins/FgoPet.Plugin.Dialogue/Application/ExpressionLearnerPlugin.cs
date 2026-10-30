@@ -11,14 +11,15 @@ internal sealed record ExpressionCollectionDiagnostic(DateTimeOffset AtUtc, stri
 
 internal sealed class ExpressionLearnerPlugin(ExpressionCandidateInbox inbox, IConversationReader conversations,
     IConversationSourceReader sources, Action<ExpressionCollectionDiagnostic>? diagnostics = null)
-    : IFgoPetPlugin, IPostTurnObserver, IConversationContinuationProvider
+    : IFgoPetPlugin, IPostTurnObserver, IConversationContinuationProvider, IDisposable
 {
     private CancellationToken stopping;
     private bool started;
     public PluginManifest Manifest { get; } = new("firstparty.expression-inbox", "0.2.0", 1, []);
     public PluginContributions Contributions => PluginContributions.Empty with { PostTurnObservers = [this], Continuations = [this] };
     public ValueTask StartAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); stopping = token; started = true; return ValueTask.CompletedTask; }
-    public ValueTask StopAsync(CancellationToken token) { started = false; return ValueTask.CompletedTask; }
+    public void Dispose() => started = false;
+    public ValueTask StopAsync(CancellationToken token) { Dispose(); return ValueTask.CompletedTask; }
     public ValueTask DisposeAsync() => StopAsync(default);
     public ConversationContributionResult? TryHandleInput(ToolScope scope, string userMessage) => null;
     public string? GetPromptState(ToolScope scope) => null;
