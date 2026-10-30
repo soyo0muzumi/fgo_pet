@@ -61,6 +61,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
         var projected = NativeRequestPreparation?.Invoke(environment with { Tools = withTools ? environment.Tools : [] }) ?? environment;
         var request = ChatRequest.CreateAgent(_agentServantId, _agentConversationId,
             includeToolContracts ? WithToolContracts(projected.Messages, withTools ? projected.Tools : []) : projected.Messages,
+            metadata: FinalOutputMetadata(projected),
             tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
         PrepareImages(request, CancellationToken.None);
         return _tokenMeter.Measure(Route, request).InputTokens;
@@ -72,6 +73,10 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
         if (Provider is not IChatImageInputProvider images) throw new SelectedImageException("IMAGE_MODEL_UNSUPPORTED");
         images.PrepareImages(request, token);
     }
+
+    private static IReadOnlyDictionary<string, string>? FinalOutputMetadata(StepEnvironment environment) =>
+        environment.Kind == ModelStepKind.FinalOutput && environment.Tools.IsEmpty
+            ? new Dictionary<string, string> { ["fgo_final_output"] = "json_object" } : null;
 
     private static ImmutableArray<ModelMessage> WithToolContracts(ImmutableArray<ModelMessage> messages,
         ImmutableArray<ToolDescriptor> tools)
@@ -175,6 +180,7 @@ internal sealed class ConversationModelTurn : IAgentModelStep, IAgentModelInputB
                 LastRequestKind = actual.Kind;
                 var preparedRequest = ChatRequest.CreateAgent(_agentServantId, _agentConversationId,
                     WithToolContracts(actual.Messages, withTools ? actual.Tools : []),
+                    metadata: FinalOutputMetadata(actual),
                     tools: tools, toolChoice: withTools ? "auto" : null, maxOutputTokens: Budget.OutputTokens);
                 PrepareImages(preparedRequest, token);
                 return preparedRequest;

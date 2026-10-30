@@ -159,6 +159,7 @@ public sealed record PromptContext
     public IReadOnlyList<HistoryHit> RecalledHistory { get; }
     public RecallStatus RecallStatus { get; }
     public ConversationSummary? ConversationSummary { get; }
+    public ResponseIntent? ResponseIntent { get; init; }
 }
 
 public enum PromptAssemblyStatus

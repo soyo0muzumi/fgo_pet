@@ -82,6 +82,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Application/ModelConnectionRegistration.cs" />
+    <Compile Include="Application/ExpressionCandidateInbox.cs" />
+    <Compile Include="Application/ExpressionLearnerPlugin.cs" />
     <Compile Include="Application/NativeSceneToolPolicy.cs" />
     <Compile Include="Application/ChatWebRegistration.cs" />
     <Compile Include="Application/ExternalConversationRegistration.cs" />

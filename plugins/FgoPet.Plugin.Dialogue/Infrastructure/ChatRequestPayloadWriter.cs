@@ -28,6 +28,12 @@ public static class ChatRequestPayloadWriter
         if (request.MaxOutputTokens is int output)
             payload[officialOpenAi ? "max_completion_tokens" : "max_tokens"] = output;
         if (officialOpenAi) payload["stream_options"] = new { include_usage = true };
+        // Only a host-prepared Native final opts in. The exact verified local gateway
+        // must forward this field; tool steps and unrelated providers keep their wire policy.
+        if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&
+            route.ModelId == "buddy/deepseek-v4.1-flash" && request.IsAgentRequest && request.Tools is null &&
+            request.Metadata.TryGetValue("fgo_final_output", out var finalFormat) && finalFormat == "json_object")
+            payload["response_format"] = new { type = "json_object" };
         // This gateway advertises low/high/max rather than disabled thinking. Its default
         // high effort can exhaust bounded auxiliary output or deadlines before content is emitted.
         if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&

@@ -152,6 +152,7 @@ public sealed class NativeConversationRuntime : IAsyncDisposable, IDisposable
             ? "操作结果尚未确认，请先核对实际状态，不要直接重复该操作。"
             : code switch {
                 "MODEL_OUTPUT_LIMIT" => "本轮回复达到输出上限，未形成完整答复。请要求更简短的回答，或分段继续。",
+                "MODEL_NO_VISIBLE_OUTPUT" => "模型本轮未返回可见答复，未形成最终答复。请核对模型服务及本轮任务状态，避免重复已执行的操作。",
                 "RUN_BUDGET_EXCEEDED" => "本轮已达到运行预算上限，尚未完成。请缩小本次请求的范围或分段继续。",
                 "RUN_STORE_FAILED" => "本地任务状态未能可靠保存。请先核对实际状态，不要直接重复可能已执行的操作。",
                 _ => "本次任务未完成。请保留错误代码并核对模型连接与服务状态，再决定是否重试。" };

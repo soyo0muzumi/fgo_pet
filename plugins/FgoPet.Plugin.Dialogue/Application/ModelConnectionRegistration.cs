@@ -21,6 +21,14 @@ public static class ModelConnectionRegistration
     {
         if (diagnosticLogPath is not null) services.AddSingleton(new NativeRunDiagnosticLog(diagnosticLogPath));
         return services
+        .AddSingleton<ExpressionCandidateInbox>()
+        .AddSingleton<IDerivedConversationData>(provider => provider.GetRequiredService<ExpressionCandidateInbox>())
+        .AddSingleton<IFgoPetPlugin>(provider => new ExpressionLearnerPlugin(
+            provider.GetRequiredService<ExpressionCandidateInbox>(), provider.GetRequiredService<IConversationReader>(),
+            provider.GetRequiredService<IConversationSourceReader>(), diagnostic =>
+                provider.GetRequiredService<ILogger<ExpressionLearnerPlugin>>().LogInformation(
+                    "Expression inbox {Timestamp} {Correlation} {Stage} {Result}", diagnostic.AtUtc, diagnostic.Correlation,
+                    diagnostic.Stage, diagnostic.Result)))
         .AddSingleton<SelectedImageStore>(provider => new(
             scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope),
             provider.GetRequiredService<TimeProvider>(),
@@ -47,7 +55,8 @@ public static class ModelConnectionRegistration
         .AddSingleton<IModelContextResolver>(provider => new ModelContextResolver(
             connection => provider.GetRequiredService<ChatProviderFactory>().Create(connection),
             provider.GetRequiredService<TimeProvider>()))
-        .AddSingleton<PromptComposer>()
+        .AddSingleton(provider => CreateTrialPromptComposer(provider,
+            Environment.GetEnvironmentVariable("FGO_PET_EXPRESSION_TRIAL")))
         .AddSingleton(provider => new DialogueContextLifetime(provider.GetRequiredService<IProcessLifetime>().StoppingToken))
         .AddSingleton<IDialogueContextLifetime>(provider => provider.GetRequiredService<DialogueContextLifetime>())
         .AddSingleton<SqliteConversationRepository>()
@@ -130,6 +139,18 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
             provider.GetRequiredService<IConversationHistoryQuery>(), provider.GetRequiredService<TimeProvider>()));
+    }
+
+    // Session-only experimental opt-in. Ordinary launches and unknown values remain off;
+    // the composer independently restricts Expression to the canonical Mash package.
+    internal static PromptComposer CreateTrialPromptComposer(IServiceProvider provider, string? trial)
+    {
+        var mode = string.Equals(trial?.Trim(), "full", StringComparison.OrdinalIgnoreCase)
+            ? ExpressionMode.Full : ExpressionMode.Off;
+        provider.GetRequiredService<ILogger<PromptComposer>>().LogInformation(
+            "Expression {Timestamp} {Stage} {Result}", DateTimeOffset.UtcNow, "session_configuration", mode);
+        return new PromptComposer(provider.GetRequiredService<IRequestTokenMeter>(),
+            provider.GetRequiredService<ApprovedKnowledgeQuery>(), mode);
     }
 
     public static IServiceCollection AddModelConnectionSettings(this IServiceCollection services)

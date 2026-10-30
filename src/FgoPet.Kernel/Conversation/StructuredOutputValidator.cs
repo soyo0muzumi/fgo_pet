@@ -19,9 +19,10 @@ public static class StructuredOutputValidator
 {
     public const string InvalidResponseMessage = "无法解析模型回复，请重试。";
     public const string FinalStepInstructions = """
-        Return only this JSON:
-        {"text":"<reply>","emotion":"neutral"}
-        text: nonempty, JSON-escaped (quotes/lists inside). emotion: neutral|happy|excited|shy|concerned|sad|surprised|angry.
+        Return exactly one complete JSON object: {"text":"reply","emotion":"neutral"}.
+        Style/no internal labels apply INSIDE text; never omit JSON.
+        text: nonempty; escape quotes/newlines. ASCII commas. No prose/fences outside JSON.
+        emotion: neutral|happy|excited|shy|concerned|sad|surprised|angry.
         """;
     private const int MaxTextLength = 12_000;
     private const int MaxFactLength = 2_000;

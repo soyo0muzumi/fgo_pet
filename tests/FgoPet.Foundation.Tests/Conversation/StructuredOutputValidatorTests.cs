@@ -37,6 +37,24 @@ public sealed class StructuredOutputValidatorTests
     }
 
     [Theory]
+    [InlineData("普通正文，没有最终 JSON。")]
+    [InlineData("{\"text\":\"正文\"}\n\"emotion\":\"neutral\"}")]
+    [InlineData("{\"text\":\"正文\"，\"emotion\":\"neutral\"}")]
+    public void Final_step_rejects_replay_failure_shapes_without_repair_or_prose_fallback(string raw)
+        => Assert.ThrowsAny<JsonException>(() => StructuredOutputValidator.ValidateFinalEnvelope(raw,
+            ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), null));
+
+    [Fact]
+    public void Final_step_preserves_escaped_quotes_and_paragraphs_in_one_complete_envelope()
+    {
+        const string text = "她说：\"你好\"。\n\nA, B 与 {例子} 都是正文。";
+        var raw = JsonSerializer.Serialize(new { text, emotion = "neutral" });
+        var output = StructuredOutputValidator.ValidateFinalEnvelope(raw,
+            ExpressionSemanticKeys.Core.ToHashSet(StringComparer.Ordinal), null);
+        Assert.Equal(text, output.Text);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

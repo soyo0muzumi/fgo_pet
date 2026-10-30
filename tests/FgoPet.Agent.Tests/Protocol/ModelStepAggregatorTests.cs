@@ -7,6 +7,29 @@ namespace FgoPet.Agent.Tests.Protocol;
 public sealed class ModelStepAggregatorTests
 {
     [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "")]
+    [InlineData(true, " \n\t")]
+    public void Completed_stop_without_visible_output_has_a_specific_failure_even_when_reasoning_exists(bool reasoning, string text)
+    {
+        var stream = new ModelStepAggregator(new ModelToolNameMap([]));
+        if (reasoning) stream.Add(new("", ReasoningDelta: "SYNTHETIC_PRIVATE_REASONING"));
+        stream.Add(new(text, true, "stop"));
+        Assert.Equal("MODEL_NO_VISIBLE_OUTPUT", Assert.Throws<AgentProtocolException>(() => stream.Complete()).Code);
+    }
+
+    [Theory]
+    [InlineData(false, "stop", "MODEL_INCOMPLETE_RESPONSE")]
+    [InlineData(true, "length", "MODEL_OUTPUT_LIMIT")]
+    [InlineData(true, null, "MODEL_INVALID_FINAL")]
+    public void Empty_output_classification_preserves_transport_and_limit_failures(bool complete, string? finish, string code)
+    {
+        var stream = new ModelStepAggregator(new ModelToolNameMap([]));
+        stream.Add(new("", complete, finish));
+        Assert.Equal(code, Assert.Throws<AgentProtocolException>(() => stream.Complete()).Code);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Output_limit_has_specific_failure_even_with_partial_tool_identity(bool partialTool)

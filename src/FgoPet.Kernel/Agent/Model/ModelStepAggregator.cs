@@ -51,6 +51,8 @@ public sealed class ModelStepAggregator(ModelToolNameMap names)
         // A provider's output limit can cut either text or a tool identity/arguments.
         // Reject the entire step before materializing calls; never replay or publish it.
         if (_complete && _finishReason == "length") throw new AgentProtocolException("MODEL_OUTPUT_LIMIT");
+        if (_complete && _finishReason == "stop" && _calls.Count == 0 && string.IsNullOrWhiteSpace(_text.ToString()))
+            throw new AgentProtocolException("MODEL_NO_VISIBLE_OUTPUT");
         var calls = ImmutableArray.CreateBuilder<ModelToolCall>(_calls.Count);
         foreach (var (index, call) in _calls)
         {
