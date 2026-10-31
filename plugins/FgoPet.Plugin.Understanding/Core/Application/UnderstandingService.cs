@@ -17,6 +17,17 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
     private readonly Dictionary<string, UnderstandingEntry> _previews = new(StringComparer.Ordinal);
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private bool _schemaReady;
+    /// <summary>Host-only research fence; does not create candidates or grant any additional processing rights.</summary>
+    public bool TryCommitMaterialResearch(ConversationScope scope, Func<bool> action)
+    {
+        lock (_gate)
+        {
+            var policy = State(scope).Policy;
+            if (!policy.Enabled || policy.Mode == UnderstandingMode.Off || !policy.ReadSources || !policy.ExternalProcessing
+                || !policy.SaveCandidates || !policy.UseInDialogue) return false;
+            return action();
+        }
+    }
     private void PrunePreviews()
     {
         foreach (var key in _previews.Where(p => p.Value.ObservedAt.AddMinutes(10) <= _clock.GetUtcNow()).Select(p => p.Key).ToArray()) _previews.Remove(key);
