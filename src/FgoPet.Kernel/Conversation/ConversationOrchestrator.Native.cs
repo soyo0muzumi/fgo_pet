@@ -269,6 +269,8 @@ public sealed partial class ConversationOrchestrator
         : IAgentModelStep, IAgentModelInputBudget, IAgentRunPreparation
     {
         private bool _controlRepairUsed;
+        // Full-mode Expression hint prefix; LegacyV0 is not registered in production.
+        private const string ExpressionHintPrefix = "Expression Layer v0.2";
         public ImmutableArray<ModelMessage> HistoricalMessages => history;
         public bool RetainsToolHistory => true;
         public string FinalOutputInstructions => StructuredOutputValidator.FinalStepInstructions;
@@ -342,6 +344,9 @@ public sealed partial class ConversationOrchestrator
                     && index + 1 < environment.Messages.Length && environment.Messages[index + 1] is
                         { Role: ModelMessageRole.Tool } result && result.ToolCallId == call.CallId)
                 { index++; continue; }
+                // Expression realizes the answer and must not compete with tool selection.
+                if (kind == ModelStepKind.Tools && message.Role == ModelMessageRole.System
+                    && message.Content.StartsWith(ExpressionHintPrefix, StringComparison.Ordinal)) continue;
                 if (message.Role != ModelMessageRole.System || message.Content != StructuredOutputValidator.FinalStepInstructions
                     && message.Content != NativeFinalization.Instructions) messages.Add(message);
             }
