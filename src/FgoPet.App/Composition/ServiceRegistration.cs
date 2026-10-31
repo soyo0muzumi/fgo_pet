@@ -93,6 +93,7 @@ public static class ServiceRegistration
                 scope.ProjectId is null ? "Across this companion's conversations" :
                     context.ProjectId == scope.ProjectId && !string.IsNullOrWhiteSpace(context.ProjectLabel) ? context.ProjectLabel : "Current project");
         })
+        .AddTopicMaterialResearch()
         .AddReminderCapability()
         .AddSingleton(TimeProvider.System)
         .AddLogging(builder => builder.AddDebug())
