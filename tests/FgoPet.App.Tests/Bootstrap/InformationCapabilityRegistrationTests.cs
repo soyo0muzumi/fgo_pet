@@ -36,7 +36,7 @@ public sealed class InformationCapabilityRegistrationTests
             new(new("fixture-conversation", "fixture-role", null), JsonSerializer.SerializeToElement(new { query = "fixture" })), default);
 
         Assert.False(result.Success);
-        Assert.Equal("WEB_SEARCH_NOT_ENABLED", result.ErrorCode);
+        Assert.Equal("WEB_SEARCH_NOT_CONFIGURED", result.ErrorCode);
         Assert.Equal(0, credentials.Reads);
         Assert.False(Directory.Exists(directory));
     }
