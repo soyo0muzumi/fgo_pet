@@ -8,6 +8,7 @@ public sealed class CompactionCallBudget(FgoPet.Kernel.Agent.IModelRequestBudget
 {
     public FgoPet.Kernel.Agent.IModelRequestBudget? ModelBudget { get; } = modelBudget;
     public int CallsUsed { get; private set; }
+    internal Action? RequestStarting { get; init; }
     public bool TryConsume() { if (CallsUsed >= Math.Clamp(maxCalls, 0, 3)) return false; CallsUsed++; return true; }
 }
 
@@ -86,6 +87,7 @@ public sealed partial class ConversationSummaryService(IConversationContextStore
                 if (!calls.TryConsume()) return Skip(ContextCompactionReason.AuxiliaryCallLimit);
                 lease.CheckCurrent();
                 revalidate();
+                calls.RequestStarting?.Invoke();
                 var attempt = calls.ModelBudget is { } shared
                     ? await summarizer.SummarizeAsync(provider, request, shared, cancellationToken).ConfigureAwait(false)
                     : await summarizer.SummarizeAsync(provider, request, cancellationToken).ConfigureAwait(false);

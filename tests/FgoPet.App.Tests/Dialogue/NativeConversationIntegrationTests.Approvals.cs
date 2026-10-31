@@ -15,6 +15,8 @@ public sealed partial class NativeConversationIntegrationTests
     [InlineData("reminder.create", "reminders")]
     [InlineData("reminder.cancel", "reminders")]
     [InlineData("focus.resume", "firstparty.focus")]
+    [InlineData("browser.click", "browser")]
+    [InlineData("browser.fill", "browser")]
     public Task Native_approval_card_displays_frozen_owner_data_and_only_native_allow_executes_once(string toolName, string pluginId) => RunInputChatTest(async () =>
     {
         var tool = new ApprovalFixtureTool(toolName, pluginId);
@@ -29,10 +31,10 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(toolName, card.GetProperty("toolName").GetString());
         var details = card.GetProperty("plainTextDetails").GetString()!;
         Assert.Contains("synthetic-id", details); Assert.Contains("17", details);
-        if (pluginId == "reminders") Assert.Contains(ApprovalFixtureTool.Summary, details);
+        if (pluginId is "reminders" or "browser") Assert.Contains(ApprovalFixtureTool.Summary, details);
         Assert.False(string.IsNullOrWhiteSpace(card.GetProperty("actionTitle").GetString()));
         var summary = card.GetProperty("plainTextSummary").GetString()!;
-        if (pluginId == "reminders") Assert.Equal(ApprovalFixtureTool.Summary, summary);
+        if (pluginId is "reminders" or "browser") Assert.Equal(ApprovalFixtureTool.Summary, summary);
         else { Assert.Contains("synthetic-id", summary); Assert.Contains("17", summary); Assert.Contains("remaining time", summary); }
         Assert.Equal(0, tool.Invocations); Assert.False(model.CanSend);
         var review = InputCommand(session, "chat.approval.review", card);

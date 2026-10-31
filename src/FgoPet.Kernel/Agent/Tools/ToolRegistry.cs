@@ -8,7 +8,35 @@ public sealed class ToolRegistry(PluginCatalog catalog, PluginRuntime runtime)
 {
     public ImmutableArray<ToolDescriptor> GetTools(ToolScope scope)
         => IsValidScope(scope) ? catalog.Tools.Where(tool => runtime.IsActive(tool.PluginId))
-            .Select(tool => tool.Descriptor).ToImmutableArray() : [];
+            .Select(DescribeCurrentAvailability).ToImmutableArray() : [];
+
+    private static ToolDescriptor DescribeCurrentAvailability(RegisteredTool tool)
+    {
+        var descriptor = tool.Descriptor;
+        if (tool.Provider is not IToolAvailabilityProvider provider) return descriptor;
+        ToolAvailability availability;
+        try { availability = provider.GetAvailability(); }
+        catch (Exception) { availability = new(false, "TOOL_STATUS_UNAVAILABLE"); }
+        if (availability is { IsAvailable: true }) return descriptor;
+
+        // Providers may fail while loading local state. Never expose their exceptions, paths,
+        // configuration values, or arbitrary text through a model-visible description.
+        var code = availability?.ErrorCode;
+        if (string.IsNullOrEmpty(code) || code.Length > 64
+            || code.Any(character => character is not (>= 'A' and <= 'Z' or >= '0' and <= '9' or '_')))
+            code = "TOOL_NOT_READY";
+        var recovery = code switch
+        {
+            "BROWSER_VISUAL_NOT_ENABLED" => "Browser image reading needs its separate permission in the Chat permission controls.",
+            "DOCUMENT_PARSER_UNAVAILABLE" or "WEB_SEARCH_RUNTIME_MISSING" or "BROWSER_DEPENDENCY_MISSING"
+                => "A required application component is missing; explain that the app package needs repair or replacement.",
+            _ => "Explain the reported state and direct the user to this capability's settings or permissions.",
+        };
+        var prefix = $"Currently unavailable ({code}). {recovery} Do not call or retry until the setup changes. ";
+        var description = descriptor.Description;
+        if (prefix.Length + description.Length > 2048) description = description[..(2048 - prefix.Length)];
+        return new(descriptor.Name, prefix + description, descriptor.Parameters.GetRawText(), descriptor.Effect);
+    }
 
     public bool TryResolve(string name, ToolScope scope, out RegisteredTool tool)
     {

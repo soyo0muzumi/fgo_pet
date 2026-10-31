@@ -162,7 +162,9 @@ public sealed partial class NativeConversationIntegrationTests
             ProviderTurn.Final("answer after clarification"));
         var observer = new RecordingObserver();
         var diagnostics = new P2DeliveryDiagnostics();
-        await using var host = await TestHost.CreateAsync(provider, null, observer, questions: true, deliveryDecorator: diagnostics.Decorate);
+        // Metadata provenance needs room for the full question/result envelope, not an incidental 8K boundary.
+        await using var host = await TestHost.CreateAsync(provider, null, observer, settings: TestSettingsStore.Create(32768),
+            questions: true, deliveryDecorator: diagnostics.Decorate);
         var waiting = await host.Orchestrator.SendAsync(RoleId, "Ask for a title.", default, new(ProjectId));
         Assert.Equal(ConversationSendStatus.WaitingUserInput, waiting.Status);
         var scope = new ToolScope(waiting.ConversationId, RoleId, ProjectId);

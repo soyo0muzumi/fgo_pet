@@ -46,8 +46,7 @@ public sealed partial class ConversationSummaryService
             ModelProtocol.ValidateTranscript(messages);
             var before = measure(messages);
             observedInput = before;
-            var beforeBytes = NativeSize(messages);
-            if (before < CompactionPlanner.TriggerTokens(budget) && beforeBytes <= NativeCompactionBytes)
+            if (!NeedsNativeCompaction(messages, budget, before))
                 return Keep(ContextCompactionReason.NotTriggered);
             Observe(ContextDiagnosticStage.CompactionStarted, before >= CompactionPlanner.TriggerTokens(budget)
                 ? ContextCompactionReason.TokenThreshold : ContextCompactionReason.ByteThreshold);
@@ -106,6 +105,7 @@ public sealed partial class ConversationSummaryService
                 if (request is null) return Keep(ContextCompactionReason.BatchInputLimit);
                 if (!calls.TryConsume()) return Keep(ContextCompactionReason.AuxiliaryCallLimit);
                 token.ThrowIfCancellationRequested();
+                calls.RequestStarting?.Invoke();
                 var attempt = calls.ModelBudget is { } shared
                     ? await summarizer.SummarizeAsync(provider, request, shared, token).ConfigureAwait(false)
                     : await summarizer.SummarizeAsync(provider, request, token).ConfigureAwait(false);
@@ -207,6 +207,8 @@ public sealed partial class ConversationSummaryService
         return data;
     }
 
+    internal static bool NeedsNativeCompaction(ImmutableArray<ModelMessage> messages, PromptBudget budget, int inputTokens) =>
+        inputTokens >= CompactionPlanner.TriggerTokens(budget) || NativeSize(messages) > NativeCompactionBytes;
     private static int NativeSize(ImmutableArray<ModelMessage> messages) => JsonSerializer.SerializeToUtf8Bytes(messages).Length;
     private static bool IsNativeSummary(ModelMessage message) =>
         message.Content.StartsWith("<data source=\"run_context_summary\">", StringComparison.Ordinal);

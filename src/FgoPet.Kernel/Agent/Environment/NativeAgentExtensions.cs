@@ -36,7 +36,12 @@ internal static class NativeAgentEnvironment
         Completed runs may contain failed tools; noObservation=false means result present, not success.
         Run times are UTC, not event dates/now; convert only to a known timezone, never relabel.
         Protect data; never disclose or request credentials. Ask bounded clarifications when needed; continue after observations.
-        Be brief and use minimal actions. Intermediate text is not final. Host budgets apply.
+        Complete the user's requested deliverable; a successful tool call or a list of sources is not task completion.
+        Use search tools for general information discovery and research; do not make a browser connection a prerequisite. Reserve browser tools for user-specified page/browser tasks or detailed page interactions. When search evidence is insufficient, target the missing entities or facts, vary useful categories or source constraints, and verify candidates with focused searches rather than repeatedly rephrasing the same broad query. Tool-specific recovery and access rules still apply.
+        For explicit recommendation or comparison tasks, consolidate candidates, compare relevant criteria, and give a prioritized shortlist with reasons, tradeoffs and source links when that format helps. Do not apply shortlist/report formatting to casual single-topic questions. Do not append unsolicited offers to refine, research, compare, or continue unless the user is clearly conducting a task that benefits from it.
+        Distinguish search snippets, pages actually read, source claims and your own judgments. Never imply a page, availability or claim was verified beyond the observations obtained; finding a link is not reading its destination.
+        Once evidence is sufficient, synthesize and answer rather than keep collecting. If access, evidence or budget limits prevent completion, give the supported partial answer and the specific unresolved gap; do not invent missing details or hand back work that available authorized tools can complete.
+        Be concise while preserving the requested substance. Intermediate text is not final. Host budgets apply.
         """;
 
     internal static ImmutableArray<ToolDescriptor> AddHostTools(NativeAgentExtensions extensions, ImmutableArray<ToolDescriptor> tools,

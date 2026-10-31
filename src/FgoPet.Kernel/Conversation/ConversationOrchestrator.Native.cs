@@ -101,9 +101,13 @@ public sealed partial class ConversationOrchestrator
         preparationLease.CheckCurrent(); CheckCurrent();
         var historicalMessages = NativeConversationHistory.Project(rawHistory, historicalRuns);
         var toolSources = NativeConversationHistory.DescribeTools(historicalRuns);
+        Func<StepEnvironment, CompactionCallBudget, CancellationToken, Task<StepEnvironment>>? compactPreparedHistory = null;
 
         CompactionCallBudget SummaryCalls(IModelRequestBudget budget) => new(budget,
-            budget is AgentRunState state ? Math.Clamp(state.Snapshot.Budget.MaxModelRequests - state.Snapshot.ModelRequests - 1, 0, 3) : 3);
+            budget is AgentRunState state ? Math.Clamp(state.Snapshot.Budget.MaxModelRequests - state.Snapshot.ModelRequests - 1, 0, 3) : 3) {
+                RequestStarting = () => Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
+                    RequestStage: ConversationRequestStage.Compacting))
+            };
 
         async ValueTask<StepEnvironment> CompactStep(StepEnvironment step, IModelRequestBudget budget, CancellationToken cancellation)
         {
@@ -118,12 +122,18 @@ public sealed partial class ConversationOrchestrator
             };
             ContextBudgetDiagnostics.Observe(contextDiagnostics, diagnostic, step, model.MeasureInputTokens);
             if (_summaries is null) return step;
+            var calls = SummaryCalls(budget);
+            // Only the first complete envelope still consists entirely of prepared history
+            // and the live user. Later steps also contain current-run tool observations.
+            if (number == 1 && compactPreparedHistory is { } compactHistory)
+            {
+                compactPreparedHistory = null;
+                if (ConversationSummaryService.NeedsNativeCompaction(step.Messages, model.Budget, model.MeasureInputTokens(step)))
+                    step = await compactHistory(step, calls, cancellation);
+            }
             int Measure(ImmutableArray<ModelMessage> messages) => model.MeasureInputTokens(step with { Messages = messages });
-            if (Measure(step.Messages) >= CompactionPlanner.TriggerTokens(model.Budget))
-                Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
-                    RequestStage: ConversationRequestStage.Compacting));
             var compacted = await _summaries.TryCompactNativeAsync(step.Messages, model.Provider, model.Route, model.Budget,
-                Measure, scope.RoleId, scope.ConversationId, SummaryCalls(budget), cancellation, contextDiagnostics);
+                Measure, scope.RoleId, scope.ConversationId, calls, cancellation, contextDiagnostics);
             CheckCurrent(); model.EnsureCurrent(cancellation);
             var result = step with { Messages = compacted };
             ConversationContextDiagnostics.Record(_logger, identity.RunId, number, "after_compact", result, model.MeasureInputTokens);
@@ -135,7 +145,11 @@ public sealed partial class ConversationOrchestrator
         {
             cancellation.ThrowIfCancellationRequested();
             var model = preparedTurn;
-            model.NativeRequestPreparation = PreparedModel.PrepareRequest;
+            var allowMaterial = ConversationMaterialPolicy.Allows(new PromptContext(binding.Context,
+                binding.Persona ?? FallbackPersona(binding.Context), binding.Knowledge, [], string.Empty,
+                rawHistory.Where(message => message.Role == ChatMessageRole.User && message.Status == ChatMessageStatus.Completed)
+                    .TakeLast(2).Select(message => new PromptMessage(ChatMessageRole.User, message.Text)).ToArray(), user.Text, context));
+            model.NativeRequestPreparation = environment => PreparedModel.PrepareRequest(environment, allowMaterial);
             return ValueTask.FromResult<IAgentModelStep>(new PreparedModel(model, async (budget, prepareToken) =>
             {
                 using var lease = _lifetime.Acquire(prepareToken);
@@ -154,20 +168,24 @@ public sealed partial class ConversationOrchestrator
                         .Append(new(ModelMessageRole.User, prompt[^1].Text, [])).ToImmutableArray();
                 }
                 ComposedPrompt Compose(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages)
+                    => ComposeIn(summary, messages, lease, projected => new(
+                        projected.Insert(0, new(ModelMessageRole.System, NativeAgentEnvironment.CorePrompt, [])),
+                        _nativeRuntime!.GetPreparationTools(scope)));
+                ComposedPrompt ComposeIn(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages,
+                    DialogueContextLifetime.Lease currentLease, Func<ImmutableArray<ModelMessage>, StepEnvironment> assemble)
                 {
-                    lease.CheckCurrent(); CheckCurrent(); model.EnsureCurrent(lease.Token);
+                    currentLease.CheckCurrent(); CheckCurrent(); model.EnsureCurrent(currentLease.Token);
                     var currentSources = sources.Where(hit => _conversations.IsCurrentSource(semanticScope, hit)).ToArray();
                     return _composer.ComposeNative(new PromptContext(binding.Context, persona, binding.Knowledge,
-                        [], string.Empty, [], user.Text, context,
+                        [], string.Empty, messages.Where(message => message.Role == ChatMessageRole.User
+                            && message.Status == ChatMessageStatus.Completed && message.MessageId != user.MessageId)
+                            .TakeLast(2).Select(message => new PromptMessage(ChatMessageRole.User, message.Text)).ToArray(), user.Text, context,
                         null, currentSources, currentSources.Length == sources.Length ? recalled.Status : RecallStatus.Unavailable, summary),
                         model.Route, model.Budget, value =>
                         {
-                            var projected = Project(value, messages);
-                            // These mandatory rules are inserted by the runtime after preparation.
-                            // Reserve them while selecting optional background, without duplicating them in history.
-                            var measured = projected.Insert(0, new(ModelMessageRole.System, NativeAgentEnvironment.CorePrompt, []));
-                            var input = model.MeasureInputTokens(new(measured, _nativeRuntime!.GetPreparationTools(scope)));
-                            var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { model.Route, Messages = measured })));
+                            var envelope = assemble(Project(value, messages));
+                            var input = model.MeasureInputTokens(envelope);
+                            var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { model.Route, envelope.Messages })));
                             return new(input, TokenCountKind.Estimated, fingerprint);
                         });
                 }
@@ -175,8 +193,6 @@ public sealed partial class ConversationOrchestrator
                 var prompt = Compose(snapshot?.Summary, snapshot?.UncoveredMessages ?? _conversations.LoadMessages(scope.ConversationId, scope.RoleId));
                 if (_summaries is not null && snapshot is not null && prompt.Usage.InputTokens >= CompactionPlanner.TriggerTokens(model.Budget))
                 {
-                    Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
-                        RequestStage: ConversationRequestStage.Compacting));
                     await _summaries.TryCompactAsync(snapshot, model.Provider, model.Route, model.Budget,
                         prompt.Usage.InputTokens, Compose, lease, () => { CheckCurrent(); model.EnsureCurrent(lease.Token); },
                         SummaryCalls(budget), lease.Token, toolSources, contextDiagnostics);
@@ -186,6 +202,30 @@ public sealed partial class ConversationOrchestrator
                 var projected = Project(prompt.Messages, snapshot?.UncoveredMessages ?? rawHistory);
                 var compacted = await CompactStep(new(projected, []), budget, lease.Token);
                 lease.CheckCurrent(); CheckCurrent();
+                if (_summaries is not null && _contextStore is not null)
+                {
+                    // Fresh memory, skills and the actual tools are only available at step 1.
+                    // Re-measure candidates in that exact envelope and commit eligible history
+                    // before falling back to a temporary run projection. Never store fresh context.
+                    compactPreparedHistory = async (step, calls, cancellation) =>
+                    {
+                        using var historyLease = _lifetime.Acquire(cancellation);
+                        historyLease.CheckCurrent(); CheckCurrent(); model.EnsureCurrent(historyLease.Token);
+                        var current = _contextStore.Read(semanticScope, scope.ConversationId);
+                        ComposedPrompt ComposeFull(ConversationSummary? summary, IReadOnlyList<ChatMessage> messages) =>
+                            ComposeIn(summary, messages, historyLease,
+                                candidate => ReplacePreparedProjection(step, compacted.Messages, candidate));
+                        var committed = await _summaries.TryCompactAsync(current, model.Provider, model.Route, model.Budget,
+                            model.MeasureInputTokens(step), ComposeFull, historyLease,
+                            () => { CheckCurrent(); model.EnsureCurrent(historyLease.Token); }, calls, historyLease.Token,
+                            toolSources, contextDiagnostics);
+                        historyLease.CheckCurrent(); CheckCurrent();
+                        if (!committed) return step;
+                        current = _contextStore.Read(semanticScope, scope.ConversationId);
+                        var revised = ComposeFull(current.Summary, current.UncoveredMessages);
+                        return ReplacePreparedProjection(step, compacted.Messages, Project(revised.Messages, current.UncoveredMessages));
+                    };
+                }
                 var preparedInput = model.MeasureInputTokens(compacted);
                 if (preparedInput > model.Budget.InputTokens)
                 {
@@ -261,6 +301,30 @@ public sealed partial class ConversationOrchestrator
         return result;
     }
 
+    private static StepEnvironment ReplacePreparedProjection(StepEnvironment step,
+        ImmutableArray<ModelMessage> previous, ImmutableArray<ModelMessage> replacement)
+    {
+        // Match host-owned message instances, never source labels supplied by a model/tool.
+        var owned = previous.ToHashSet(ReferenceEqualityComparer.Instance);
+        if (!owned.IsSubsetOf(step.Messages)) throw new AgentProtocolException("RUN_PREPARATION_INVALID_HISTORY");
+        var messages = ImmutableArray.CreateBuilder<ModelMessage>();
+        var prefixAdded = false;
+        var historyAdded = false;
+        foreach (var message in step.Messages)
+        {
+            if (!owned.Contains(message)) { messages.Add(message); continue; }
+            if (!prefixAdded)
+            {
+                messages.AddRange(replacement.Where(item => item.Role == ModelMessageRole.System));
+                prefixAdded = true;
+            }
+            if (message.Role == ModelMessageRole.System || historyAdded) continue;
+            messages.AddRange(replacement.Where(item => item.Role != ModelMessageRole.System));
+            historyAdded = true;
+        }
+        return step with { Messages = messages.ToImmutable() };
+    }
+
     private sealed class PreparedModel(ConversationModelTurn model,
         Func<IModelRequestBudget, CancellationToken, ValueTask<ImmutableArray<ModelMessage>>> prepare,
         ImmutableArray<ModelMessage> history,
@@ -269,7 +333,7 @@ public sealed partial class ConversationOrchestrator
         : IAgentModelStep, IAgentModelInputBudget, IAgentRunPreparation
     {
         private bool _controlRepairUsed;
-        // Full-mode Expression hint prefix; LegacyV0 is not registered in production.
+        // Full-mode Expression hint prefix (MashExpressionV02.Build); LegacyV0 is not registered in production.
         private const string ExpressionHintPrefix = "Expression Layer v0.2";
         public ImmutableArray<ModelMessage> HistoricalMessages => history;
         public bool RetainsToolHistory => true;
@@ -329,7 +393,7 @@ public sealed partial class ConversationOrchestrator
             if (!corrected.IsFinal || !ValidFinal(corrected)) throw new AgentProtocolException("MODEL_INVALID_FINAL");
             return corrected;
         }
-        internal static StepEnvironment PrepareRequest(StepEnvironment environment)
+        internal static StepEnvironment PrepareRequest(StepEnvironment environment, bool allowMaterial = true)
         {
             var kind = environment.Kind == ModelStepKind.FinalOutput || environment.Tools.IsEmpty
                 ? ModelStepKind.FinalOutput : ModelStepKind.Tools;
@@ -344,9 +408,11 @@ public sealed partial class ConversationOrchestrator
                     && index + 1 < environment.Messages.Length && environment.Messages[index + 1] is
                         { Role: ModelMessageRole.Tool } result && result.ToolCallId == call.CallId)
                 { index++; continue; }
-                // Expression realizes the answer and must not compete with tool selection.
+                // Expression guidance realizes the final answer. On a tool step it competes with tool
+                // selection, so withhold it there and keep it for FinalOutput only.
                 if (kind == ModelStepKind.Tools && message.Role == ModelMessageRole.System
                     && message.Content.StartsWith(ExpressionHintPrefix, StringComparison.Ordinal)) continue;
+                if ((kind == ModelStepKind.Tools || !allowMaterial) && ConversationMaterialPolicy.IsNativeMaterial(message)) continue;
                 if (message.Role != ModelMessageRole.System || message.Content != StructuredOutputValidator.FinalStepInstructions
                     && message.Content != NativeFinalization.Instructions) messages.Add(message);
             }

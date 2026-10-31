@@ -12,6 +12,218 @@ public sealed class MashExpressionV02Tests
     private static PromptContext Context(string user) => new(new("mash_kyrielight", "official.mash", "1", "casual", "1", "1"),
         new PersonaBundle("mash_kyrielight", "official.mash", "1", "1", "synthetic persona", []), [], [], "", [], user);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Agency_allows_a_response_without_manufacturing_a_contribution(bool full)
+    {
+        var hint = MashExpressionV02.Build(Context("确实"), full)!;
+        Assert.Contains("先回应当前表达", hint);
+        Assert.Contains("有真实可接的切面或有用素材时才补充", hint);
+        Assert.Contains("贡献是机会，不是义务", hint);
+        Assert.Contains("没有新素材时，可以停留当前观点、沿当前话题深入、自然反应或留白", hint);
+        Assert.Contains("不为补充新内容而编造观察", hint);
+        Assert.Contains("可选提问权限由 QuestionPolicy 统一决定", hint);
+        Assert.DoesNotContain("回应后补一点新内容", hint);
+        Assert.DoesNotContain("让当前话题向前移动一小步", hint);
+    }
+
+    private static PromptContext WithHistory(string user, params PromptMessage[] history)
+    {
+        var context = Context(user);
+        return new(context.ContentContext, context.Persona, [], [], "", history, user);
+    }
+
+    [Theory]
+    [InlineData("算了，我去睡了。")]
+    [InlineData("我先去睡觉了")]
+    [InlineData("先睡了")]
+    public void Explicit_sleep_departure_uses_existing_rest_closure(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("close", plan.Intent.Act);
+        Assert.Contains(plan.Patterns, pattern => pattern.Id == "close-rest");
+    }
+
+    [Theory]
+    [InlineData("“算了，我去睡了。”这句话怎么翻译")]
+    [InlineData("最近在讨论睡觉和记忆的关系")]
+    public void Quoted_sleep_departures_and_sleep_discussion_are_not_closure(string user)
+        => Assert.NotEqual("close", MashExpressionV02.Select(Context(user)).Intent.Act);
+
+    [Theory]
+    [InlineData("今天把柜子整理好了", "share-receive")]
+    [InlineData("那件事已经做完了", "share-receive")]
+    [InlineData("今天去了一趟旧书店", "share-detail")]
+    [InlineData("昨天路上遇见了一位老朋友", "share-detail")]
+    [InlineData("现在已经搬到新住处了", "share-detail")]
+    [InlineData("有个好消息，我拿到了录取通知", "share-good-news")]
+    [InlineData("终于把门铃修好了！", "share-good-news")]
+    [InlineData("今天完成了收纳，好开心", "share-good-news")]
+    [InlineData("分享一下今天的小事", "share-no-solution")]
+    public void Generic_completed_events_experiences_updates_and_good_news_reach_sharing_patterns(string user, string pattern)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("share", plan.Intent.Act);
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.Equal("continue_thread", plan.Intent.FollowUp);
+        Assert.Equal(new[] { pattern }, plan.Patterns.Select(p => p.Id));
+        Assert.Contains("advice", plan.Intent.Avoid);
+        Assert.Contains("service_offer", plan.Intent.Avoid);
+        Assert.DoesNotContain("follow_up_question", plan.Intent.Avoid);
+    }
+
+    [Theory]
+    [InlineData("今天把柜子整理好了，帮我写一段说明")]
+    [InlineData("好消息，今天代码编译通过了")]
+    [InlineData("今天把接口实现好了")]
+    [InlineData("今天完成了分析")]
+    [InlineData("今天终于收尾了，好累")]
+    [InlineData("刚刚完成了，可我有点失望")]
+    [InlineData("今天把柜子整理好了，接下来怎么办")]
+    [InlineData("今天把柜子整理好了没？")]
+    [InlineData("今天去过哪里了")]
+    [InlineData("“今天把柜子整理好了”是一个例句")]
+    [InlineData("如果今天把柜子整理好了，就能歇会儿")]
+    [InlineData("明天要是把柜子整理好了，就轻松了")]
+    [InlineData("好消息还没有发生，只是我的打算")]
+    public void Strong_current_signals_questions_and_examples_do_not_become_inferred_sharing(string user)
+        => Assert.NotEqual("share", MashExpressionV02.Select(Context(user)).Intent.Act);
+
+    [Theory]
+    [InlineData("有个好消息，我拿到了录取通知", "share-good-news")]
+    [InlineData("今天去了一趟旧书店", "share-detail")]
+    public void Newly_reachable_sharing_frames_are_inherited_without_assistant_input(string previous, string pattern)
+    {
+        var plan = MashExpressionV02.Select(WithHistory("确实", new PromptMessage(ChatMessageRole.User, previous),
+            new PromptMessage(ChatMessageRole.Assistant, "今天好累呀")));
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.Equal(new[] { "continue-small-step", pattern }, plan.Patterns.Select(p => p.Id));
+    }
+
+    [Fact]
+    public void Every_sharing_pattern_has_a_current_user_route_without_supplied_mind_intent()
+    {
+        var messages = new[] { "今天把柜子整理好了", "今天去了一趟旧书店", "只是分享，不用给建议", "有个好消息，我拿到了录取通知" };
+        var reachable = messages.SelectMany(user => MashExpressionV02.Select(Context(user)).Patterns).Select(p => p.Id).ToHashSet();
+        Assert.All(MashExpressionV02.Patterns.Where(p => p.Category == "Sharing"), pattern => Assert.Contains(pattern.Id, reachable));
+    }
+
+    [Theory]
+    [InlineData("今天好累呀", "emotion-tired")]
+    [InlineData("只是吐槽，真烦", "emotion-vent")]
+    [InlineData("我有点失望", "emotion-disappointment")]
+    [InlineData("我是不是不行", "emotion-self-doubt")]
+    public void Unclassified_user_followup_inherits_recent_listening_frame(string previous, string pattern)
+    {
+        var plan = MashExpressionV02.Select(WithHistory("接连几件事情挤在一起了", new PromptMessage(ChatMessageRole.User, previous)));
+        Assert.Equal("listen", plan.Intent.Act);
+        Assert.Equal("soft", plan.Intent.Tone);
+        Assert.Equal("continue_thread", plan.Intent.FollowUp);
+        Assert.Equal(new[] { pattern }, plan.Patterns.Select(p => p.Id));
+    }
+
+    [Theory]
+    [InlineData("有一点")]
+    [InlineData("是啊")]
+    [InlineData("确实")]
+    public void Weak_backchannel_retains_listening_tone_and_secondary_pattern(string user)
+    {
+        var plan = MashExpressionV02.Select(WithHistory(user, new PromptMessage(ChatMessageRole.User, "今天好累呀")));
+        Assert.Equal("soft", plan.Intent.Tone);
+        Assert.Equal(new[] { "continue-small-step", "emotion-tired" }, plan.Patterns.Select(p => p.Id));
+    }
+
+    [Theory]
+    [InlineData("确实挺耗神的")]
+    [InlineData("主要是这回节奏慢了一点")]
+    [InlineData("就是每次都重复一遍")]
+    [InlineData("主要是太累了")]
+    [InlineData("就是有点累")]
+    public void Sharing_followup_retains_familiar_frame(string user)
+    {
+        var plan = MashExpressionV02.Select(WithHistory(user, new PromptMessage(ChatMessageRole.User, "这件事精力不够")));
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.Contains(plan.Patterns, p => p.Id == "share-receive");
+        Assert.DoesNotContain(plan.Patterns, p => p.Id == "emotion-tired");
+    }
+
+    [Fact]
+    public void Unclassified_followup_inherits_share_primary()
+    {
+        var plan = MashExpressionV02.Select(WithHistory("这回比之前多了一层变化", new PromptMessage(ChatMessageRole.User, "分享一下今天的小事")));
+        Assert.Equal("share", plan.Intent.Act);
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.Equal(new[] { "share-no-solution" }, plan.Patterns.Select(p => p.Id));
+    }
+
+    [Theory]
+    [InlineData("是啊，不过现在真的有点撑不住了")]
+    [InlineData("主要是我现在真的好累")]
+    [InlineData("确实，不过我有点失望")]
+    [InlineData("其实真的好累")]
+    public void Explicit_new_emotion_overrides_previous_sharing(string user)
+    {
+        var plan = MashExpressionV02.Select(WithHistory(user, new PromptMessage(ChatMessageRole.User, "分享一下今天的小事")));
+        Assert.Equal("listen", plan.Intent.Act);
+        Assert.Equal("soft", plan.Intent.Tone);
+        Assert.Contains(plan.Patterns, p => p.Category == "Emotional");
+        Assert.DoesNotContain(plan.Patterns, p => p.Category == "Sharing");
+    }
+
+    [Theory]
+    [InlineData("嗯，对了帮我看看这个错误")]
+    [InlineData("是啊，不过这段代码报错了")]
+    [InlineData("主要是接口需要怎么实现")]
+    [InlineData("就是不想分析了")]
+    public void Explicit_task_cuts_off_inherited_listening(string user)
+    {
+        var plan = MashExpressionV02.Select(WithHistory(user, new PromptMessage(ChatMessageRole.User, "今天好累呀")));
+        Assert.Equal("none", plan.Intent.FollowUp);
+        Assert.DoesNotContain(plan.Patterns, p => p.Category == "Emotional");
+    }
+
+    [Theory]
+    [InlineData("今天先到这里")]
+    [InlineData("你好")]
+    [InlineData("帮我看看这个错误")]
+    [InlineData("只是分享，不用给建议")]
+    [InlineData("嗯")]
+    public void User_boundary_stops_history_lookback(string boundary)
+    {
+        var plan = MashExpressionV02.Select(WithHistory("这回比之前多了一层变化",
+            new PromptMessage(ChatMessageRole.User, "今天好累呀"), new PromptMessage(ChatMessageRole.User, boundary)));
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.DoesNotContain(plan.Patterns, p => p.Category == "Emotional");
+    }
+
+    [Fact]
+    public void History_lookup_is_bounded_to_two_user_messages_and_ignores_assistant_text()
+    {
+        var plan = MashExpressionV02.Select(WithHistory("这回比之前多了一层变化",
+            new PromptMessage(ChatMessageRole.User, "今天好累呀"), new PromptMessage(ChatMessageRole.User, "第一处有一点差别"),
+            new PromptMessage(ChatMessageRole.User, "第二处也有一点差别"), new PromptMessage(ChatMessageRole.Assistant, "今天好累呀")));
+        Assert.Equal("familiar", plan.Intent.Tone);
+        Assert.Empty(plan.Patterns);
+        var nearby = MashExpressionV02.Select(WithHistory("有一点", new PromptMessage(ChatMessageRole.User, "今天好累呀"),
+            new PromptMessage(ChatMessageRole.Assistant, "分享一下今天的小事"), new PromptMessage(ChatMessageRole.User, "接连几件事情挤在一起了")));
+        Assert.Equal("soft", nearby.Intent.Tone);
+        Assert.Equal(new[] { "continue-small-step", "emotion-tired" }, nearby.Patterns.Select(p => p.Id));
+    }
+
+    [Fact]
+    public void Inherited_patterns_yield_whole_hint_without_displacing_history_under_tight_budget()
+    {
+        var context = WithHistory("有一点", new PromptMessage(ChatMessageRole.User, "今天好累呀"),
+            new PromptMessage(ChatMessageRole.Assistant, "只是分享另一件事。"));
+        var baseline = new PromptComposer().Compose(context, Route, Budget);
+        var limited = Budget.ConstrainInput(baseline.Usage.InputTokens + 32);
+        var result = new PromptComposer(null, null, ExpressionMode.Full).Compose(context, Route, limited);
+        Assert.True(result.FitsBudget);
+        Assert.Equal(baseline.Messages, result.Messages);
+        Assert.Equal(new[] { "continue-small-step", "emotion-tired" }, MashExpressionV02.Select(context).Patterns.Select(p => p.Id));
+    }
+
     [Fact]
     public void Base_and_full_are_independent_modes_and_default_remains_off()
     {
@@ -124,7 +336,6 @@ public sealed class MashExpressionV02Tests
     [InlineData("中午好，周末放假了，好开心")]
     [InlineData("来聊聊天吧")]
     [InlineData("随便聊聊，你来找个话题")]
-    [InlineData("陪我聊会儿天吧，有点累，不想听建议")]
     public void Open_chat_invitations_allow_one_topic_without_turning_into_a_service_request(string user)
     {
         var plan = MashExpressionV02.Select(Context(user));
@@ -142,7 +353,7 @@ public sealed class MashExpressionV02Tests
         Assert.Contains("先带出一个具体话题", hint);
         Assert.Contains("最近读过", hint);
         Assert.Contains("不要求为了找话题而搜索", hint);
-        Assert.Contains("不需要为观点补一段亲历", hint);
+        Assert.Contains("不需要为了给话题增加来历而编造近期持续关注、反复思考或生活经历", hint);
         Assert.Contains("不问打算出门还是在家", hint);
     }
 
@@ -186,6 +397,91 @@ public sealed class MashExpressionV02Tests
         Assert.Empty(MashExpressionV02.Select(context).Patterns);
         Assert.DoesNotContain("Response Intent / Open Conversation", MashExpressionV02.Build(context, true)!);
     }
+
+    [Theory]
+    [InlineData("今天沿河散步，风景很好")]
+    [InlineData("分享一下今天的事")]
+    [InlineData("今天好累呀")]
+    [InlineData("又是类魂，精力不够打不了这类游戏")]
+    [InlineData("继续")]
+    [InlineData("这是什么类型的游戏呀")]
+    public void Everyday_turns_keep_conversation_open_without_service_or_survey(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("continue_thread", plan.Intent.FollowUp);
+        Assert.DoesNotContain("follow_up_question", plan.Intent.Avoid);
+        Assert.DoesNotContain(plan.Patterns, p => p.Id == "share-space");
+        foreach (var item in new[] { "service_offer", "survey_question", "forced_choice", "advice", "action_plan", "reassurance", "over_explanation" })
+            Assert.Contains(item, plan.Intent.Avoid);
+    }
+
+    [Theory]
+    [InlineData("确实")]
+    [InlineData("那倒也是")]
+    [InlineData("有一点")]
+    [InlineData("有一点吧")]
+    [InlineData("哈哈是这样")]
+    [InlineData("也是")]
+    [InlineData("是啊")]
+    [InlineData("没错")]
+    [InlineData("主要是太累了")]
+    [InlineData("确实挺费劲的")]
+    public void Backchannels_contribute_a_small_step(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("continue_thread", plan.Intent.FollowUp);
+        Assert.Contains(plan.Patterns, p => p.Id == "continue-small-step");
+    }
+
+    [Theory]
+    [InlineData("只是分享，不用给建议")]
+    [InlineData("陪我聊会儿天吧，有点累，不想听建议")]
+    [InlineData("今天好累，别追问")]
+    [InlineData("不想聊")]
+    public void Explicit_space_overrides_continuation_and_open_topic(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("none", plan.Intent.FollowUp);
+        Assert.Contains("follow_up_question", plan.Intent.Avoid);
+        Assert.Contains(plan.Patterns, p => p.Id == "share-space");
+        Assert.DoesNotContain("Response Intent / Open Conversation", MashExpressionV02.Build(Context(user), true)!);
+    }
+
+    [Theory]
+    [InlineData("嗯")]
+    [InlineData("好的")]
+    [InlineData("嗯，可以")]
+    [InlineData("明白了")]
+    public void Task_acknowledgments_still_close_minimally(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("acknowledge", plan.Intent.Act);
+        Assert.Equal("none", plan.Intent.FollowUp);
+        Assert.Equal("minimal", plan.Intent.Depth);
+    }
+
+    [Theory]
+    [InlineData("又是类魂，精力不够打不了这类游戏")]
+    [InlineData("这个游戏玩不动了")]
+    public void Taste_or_energy_comments_are_sharing_not_psychological_reassurance(string user)
+    {
+        var plan = MashExpressionV02.Select(Context(user));
+        Assert.Equal("share", plan.Intent.Act);
+        Assert.Contains(plan.Patterns, p => p.Id == "share-receive");
+        Assert.DoesNotContain(plan.Patterns, p => p.Category == "Emotional");
+    }
+
+    [Theory]
+    [InlineData("这个报错怎么修")]
+    [InlineData("分析这个架构")]
+    [InlineData("接口代码怎么实现")]
+    [InlineData("帮我写一段说明")]
+    [InlineData("打开浏览器")]
+    [InlineData("实验又失败了")]
+    [InlineData("这个游戏打不动，怎么办")]
+    [InlineData("代码报错，游戏打不了")]
+    public void Engineering_and_explicit_tasks_do_not_acquire_casual_continuation(string user)
+        => Assert.Equal("none", MashExpressionV02.Select(Context(user)).Intent.FollowUp);
 
     [Fact]
     public void Catalogue_is_curated_50_to_80_strategies_across_all_twelve_categories()

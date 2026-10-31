@@ -85,6 +85,10 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
             {
                 // Compact the actual final envelope, including fresh memory, host rules and tools.
                 // Per-step system blocks must not accumulate in the retained transcript.
+                // Capture them before preparation: a newly committed history summary is durable
+                // context and must remain available on the following step of this same run.
+                var transientSystem = step.Messages.Where(message => message.Role == ModelMessageRole.System)
+                    .Except(session.Transcript).ToHashSet();
                 step = await preparation.PrepareStepAsync(step, state, token);
                 fence.EnsureCurrent(state.Snapshot.Identity, token);
                 // Auxiliary summary calls spend the same budget and can consume the penultimate slot.
@@ -93,7 +97,10 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
                         || state.Snapshot.ToolCalls >= state.Snapshot.Budget.MaxToolCalls))
                 {
                     finalOnly = true;
+                    var preparedMessages = step.Messages;
                     step = FinalEnvelope(step);
+                    transientSystem.UnionWith(step.Messages.Where(message => message.Role == ModelMessageRole.System)
+                        .Except(preparedMessages));
                 }
                 ModelProtocol.ValidateTranscript(step.Messages);
                 StepEnvironmentBuilder.CheckSize(step.Messages);
@@ -111,8 +118,6 @@ internal sealed class AgentLoop(IStepEnvironmentBuilder environment, IToolExecut
                         throw new AgentProtocolException("RUN_CONTEXT_TOO_LARGE");
                     }
                 }
-                var transientSystem = step.Messages.Where(message => message.Role == ModelMessageRole.System)
-                    .Except(session.Transcript).ToHashSet();
                 session.SetPreparedTranscript(step.Messages.Where(message => !transientSystem.Contains(message)).ToImmutableArray());
             }
             var before = state.Snapshot.ModelRequests;

@@ -60,7 +60,9 @@ public sealed class PromptComposer
         }
         // Mandatory state and complete history are never silently shortened to fit.
         // The caller compacts history, or rejects a request that still cannot fit.
-        var tail = context.Messages.Select((message, index) =>
+        // ComposeNative's callback projects/measures full Native history exactly once. Its
+        // context.Messages are only bounded User cues for Expression, never a second transcript.
+        var tail = (nativeMeasure is null ? context.Messages : Array.Empty<PromptMessage>()).Select((message, index) =>
         {
             var wrapped = PromptInjectionGuard.Wrap($"history:{index + 1}", message.Text);
             if (wrapped.Length > PromptContracts.MaxMessageChars)
@@ -114,8 +116,16 @@ public sealed class PromptComposer
             AddOptional($"knowledge:{entry.Kind.ToString().ToLowerInvariant()}:{entry.Id}", entry.Summary);
         AddOptional("runtime_state", context.RuntimeState);
         AddOptional("session_context", FormatRequestContext(context.RequestContext));
+        var materialAdded = false;
         foreach (var block in context.Contributions.Where(block => block.Kind == ConversationPromptBlockKind.Data))
+        {
+            if (block.Source == ConversationMaterialPolicy.OrdinarySource)
+            {
+                if (materialAdded || !ConversationMaterialPolicy.Allows(context)) continue;
+                materialAdded = true;
+            }
             AddOptional(block.Source, block.Text, whole: block.Whole);
+        }
         // Soft hints yield as a whole under pressure, never truncate identity/history/background
         // or cause a new compaction/model call. The exact final Native envelope is measured too.
         var expression = _expressionMode switch {

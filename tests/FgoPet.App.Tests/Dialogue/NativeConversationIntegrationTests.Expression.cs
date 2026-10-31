@@ -48,7 +48,8 @@ public sealed partial class NativeConversationIntegrationTests
             [], [], "synthetic-persona", "synthetic-knowledge");
         var provider = new ScriptedProvider(ProviderTurn.Final("第一轮正文"), ProviderTurn.Final("第二轮正文"));
         var observer = new RecordingObserver();
-        await using var host = await TestHost.CreateAsync(provider, null, observer,
+        // This tests hint lifetime/delivery, while separate small-context tests cover hint eviction.
+        await using var host = await TestHost.CreateAsync(provider, null, observer, settings: TestSettingsStore.Create(32768),
             contentResolver: new BoundPersonaResolver(binding), useNative: native,
             composer: new PromptComposer(null, null, true));
         foreach (var input in new[] { "今天有点累", "这个接口为什么失败？" })

@@ -199,14 +199,15 @@ public sealed partial class ConversationOrchestrator
             }
             var snapshot = _contextStore?.Read(scope, conversationId);
             var prompt = ComposeCurrent(snapshot?.Summary, snapshot?.UncoveredMessages ?? existing);
-            var compactionCalls = new CompactionCallBudget();
+            var compactionCalls = new CompactionCallBudget {
+                RequestStarting = () => Publish(new(ConversationUpdateType.RequestStage, conversationId, ServantId: servantId,
+                    RequestStage: ConversationRequestStage.Compacting))
+            };
             async Task<bool> CompactAsync()
             {
                 if (_summaries is null || _contextStore is null) return false;
                 snapshot = _contextStore.Read(scope, conversationId);
                 var before = prompt.Usage.InputTokens;
-                Publish(new(ConversationUpdateType.RequestStage, conversationId, ServantId: servantId,
-                    RequestStage: ConversationRequestStage.Compacting));
                 var compacted = await _summaries.TryCompactAsync(snapshot, session.Provider, session.Route, session.Budget,
                     before, ComposeCurrent, lease, () => session.EnsureCurrent(requestCancellation.Token),
                     compactionCalls, requestCancellation.Token);
