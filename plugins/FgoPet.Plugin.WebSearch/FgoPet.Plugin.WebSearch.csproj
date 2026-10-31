@@ -2,4 +2,18 @@
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/FgoPet.Extensibility/FgoPet.Extensibility.csproj" /></ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="FgoPet.Capability.Tests" /></ItemGroup>
+  <PropertyGroup>
+    <FgoPetWebSearchRuntime Condition="'$(FgoPetWebSearchRuntime)' == '' and Exists('$(MSBuildProjectDirectory)/../../artifacts/web-search/runtime/FgoPet.WebSearch.exe')">$(MSBuildProjectDirectory)/../../artifacts/web-search/runtime</FgoPetWebSearchRuntime>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(FgoPetWebSearchRuntime)' != '' and Exists('$(FgoPetWebSearchRuntime)')">
+    <Content Include="$(FgoPetWebSearchRuntime)/**/*">
+      <Link>WebSearch/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="RequireBundledWebSearchRuntime" BeforeTargets="GetCopyToPublishDirectoryItems">
+    <Error Condition="'$(FgoPetWebSearchRuntime)' == '' or !Exists('$(FgoPetWebSearchRuntime)/FgoPet.WebSearch.exe') or !Exists('$(FgoPetWebSearchRuntime)/runtime-manifest.json')"
+      Text="The publish payload requires the bundled Python search runtime. Run tools/integrations/web-search/build.ps1 on Windows and supply FgoPetWebSearchRuntime." />
+  </Target>
 </Project>

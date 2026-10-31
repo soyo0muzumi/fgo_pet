@@ -52,8 +52,11 @@ internal static class NativeCapabilityRegistration
                 "Desktop context {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
                 notification.Correlation, notification.Stage, notification.ErrorCode),
             contextSnapshot: scope => provider.GetRequiredService<CompanionAwarenessHost>().GetSnapshot(scope)))
-        .AddSingleton<IFgoPetPlugin>(provider => new WebSearchPlugin(
-            () => WebSearchSettings.Load(Path.Combine(provider.GetRequiredService<AppPaths>().StorageRoot, "web-search.json")),
+        .AddSingleton(provider => new WebSearchSettingsStore(
+            Path.Combine(provider.GetRequiredService<AppPaths>().StorageRoot, "web-search.json"),
+            Path.Combine(AppContext.BaseDirectory, "WebSearch", "FgoPet.WebSearch.exe")))
+        .AddSingleton(provider => new WebSearchPlugin(
+            provider.GetRequiredService<WebSearchSettingsStore>().Load,
             scope =>
             {
                 if (provider.GetRequiredService<AppRuntime>().ActiveRole?.ServantId != scope.RoleId) return false;
@@ -62,11 +65,13 @@ internal static class NativeCapabilityRegistration
                     && provider.GetRequiredService<SqliteConversationRepository>()
                         .ReadState($"LastActiveConversationId:{scope.RoleId}") == scope.ConversationId;
             },
-            token => provider.GetRequiredService<FgoPet.Core.Secrets.ICredentialReader>()
-                .ReadAsync(WebSearchSettings.CredentialTarget, token),
+            provider.GetRequiredService<IBoundedProcessRunner>(),
+            Path.Combine(AppContext.BaseDirectory, "WebSearch", "FgoPet.WebSearch.exe"),
             notification => provider.GetRequiredService<ILogger<WebSearchPlugin>>().LogInformation(
                 "Web search {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
-                notification.Correlation, notification.Stage, notification.ErrorCode)))
+                notification.Correlation, notification.Stage, notification.ErrorCode),
+            configurationError: () => provider.GetRequiredService<WebSearchSettingsStore>().GetSnapshot().ErrorCode))
+        .AddSingleton<IFgoPetPlugin>(provider => provider.GetRequiredService<WebSearchPlugin>())
         .AddSingleton<IFgoPetPlugin>(provider => new ChromeBrowserPlugin(
             () => ChromeBrowserSettings.Load(Path.Combine(provider.GetRequiredService<AppPaths>().StorageRoot, "chrome-browser.json")),
             scope =>
