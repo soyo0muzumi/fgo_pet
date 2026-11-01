@@ -2,6 +2,7 @@ using System.IO;
 using FgoPet.App.Runtime;
 using FgoPet.Core.Dialogue;
 using FgoPet.Extensibility;
+using FgoPet.Core.Secrets;
 using FgoPet.Platform.Processes;
 using FgoPet.Platform.Secrets;
 using FgoPet.Platform.Windows.Processes;
@@ -11,6 +12,7 @@ using FgoPet.Plugin.Browser;
 using FgoPet.Plugin.DesktopContext;
 using FgoPet.Plugin.Shell;
 using FgoPet.Plugin.Skills;
+using FgoPet.Plugin.SocialSources;
 using FgoPet.Plugin.Workspace;
 using FgoPet.Plugin.WebSearch;
 using FgoPet.Infrastructure.Dialogue;
@@ -83,7 +85,27 @@ internal static class NativeCapabilityRegistration
             notification => provider.GetRequiredService<ILogger<ChromeBrowserPlugin>>().LogInformation(
                 "Chrome browser {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
                 notification.Correlation, notification.Stage, notification.ErrorCode),
-            imageSink: provider.GetService<IBrowserImageSink>()));
+            imageSink: provider.GetService<IBrowserImageSink>()))
+        // Social sources: one grant file per platform, so consent for one service cannot authorize
+        // another. Every platform starts disabled until an explicit local grant exists.
+        .AddSingleton(provider => new SocialSourceSettingsStores(provider.GetRequiredService<AppPaths>().StorageRoot))
+        .AddSingleton(provider => new SocialSourcesPlugin(
+            provider.GetRequiredService<SocialSourceSettingsStores>().Bilibili.Load,
+            provider.GetRequiredService<SocialSourceSettingsStores>().Xiaohongshu.Load,
+            provider.GetRequiredService<SocialSourceSettingsStores>().Xiaoheihe.Load,
+            () => provider.GetRequiredService<SocialSourceSettingsStores>().Bilibili.GetSnapshot().ErrorCode,
+            scope =>
+            {
+                if (provider.GetRequiredService<AppRuntime>().ActiveRole?.ServantId != scope.RoleId) return false;
+                var conversation = provider.GetRequiredService<IConversationReader>().GetConversation(scope.ConversationId, scope.RoleId);
+                return conversation is { IsArchived: false } && conversation.ProjectId == scope.ProjectId;
+            },
+            notification => provider.GetRequiredService<ILogger<SocialSourcesPlugin>>().LogInformation(
+                "Social source {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.Timestamp,
+                notification.Correlation, notification.Stage, notification.ErrorCode),
+            stores: provider.GetRequiredService<SocialSourceSettingsStores>(),
+            credentials: provider.GetService<ICredentialReader>()))
+        .AddSingleton<IFgoPetPlugin>(provider => provider.GetRequiredService<SocialSourcesPlugin>());
 
     private sealed class ProcessDiagnostics(ILogger<ProcessDiagnostics> logger) : IBoundedProcessDiagnostics
     {
