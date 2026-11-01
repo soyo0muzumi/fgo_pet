@@ -25,6 +25,18 @@ public sealed class WebSurfacePolicy
     public string DocumentUrl => _document.AbsoluteUri;
     public string DocumentHost => _document.IdnHost;
 
+    public bool TryGetExternalLink(string? url, bool isUserInitiated, out Uri? external)
+    {
+        external = null;
+        if (!isUserInitiated || string.IsNullOrWhiteSpace(url) || url.Length > 2048 || url.Any(char.IsControl)
+            || !Uri.TryCreate(url, UriKind.Absolute, out var candidate)
+            || candidate.Scheme is not ("http" or "https") || candidate.UserInfo.Length != 0
+            || string.IsNullOrEmpty(candidate.Host)
+            || string.Equals(candidate.IdnHost, DocumentHost, StringComparison.OrdinalIgnoreCase)) return false;
+        external = candidate;
+        return true;
+    }
+
     public bool AllowsNavigation(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var candidate)
         && candidate.Scheme == Uri.UriSchemeHttps
