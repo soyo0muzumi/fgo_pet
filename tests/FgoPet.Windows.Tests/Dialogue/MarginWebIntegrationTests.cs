@@ -81,6 +81,7 @@ public sealed class MarginWebIntegrationTests
             Assert.Equal("true", await Js("!!document.querySelector('.chat-header') && document.querySelector('.send-button').disabled"));
             Assert.Equal("true", await Js("document.querySelector('.message-user').getBoundingClientRect().width < document.getElementById('messages').getBoundingClientRect().width && document.documentElement.scrollWidth <= innerWidth"));
             var disabledColor = await Js("getComputedStyle(document.querySelector('.send-button')).backgroundColor");
+            await ChatExternalLinkTests.Click(web.CoreWebView2, "#composer");
 
             await Js("document.querySelector('button[aria-label=\"添加图片与上下文\"]').click()");
             await WaitUntil(async () => await Js("document.querySelectorAll('.context-actions button')[1]?.textContent.includes('Synthetic workspace')") == "true");
@@ -203,9 +204,12 @@ public sealed class MarginWebIntegrationTests
             await Js("document.querySelector('button[aria-label=\"展开完整对话\"]').click()");
             await WaitUntil(async () => await Js("!document.getElementById('composer').disabled && document.querySelectorAll('#messages article').length === 20") == "true");
             await WaitUntil(async () => await Js("document.getElementById('messages').getAnimations({subtree:true}).every(a => a.playState === 'finished')") == "true");
-            await Js("window.c=document.getElementById('composer');window.s=document.getElementById('message-scroll');window.initialHeight=c.getBoundingClientRect().height;s.focus()");
+            await ChatExternalLinkTests.Click(web.CoreWebView2, "#composer");
+            await ChatExternalLinkTests.WaitForAnimations(web.CoreWebView2);
+            await Js("window.c=document.getElementById('composer');window.s=document.getElementById('message-scroll');window.initialHeight=c.getBoundingClientRect().height;window.readingGestureEnded=false;s.addEventListener('scrollend',()=>window.readingGestureEnded=true,{once:true});s.focus()");
             await Key(web, "PageUp", 33); // Trusted reading intent pauses follow; script scroll alone does not.
-            await Task.Delay(150);
+            await WaitUntil(async () => await Js("window.readingGestureEnded") == "true");
+            await ChatExternalLinkTests.WaitForAnimations(web.CoreWebView2);
             await Js("s.scrollTo({top:450,behavior:'instant'})");
             await WaitUntil(async () => await Js("!!document.querySelector('.scroll-latest') && Math.abs(s.scrollTop-450)<2") == "true");
             await Task.Delay(100); // Let the browser deliver the reading scroll event before changing layout.

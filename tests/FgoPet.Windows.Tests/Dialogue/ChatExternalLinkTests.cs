@@ -32,12 +32,8 @@ public sealed class ChatExternalLinkTests
             await MarginWebIntegrationTests.WaitUntil(async () => await core.ExecuteScriptAsync("!!document.querySelector('.message a[href=\"https://example.org/article#detail\"]')") == "true");
             Assert.Empty(opened);
             await core.ExecuteScriptAsync("window.open('https://example.org/automatic','_blank')");
-            await core.ExecuteScriptAsync("document.querySelector('.message a').scrollIntoView({block:'center'})");
             Assert.Empty(opened);
-            using var point = JsonDocument.Parse(await core.ExecuteScriptAsync("(()=>{const r=document.querySelector('.message a').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
-            var x = point.RootElement.GetProperty("x").GetDouble(); var y = point.RootElement.GetProperty("y").GetDouble();
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mousePressed", x, y, button = "left", clickCount = 1 }));
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }));
+            await Click(core, ".message a");
             await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(opened.Count == 1));
             Assert.Equal("https://example.org/article#detail", opened[0].AbsoluteUri);
             Assert.Equal("https://chat.fgopet.invalid/index.html", core.Source);
@@ -137,12 +133,26 @@ public sealed class ChatExternalLinkTests
         finally { window.Close(); }
     }, TimeSpan.FromSeconds(35));
 
-    private static async Task Click(CoreWebView2 core, string selector)
+    internal static Task WaitForAnimations(CoreWebView2 core) => MarginWebIntegrationTests.WaitUntil(async () =>
+        await core.ExecuteScriptAsync("document.getAnimations().every(a=>a.effect?.getComputedTiming().iterations===Infinity||a.playState==='finished'||a.playState==='idle')") == "true");
+
+    internal static async Task Click(CoreWebView2 core, string selector)
     {
         var expression = "document.querySelector(" + JsonSerializer.Serialize(selector) + ")";
-        await core.ExecuteScriptAsync(expression + ".scrollIntoView({block:'center'})");
-        using var point = JsonDocument.Parse(await core.ExecuteScriptAsync("(()=>{const r=" + expression + ".getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()"));
+        await core.ExecuteScriptAsync(expression + ".scrollIntoView({block:'center',behavior:'instant'})");
+        string? lastPoint = null;
+        var stableSamples = 0;
+        await MarginWebIntegrationTests.WaitUntil(async () =>
+        {
+            // Layout/entry animations and compositor hit targets settle after the DOM is ready.
+            var current = await core.ExecuteScriptAsync("(()=>{const e=" + expression + ";if(!e)return null;const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return r.width>0&&r.height>0&&e.contains(document.elementFromPoint(x,y))?{x,y}:null;})()");
+            stableSamples = current != "null" && current == lastPoint ? stableSamples + 1 : 0;
+            lastPoint = current;
+            return stableSamples >= 2;
+        });
+        using var point = JsonDocument.Parse(lastPoint!);
         var x = point.RootElement.GetProperty("x").GetDouble(); var y = point.RootElement.GetProperty("y").GetDouble();
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseMoved", x, y }));
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mousePressed", x, y, button = "left", clickCount = 1 }));
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }));
     }

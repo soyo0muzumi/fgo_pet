@@ -8,6 +8,7 @@ using FgoPet.Understanding;
 using FgoPet.Understanding.Contracts;
 using FgoPet.Understanding.Desktop;
 using FgoPet.UiSdk;
+using FgoPet.Windows.Tests.Dialogue;
 using Microsoft.Web.WebView2.Wpf;
 using Xunit;
 
@@ -122,6 +123,7 @@ public sealed class UnderstandingH1WebTests
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride",
                 "{\"width\":320,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}");
             Assert.True(await Js("document.documentElement.scrollWidth<=innerWidth"));
+            await ChatExternalLinkTests.Click(web.CoreWebView2, ".understanding-page h2");
             await web.CoreWebView2.ExecuteScriptAsync("window.__keyTrace=[];for(const type of ['keydown','keypress','keyup','click'])document.addEventListener(type,e=>__keyTrace.push({type,key:e.key||'',code:e.code||'',prevented:e.defaultPrevented,tag:e.target.tagName,view:e.target.dataset?.view||''}),true)");
             await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-view=accumulated]').focus()");
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");

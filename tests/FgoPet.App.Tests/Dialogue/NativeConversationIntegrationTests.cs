@@ -558,6 +558,8 @@ public sealed partial class NativeConversationIntegrationTests
         var accepted = await session.HandleCommandAsync(message, default);
         Assert.True(accepted.Success);
         await AwaitInputCompletion(model);
+        var resumed = await host.Runs.LoadAsync(card.GetProperty("runId").GetString()!, default);
+        Assert.True(resumed!.Snapshot.Status == AgentRunStatus.Completed, $"Status={resumed.Snapshot.Status}; code={resumed.Snapshot.ErrorCode}");
         Assert.Equal("answered", Assert.Single(model.Turns.Where(turn => turn.IsAssistant && turn.Text == "answered")).Text);
         Assert.Equal(3, provider.Requests.Count);
         var run = await host.Runs.LoadAsync(card.GetProperty("runId").GetString()!, default);
@@ -1234,7 +1236,9 @@ public sealed partial class NativeConversationIntegrationTests
         private DialogueSettings current = initial;
         public DialogueSettings Load() => current;
         public void Save(DialogueSettings settings) => current = settings;
-        public static TestSettingsStore Create(int contextWindow = 8192) => new(DialogueSettings.Defaults with
+        // Successful protocol fixtures need room for the full host prompt and resumed tool results.
+        // Capacity/compaction tests supply their own explicit window and retain strict rejection checks.
+        public static TestSettingsStore Create(int contextWindow = 16384) => new(DialogueSettings.Defaults with
         {
             ModelConnection = new ModelConnectionSettings("fixture", "https://fixture.invalid/v1", "fixture-model",
                 contextWindowOverride: contextWindow, maxOutputTokens: 512),

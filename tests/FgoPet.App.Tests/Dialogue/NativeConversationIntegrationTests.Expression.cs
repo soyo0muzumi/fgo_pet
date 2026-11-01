@@ -12,7 +12,7 @@ public sealed partial class NativeConversationIntegrationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Expression_opt_in_preserves_two_turn_source_persona_success_with_small_context(bool native)
+    public async Task Expression_opt_in_preserves_two_turn_source_persona_success_with_configured_context(bool native)
     {
         var binding = ResolveSourcePersona();
         var provider = new ScriptedProvider(PersonaFinal("合成答复一"), PersonaFinal("合成答复二"));
@@ -23,8 +23,10 @@ public sealed partial class NativeConversationIntegrationTests
             Assert.Equal(ConversationSendStatus.Completed,
                 (await host.Orchestrator.SendAsync(SourcePersonaRole, input, default, new(ProjectId))).Status);
         Assert.Equal(native ? 4 : 2, provider.Requests.Count);
-        var route = ModelRouteKey.From(host.Settings.Load().ModelConnection!);
-        var budget = PromptBudget.Resolve(new(route, 8192, null, ContextLimitSource.Override, "test"), 512);
+        var connection = host.Settings.Load().ModelConnection!;
+        var route = ModelRouteKey.From(connection);
+        var window = Assert.IsType<int>(connection.ContextWindowOverride);
+        var budget = PromptBudget.Resolve(new(route, window, null, ContextLimitSource.Override, "test"), connection.MaxOutputTokens);
         var meter = new RequestTokenMeter();
         var persona = PromptInjectionGuard.WrapPersona("servant_core", binding.Persona!.CoreText);
         foreach (var request in provider.Requests)

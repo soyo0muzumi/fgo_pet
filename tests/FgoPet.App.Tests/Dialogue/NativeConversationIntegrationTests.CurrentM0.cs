@@ -124,5 +124,3 @@ public sealed partial class NativeConversationIntegrationTests
             maximumBaseEstimate=basis.Max(m=>m.EstimatedInputTokens),measurements=meter.Measurements,dispatches=meter.Dispatches};
     }
 }
-
-

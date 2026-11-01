@@ -45,6 +45,8 @@ public sealed class WebSearchWindowsRunnerTests
                 Assert.Equal("{}", result.Payload.GetRawText());
             }
 
+            // Process supervision deliberately does not wait indefinitely for its asynchronous sink.
+            await diagnostics.Failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Contains(diagnostics.Events, entry => entry.Stage == BoundedProcessStage.Launching);
             Assert.Contains(diagnostics.Events, entry => entry.Stage == BoundedProcessStage.Failed
                 && entry.ErrorCode == "PROCESS_LAUNCH_FAILED");
@@ -55,6 +57,11 @@ public sealed class WebSearchWindowsRunnerTests
     private sealed class Diagnostics : IBoundedProcessDiagnostics
     {
         public ConcurrentQueue<BoundedProcessNotification> Events { get; } = new();
-        public void Record(BoundedProcessNotification notification) => Events.Enqueue(notification);
+        public TaskCompletionSource Failed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Record(BoundedProcessNotification notification)
+        {
+            Events.Enqueue(notification);
+            if (notification.Stage == BoundedProcessStage.Failed) Failed.TrySetResult();
+        }
     }
 }

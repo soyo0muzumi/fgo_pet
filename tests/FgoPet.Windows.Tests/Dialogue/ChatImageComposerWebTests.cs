@@ -48,7 +48,9 @@ public sealed class ChatImageComposerWebTests
             Assert.True(await Js("contextButton().getAttribute('aria-label')==='添加图片与上下文' && contextButton().title==='添加图片与上下文'"));
             Assert.True(await Js("!document.body.innerText.includes('Tencent CodeBuddy') && !document.querySelector('.attachment-strip')"));
             await Capture("01-empty-image-icon");
+            // Activate WebView input with a trusted content click; DOM focus/emulation alone is insufficient.
             // Keyboard setup must not depend on optional screenshot collection.
+            await ChatExternalLinkTests.Click(web.CoreWebView2, "#composer");
             await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('composer').focus()");
             await Key("Tab", 9);
             Assert.True(await Js("document.activeElement===contextButton() && getComputedStyle(document.activeElement).outlineWidth==='2px' && document.activeElement.title==='添加图片与上下文'"));

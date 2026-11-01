@@ -46,12 +46,18 @@ public sealed partial class NativeConversationIntegrationTests
     });
 
     [Theory]
-    [InlineData("chat.approval.deny")]
-    [InlineData("chat.approval.cancel")]
-    [InlineData("unavailable-host")]
-    public Task Refusal_cancel_and_hosts_without_native_review_never_execute(string action) => RunInputChatTest(async () =>
+    [InlineData("chat.approval.deny", "reminder.cancel", "reminders")]
+    [InlineData("chat.approval.cancel", "reminder.cancel", "reminders")]
+    [InlineData("unavailable-host", "reminder.cancel", "reminders")]
+    [InlineData("chat.approval.deny", "browser.click", "browser")]
+    [InlineData("chat.approval.cancel", "browser.click", "browser")]
+    [InlineData("unavailable-host", "browser.click", "browser")]
+    [InlineData("chat.approval.deny", "browser.fill", "browser")]
+    [InlineData("chat.approval.cancel", "browser.fill", "browser")]
+    [InlineData("unavailable-host", "browser.fill", "browser")]
+    public Task Refusal_cancel_and_hosts_without_native_review_never_execute(string action, string toolName, string pluginId) => RunInputChatTest(async () =>
     {
-        var tool = new ApprovalFixtureTool("reminder.cancel", "reminders");
+        var tool = new ApprovalFixtureTool(toolName, pluginId);
         var provider = new ScriptedProvider(ProviderTurn.Call(tool.Descriptor.Name, "operation", "{\"target\":\"synthetic-id\"}"), ProviderTurn.Final("not executed"));
         await using var host = await TestHost.CreateAsync(provider, null, new RecordingObserver(), approvalPlugin: tool);
         using var model = new ConversationViewModel(host.Orchestrator, host.Settings);
