@@ -29,10 +29,11 @@ public sealed class MaterialResearchModelTests
         var draft = await Model(resolver).SummarizeAsync(Request(), Results, gate, _ => { }, default);
         Assert.Equal(new MaterialResearchDraft(0, "A concrete synthetic finding.", "Related to the supplied interest."), draft);
         Assert.Equal(2, gate.Calls);
+        Assert.Equal(384, resolver.Requests[0].MaxOutputTokens);
+        Assert.Equal(768, resolver.Requests[1].MaxOutputTokens);
         foreach (var chat in resolver.Requests)
         {
             Assert.Null(chat.Tools); Assert.Null(chat.ToolChoice); Assert.True(chat.IsAgentRequest);
-            Assert.Equal(384, chat.MaxOutputTokens);
             Assert.Equal(Request().ActivityId, chat.Metadata["fgo_activity_id"]);
             Assert.Equal("topic_material_research", chat.Metadata["fgo_auxiliary"]);
             Assert.All(chat.ModelMessages, m => Assert.Equal(ModelMessageRole.System, m.Role));
@@ -116,6 +117,18 @@ public sealed class MaterialResearchModelTests
         Assert.Equal(64, Assert.Single(resolver.Requests).MaxOutputTokens);
     }
 
+    [Fact]
+    public async Task Summary_has_bounded_headroom_for_reasoning_and_still_obeys_provider_capacity()
+    {
+        var resolver = new Resolver("{\"sourceIndex\":0,\"summary\":\"Supported finding.\",\"relevanceReason\":\"Related topic.\"}")
+            { Usage = new(500, 500), ReasoningCharacters = 1727 };
+        Assert.NotNull(await Model(resolver).SummarizeAsync(Request(), Results, new Gate(), _ => { }, default));
+        Assert.Equal(768, Assert.Single(resolver.Requests).MaxOutputTokens);
+        resolver.Requests.Clear(); resolver.Usage = new(500, 20);
+        await Model(resolver, contexts: new(output: 64)).SummarizeAsync(Request(), Results, new Gate(), _ => { }, default);
+        Assert.Equal(64, Assert.Single(resolver.Requests).MaxOutputTokens);
+    }
+
     [Theory]
     [InlineData(4097, 10)]
     [InlineData(500, 385)]
@@ -159,11 +172,17 @@ public sealed class MaterialResearchModelTests
         Assert.Empty(resolver.Requests);
     }
 
-    [Fact]
-    public async Task Truncated_model_result_never_becomes_a_query()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Truncated_model_result_never_becomes_a_query_or_summary(bool summary)
     {
         var resolver = new Resolver("{\"query\":null}") { FinishReason = "length" };
-        await Assert.ThrowsAsync<AgentProtocolException>(() => Model(resolver).GenerateQueryAsync(Request(), new Gate(), _ => { }, default));
+        await Assert.ThrowsAsync<AgentProtocolException>(async () =>
+        {
+            if (summary) await Model(resolver).SummarizeAsync(Request(), Results, new Gate(), _ => { }, default);
+            else await Model(resolver).GenerateQueryAsync(Request(), new Gate(), _ => { }, default);
+        });
         Assert.Single(resolver.Requests);
     }
 

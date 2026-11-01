@@ -79,6 +79,24 @@ public sealed class MaterialResearchActivityTests : IDisposable
         await _activity.RunOnceAsync(); await _activity.RunOnceAsync();
         Assert.Equal(1, _source.Calls); Assert.Empty(_store.GetActive(new("mash", "p")));
     }
+    [Theory]
+    [InlineData(768, true)]
+    [InlineData(769, false)]
+    public async Task Summary_dispatch_enforces_its_own_exact_output_ceiling(int limit, bool allowed)
+    {
+        _model.SummaryOutputTokens = limit;
+        await _activity.RunOnceAsync();
+        Assert.Equal(allowed ? 1 : 0, _store.GetActive(new("mash", "p")).Count);
+        Assert.Equal(allowed ? 2 : 1, _model.Dispatches);
+    }
+    [Fact] public async Task Truncated_summary_retains_a_safe_specific_code_without_saving_or_retrying()
+    {
+        _model.SummaryFailure = new AgentProtocolException("MODEL_OUTPUT_LIMIT");
+        await _activity.RunOnceAsync();
+        Assert.Equal("MATERIAL_RESEARCH_MODEL_OUTPUT_LIMIT", _activity.LastCode);
+        Assert.Empty(_store.GetActive(new("mash", "p")));
+        Assert.Equal(2, _model.Dispatches);
+    }
     private sealed class Host : IMaterialResearchHost
     {
         public bool Allowed = true;
@@ -108,19 +126,23 @@ public sealed class MaterialResearchActivityTests : IDisposable
     private sealed class Model : IMaterialResearchModel
     {
         public int Dispatches; public bool SkipDispatch; public Action? AfterQuery; public Action? AfterSummary;
+        public int SummaryOutputTokens = 384;
+        public Exception? SummaryFailure;
         public MaterialResearchDraft Draft = new(0, "Selective forgetting limits conflicting memories.", "Directly related to agent memory.");
-        private void Dispatch(MaterialResearchRequest r, IChatDispatchGate gate, CancellationToken token)
+        private void Dispatch(MaterialResearchRequest r, IChatDispatchGate gate, CancellationToken token, int output = 384)
         {
             if (SkipDispatch) return;
             var chat = ChatRequest.CreateAgent(r.Scope.RoleId, r.Scope.ConversationId, [new(ModelMessageRole.System, "synthetic request", [])],
-                metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "topic_material_research", ["fgo_activity_id"] = r.ActivityId }, maxOutputTokens: 384);
+                metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "topic_material_research", ["fgo_activity_id"] = r.ActivityId }, maxOutputTokens: output);
             gate.Dispatch(chat, ModelRouteKey.From(r.Connection), () => ++Dispatches, token);
         }
         public Task<string?> GenerateQueryAsync(MaterialResearchRequest r, IChatDispatchGate gate, Action<CancellationToken> current, CancellationToken token)
         { Dispatch(r, gate, token); AfterQuery?.Invoke(); return Task.FromResult<string?>("agent memory selective forgetting"); }
         public Task<MaterialResearchDraft?> SummarizeAsync(MaterialResearchRequest r, IReadOnlyList<MaterialSearchResult> results,
             IChatDispatchGate gate, Action<CancellationToken> current, CancellationToken token)
-        { Dispatch(r, gate, token); AfterSummary?.Invoke(); return Task.FromResult<MaterialResearchDraft?>(Draft); }
+        { Dispatch(r, gate, token, SummaryOutputTokens); AfterSummary?.Invoke();
+            if (SummaryFailure is not null) throw SummaryFailure;
+            return Task.FromResult<MaterialResearchDraft?>(Draft); }
     }
     public void Dispose()
     {

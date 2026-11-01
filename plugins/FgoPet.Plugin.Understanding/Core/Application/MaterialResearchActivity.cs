@@ -3,6 +3,7 @@ using FgoPet.Extensibility;
 using FgoPet.Understanding.Contracts;
 using System.Security.Cryptography;
 using System.Text;
+using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Understanding;
 
@@ -11,6 +12,8 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
     ITopicMaterialStore store, IMaterialResearchModel model, IMaterialResearchSource source,
     IDialogueContextLifetime lifetime, TimeProvider clock, Action<MaterialResearchDiagnostic>? diagnostics = null)
 {
+    internal const int QueryOutputTokens = 384;
+    internal const int SummaryOutputTokens = 768;
     private readonly SemaphoreSlim _serial = new(1, 1);
     private static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
     public string? LastCode { get; private set; }
@@ -47,9 +50,11 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             var gate = new DispatchGate((chat, route, start, dispatchToken) =>
             {
                 EnsureCurrent(dispatchToken);
+                var outputCeiling = Math.Min(phase == 1 ? QueryOutputTokens : SummaryOutputTokens,
+                    configuration.Connection.MaxOutputTokens);
                 if (route != ModelRouteKey.From(configuration.Connection) || chat.Tools is not null
                     || chat.ServantId != configuration.Scope.RoleId || chat.ConversationId != configuration.Scope.ConversationId
-                    || chat.MaxOutputTokens is not > 0 or > 384 || calls + 1 != phase
+                    || chat.MaxOutputTokens is not > 0 || chat.MaxOutputTokens > outputCeiling || calls + 1 != phase
                     || !chat.Metadata.TryGetValue("fgo_auxiliary", out var purpose) || purpose != "topic_material_research"
                     || !chat.Metadata.TryGetValue("fgo_activity_id", out var id) || id != activityId)
                     throw new InvalidOperationException("MATERIAL_DISPATCH_REJECTED");
@@ -123,7 +128,9 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
         catch (Exception error)
         {
             // Never log query, snippet, provider body, user data or exception text.
-            LastCode = error is InvalidOperationException && SafeCode(error.Message) ? error.Message : "MATERIAL_UNAVAILABLE";
+            var code = error is AgentProtocolException protocol ? "MATERIAL_RESEARCH_" + protocol.Code
+                : error is InvalidOperationException ? error.Message : null;
+            LastCode = code is not null && SafeCode(code) ? code : "MATERIAL_UNAVAILABLE";
             Log("failed", LastCode);
         }
         finally { _serial.Release(); }

@@ -37,7 +37,7 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
     {
         ArgumentNullException.ThrowIfNull(request);
         var text = await CallAsync(request, QueryRules, JsonSerializer.Serialize(new { topic = request.Topic }),
-            dispatch, ensureCurrent, token).ConfigureAwait(false);
+            MaterialResearchActivity.QueryOutputTokens, dispatch, ensureCurrent, token).ConfigureAwait(false);
         try
         {
             using var document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 8 });
@@ -65,7 +65,8 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
         var data = JsonSerializer.Serialize(new { topic = request.Topic,
             results = sources.Select((source, index) => new { sourceIndex = index,
                 title = source.Title, url = source.Url, snippet = source.Snippet }) });
-        var text = await CallAsync(request, SummaryRules, data, dispatch, ensureCurrent, token).ConfigureAwait(false);
+        var text = await CallAsync(request, SummaryRules, data, MaterialResearchActivity.SummaryOutputTokens,
+            dispatch, ensureCurrent, token).ConfigureAwait(false);
         try
         {
             using var document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 8 });
@@ -83,7 +84,7 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
         catch (JsonException) { throw Failure("INVALID_RESULT"); }
     }
 
-    private async Task<string> CallAsync(MaterialResearchRequest request, string rules, string data,
+    private async Task<string> CallAsync(MaterialResearchRequest request, string rules, string data, int outputCeiling,
         IChatDispatchGate dispatch, Action<CancellationToken> ensureCurrent, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -97,7 +98,7 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
         var capacity = await contexts.ResolveAsync(request.Connection, token).ConfigureAwait(false);
         Check();
         if (capacity.Route != route || capacity.WindowTokens <= 0) throw Failure("CONTEXT_UNAVAILABLE");
-        var output = Math.Min(384, request.Connection.MaxOutputTokens);
+        var output = Math.Min(outputCeiling, request.Connection.MaxOutputTokens);
         if (capacity.MaxOutputTokens is { } providerOutput) output = Math.Min(output, providerOutput);
         if (output <= 0) throw Failure("OUTPUT_LIMIT");
         var chat = ChatRequest.CreateAgent(request.Scope.RoleId, request.Scope.ConversationId,
