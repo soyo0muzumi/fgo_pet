@@ -17,7 +17,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
 
     public async ValueTask<JsonElement> CallAsync(ChromeBrowserSettings settings, string name, JsonElement arguments, CancellationToken token)
     {
-        if (name is not ("list_pages" or "new_page" or "take_snapshot" or "take_screenshot")) throw new BrowserException("BROWSER_TOOL_DENIED");
+        if (name is not ("list_pages" or "new_page" or "take_snapshot" or "take_screenshot" or "click" or "fill")) throw new BrowserException("BROWSER_TOOL_DENIED");
         if (name == "take_screenshot" && !settings.VisualEnabled) throw new BrowserException("BROWSER_VISUAL_NOT_ENABLED");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(45));
@@ -35,7 +35,7 @@ internal sealed class ChromeMcpConnection : IChromeMcpConnection
                 await Write(new { jsonrpc = "2.0", method = "notifications/initialized" }, deadline.Token);
                 var available = await Request("tools/list", new { }, deadline.Token);
                 var names = available.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToHashSet();
-                if (!new[] { "list_pages", "new_page", "take_snapshot" }.All(names.Contains))
+                if (!new[] { "list_pages", "new_page", "take_snapshot", "click", "fill" }.All(names.Contains))
                     throw new BrowserException("BROWSER_SERVER_TOOLS_MISSING");
                 if (settings.VisualEnabled && !names.Contains("take_screenshot")) throw new BrowserException("BROWSER_SERVER_TOOLS_MISSING");
                 _settings = settings;

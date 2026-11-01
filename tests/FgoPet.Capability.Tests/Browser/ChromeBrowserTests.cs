@@ -66,7 +66,8 @@ public sealed class ChromeBrowserTests
         var connection = new Connection();
         await using var plugin = new ChromeBrowserPlugin(() => Enabled, _ => true, connection);
         await plugin.StartAsync(default);
-        Assert.Equal(new[] { "browser.tabs", "browser.open", "browser.read", "browser.inspect_image" }, plugin.Contributions.Tools.Select(t => t.Descriptor.Name));
+        Assert.Equal(new[] { "browser.tabs", "browser.open", "browser.read", "browser.click", "browser.fill", "browser.inspect_image" },
+            plugin.Contributions.Tools.Select(t => t.Descriptor.Name));
         Assert.Equal("TOOL_INVALID_ARGUMENTS", (await Invoke(plugin, "browser.open", new { url = "https://example.org", initScript = "evil" })).ErrorCode);
         Assert.Empty(connection.Calls);
         Assert.True((await Invoke(plugin, "browser.open", new { url = "https://example.org" })).Success);
@@ -74,6 +75,19 @@ public sealed class ChromeBrowserTests
         Assert.Equal("new_page", call.Name);
         Assert.False(call.Args.TryGetProperty("initScript", out _));
         Assert.True(call.Args.GetProperty("background").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Interaction_requires_host_confirmation_and_never_contacts_chrome_without_it()
+    {
+        var connection = new Connection();
+        await using var plugin = new ChromeBrowserPlugin(() => Enabled, _ => true, connection);
+        await plugin.StartAsync(default);
+        Assert.Equal("TOOL_AUTHORIZATION_DENIED",
+            (await Invoke(plugin, "browser.click", new { pageId = 7, snapshotId = "snap", uid = "1_2" })).ErrorCode);
+        Assert.Equal("TOOL_AUTHORIZATION_DENIED",
+            (await Invoke(plugin, "browser.fill", new { pageId = 7, snapshotId = "snap", uid = "1_2", value = "text" })).ErrorCode);
+        Assert.Empty(connection.Calls);
     }
 
     [Fact]

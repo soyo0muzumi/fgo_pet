@@ -44,7 +44,7 @@ public sealed partial class ChromeBrowserPlugin
         if (bytes.Length is < 1 or >= 2_000_000) throw new BrowserImageException("BROWSER_IMAGE_TOO_LARGE");
         var generation = _connectionGeneration;
         bool Authorized() => generation == _connectionGeneration && settings == _settings() && _scopeCurrent(invocation.Scope)
-            && _started && !_lifetime.IsCancellationRequested;
+            && _started && !_lifetime.IsCancellationRequested && ConfigurationError() is null;
         token.ThrowIfCancellationRequested();
         var image = _imageSink.Accept(invocation.Scope, runId, bytes, mime, Authorized, token);
         return new(true, JsonSerializer.SerializeToElement(new { pageId = page, snapshotId = id, url = snapshot.Url,

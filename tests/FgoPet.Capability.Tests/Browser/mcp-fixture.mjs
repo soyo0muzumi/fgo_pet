@@ -11,7 +11,7 @@ input.on('line', line => {
   } else if (request.method === 'notifications/initialized') {
     initialized = true;
   } else if (request.method === 'tools/list' && initialized) {
-    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot', 'take_screenshot'].map(name => ({ name })) });
+    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot', 'take_screenshot', 'click', 'fill'].map(name => ({ name })) });
   } else if (request.method === 'tools/call' && initialized) {
     sequence++;
     const mode = request.params.arguments.fixtureMode;

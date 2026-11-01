@@ -11,6 +11,8 @@ public sealed class ChromeBrowserVisualAccess(string path) : IBrowserVisualAcces
     public bool Enabled => ChromeBrowserSettings.Load(path)?.VisualEnabled == true;
     public bool TrySetEnabled(bool enabled)
     {
+        var gate = ChromeBrowserSettings.GetWriteGate(path);
+        if (!gate.Wait(0)) return false;
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
@@ -37,6 +39,7 @@ public sealed class ChromeBrowserVisualAccess(string path) : IBrowserVisualAcces
         {
             try { File.Delete(temporary); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            gate.Release();
         }
     }
 }
