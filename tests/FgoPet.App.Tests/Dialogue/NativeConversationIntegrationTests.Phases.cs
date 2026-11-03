@@ -50,13 +50,14 @@ public sealed partial class NativeConversationIntegrationTests
         settings.Save(settings.Load() with
         {
             ModelConnection = new("fixture", "https://fixture.invalid/v1", "fixture-model",
-                contextWindowOverride: 8192, maxOutputTokens: 2048),
+                contextWindowOverride: settings.Load().ModelConnection!.ContextWindowOverride, maxOutputTokens: 2048),
         });
         await using var host = await TestHost.CreateAsync(provider, tool, observer, settings);
 
         var result = await host.Orchestrator.SendAsync(RoleId, "Answer after any needed read.", default, new(ProjectId));
 
-        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.True(result.Status == ConversationSendStatus.Completed,
+            $"Status={result.Status}; code={(await host.Runs.LoadAsync(result.RunId!, default))?.Snapshot.ErrorCode}");
         var expectedRequests = withRead ? 3 : 2;
         Assert.Equal(expectedRequests, provider.Requests.Count);
         Assert.All(provider.Requests, request => Assert.Equal(2048, request.MaxOutputTokens));

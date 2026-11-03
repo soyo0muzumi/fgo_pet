@@ -25,6 +25,8 @@ public sealed class ChatApprovalWebTests
             await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
             var web = Assert.IsType<WebView2>(host.Children[0]);
             async Task<bool> Js(string code) => await web.CoreWebView2.ExecuteScriptAsync(code) == "true";
+            // Pending requests render directly in the composer surface; the former
+            // .compact-attention summary was replaced by .compact-resume.
             await MarginWebIntegrationTests.WaitUntil(() => Js("!!document.querySelector('.approval-card .primary-button')"));
             Assert.True(await Js("!document.body.innerText.includes('CHAT_BRIDGE_UNAVAILABLE') && !document.body.innerText.includes('无法连接桌面宿主')"),
                 "A valid initial approval snapshot must not trigger presentation before the native handshake completes.");

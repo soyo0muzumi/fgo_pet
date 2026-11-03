@@ -342,10 +342,62 @@ internal static class StaRunner
             return;
         }
 
+        // Release popup surfaces this test opened so they cannot stall a later one.
+        // See ReleaseLeftoverPopupSurfaces for the measured failure it prevents.
+        ReleaseLeftoverPopupSurfaces();
+
         // Posting alone leaves WPF's native HWND callbacks attached to a dead
         // managed thread. Run the dispatcher so shutdown can release them before
         // the STA exits; Send priority avoids idle starvation from open popups.
         if (!dispatcher.HasShutdownStarted) dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
         Dispatcher.Run();
+    }
+
+    /// <summary>
+    /// Disposes the HwndSource of popup surfaces left behind on this thread.
+    ///
+    /// A ContextMenu opened by a test is hosted in its own HwndSource whose root is a
+    /// PopupRoot. The tests that open a menu never close it, so the surface outlives the
+    /// test. Both an open and an already-closed leftover PopupRoot keep
+    /// <c>Dispatcher.Run()</c> from draining, which hangs the NEXT test's shutdown until
+    /// its budget expires (TimeoutException, phase=dispatcher-shutdown).
+    ///
+    /// Measured on the full Todo class: 5 tests hung before this, 0 after. Closing the
+    /// popup is not sufficient — the stale presentation source itself must be disposed.
+    /// Best effort: a failure here must not turn a passing test into a failing one.
+    /// </summary>
+    private static void ReleaseLeftoverPopupSurfaces()
+    {
+        try
+        {
+            var sources = System.Linq.Enumerable
+                .Cast<System.Windows.PresentationSource>(System.Windows.PresentationSource.CurrentSources)
+                .Where(source => source is System.Windows.Interop.HwndSource hwnd
+                    && hwnd.RootVisual is System.Windows.FrameworkElement element
+                    && element.Parent is System.Windows.Controls.Primitives.Popup)
+                .ToArray();
+            if (sources.Length == 0)
+            {
+                return;
+            }
+
+            foreach (var source in sources)
+            {
+                var hwnd = (System.Windows.Interop.HwndSource)source;
+                if (hwnd.RootVisual is System.Windows.FrameworkElement element
+                    && element.Parent is System.Windows.Controls.Primitives.Popup popup
+                    && popup.IsOpen)
+                {
+                    popup.IsOpen = false;
+                }
+                hwnd.Dispose();
+            }
+            // Let the disposal actually tear the visual tree down before we stop running.
+            Dispatcher.CurrentDispatcher.Invoke(static () => { }, DispatcherPriority.Background);
+        }
+        catch (Exception)
+        {
+            // Shutdown must still proceed; the outer timeout owns failure reporting.
+        }
     }
 }

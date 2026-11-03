@@ -38,8 +38,11 @@ public sealed class ServiceRegistrationTests
         Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
             provider.GetRequiredService<IWorkspaceAuthorizationManager>());
         Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
-        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.expression-inbox", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
+        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.expression-inbox", "firstparty.material-research", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.social-sources", "firstparty.topic-material", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
+        foreach (var materialPluginId in new[] { "firstparty.topic-material", "firstparty.material-research" })
+            Assert.Empty(Assert.Single(provider.GetRequiredService<PluginCatalog>().Plugins,
+                plugin => plugin.Manifest.Id == materialPluginId).Instance.Contributions.Tools);
         var expression = Assert.Single(provider.GetRequiredService<PluginCatalog>().Plugins,
             p => p.Manifest.Id == "firstparty.expression-inbox");
         Assert.Empty(expression.Instance.Contributions.Tools);
@@ -48,7 +51,7 @@ public sealed class ServiceRegistrationTests
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         await AssertPluginActivationAsync(provider);
         var readTools = provider.GetRequiredService<ConversationCapabilityRouter>().Tools;
-        Assert.Equal(new[] { "browser.inspect_image", "browser.open", "browser.read", "browser.tabs", "context.apps", "context.time", "document.read", "experience.read", "experience.search", "history.read", "history.search", "image.read", "reminder.list", "understanding.query", "web.search", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
+        Assert.Equal(new[] { "browser.inspect_image", "browser.open", "browser.read", "browser.tabs", "context.apps", "context.time", "document.read", "experience.read", "experience.search", "history.read", "history.search", "image.read", "reminder.list", "social.bilibili", "social.bilibili.search", "social.xiaoheihe", "social.xiaoheihe.search", "social.xiaohongshu", "social.xiaohongshu.search", "understanding.query", "web.search", "workspace.glob", "workspace.grep", "workspace.list", "workspace.read" },
             readTools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal));
         Assert.All(readTools, tool => Assert.Equal(ToolEffect.ReadOnly, tool.Effect));
         Assert.Empty(provider.GetRequiredService<IWorkspaceCatalog>().Workspaces);
@@ -57,6 +60,7 @@ public sealed class ServiceRegistrationTests
         Assert.True(settings.Contains("Privacy"));
         Assert.True(settings.Contains("ModelConnection"));
         Assert.True(settings.Contains("Qq"));
+        Assert.True(settings.Contains("WebAccess"));
         Assert.False((await provider.GetRequiredService<FgoPet.Plugin.Qq.QqChatPlugin>().GetSnapshotAsync(default)).Enabled);
         Assert.False(settings.Contains("Speech"));
         Assert.False(settings.Contains("ConversationMemory"));

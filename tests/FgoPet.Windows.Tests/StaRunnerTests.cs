@@ -100,4 +100,43 @@ public sealed class StaRunnerTests
         Assert.True(dispatcher.HasShutdownFinished);
         Assert.False(dispatcher.Thread.IsAlive);
     }
+
+    [Fact]
+    public void Run_leaves_no_popup_presentation_source_for_the_next_test()
+    {
+        // A ContextMenu opened inside a STA test is hosted in its own HwndSource whose
+        // root is a PopupRoot. The Todo tests close their Window (CloseView) but never
+        // close the menu, so that surface outlived the test. PresentationSource is
+        // process-global, so it was still presented on the NEXT test's STA thread, where
+        // Dispatcher.Run() never drained and that test hung until its budget expired
+        // (TimeoutException, phase=dispatcher-shutdown).
+        //
+        // Assert the invariant the fix establishes: no popup presentation source survives
+        // the run. The window is closed here to mirror CloseView; the menu is deliberately
+        // left open, which is exactly what the real tests do.
+        StaRunner.Run(() =>
+        {
+            var button = new System.Windows.Controls.Button { Content = "owner" };
+            var menu = new System.Windows.Controls.ContextMenu();
+            menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "item" });
+            button.ContextMenu = menu;
+            var window = new System.Windows.Window { Width = 120, Height = 80, Content = button };
+            window.Show();
+            menu.PlacementTarget = button;
+            menu.IsOpen = true;
+            StaRunner.Pump();
+            window.Close();
+        });
+
+        StaRunner.Run(() =>
+        {
+            var leftover = System.Linq.Enumerable
+                .Cast<System.Windows.PresentationSource>(System.Windows.PresentationSource.CurrentSources)
+                .Where(source => source is System.Windows.Interop.HwndSource hwnd
+                    && hwnd.RootVisual is System.Windows.FrameworkElement element
+                    && element.Parent is System.Windows.Controls.Primitives.Popup)
+                .ToArray();
+            Assert.Empty(leftover);
+        });
+    }
 }

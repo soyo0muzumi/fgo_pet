@@ -69,10 +69,13 @@ public sealed class ChatWebWindowTests
             // React distinguishes deliberate reading from its own scroll corrections.
             // Send a trusted upward reading gesture before pinning the deterministic pixel anchor.
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
-            await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('message-scroll').focus()");
+            await ChatExternalLinkTests.Click(web.CoreWebView2, "#composer");
+            await ChatExternalLinkTests.WaitForAnimations(web.CoreWebView2);
+            await web.CoreWebView2.ExecuteScriptAsync("var scroll=document.getElementById('message-scroll');window.readingGestureEnded=false;scroll.addEventListener('scrollend',()=>window.readingGestureEnded=true,{once:true});scroll.focus()");
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"PageUp\",\"code\":\"PageUp\",\"windowsVirtualKeyCode\":33}");
             await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"PageUp\",\"code\":\"PageUp\",\"windowsVirtualKeyCode\":33}");
-            await Task.Delay(150);
+            await MarginWebIntegrationTests.WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("window.readingGestureEnded") == "true");
+            await ChatExternalLinkTests.WaitForAnimations(web.CoreWebView2);
             await web.CoreWebView2.ExecuteScriptAsync("var scroll=document.getElementById('message-scroll');scroll.scrollTo({top:500,behavior:'instant'});scroll.dispatchEvent(new Event('scroll'));document.getElementById('composer').focus();");
             await Task.Delay(100);
             Assert.Equal("500", await web.CoreWebView2.ExecuteScriptAsync("Math.round(scroll.scrollTop)"));

@@ -39,4 +39,11 @@ public sealed class ChatPresentationBridgeTests
         using var invalid = JsonDocument.Parse("{\"sessionId\":\"s\",\"servantId\":\"r\",\"conversationId\":\"\",\"action\":\"refreshModels\",\"targetId\":\"other\"}");
         Assert.False(ChatWebCommandReader.TryRead(new("chat.host", "fixture", invalid.RootElement), out _, out _));
     }
+
+    [Fact]
+    public void Chat_cannot_change_browser_image_grant()
+    {
+        using var request = JsonDocument.Parse("{\"sessionId\":\"s\",\"servantId\":\"r\",\"conversationId\":\"\",\"action\":\"configureBrowserImages\"}");
+        Assert.False(ChatWebCommandReader.TryRead(new("chat.host", "fixture", request.RootElement), out _, out _));
+    }
 }

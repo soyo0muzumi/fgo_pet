@@ -81,7 +81,8 @@ public sealed partial class NativeConversationIntegrationTests
         var result = await host.Orchestrator.SendAsync(SourcePersonaRole, "合成验收：请简短回应。", default, new(ProjectId));
         var expected = tools.Select(t => ModelToolNameMap.GetWireName(t.Descriptor.Name)).ToHashSet(StringComparer.Ordinal);
         expected.UnionWith(new[] { "skill.load", "user.ask", "response.finalize" }.Select(ModelToolNameMap.GetWireName));
-        Assert.Equal(39, expected.Count);
+        // Native always offers the complete catalog plus the three host control tools.
+        Assert.Equal(47, expected.Count);
         Assert.Equal(ConversationSendStatus.Completed, result.Status); Assert.Equal(2, scripted.Requests.Count);
         Assert.Contains(meter.Measurements, m => expected.SetEquals(m.ToolNames));
         Assert.All(meter.Dispatches, d => Assert.InRange(d.EstimatedInputTokens, 1, budget.InputTokens));
@@ -98,7 +99,7 @@ public sealed partial class NativeConversationIntegrationTests
         var settings=new TestSettingsStore(new DialogueSettings(connection,true));var route=ModelRouteKey.From(connection);
         var meter=new FullCatalogMeter();var scripted=new ScriptedProvider(PersonaFinal("Synthetic baseline reply."))
             {RequestReceived=request=>meter.Dispatch(route,request)};
-        await using var host=await TestHost.CreateAsync(new LimitedProvider(scripted,16000),null,new RecordingObserver(),
+        await using var host=await TestHost.CreateAsync(new LimitedProvider(scripted,21000),null,new RecordingObserver(),
             settings,tokenMeter:meter,contentResolver:new BoundPersonaResolver(ResolveSourcePersona()),useNative:native,skills:true,questions:true,extraTools:tools);
         var result=await host.Orchestrator.SendAsync(SourcePersonaRole,"合成验收：请简短回应。",default,new(ProjectId));
         var expected=tools.Where(t=>native||t.Descriptor.Effect!=ToolEffect.Command)
@@ -110,13 +111,15 @@ public sealed partial class NativeConversationIntegrationTests
         var applications = Assert.Single(tools, t => t.Descriptor.Name == "context.apps");
         Assert.Equal(ToolEffect.ReadOnly, applications.Descriptor.Effect);
         Assert.Contains(native ? ModelToolNameMap.GetWireName("context.apps") : "context.apps", expected);
-        Assert.Equal(native?39:24,expected.Count);
+        // Ordinary excludes command-effect tools; Native offers every descriptor plus the three
+        // host control tools. The social-source readers are ReadOnly, so both sides grow by six.
+        Assert.Equal(native?47:30,expected.Count);
         var basis=meter.Measurements.Where(m=>expected.SetEquals(m.ToolNames)).ToArray();Assert.NotEmpty(basis);
         Assert.Equal(native?ConversationSendStatus.Failed:ConversationSendStatus.Completed,result.Status);
         Assert.Equal(native?0:1,scripted.Requests.Count);
-        if(native)Assert.True(basis.Max(m=>m.EstimatedInputTokens)>16000);
-        else Assert.All(meter.Dispatches,m=>Assert.True(m.EstimatedInputTokens<=16000));
-        return new{native,route,outputLimit=2048,inputLimit=16000,warningLimit=9600,
+        if(native)Assert.True(basis.Max(m=>m.EstimatedInputTokens)>21000);
+        else Assert.All(meter.Dispatches,m=>Assert.True(m.EstimatedInputTokens<=21000));
+        return new{native,route,outputLimit=2048,inputLimit=21000,warningLimit=12600,
             countKind="Estimated; actual production meter and shared wire projection; synthetic usage not recorded",
             scope="All current registered tool descriptors, source Persona, host and Native control contracts, synthetic minimal input and empty history",
             tools=expected.Count,result=result.Status.ToString(),realProviderCalls=0,syntheticProviderCalls=scripted.Requests.Count,

@@ -85,16 +85,30 @@ public sealed class WindowTextBrowserProviderTests(ITestOutputHelper output)
                 Record("local-page-ready");
                 var handle = new WindowInteropHelper(window).Handle;
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                var result = await Task.Run(() =>
+                var result = await Task.Run(async () =>
                 {
-                    // Authorize only renderer subtrees anchored to a native child of this fixture.
-                    var contentRoot = WindowTextReadRoot.Select(handle, deadline.Token);
-                    Assert.NotEqual(handle, contentRoot);
-                    var root = AutomationElement.FromHandle(contentRoot);
-                    RecordProviderShape(root, handle, deadline.Token);
-                    var scope = new WindowTextNativeScope(handle, Environment.ProcessId, contentRoot);
-                    return WindowTextCollector.Collect(new AutomationWindowTextNode(root, scope),
-                        Environment.ProcessId, deadline.Token);
+                    // DOM completion precedes Chromium's asynchronous accessibility publication.
+                    // Wait for this fixture's text, keeping the same deadline and privacy checks.
+                    var samples = 0;
+                    while (true)
+                    {
+                        deadline.Token.ThrowIfCancellationRequested();
+                        // Authorize only renderer subtrees anchored to a native child of this fixture.
+                        var contentRoot = WindowTextReadRoot.Select(handle, deadline.Token);
+                        Assert.NotEqual(handle, contentRoot);
+                        var root = AutomationElement.FromHandle(contentRoot);
+                        if (samples++ == 0) RecordProviderShape(root, handle, deadline.Token);
+                        var scope = new WindowTextNativeScope(handle, Environment.ProcessId, contentRoot);
+                        var snapshot = WindowTextCollector.Collect(new AutomationWindowTextNode(root, scope),
+                            Environment.ProcessId, deadline.Token);
+                        Assert.DoesNotContain(password, snapshot.Text);
+                        Assert.DoesNotContain(hidden, snapshot.Text);
+                        if (snapshot.Text.Contains(firstParagraph, StringComparison.Ordinal)
+                            && snapshot.Text.Contains(secondParagraph, StringComparison.Ordinal)) return snapshot;
+                        if (samples == 1 || samples % 20 == 0)
+                            Record("accessibility-pending", snapshot.Status, snapshot.Text.Length, snapshot.VisitedNodes);
+                        await Task.Delay(50, deadline.Token);
+                    }
                 }).WaitAsync(TimeSpan.FromSeconds(10));
                 Record("collection-completed", result.Status, result.Text.Length, result.VisitedNodes);
                 Assert.Contains(firstParagraph, result.Text);

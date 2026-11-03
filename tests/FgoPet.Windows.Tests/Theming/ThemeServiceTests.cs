@@ -10,6 +10,7 @@ using System.Windows.Media;
 using FgoPet.App.Theming;
 using FgoPet.Core.Settings;
 using FgoPet.UiFoundation.Theming;
+using FgoPet.UiSdk;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Theming;
@@ -292,6 +293,43 @@ public sealed class ThemeServiceTests
 
             Assert.Equal("#23242B", service.CaptureWebPalette()["--surface"]);
             Assert.Equal("#C3A8FF", service.CaptureWebPalette()["--accent"]);
+        });
+    }
+
+    [Fact]
+    public void Margin_web_palette_tracks_effective_system_theme_and_has_complete_readable_tokens()
+    {
+        StaRun(() =>
+        {
+            var source = new FakeSystemThemeSource(AppTheme.FgoDark);
+            using var service = new ThemeService(
+                new MemoryThemeSettingsStore(new ThemeSettings(AppTheme.System)),
+                new ResourceDictionary(), ThemeService.CreateTestDictionary, source);
+            service.Initialize();
+            var dark = MarginVisualResources.CaptureWebPalette(service);
+            Assert.Equal("dark", dark["--color-scheme"]);
+            Assert.Equal(dark["--text"], dark["--ink"]);
+            Assert.Equal(dark["--line"], dark["--rule"]);
+            Assert.True(ContrastRatio((Color)ColorConverter.ConvertFromString(dark["--ink"]),
+                (Color)ColorConverter.ConvertFromString(dark["--paper"])) >= 4.5);
+            Assert.True(ContrastRatio((Color)ColorConverter.ConvertFromString(dark["--on-accent"]),
+                (Color)ColorConverter.ConvertFromString(dark["--primary"])) >= 4.5);
+
+            source.Change(AppTheme.FgoLight);
+            var light = MarginVisualResources.CaptureWebPalette(service);
+            Assert.Same(MarginVisualResources.WebPalette, light);
+            Assert.Equal("light", light["--color-scheme"]);
+            Assert.Equal(light.Keys.Order(), dark.Keys.Order());
+            Assert.NotEqual(light["--paper"], dark["--paper"]);
+            Assert.True(ContrastRatio((Color)ColorConverter.ConvertFromString(light["--faint"]),
+                (Color)ColorConverter.ConvertFromString(light["--paper"])) >= 4.5);
+            Assert.True(ContrastRatio((Color)ColorConverter.ConvertFromString(light["--on-accent"]),
+                (Color)ColorConverter.ConvertFromString(light["--primary"])) >= 4.5);
+            Assert.Same(light, MarginVisualResources.CaptureWebPalette(null));
+
+            service.Select(AppTheme.FgoDark);
+            source.Change(AppTheme.FgoLight);
+            Assert.Same(dark, MarginVisualResources.CaptureWebPalette(service));
         });
     }
 

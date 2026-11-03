@@ -3,9 +3,13 @@ using FgoPet.App.Bootstrap;
 using FgoPet.App.Main;
 using FgoPet.App.Settings;
 using FgoPet.App.Tray;
+using FgoPet.App.Windowing;
+using FgoPet.Core.Geometry;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Shell;
 using Xunit;
 
 namespace FgoPet.Windows.Tests.Dialogue;
@@ -71,6 +75,63 @@ public sealed class ChatPresentationWindowTests
         window.SetExpanded(false);
         Assert.Equal(Math.Min(328, window.Width), window.MinWidth);
         Assert.Equal(Math.Min(388, window.Height), window.MinHeight);
+        window.Hide();
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task Streaming_height_changes_keep_the_native_bottom_right_and_the_users_width() => StaRunner.RunAsync(() =>
+    {
+        var vm = DialogueWindowIntegrationTests.CreateViewModel();
+        using var conversation = vm.Conversation;
+        using var window = new DialogueWindow(vm) { ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        window.Show();
+        window.SetPresentation("composer", false, 160);
+        var area = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(window).Handle).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var marginX = Math.Min((area.Width - 1) / 2, (int)Math.Round(16 * dpi.DpiScaleX));
+        var marginY = Math.Min((area.Height - 1) / 2, (int)Math.Round(16 * dpi.DpiScaleY));
+        var widthPx = Math.Min(area.Width - 2 * marginX, (int)Math.Ceiling(520 * dpi.DpiScaleX));
+        var heightPx = (int)Math.Ceiling(window.Height * dpi.DpiScaleY);
+        var anchor = new DeviceRect(area.Right - marginX - widthPx, area.Bottom - marginY - heightPx,
+            widthPx, heightPx);
+        // Simulate a user resizing and positioning the compact window, then
+        // deliver several measured heights from a streaming response.
+        window.Width = widthPx / dpi.DpiScaleX;
+        window.Left = anchor.Left / dpi.DpiScaleX;
+        window.Top = anchor.Top / dpi.DpiScaleY;
+        TransientSurfacePlacement.ApplyNativeBounds(window, anchor);
+        foreach (var height in new[] { 200, 260, 360, 220 })
+        {
+            window.SetPresentation("composer", false, height);
+            Assert.True(TransientSurfacePlacement.TryReadNativeBounds(window, out var actual));
+            Assert.InRange(Math.Abs(actual.Right - anchor.Right), 0, 1);
+            Assert.InRange(Math.Abs(actual.Bottom - anchor.Bottom), 0, 1);
+            Assert.InRange(Math.Abs(actual.Width - widthPx), 0, 1);
+            Assert.True(actual.Left >= area.Left + marginX && actual.Top >= area.Top + marginY);
+            Assert.True(actual.Right <= area.Right - marginX && actual.Bottom <= area.Bottom - marginY);
+            Assert.Equal(height, window.WindowPresentation.ComposerHeight);
+        }
+        window.Hide();
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task Repeated_content_height_does_not_recreate_chrome_or_reapply_native_layout() => StaRunner.RunAsync(() =>
+    {
+        var vm = DialogueWindowIntegrationTests.CreateViewModel();
+        using var conversation = vm.Conversation;
+        using var window = new DialogueWindow(vm) { ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        window.Show();
+        window.SetPresentation("composer", false, 220);
+        var chrome = WindowChrome.GetWindowChrome(window);
+        Assert.NotNull(chrome);
+        var layouts = 0;
+        window.LayoutRequestedHandler = () => layouts++;
+        for (var i = 0; i < 5; i++) window.SetPresentation("composer", false, 220);
+        Assert.Equal(0, layouts);
+        Assert.Same(chrome, WindowChrome.GetWindowChrome(window));
+        Assert.Equal(220, window.WindowPresentation.ComposerHeight);
         window.Hide();
         return Task.CompletedTask;
     });

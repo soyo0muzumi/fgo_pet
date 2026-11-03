@@ -87,15 +87,19 @@ public sealed class MarginWebIntegrationTests
             Assert.Equal("true", await Js("!document.querySelectorAll('.context-actions button')[1].disabled && !!document.querySelectorAll('.context-actions button')[1].querySelector('svg')"));
             await Js("document.querySelectorAll('.context-actions button')[1].click()");
             await WaitUntil(() => Task.FromResult(workspace.Choices == 1));
-            await Js("[...document.querySelectorAll('.native-links button')].find(b=>b.textContent.includes('清除工作区上下文')).click()");
+            Assert.Equal("true", await Js("!document.getElementById('project-choice') && !document.querySelector('.context-sheet').textContent.includes('刷新项目列表')"));
+            Assert.Equal("true", await Js("document.querySelectorAll('.context-actions button')[1].getAttribute('aria-label') === '更换项目文件夹'"));
+            await Js("[...document.querySelectorAll('.native-links button')].find(b=>b.textContent.includes('移除项目文件夹')).click()");
             await WaitUntil(() => Task.FromResult(workspace.Label is null));
-            await WaitUntil(async () => await Js("document.querySelectorAll('.context-actions button')[1].textContent.includes('选择工作区上下文')") == "true");
+            await WaitUntil(async () => await Js("document.querySelectorAll('.context-actions button')[1].textContent.includes('选择项目文件夹')") == "true");
             await Key(web, "Escape", 27);
             await WaitUntil(async () => await Js("!document.querySelector('.sheet')") == "true");
 
             // Real keyboard choices travel through the native model owner; the HTTP fixture is offline.
             await Js("document.querySelector('.model-chip').focus()");
             await Key(web, "Enter", 13);
+            // The conversation view presents the picker as a Sheet dialog; the inline
+            // .model-menu list remains the composer-view affordance.
             await WaitUntil(async () => await Js("document.querySelectorAll('.choice-option').length === 2 && document.activeElement.getAttribute('aria-label') === '关闭面板'") == "true");
             await Key(web, "Tab", 9);
             Assert.Equal("true", await Js("document.activeElement === document.querySelectorAll('.choice-option')[0] && document.activeElement.getAttribute('aria-pressed') === 'true'"));

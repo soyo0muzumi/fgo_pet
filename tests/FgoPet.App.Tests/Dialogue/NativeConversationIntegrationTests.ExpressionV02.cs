@@ -11,6 +11,65 @@ public sealed partial class NativeConversationIntegrationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task Short_user_frame_inheritance_reaches_replyer_without_duplicate_history(bool native)
+    {
+        const string role = "mash_kyrielight";
+        var key = new ContentContextKey(role, "official.mash", "1", "casual", "1", "1");
+        var binding = new ContentBinding(key, new PersonaBundle(role, "official.mash", "1", "1", "synthetic identity", []),
+            [], [], "synthetic-persona", "synthetic-knowledge");
+        var provider = new ScriptedProvider(ProviderTurn.Final("分享一下另一件事。"), ProviderTurn.Final("继续接住处境。"), ProviderTurn.Final("再接一小步。"));
+        await using var host = await TestHost.CreateAsync(provider, null, new RecordingObserver(), settings: TestSettingsStore.Create(32768),
+            contentResolver: new BoundPersonaResolver(binding), useNative: native, composer: new PromptComposer(null, null, ExpressionMode.Full));
+        foreach (var user in new[] { "今天好累呀", "接连几件事情挤在一起了", "有一点" })
+            Assert.Equal(ConversationSendStatus.Completed, (await host.Orchestrator.SendAsync(role, user, default, new(ProjectId))).Status);
+        Assert.Equal(3, provider.Requests.Count);
+        for (var index = 0; index < provider.Requests.Count; index++)
+        {
+            var request = provider.Requests[index];
+            var texts = native ? request.ModelMessages.Select(m => m.Content) : request.Messages.Select(m => m.Text);
+            var hint = Assert.Single(texts, s => s.StartsWith("Expression Layer v0.2", StringComparison.Ordinal));
+            Assert.Contains("\"tone\":\"soft\"", hint);
+            Assert.Contains("emotion-tired", hint);
+            Assert.Contains("\"momentum\":\"hold\"", hint);
+            Assert.Contains("\"questionPolicy\":\"none\"", hint);
+            Assert.Contains("本轮不主动索取新的聊天信息", hint);
+            if (index == 2) Assert.Contains("continue-small-step", hint);
+            var userCount = native ? request.ModelMessages.Count(m => m.Role == FgoPet.Kernel.Agent.ModelMessageRole.User)
+                : request.Messages.Count(m => m.Role == ChatMessageRole.User);
+            Assert.Equal(index + 1, userCount);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Everyday_continuation_and_backchannels_reach_each_existing_reply_request(bool native)
+    {
+        const string role = "mash_kyrielight";
+        var key = new ContentContextKey(role, "official.mash", "1", "casual", "1", "1");
+        var binding = new ContentBinding(key, new PersonaBundle(role, "official.mash", "1", "1", "synthetic identity", []),
+            [], [], "synthetic-persona", "synthetic-knowledge");
+        var provider = new ScriptedProvider(ProviderTurn.Final("先接住具体话题。"), ProviderTurn.Final("再贡献一点细节。"), ProviderTurn.Final("给你留一点空间。"));
+        await using var host = await TestHost.CreateAsync(provider, null, new RecordingObserver(), settings: TestSettingsStore.Create(32768),
+            contentResolver: new BoundPersonaResolver(binding), useNative: native, composer: new PromptComposer(null, null, ExpressionMode.Full));
+        var users = new[] { "又是类魂，精力不够打不了这类游戏", "那倒也是", "只是分享，不用给建议" };
+        foreach (var user in users)
+            Assert.Equal(ConversationSendStatus.Completed, (await host.Orchestrator.SendAsync(role, user, default, new(ProjectId))).Status);
+        Assert.Equal(3, provider.Requests.Count);
+        for (var i = 0; i < provider.Requests.Count; i++)
+        {
+            var request = provider.Requests[i];
+            var texts = native ? request.ModelMessages.Select(m => m.Content) : request.Messages.Select(m => m.Text);
+            var hint = Assert.Single(texts, s => s.StartsWith("Expression Layer v0.2", StringComparison.Ordinal));
+            Assert.Contains(i < 2 ? "\"follow_up\":\"continue_thread\"" : "\"follow_up\":\"none\"", hint);
+            if (i == 1) Assert.Contains("continue-small-step", hint);
+            if (i == 2) Assert.Contains("share-space", hint);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Open_chat_intent_reaches_the_existing_replyer_without_an_extra_generation(bool native)
     {
         const string role = "mash_kyrielight";

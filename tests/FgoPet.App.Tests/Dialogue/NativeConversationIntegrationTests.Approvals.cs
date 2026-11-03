@@ -15,6 +15,8 @@ public sealed partial class NativeConversationIntegrationTests
     [InlineData("reminder.create", "reminders")]
     [InlineData("reminder.cancel", "reminders")]
     [InlineData("focus.resume", "firstparty.focus")]
+    [InlineData("browser.click", "browser")]
+    [InlineData("browser.fill", "browser")]
     public Task Native_approval_card_displays_frozen_owner_data_and_only_native_allow_executes_once(string toolName, string pluginId) => RunInputChatTest(async () =>
     {
         var tool = new ApprovalFixtureTool(toolName, pluginId);
@@ -29,10 +31,10 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(toolName, card.GetProperty("toolName").GetString());
         var details = card.GetProperty("plainTextDetails").GetString()!;
         Assert.Contains("synthetic-id", details); Assert.Contains("17", details);
-        if (pluginId == "reminders") Assert.Contains(ApprovalFixtureTool.Summary, details);
+        if (pluginId is "reminders" or "browser") Assert.Contains(ApprovalFixtureTool.Summary, details);
         Assert.False(string.IsNullOrWhiteSpace(card.GetProperty("actionTitle").GetString()));
         var summary = card.GetProperty("plainTextSummary").GetString()!;
-        if (pluginId == "reminders") Assert.Equal(ApprovalFixtureTool.Summary, summary);
+        if (pluginId is "reminders" or "browser") Assert.Equal(ApprovalFixtureTool.Summary, summary);
         else { Assert.Contains("synthetic-id", summary); Assert.Contains("17", summary); Assert.Contains("remaining time", summary); }
         Assert.Equal(0, tool.Invocations); Assert.False(model.CanSend);
         var review = InputCommand(session, "chat.approval.review", card);
@@ -44,12 +46,18 @@ public sealed partial class NativeConversationIntegrationTests
     });
 
     [Theory]
-    [InlineData("chat.approval.deny")]
-    [InlineData("chat.approval.cancel")]
-    [InlineData("unavailable-host")]
-    public Task Refusal_cancel_and_hosts_without_native_review_never_execute(string action) => RunInputChatTest(async () =>
+    [InlineData("chat.approval.deny", "reminder.cancel", "reminders")]
+    [InlineData("chat.approval.cancel", "reminder.cancel", "reminders")]
+    [InlineData("unavailable-host", "reminder.cancel", "reminders")]
+    [InlineData("chat.approval.deny", "browser.click", "browser")]
+    [InlineData("chat.approval.cancel", "browser.click", "browser")]
+    [InlineData("unavailable-host", "browser.click", "browser")]
+    [InlineData("chat.approval.deny", "browser.fill", "browser")]
+    [InlineData("chat.approval.cancel", "browser.fill", "browser")]
+    [InlineData("unavailable-host", "browser.fill", "browser")]
+    public Task Refusal_cancel_and_hosts_without_native_review_never_execute(string action, string toolName, string pluginId) => RunInputChatTest(async () =>
     {
-        var tool = new ApprovalFixtureTool("reminder.cancel", "reminders");
+        var tool = new ApprovalFixtureTool(toolName, pluginId);
         var provider = new ScriptedProvider(ProviderTurn.Call(tool.Descriptor.Name, "operation", "{\"target\":\"synthetic-id\"}"), ProviderTurn.Final("not executed"));
         await using var host = await TestHost.CreateAsync(provider, null, new RecordingObserver(), approvalPlugin: tool);
         using var model = new ConversationViewModel(host.Orchestrator, host.Settings);

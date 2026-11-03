@@ -12,6 +12,22 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class ConversationCompactionServiceTests
 {
     [Fact]
+    public async Task Exhausted_summary_allowance_does_not_signal_a_request_start()
+    {
+        var store = new Store();
+        var summaries = new Summarizer();
+        var starts = 0;
+        var calls = new CompactionCallBudget(maxCalls: 0) { RequestStarting = () => starts++ };
+        var service = new ConversationSummaryService(store, summaries, new RequestTokenMeter(), TimeProvider.System);
+        using var lease = new DialogueContextLifetime().Acquire(default);
+        Assert.False(await service.TryCompactAsync(store.Source, new Provider(), Route, Budget, 30000, Compose,
+            lease, () => { }, calls, default));
+        Assert.Equal(0, starts);
+        Assert.Empty(summaries.Requests);
+        Assert.Null(store.Commit);
+    }
+
+    [Fact]
     public async Task Summary_preserves_constrained_input_and_reports_independent_budgets()
     {
         var budget = PromptBudget.Resolve(new(Route, 131072, null, ContextLimitSource.Override, "fixture"), 256)

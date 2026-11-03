@@ -120,25 +120,23 @@ public sealed class DialogueWindowIntegrationTests
     });
 
     [Fact]
-    public void Host_metadata_refreshes_real_project_choices_and_preserves_saved_unavailable_project() => StaRunner.Run(() =>
+    public void Chat_rejects_legacy_project_selection_and_preserves_saved_project_identity() => StaRunner.Run(() =>
     {
         var vm = CreateViewModel(projectCatalog: new SampleProjects());
         vm.Conversation.SetActiveServant("800100");
         using var window = new DialogueWindow(vm);
         using var host = new ChatWebHostActions(vm, window, new ClipboardStub(), null, null, null);
-        var changes = 0; host.Changed += (_, _) => changes++;
-        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.RefreshProjects), default)).Success);
-        var project = Assert.Single(host.ReadPresentation().Projects);
-        Assert.Equal("project-1", project.Id);
-        Assert.True(changes > 0);
-        Assert.True(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "project-1"), default)).Success);
-        Assert.Equal("project-1", vm.Conversation.SessionContext.ProjectId);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.RefreshProjects), default)).Success);
+        Assert.Empty(host.ReadPresentation().Projects);
+        Assert.False(host.ReadPresentation().Actions!.CanRefreshProjects);
+        Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "project-1"), default)).Success);
+        Assert.Empty(vm.Conversation.SessionContext.ProjectId);
         vm.Conversation.SessionContext.TrySetProject("saved-unavailable", "已保存的项目");
         using var session = new ChatWebSession(vm.Conversation, host);
         Assert.Equal("已保存的项目", session.ReadSnapshot().Conversation.Project.Label);
         Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "arbitrary-id"), default)).Success);
         vm.Conversation.IsStreaming = true;
-        Assert.False(host.ReadPresentation().Projects[0].CanSelect);
+        Assert.Empty(host.ReadPresentation().Projects);
         Assert.False(Complete(host.HandleAsync(new(ChatWebHostAction.SelectProject, "project-1"), default)).Success);
         vm.Conversation.Dispose();
     });
@@ -254,14 +252,15 @@ public sealed class DialogueWindowIntegrationTests
         Assert.True(vm.Conversation.SendCommand.CanExecute(null)); vm.Conversation.Dispose();
     });
 
-    internal static DialogueWindowViewModel CreateViewModel(IConversationHistoryQuery? history = null, IDialogueProjectCatalog? projectCatalog = null)
+    internal static DialogueWindowViewModel CreateViewModel(IConversationHistoryQuery? history = null,
+        IDialogueProjectCatalog? projectCatalog = null, IChatProviderResolver? providerResolver = null)
     {
         var settings = new FakeSettingsStore(DialogueSettings.Defaults with
         { ModelConnection = new FgoPet.Core.Settings.ModelConnectionSettings("test", "https://example.test/v1", "test-model") });
         var database = new RuntimeDatabase(System.IO.Path.Combine(System.IO.Path.GetTempPath(),
             "fgopet-chat-window-" + Guid.NewGuid().ToString("N"), "runtime.sqlite3"), pooling: false);
         new RuntimeDatabaseMigrator(database).Migrate();
-        var engine = new ConversationOrchestrator(new ThrowingProviderResolver(), new ContentResolver(),
+        var engine = new ConversationOrchestrator(providerResolver ?? new ThrowingProviderResolver(), new ContentResolver(),
             new SqliteConversationRepository(database), new PromptComposer(), TimeProvider.System, settings);
         return new(new ConversationViewModel(engine, settings, history: history), projectCatalog: projectCatalog);
     }
