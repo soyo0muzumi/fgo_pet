@@ -93,6 +93,7 @@ public static class ServiceRegistration
                 scope.ProjectId is null ? "Across this companion's conversations" :
                     context.ProjectId == scope.ProjectId && !string.IsNullOrWhiteSpace(context.ProjectLabel) ? context.ProjectLabel : "Current project");
         })
+        .AddTopicMaterialResearch()
         .AddReminderCapability()
         .AddSingleton(TimeProvider.System)
         .AddLogging(builder => builder.AddDebug())
@@ -195,6 +196,7 @@ public static class ServiceRegistration
         .AddCompanionAwareness()
         .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
         .AddQqChannel(paths.StorageRoot)
+        .AddWebAccessSettings()
         .AddChatWebPresentation()
         .AddModelConnectionSettings()
         .AddSpeechSettings(Path.Combine(paths.StorageRoot, "voices"), includeSpeech)
