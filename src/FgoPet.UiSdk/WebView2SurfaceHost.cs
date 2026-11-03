@@ -22,6 +22,11 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     private readonly string _profileDirectory;
     private readonly Func<WebSurfaceMessage, CancellationToken, ValueTask<WebSurfaceCommandResult>> _commandHandler;
     private readonly Action<string>? _diagnostics;
+    private readonly Action<Uri>? _openExternalLink;
+    private readonly Func<Uri, CancellationToken, Task<string?>>? _loadImagePreview;
+    private int _imageLoads;
+    private readonly WebSurfacePolicy? _externalLinkPolicy;
+    private readonly string _externalLinkToken = Guid.NewGuid().ToString("N");
     private readonly WebView2 _webView = new();
     private readonly TextBlock _fallback = new() { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
     private readonly CancellationTokenSource _lifetime = new();
@@ -34,13 +39,18 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
 
     public WebView2SurfaceHost(WebSurfacePolicy policy, string assetsDirectory, string profileDirectory,
         Func<WebSurfaceMessage, CancellationToken, ValueTask<WebSurfaceCommandResult>> commandHandler,
-        Action<string>? diagnostics = null)
+        Action<string>? diagnostics = null, Action<Uri>? openExternalLink = null,
+        Func<Uri, CancellationToken, Task<string?>>? loadImagePreview = null)
     {
         _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         _assetsDirectory = Path.GetFullPath(assetsDirectory ?? throw new ArgumentNullException(nameof(assetsDirectory)));
         _profileDirectory = Path.GetFullPath(profileDirectory ?? throw new ArgumentNullException(nameof(profileDirectory)));
         _commandHandler = commandHandler ?? throw new ArgumentNullException(nameof(commandHandler));
         _diagnostics = diagnostics;
+        _openExternalLink = openExternalLink;
+        _loadImagePreview = loadImagePreview;
+        if (openExternalLink is not null || loadImagePreview is not null)
+            _externalLinkPolicy = new(policy.DocumentUrl, ["web.externalLink", "web.imagePreview"]);
         Children.Add(_webView);
         Children.Add(_fallback);
         Loaded += OnLoaded;
@@ -91,7 +101,22 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
             core.WebMessageReceived += OnWebMessageReceived;
             core.NavigationCompleted += OnNavigationCompleted;
             core.ProcessFailed += OnProcessFailed;
-            core.Navigate(_policy.DocumentUrl);
+            if (_externalLinkPolicy is not null)
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("""
+                    (() => {
+                      const token = TOKEN;
+                      document.addEventListener('click', event => {
+                        if (!event.isTrusted || !navigator.userActivation.isActive) return;
+                        const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+                        if (!anchor) return;
+                        let url; try { url = new URL(anchor.href); } catch { return; }
+                        if (!['http:', 'https:'].includes(url.protocol) || url.host === location.host) return;
+                        event.preventDefault();
+                        window.chrome.webview.postMessage({type:'web.externalLink', requestId:token, payload:{url:url.href}});
+                      }, true);
+                    })();
+                    """.Replace("TOKEN", JsonSerializer.Serialize(_externalLinkToken), StringComparison.Ordinal));
+            if (!_disposed) core.Navigate(_policy.DocumentUrl);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception)
@@ -184,7 +209,8 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        if (!_policy.AllowsNavigation(e.Uri)) e.Cancel = true;
+        if (_policy.AllowsNavigation(e.Uri)) return;
+        e.Cancel = true;
     }
 
     private void OnFrameNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
@@ -194,6 +220,19 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     }
 
     private static void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e) => e.Handled = true;
+
+    private void OpenExternalLink(string url, bool isUserInitiated)
+    {
+        if (_disposed || State != WebSurfaceState.Ready || _openExternalLink is null
+            || _webView.CoreWebView2?.Source != _policy.DocumentUrl
+            || !_policy.TryGetExternalLink(url, isUserInitiated, out var external)) return;
+        try { _openExternalLink(external!); }
+        catch (Exception)
+        {
+            // No URL, provider content or OS exception text enters diagnostics.
+            _diagnostics?.Invoke("WEB_EXTERNAL_LINK_FAILED");
+        }
+    }
     private static void OnPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e) =>
         e.State = CoreWebView2PermissionState.Deny;
 
@@ -212,6 +251,26 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (_disposed || State is WebSurfaceState.Failed or WebSurfaceState.Closed) return;
+        var link = _externalLinkPolicy?.ValidateMessage(e.Source, _webView.CoreWebView2?.Source, e.WebMessageAsJson);
+        if (link?.Type == "web.imagePreview")
+        {
+            if (State == WebSurfaceState.Ready && _loadImagePreview is not null
+                && link.Payload.EnumerateObject().Count() == 2
+                && link.Payload.TryGetProperty("url", out var imageUrl) && imageUrl.ValueKind == JsonValueKind.String
+                && link.Payload.TryGetProperty("imageId", out var imageId) && imageId.ValueKind == JsonValueKind.String
+                && imageId.GetString() is { Length: > 0 and <= 64 } id && link.RequestId == id
+                && id.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
+                && _policy.TryGetExternalLink(imageUrl.GetString(), true, out var uri))
+                _ = LoadImagePreviewAsync(uri!, id);
+            return;
+        }
+        if (link?.Type == "web.externalLink")
+        {
+            if (link.RequestId == _externalLinkToken && link.Payload.EnumerateObject().Count() == 1
+                && link.Payload.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
+                OpenExternalLink(url.GetString()!, true);
+            return;
+        }
         var message = _policy.ValidateMessage(e.Source, _webView.CoreWebView2?.Source, e.WebMessageAsJson);
         if (message is null)
         {
@@ -263,6 +322,35 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
                 type = "command.result", requestId = message.RequestId, success = false, errorCode = "WEB_COMMAND_FAILED",
             }, MessageJson));
         }
+    }
+
+    private async Task LoadImagePreviewAsync(Uri url, string imageId)
+    {
+        if (_imageLoads >= 2)
+        {
+            PostEvent(new { type = "web.imagePreview.result", imageId, errorCode = "IMAGE_PREVIEW_BUSY" });
+            return;
+        }
+        _imageLoads++;
+        try
+        {
+            var dataUrl = ExternalImagePreview.IsAllowedUrl(url)
+                ? await _loadImagePreview!(url, _lifetime.Token) : null;
+            if (_disposed || _webView.CoreWebView2?.Source != _policy.DocumentUrl) return;
+            if (dataUrl is not { Length: <= 5_592_432 } || !dataUrl.StartsWith("data:image/png;base64,", StringComparison.Ordinal)) dataUrl = null;
+            PostEvent(new { type = "web.imagePreview.result", imageId, dataUrl,
+                errorCode = dataUrl is null ? "IMAGE_PREVIEW_UNAVAILABLE" : null });
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (!_disposed)
+            {
+                _diagnostics?.Invoke("WEB_IMAGE_PREVIEW_FAILED");
+                PostEvent(new { type = "web.imagePreview.result", imageId, errorCode = "IMAGE_PREVIEW_UNAVAILABLE" });
+            }
+        }
+        finally { _imageLoads--; }
     }
 
     private void SendTheme()

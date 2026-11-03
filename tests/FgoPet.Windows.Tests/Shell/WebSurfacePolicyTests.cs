@@ -17,6 +17,25 @@ public sealed class WebSurfacePolicyTests
     public void Navigation_is_limited_to_the_local_virtual_host(string uri, bool expected) =>
         Assert.Equal(expected, _policy.AllowsNavigation(uri));
 
+    [Theory]
+    [InlineData("https://example.org/article#section", true, true)]
+    [InlineData("http://example.org/article", true, true)]
+    [InlineData("https://example.org/article", false, false)]
+    [InlineData("https://todo.fgopet.invalid/peek/index.html", true, false)]
+    [InlineData("https://user:secret@example.org/", true, false)]
+    [InlineData("javascript:alert(1)", true, false)]
+    [InlineData("file:///C:/private/document.html", true, false)]
+    [InlineData("data:text/html,hello", true, false)]
+    [InlineData("mailto:user@example.org", true, false)]
+    [InlineData("/relative", true, false)]
+    [InlineData("https://example.org/\nunsafe", true, false)]
+    public void Only_a_user_clicked_http_link_can_be_handed_to_an_external_browser(string url, bool user, bool expected)
+    {
+        Assert.Equal(expected, _policy.TryGetExternalLink(url, user, out var external));
+        Assert.Equal(expected, external is not null);
+        if (expected) Assert.False(_policy.AllowsNavigation(url));
+    }
+
     [Fact]
     public void Message_requires_the_current_main_document_and_a_known_typed_command()
     {
