@@ -207,7 +207,12 @@ public partial class DialogueWindow : Window, IDisposable
         var area = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).WorkingArea;
         var scale = VisualTreeHelper.GetDpi(this);
         var dpi = new Dpi2(scale.DpiScaleX, scale.DpiScaleY);
-        var width = view == "conversation" && wide ? 760d : 440d;
+        var contentResize = view == "composer" && _windowPresentation.View == "composer"
+            && _windowPresentation.Wide == wide && composerHeight.HasValue;
+        // Streaming changes height only. Respect a width the user resized by
+        // hand; explicit presentation changes still choose the normal widths.
+        var width = contentResize && double.IsFinite(Width) && Width > 0 ? Width
+            : view == "conversation" && wide ? 760d : 440d;
         var height = view == "composer" ? contentHeight + 22d : wide ? 740d : 630d;
         var widthPx = (int)Math.Ceiling(width * dpi.X);
         var heightPx = (int)Math.Ceiling(height * dpi.Y);
@@ -223,16 +228,23 @@ public partial class DialogueWindow : Window, IDisposable
             new DeviceRect(area.Left, area.Top, area.Width, area.Height), dpi, width, height, marginDip: 16);
 
         ChatDragHandle.Visibility = Visibility.Visible;
-        WindowStyle = WindowStyle.None;
-        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
-        { CaptionHeight = 0, CornerRadius = new CornerRadius(10), GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(6) });
+        if (WindowStyle != WindowStyle.None || System.Windows.Shell.WindowChrome.GetWindowChrome(this) is null)
+        {
+            WindowStyle = WindowStyle.None;
+            System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+            { CaptionHeight = 0, CornerRadius = new CornerRadius(10), GlassFrameThickness = new Thickness(0), ResizeBorderThickness = new Thickness(6) });
+        }
+        _windowPresentation = new(view, wide, contentHeight);
+        // The web side coalesces measured growth at a bounded cadence. Apply
+        // each target directly, without an asynchronous animation that can
+        // outlive an explicit expand/collapse or fight native DPI placement.
+        if (contentResize && visible == previous) return;
         MinWidth = Math.Min(328d, visible.Width / dpi.X);
         MinHeight = Math.Min(view == "conversation" ? 388d : 182d, visible.Height / dpi.Y);
         Width = visible.Width / dpi.X; Height = visible.Height / dpi.Y;
         // WPF dimensions stay in DIP; the final move uses physical pixels, including mixed-DPI desktops.
         Left = visible.X / dpi.X; Top = visible.Y / dpi.Y;
         TransientSurfacePlacement.ApplyNativeBounds(this, visible);
-        _windowPresentation = new(view, wide, contentHeight);
         // Refresh the existing placement owner's requested size and retained physical bounds.
         LayoutRequestedHandler?.Invoke();
     }

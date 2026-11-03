@@ -121,15 +121,15 @@ public sealed class SettingsWebRootFactory
             using (OperationTiming.StartActivity("settings.web.bind_theme"))
             {
                 host.Disposed += (_, _) => session.Dispose();
-                host.SetThemeVersion(1, MarginVisualResources.WebPalette);
+                host.SetThemeVersion(1, MarginVisualResources.CaptureWebPalette(_theme));
                 if (_theme is not null)
                 {
                     var version = 1L;
                     EventHandler changed = (_, _) => host.SetThemeVersion(
-                        Interlocked.Increment(ref version), MarginVisualResources.WebPalette);
+                        Interlocked.Increment(ref version), MarginVisualResources.CaptureWebPalette(_theme));
                     _theme.ThemeChanged += changed;
                     host.Disposed += (_, _) => _theme.ThemeChanged -= changed;
-                    host.SetThemeVersion(version, MarginVisualResources.WebPalette);
+                    host.SetThemeVersion(version, MarginVisualResources.CaptureWebPalette(_theme));
                 }
             }
             return host;

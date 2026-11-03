@@ -22,10 +22,12 @@ public partial class SettingsWindow : Window, IDisposable
             InitializeComponent();
         using (OperationTiming.StartActivity("settings.window.set_dimensions"))
         {
-            Width = 824;
-            Height = 740;
-            MinWidth = 240;
-            MinHeight = 240;
+            // The page owns one content column; adapt the initial window to smaller work areas.
+            var workArea = SystemParameters.WorkArea;
+            Width = Math.Max(320, Math.Min(1000, workArea.Width - 32));
+            Height = Math.Max(360, Math.Min(780, workArea.Height - 32));
+            MinWidth = 320;
+            MinHeight = 360;
         }
         using (OperationTiming.StartActivity("settings.window.create_view"))
             _webSurface = webFactory.CreateView(viewModel.SelectedPageId, OnWebNavigated);

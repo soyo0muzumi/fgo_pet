@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.Extensibility;
 
@@ -21,7 +23,7 @@ internal sealed class ChatWorkspaceSelection : IChatWorkspaceSelection, IDisposa
         conversation.PropertyChanged += OnChanged;
         conversation.SessionChanged += OnSessionChanged;
     }
-    public bool CanChoose => !_disposed && _authority is not null && !_conversation.IsStreaming
+    public bool CanChoose => !_disposed && _authority is not null && !_conversation.IsStreaming && !_conversation.HasPendingRun
         && !string.IsNullOrWhiteSpace(_conversation.ActiveServantId);
     public string? Label => _root is null ? null : Path.GetFileName(Path.TrimEndingDirectorySeparator(_root)) is { Length: > 0 } name ? name : _root;
     public event EventHandler? Changed;
@@ -37,6 +39,21 @@ internal sealed class ChatWorkspaceSelection : IChatWorkspaceSelection, IDisposa
         {
             var canonical = _authority!.ValidateDirectory(path);
             if (!CanChoose || epoch != _epoch || identity != Scope()) return false;
+            var label = Path.GetFileName(Path.TrimEndingDirectorySeparator(canonical));
+            if (string.IsNullOrWhiteSpace(label) || label.Length > 160) return false;
+            // Keep the existing directory-derived project identity, without registering an
+            // external Agent target or changing its independent execution permissions.
+            var projectId = "project-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                canonical.TrimEnd(Path.DirectorySeparatorChar).ToUpperInvariant())))[..24].ToLowerInvariant();
+            if (identity.ProjectId != projectId)
+            {
+                RevokeWorkspace();
+                if (!_conversation.SessionContext.TrySetProject(projectId, label)) return false;
+            }
+            // Project changes synchronously reset the old conversation and revoke its grant.
+            // Only the new scope can receive the newly selected folder.
+            identity = Scope();
+            if (!CanChoose || identity.ProjectId != projectId) return false;
             // Empty Chat has no persisted conversation yet. Bind synchronously at its first
             // UserMessagePersisted update, before the orchestrator dispatches any native tools.
             if (!string.IsNullOrWhiteSpace(identity.ConversationId))
@@ -63,8 +80,13 @@ internal sealed class ChatWorkspaceSelection : IChatWorkspaceSelection, IDisposa
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
-    private void OnSessionChanged() { _epoch++; Clear(); }
+    private void OnSessionChanged() { _epoch++; RevokeWorkspace(); }
     public void Clear()
+    {
+        RevokeWorkspace();
+        _conversation.SessionContext.TryRemove("project");
+    }
+    private void RevokeWorkspace()
     {
         if (_grant is not null) _authority?.Revoke(_grant);
         _grant = null;
@@ -77,6 +99,6 @@ internal sealed class ChatWorkspaceSelection : IChatWorkspaceSelection, IDisposa
         _disposed = true;
         _conversation.PropertyChanged -= OnChanged;
         _conversation.SessionChanged -= OnSessionChanged;
-        Clear();
+        RevokeWorkspace();
     }
 }

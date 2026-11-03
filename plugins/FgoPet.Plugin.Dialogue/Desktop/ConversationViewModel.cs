@@ -327,8 +327,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _contextProjectId = SessionContext.ProjectId;
         if (!string.IsNullOrWhiteSpace(ActiveServantId))
         {
+            var draft = InputText;
             _orchestrator.StartNewConversation(ActiveServantId);
             ResetConversationView(clearContext: false);
+            InputText = draft;
             LoadHistory();
         }
     }
@@ -693,6 +695,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         ("reminders", "reminder.create" or "reminder.cancel") =>
             !string.IsNullOrWhiteSpace(approval.Tool.BusinessConfirmation?.PlainTextSummary),
         ("firstparty.focus", "focus.resume") => approval.Tool.Resource is not null,
+        ("browser", "browser.click" or "browser.fill") => approval.Tool.Resource is not null
+            && !string.IsNullOrWhiteSpace(approval.Tool.BusinessConfirmation?.PlainTextSummary),
         _ => false,
     };
 
@@ -711,11 +715,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             ActionTitle = approval.Tool.ToolName switch
             {
                 "reminder.create" => "Create reminder", "reminder.cancel" => "Cancel reminder",
-                "focus.resume" => "Resume focus session", _ => null,
+                "focus.resume" => "Resume focus session",
+                "browser.click" => "Click webpage element", "browser.fill" => "Fill webpage text",
+                _ => null,
             },
             PlainTextSummary = approval.Tool.ToolName switch
             {
                 "reminder.create" or "reminder.cancel" => approval.Tool.BusinessConfirmation?.PlainTextSummary,
+                "browser.click" or "browser.fill" => approval.Tool.BusinessConfirmation?.PlainTextSummary,
                 "focus.resume" when approval.Tool.Resource is { } frozen =>
                     $"Resume this paused focus session, keeping its phase, remaining time and cycle. No new session or plan change.\nSession: {frozen.Id}\nRevision: {frozen.Revision}",
                 _ => null,
