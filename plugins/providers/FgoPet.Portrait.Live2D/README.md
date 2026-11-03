@@ -56,10 +56,16 @@ and semantic expressions. Waiting uses an upward side glance through head X/Y/Z,
 eye X/Y and modest body X offsets. Replying returns toward the viewer, adds one
 1.8-second nod independent of token rate, then holds an attentive closed-mouth
 expression through eye-smile and mouth-form parameters. Only parameters present in
-the model are touched; hand and mouth-opening parameters remain unowned. All offsets
+the model are touched; procedural feedback leaves hand and mouth-opening parameters unowned. All offsets
 release smoothly and are not saved into the motion base. Gaze yields while the head
 offsets are active. The reference Mash pose uses its supplied Thinking head/eye
 direction with bounded amplitude; the full motion's hand channels are not replayed.
+When supplied, the optional `Introducing` motion group plays once on entry to replying,
+alongside the procedural nod and smile. Repeated reply packets and motion completion
+do not restart it. Completion, cancellation or a new waiting phase release its pose
+through the existing smooth recovery. `stage_live2d_model.py --desktop-behaviors` maps
+`introducing.motion3.json` to this group rather than the random TapBody pool. The current
+Mash export authors only `Param2` for this gesture; older packs retain procedural replies.
 The legacy unsequenced Thinking message remains available for existing motion probes.
 Named motions play once. `Thinking` and `Sleep` hold their final parameter pose until
 the state changes; `Shy`, `Concerned` and `Surprised` smoothly return to default
@@ -99,7 +105,8 @@ The runtime probe checks actual SDK rendering, left/right parameter response, id
 attention, head-hover/alpha rejection, upward-looking headroom and Tap ownership/recovery using a locally supplied model with a TapBody
 motion. With named state motions it also verifies held Thinking, blush and its gradual recovery, idle sleep,
 closed eyes, click wake, procedural smile and speech sound/silence/stop/stale-frame
-handling. It also checks chat waiting/reply/cancellation, unchanged hand parameters,
+handling. It also checks chat waiting/reply/cancellation, unchanged legacy hand parameters,
+optional Introducing playback without repeated starts and its recovery after cancellation,
 silent mouth, stale sequence rejection and repeated-packet behavior, saving a model-only
 video and state screenshots. Its hooks exist only in the served test copy. Automated tests do not establish
 physical multi-monitor DPI, click-through or perceived naturalness acceptance.

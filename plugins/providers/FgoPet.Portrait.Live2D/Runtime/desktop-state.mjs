@@ -1,6 +1,6 @@
 // Application-owned state priority; role packs supply only named motion data.
 const expressions = new Set(['neutral', 'happy', 'excited', 'shy', 'concerned', 'sad', 'surprised', 'angry', 'wants_to_talk']);
-const groups = { thinking: 'Thinking', shy: 'Shy', concerned: 'Concerned', surprised: 'Surprised', sleep: 'Sleep' };
+const groups = { thinking: 'Thinking', replying: 'Introducing', shy: 'Shy', concerned: 'Concerned', surprised: 'Surprised', sleep: 'Sleep' };
 
 export class DesktopState {
   constructor(sleepAfter = 600) {
@@ -71,6 +71,7 @@ export class DesktopState {
     const age = Math.max(0, now - this.phaseAt);
     // The reply nod runs once, independent of token rate. All offsets are transient:
     // no hand or mouth-opening channels; nothing is saved into the motion base.
+    // The optional Introducing motion supplies the authored reply hand gesture.
     // Head/eye directions follow the supplied Thinking pose at a bounded scale.
     // The return to the viewer and one nod distinguish text replies at pet size.
     const replying = this.phase === 'replying';
@@ -92,7 +93,7 @@ export class DesktopState {
       // Short emotions yield to the runtime's gradual default-parameter recovery.
       // Thinking and Sleep keep their pose until an explicit state transition.
       if (this.hasMotion && next !== 'thinking' && next !== 'sleep' && owner._motionManager.isFinished()) {
-        this.expression = this.state = 'neutral';
+        if (next !== 'replying') this.expression = this.state = 'neutral';
         this.pose = null;
         this.hasMotion = false;
       }
@@ -125,7 +126,7 @@ export class DesktopState {
   }
 
   applyEffects(model, idFor, motionFinished) {
-    if (!motionFinished) return;
+    if (!motionFinished && this.state !== 'replying') return;
     const core = model.getModel();
     for (const [name, value] of [['ParamAngleX', this.feedbackHeadX], ['ParamAngleY', this.feedbackHeadY], ['ParamAngleZ', this.feedbackHeadZ], ['ParamBodyAngleX', this.feedbackBodyX],
       ['ParamEyeBallX', this.feedbackEyeX], ['ParamEyeBallY', this.feedbackEyeY], ['ParamEyeLSmile', this.feedbackSmile], ['ParamEyeRSmile', this.feedbackSmile], ['ParamMouthForm', this.feedbackMouthForm]]) {

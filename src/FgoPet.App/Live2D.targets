@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep direct dotnet/IDE builds and the PowerShell entry points consistent. -->
+    <FgoPetLive2DRuntime Condition="'$(FgoPetLive2DRuntime)' == '' and '$(FGOPET_LIVE2D_RUNTIME)' != ''">$(FGOPET_LIVE2D_RUNTIME)</FgoPetLive2DRuntime>
+    <_FgoPetExplicitLive2DRuntime Condition="'$(FgoPetLive2DRuntime)' != ''">true</_FgoPetExplicitLive2DRuntime>
+    <FgoPetLive2DRuntime Condition="'$(FgoPetLive2DRuntime)' == ''">$(MSBuildProjectDirectory)/../../artifacts/live2d-runtime</FgoPetLive2DRuntime>
+    <FgoPetRequireLive2D Condition="'$(FgoPetRequireLive2D)' == ''">true</FgoPetRequireLive2D>
+  </PropertyGroup>
+  <ItemGroup>
+    <_FgoPetLive2DRequired Include="index.html;app.js;live2dcubismcore.js;runtime-info.json;CORE-LICENSE.md;FRAMEWORK-LICENSE.md" />
+    <!-- Required by the supported Cubism Web 5-r.5 adapter. -->
+    <_FgoPetLive2DShader Include="vertshadersrc.vert;vertshadersrcblend.vert;vertshadersrccopy.vert;vertshadersrcmasked.vert;vertshadersrcsetupmask.vert;fragshadersrcalphablend.frag;fragshadersrccolorblend.frag;fragshadersrccopy.frag;fragshadersrcmaskinvertedpremultipliedalpha.frag;fragshadersrcmaskpremultipliedalpha.frag;fragshadersrcpremultipliedalpha.frag;fragshadersrcpremultipliedalphablend.frag;fragshadersrcsetupmask.frag" />
+    <_FgoPetLive2DRequired Include="@(_FgoPetLive2DShader->'Framework/Shaders/WebGL/%(Identity)')" />
+    <Content Include="$(FgoPetLive2DRuntime)/**/*" Condition="Exists('$(FgoPetLive2DRuntime)')">
+      <Link>Live2D/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="CheckFgoPetLive2DRuntime" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Code="FGOPET_LIVE2D_MISSING"
+           Condition="!Exists('$(FgoPetLive2DRuntime)/%(_FgoPetLive2DRequired.Identity)')"
+           Text="Live2D runtime file missing: $(FgoPetLive2DRuntime)/%(_FgoPetLive2DRequired.Identity). Generate artifacts/live2d-runtime with tools/scripts/prepare_live2d_runtime.py, or select a complete runtime using FgoPetLive2DRuntime / FGOPET_LIVE2D_RUNTIME. See docs/guides/development.md." />
+  </Target>
+  <Target Name="ValidateFgoPetLive2DBuild" BeforeTargets="PrepareForBuild"
+          Condition="'$(FgoPetRequireLive2D)' != 'false' or '$(_FgoPetExplicitLive2DRuntime)' == 'true' or Exists('$(FgoPetLive2DRuntime)')"
+          DependsOnTargets="CheckFgoPetLive2DRuntime" />
+  <Target Name="ReportFgoPetStaticTestBuild" BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(FgoPetRequireLive2D)' == 'false' and !Exists('$(FgoPetLive2DRuntime)')">
+    <Message Importance="high" Text="FgoPetRequireLive2D=false: static-portrait test build; not a complete application package." />
+  </Target>
+  <!-- Publishing without a rebuild or with the test opt-out still validates inputs. -->
+  <Target Name="ValidateFgoPetLive2DPublish" BeforeTargets="PrepareForPublish"
+          DependsOnTargets="CheckFgoPetLive2DRuntime" />
+</Project>

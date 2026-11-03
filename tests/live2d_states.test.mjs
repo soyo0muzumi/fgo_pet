@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DesktopState } from '../plugins/providers/FgoPet.Portrait.Live2D/Runtime/desktop-state.mjs';
+import { restoreMotionBase } from '../plugins/providers/FgoPet.Portrait.Live2D/Runtime/desktop-behavior.mjs';
 
 const owner = () => ({
   started: [], stopped: 0,
@@ -148,4 +149,69 @@ test('clear chat feedback uses an upward side glance then a single nod with clos
   for(let i=175;i<=360;i++)state.sync(actor,i/60);
   apply(); for(const id of ['ParamAngleX','ParamAngleY','ParamEyeBallX','ParamEyeBallY','ParamMouthForm'])assert.ok(Math.abs(values[id])<.01,id);
   assert.equal(values.ParamMouthOpenY,.3); assert.equal(values.ParamHandRT,2);
+});
+
+const introducingOwner = () => {
+  const actor = owner();
+  actor.loops = [];
+  actor._motions.set('Introducing_0', { setLoop: value => actor.loops.push(value) });
+  return actor;
+};
+
+test('Introducing plays once per reply and releases without restarting on later text frames', () => {
+  const state = new DesktopState(), actor = introducingOwner();
+  state.receive({ type: 'live2d.thinking', active: true, phase: 'waiting', sequence: 1 }, 0);
+  state.sync(actor, 0);
+  assert.deepEqual(actor.started, []);
+  state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 2 }, 1);
+  state.sync(actor, 1);
+  assert.deepEqual(actor.started, ['Introducing']);
+  assert.deepEqual(actor.loops, [false]);
+  state.pose = [7]; actor._motionManager.finished = true;
+  for (let i = 2; i < 12; i++) {
+    state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 2 }, i);
+    state.sync(actor, i);
+  }
+  assert.equal(state.state, 'replying');
+  assert.equal(state.hasMotion, false); assert.equal(state.pose, null);
+  assert.deepEqual(actor.started, ['Introducing']);
+  state.receive({ type: 'live2d.thinking', active: true, phase: 'waiting', sequence: 3 }, 12);
+  state.sync(actor, 12);
+  state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 4 }, 13);
+  state.sync(actor, 13);
+  assert.deepEqual(actor.started, ['Introducing', 'Introducing']);
+});
+
+test('reply nod and smile accompany Introducing without taking its hand channel or mouth opening', () => {
+  const state = new DesktopState(), actor = introducingOwner();
+  const values = { ParamAngleY: 0, ParamMouthForm: 0, ParamMouthOpenY: .3, ParamHandRT: 2, Param2: 7 };
+  const model = { getModel: () => ({ parameters: { ids: Object.keys(values) } }),
+    addParameterValueById: (id, value) => { values[id] += value; } };
+  state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 1 }, 0);
+  for (let i = 0; i <= 54; i++) state.sync(actor, i / 60);
+  assert.equal(state.hasMotion, true);
+  state.applyEffects(model, id => id, false);
+  assert.ok(values.ParamAngleY < -3); assert.ok(values.ParamMouthForm > .2);
+  assert.equal(values.Param2, 7); assert.equal(values.ParamHandRT, 2); assert.equal(values.ParamMouthOpenY, .3);
+});
+
+test('cancellation releases Introducing through smooth recovery and rejects a late reply', () => {
+  const state = new DesktopState(), actor = introducingOwner();
+  const values = [7];
+  const model = { getParameterCount: () => 1, getParameterValueByIndex: i => values[i],
+    getParameterDefaultValue: () => -10, setParameterValueByIndex: (i, value) => { values[i] = value; } };
+  state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 1 }, 0);
+  state.sync(actor, 0); state.capture(model);
+  assert.equal(state.applyBase(model), true);
+  state.receive({ type: 'live2d.thinking', active: false, phase: 'idle', sequence: 2 }, .5);
+  state.sync(actor, .5);
+  assert.equal(state.hasMotion, false); assert.equal(state.pose, null);
+  assert.equal(state.applyBase(model), false);
+  restoreMotionBase(model, 1 / 60);
+  assert.ok(values[0] < 7 && values[0] > -10);
+  for (let i = 0; i < 180; i++) restoreMotionBase(model, 1 / 60);
+  assert.ok(Math.abs(values[0] + 10) < .01);
+  assert.equal(state.receive({ type: 'live2d.thinking', active: false, phase: 'replying', sequence: 1 }, 4), false);
+  state.sync(actor, 4);
+  assert.deepEqual(actor.started, ['Introducing']);
 });

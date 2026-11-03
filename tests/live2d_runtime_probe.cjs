@@ -369,9 +369,28 @@ const server = http.createServer((request, response) => {
     const feedback = async () => page.evaluate(() => {
       const state = window.__probe.state;
       const core = window.__probe.delegate.getInstance()._subdelegates[0].getLive2DManager()._models[0].getModel().getModel();
-      const values = Object.fromEntries(['Param', 'ParamHandRT', 'ParamMouthOpenY'].map(id=>[id,core.parameters.values[core.parameters.ids.indexOf(id)]]));
+      const values = Object.fromEntries(['Param', 'ParamHandRT', 'ParamMouthOpenY', 'Param2'].map(id=>[id,core.parameters.values[core.parameters.ids.indexOf(id)]]));
       return {phase:state.phase,sequence:state.sequence,headX:state.feedbackHeadX,headY:state.feedbackHeadY,headZ:state.feedbackHeadZ,body:state.feedbackBodyX,eyeY:state.feedbackEyeY,...values};
     });
+    const introducing = await page.evaluate(() => {
+      const owner = window.__probe.delegate.getInstance()._subdelegates[0].getLive2DManager()._models[0];
+      if (!window.__starts) {
+        window.__starts = [];
+        const start = owner.startMotion.bind(owner);
+        owner.startMotion = (group, ...args) => { window.__starts.push(group); return start(group, ...args); };
+      }
+      const model = owner.getModel(), ids = model.getModel().parameters.ids, index = ids.indexOf('Param2');
+      return owner._modelSetting.getMotionCount('Introducing') > 0 && index >= 0
+        ? { baseline: model.getParameterDefaultValue(index) } : null;
+    });
+    const introducingStarts = () => page.evaluate(() => window.__starts.filter(group => group === 'Introducing').length);
+    const waitForIntroducingRecovery = () => page.waitForFunction(() => {
+      const owner = window.__probe.delegate.getInstance()._subdelegates[0].getLive2DManager()._models[0];
+      const model = owner.getModel(), parameters = model.getModel().parameters, index = parameters.ids.indexOf('Param2');
+      return owner._motionManager.isFinished()
+        && Math.abs(parameters.values[index] - model.getParameterDefaultValue(index)) < .05;
+    }, null, { timeout: 3000 });
+    const startsBeforeReply = await introducingStarts();
     await phase('idle',1,'Idle - no audio'); await page.waitForTimeout(1000);
     await phase('waiting',2,'Waiting - upward side glance, no audio'); await page.waitForTimeout(2000);
     const waiting = await feedback();
@@ -382,11 +401,21 @@ const server = http.createServer((request, response) => {
     await page.screenshot({path:path.join(output,'chat-waiting.png'),omitBackground:true});
     await phase('replying',3,'Text reply - one gentle nod, no audio'); await page.waitForTimeout(700);
     const replying = await feedback(); assert.equal(replying.phase,'replying'); assert.ok(replying.headY<-.5);
+    if (introducing) {
+      assert.ok(replying.Param2 > introducing.baseline + 1);
+      assert.equal(await introducingStarts(), startsBeforeReply + 1);
+    }
     for(let i=0;i<5;i++) await phase('replying',3,'Text reply - repeated packets do not restart');
     await page.screenshot({path:path.join(output,'chat-replying.png'),omitBackground:true});
     await page.waitForTimeout(2400);
     const settledReply=await feedback(); assert.ok(settledReply.headY>=0 && settledReply.headY<=4);
     await page.waitForTimeout(500); assert.ok(Math.abs((await feedback()).headY-settledReply.headY)<.05);
+    if (introducing) {
+      await waitForIntroducingRecovery();
+      assert.equal(await introducingStarts(), startsBeforeReply + 1);
+      assert.ok(Math.abs((await feedback()).Param2 - introducing.baseline) < .05);
+      record('chat.introducing', 'one-shot-hand-gesture-and-recovery-passed');
+    }
     await phase('waiting',4,'Next request - waiting'); await page.waitForTimeout(900);
     await phase('idle',5,'Cancelled - smooth return'); await page.waitForTimeout(2200);
     const cancelled = await feedback(); assert.equal(cancelled.phase,'idle'); assert.ok(Math.abs(cancelled.headY)<.02);
@@ -394,6 +423,18 @@ const server = http.createServer((request, response) => {
     const stale = await feedback(); assert.equal(stale.phase,'idle'); assert.equal(stale.sequence,5);
     assert.ok(stale.ParamMouthOpenY<.01 && Math.abs(stale.Param)<.03 && Math.abs(stale.ParamHandRT)<.03);
     await page.screenshot({path:path.join(output,'chat-cancelled.png'),omitBackground:true});
+    if (introducing) {
+      await phase('replying',6,'Introducing - next answer'); await page.waitForTimeout(900);
+      assert.ok((await feedback()).Param2 > introducing.baseline + 1);
+      assert.equal(await introducingStarts(), startsBeforeReply + 2);
+      await page.screenshot({path:path.join(output,'introducing.png'),omitBackground:true});
+      await phase('idle',7,'Introducing - cancelled, smooth return'); await waitForIntroducingRecovery();
+      assert.ok(Math.abs((await feedback()).Param2 - introducing.baseline) < .05);
+      await phase('replying',6,'Introducing - late answer ignored'); await page.waitForTimeout(300);
+      assert.equal((await feedback()).phase,'idle');
+      assert.equal(await introducingStarts(), startsBeforeReply + 2);
+      record('chat.introducing-cancel', 'next-reply-cancel-and-stale-guard-passed');
+    }
     const clip = await page.evaluate(async()=>{window.__clipRecorder.stop();return await window.__clipResult;});
     fs.writeFileSync(path.join(output,'chat-feedback.webm'),Buffer.from(clip,'base64'));
     fs.writeFileSync(path.join(output,'chat-feedback.json'),JSON.stringify({waiting,replying,cancelled,stale},null,2));

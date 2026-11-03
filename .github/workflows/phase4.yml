@@ -33,6 +33,9 @@ jobs:
   repeated-acceptance:
     name: Three consecutive complete Phase 4 runs
     runs-on: windows-latest
+    env:
+      # This gate publishes the Codex adapter, not the desktop application.
+      FgoPetRequireLive2D: 'false'
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7

@@ -8,6 +8,9 @@ permissions:
 jobs:
   architecture:
     runs-on: windows-latest
+    env:
+      # Architecture compilation does not distribute a desktop application.
+      FgoPetRequireLive2D: 'false'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

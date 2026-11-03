@@ -113,6 +113,8 @@ def stage_model(model: Path, motions: Path, sdk: Path, output: Path, *, desktop_
             "Concerned": ["hiyori_m10"], "Surprised": ["hiyori_m07"], "Sleep": ["tired"],
         }
         available = {path.name for path in motion_files}
+        if "introducing.motion3.json" in available:
+            selected["Introducing"] = ["introducing"]
         for names in selected.values():
             for name in names:
                 if f"{name}.motion3.json" not in available:

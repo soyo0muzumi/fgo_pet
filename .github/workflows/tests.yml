@@ -9,9 +9,45 @@ concurrency:
   group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  content-pipeline-tests:
+    name: Content pipeline and release tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install pinned test dependencies
+        shell: pwsh
+        run: |
+          # Mirrors pyproject.toml runtime deps plus the pytest extras. These suites
+          # cover the content pipeline and the release manifest/verifier contract.
+          python -m pip install --disable-pip-version-check --no-input `
+            "httpx>=0.27,<1" "Pillow>=10,<13" "pydantic>=2.8,<3" "typer>=0.12,<1" `
+            "pytest>=8,<10" "respx>=0.21,<1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run content pipeline and release tests
+        shell: pwsh
+        run: |
+          # The release tests shell out to Windows PowerShell for verify-release.ps1,
+          # so this job must stay on a windows runner.
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   solution-tests:
     name: Release solution tests
     runs-on: windows-latest
+    env:
+      # SDK assets are local build inputs; this job tests the static fallback.
+      # Application publishing still requires the complete Live2D runtime.
+      FgoPetRequireLive2D: 'false'
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7

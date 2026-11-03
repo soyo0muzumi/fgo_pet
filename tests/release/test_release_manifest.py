@@ -10,6 +10,10 @@ import pytest
 VERIFY_SCRIPT = Path(__file__).parents[2] / "tools" / "scripts" / "verify-release.ps1"
 PUBLISH_SCRIPT = Path(__file__).parents[2] / "tools" / "scripts" / "publish-release.ps1"
 REQUIRED_EXECUTABLES = ["FgoPet.App.exe", "FgoPet.AgentRelay.exe", "FgoPet.CodexAdapter.exe"]
+# The viewer runtime is a required payload member. Without it the shipped app falls
+# back to the static portrait with no error anywhere, so verify-release.ps1 fails
+# closed when any of these is absent from the manifest.
+REQUIRED_LIVE2D_MEMBERS = ["Live2D/index.html", "Live2D/app.js", "Live2D/live2dcubismcore.js"]
 
 
 def test_release_publisher_uses_prepared_assets_without_restore() -> None:
@@ -31,15 +35,28 @@ def test_release_publisher_uses_explicit_version_fallback_for_missing_xml_node()
     assert ".Project.PropertyGroup.Version" not in script
 
 
-def _write_candidate(root: Path, files: dict[str, bytes], manifest_files: list[dict] | None = None) -> None:
+def _write_candidate(
+    root: Path,
+    files: dict[str, bytes],
+    manifest_files: list[dict] | None = None,
+    *,
+    include_live2d: bool = True,
+) -> None:
+    # A legitimate candidate always carries the viewer runtime. Callers that need to
+    # prove the fail-closed path pass include_live2d=False explicitly, so the negative
+    # case stays a real omission rather than an accident of the fixture.
+    payload = dict(files)
+    if include_live2d:
+        for member in REQUIRED_LIVE2D_MEMBERS:
+            payload.setdefault(member, b"runtime")
     archive = root / "app" / "FgoPet-win-x64-0.1.0.zip"
     archive.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, "w") as package:
-        for path, data in files.items():
+        for path, data in payload.items():
             package.writestr(path, data)
     entries = manifest_files or [
         {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
-        for path, data in sorted(files.items())
+        for path, data in sorted(payload.items())
     ]
     (root / "manifest.json").write_text(
         json.dumps(
@@ -80,6 +97,36 @@ def candidate(tmp_path: Path) -> Path:
 def test_verifier_accepts_stable_posix_paths_and_lowercase_sha256(candidate: Path) -> None:
     result = _verify(candidate)
     assert result.returncode == 0, result.stderr
+
+
+def test_candidate_fixture_carries_the_required_live2d_runtime(candidate: Path) -> None:
+    # Guards the fixture itself: if the viewer runtime silently stops being emitted,
+    # the positive test above would pass for the wrong reason.
+    manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
+    paths = {entry["path"] for entry in manifest["files"]}
+    for member in REQUIRED_LIVE2D_MEMBERS:
+        assert member in paths, f"fixture candidate is missing {member}"
+    assert _verify(candidate).returncode == 0
+
+
+@pytest.mark.parametrize("missing", REQUIRED_LIVE2D_MEMBERS)
+def test_verifier_rejects_a_candidate_without_a_live2d_runtime_member(
+    tmp_path: Path, missing: str
+) -> None:
+    # Fail-closed: omitting any single viewer-runtime file must be rejected, exactly as
+    # a real malformed candidate would be. This keeps the Live2D contract enforced
+    # rather than satisfying the positive case by loosening the checker.
+    root = tmp_path / "candidate"
+    payload = {name: b"binary" for name in REQUIRED_EXECUTABLES} | {"data/config.json": b"{}"}
+    for member in REQUIRED_LIVE2D_MEMBERS:
+        if member != missing:
+            payload[member] = b"runtime"
+    # include_live2d=False keeps the omission deliberate; archive, manifest and
+    # SHA256SUMS stay mutually consistent so the only defect is the absent member.
+    _write_candidate(root, payload, include_live2d=False)
+    result = _verify(root)
+    assert result.returncode != 0
+    assert "Live2D" in result.stderr, result.stderr
 
 
 def test_verifier_rejects_duplicate_manifest_path(candidate: Path) -> None:

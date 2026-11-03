@@ -17,25 +17,9 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# Why this script exists
-# ----------------------
-# FgoPet.App.csproj embeds the Live2D viewer runtime only when the MSBuild property
-# FgoPetLive2DRuntime is supplied:
-#
-#   <ItemGroup Condition="'$(FgoPetLive2DRuntime)' != '' and Exists('$(FgoPetLive2DRuntime)')">
-#     <Content Include="$(FgoPetLive2DRuntime)\**\*">
-#       <Link>Live2D\%(RecursiveDir)%(Filename)%(Extension)</Link> ...
-#
-# Building without it is not merely "missing a feature": MSBuild's IncrementalClean
-# deletes the previously copied runtime files because they are no longer produced by
-# the current build, leaving an EMPTY Live2D/ directory skeleton. Live2DSession then
-# fails its file probes and silently falls back to the static portrait, so the symptom
-# a user sees is "Live2D runtime is wrong" with no error anywhere.
-#
-# This script therefore resolves the runtime, refuses to build without one, and
-# asserts the result afterwards. Do not "fix" a failing build by dropping this script.
-#
-# tools/scripts/publish-release.ps1 applies the same rule to the release payload.
+# Direct dotnet/IDE builds now use src/FgoPet.App/Live2D.targets to include the
+# conventional runtime and reject incomplete inputs. This wrapper also supports
+# legacy runtime discovery and verifies the resulting application directory.
 
 . (Join-Path $PSScriptRoot 'release-common.ps1')
 

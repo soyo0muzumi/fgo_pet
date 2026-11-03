@@ -25,6 +25,7 @@
     <ProjectReference Include="..\FgoPet.Kernel\FgoPet.Kernel.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.SocialSources/FgoPet.Plugin.SocialSources.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/FgoPet.Plugin.Qq.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Qq/Desktop/FgoPet.Plugin.Qq.Desktop.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Reminders/FgoPet.Plugin.Reminders.csproj" />
@@ -112,11 +113,15 @@
     <ProjectReference Include="../../plugins/providers/FgoPet.Portrait.Static/FgoPet.Portrait.Static.csproj" />
     <ProjectReference Include="../../plugins/providers/FgoPet.Portrait.Live2D/FgoPet.Portrait.Live2D.csproj" />
   </ItemGroup>
-  <ItemGroup Condition="'$(FgoPetLive2DRuntime)' != '' and Exists('$(FgoPetLive2DRuntime)')">
-    <Content Include="$(FgoPetLive2DRuntime)\**\*">
-      <Link>Live2D\%(RecursiveDir)%(Filename)%(Extension)</Link>
+  <PropertyGroup>
+    <FgoPetBrowserRuntime Condition="'$(FgoPetBrowserRuntime)' == '' and Exists('$(MSBuildProjectDirectory)/../../artifacts/chrome-browser/runtime/node.exe')">$(MSBuildProjectDirectory)/../../artifacts/chrome-browser/runtime</FgoPetBrowserRuntime>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(FgoPetBrowserRuntime)' != '' and Exists('$(FgoPetBrowserRuntime)')">
+    <Content Include="$(FgoPetBrowserRuntime)\**\*">
+      <Link>Browser\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+  <Import Project="Live2D.targets" />
 </Project>
