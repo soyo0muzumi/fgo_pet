@@ -10,8 +10,8 @@ using Xunit;
 
 namespace FgoPet.Windows.Tests.Settings;
 
-/// <summary>Production React modules and root, with synthetic owners and no external IO.</summary>
-public sealed class MarginReactSettingsWebTests
+/// <summary>Production model settings module and root, with synthetic owners and no external IO.</summary>
+public sealed class ModelConnectionSettingsWebTests
 {
     [Fact]
     public async Task Connection_commands_preserve_drafts_report_failure_and_clear_write_only_keys()
@@ -27,57 +27,57 @@ public sealed class MarginReactSettingsWebTests
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
                 await Ready(web);
-                Assert.Equal("2", await Text(web, "String(getComputedStyle(document.querySelector('.settings-connection-layout')).gridTemplateColumns.split(' ').length)"));
+                Assert.Equal("2", await Text(web, "String(getComputedStyle(document.querySelector('.mc-fields')).gridTemplateColumns.split(' ').length)"));
                 Assert.Contains("modelConnection.refreshModels", owner.Calls);
                 Assert.DoesNotContain("modelConnection.save", owner.Calls);
-                Assert.Equal("manual-fixture", await Text(web, "document.querySelector('[aria-label=\"模型 ID\"]').value"));
+                Assert.Equal("manual-fixture", await Text(web, "document.querySelector('[data-field=modelId]').value"));
                 Assert.Equal("true", await Script(web, "document.querySelector('input[type=password]').autocomplete === 'new-password'"));
-                await Script(web, "document.querySelector('[aria-label=查看可用模型]').click()");
-                await Wait(async () => await Script(web, "!!document.querySelector('[role=option]')") == "true");
-                await Script(web, "document.querySelector('[role=option]').click()");
-                await Wait(async () => await Text(web, "document.querySelector('[aria-label=\"模型 ID\"]').value") == "fixture-model");
+                await Script(web, "document.querySelector('[data-model-toggle]').click()");
+                await Wait(async () => await Script(web, "!!document.querySelector('[data-model-id]')") == "true");
+                await Script(web, "document.querySelector('[data-model-id]').click()");
+                await Wait(async () => await Text(web, "document.querySelector('[data-field=modelId]').value") == "fixture-model");
 
                 await Input(web, "input[type=password]", "synthetic-never-persisted");
                 await Wait(() => Task.FromResult(owner.KeyReceived));
                 Assert.Equal("false", await Script(web, "document.body.innerText.includes('synthetic-never-persisted') || JSON.stringify(localStorage).includes('synthetic-never-persisted')"));
                 owner.FailSave = true;
-                await Script(web, "document.querySelector('.settings-primary-button').click()");
-                await Wait(async () => await Text(web, "document.querySelector('.settings-footer-feedback').textContent") is var text && text.Contains("Synthetic save failure"));
-                Assert.Equal("alert", await Text(web, "document.querySelector('.settings-footer-feedback').getAttribute('role')"));
+                await Script(web, "document.querySelector('[data-save]').click()");
+                await Wait(async () => await Text(web, "document.querySelector('.mc-error').textContent") is var text && text.Contains("Synthetic save failure"));
+                Assert.Equal("alert", await Text(web, "document.querySelector('.mc-error').getAttribute('role')"));
                 Assert.Equal("synthetic-never-persisted", await Text(web, "document.querySelector('input[type=password]').value"));
-                Assert.Equal("false", await Script(web, "!!document.querySelector('.settings-footer-feedback b')"));
+                Assert.Equal("false", await Script(web, "!!document.querySelector('.mc-error b')"));
                 owner.FailSave = false;
-                await Script(web, "document.querySelector('.settings-primary-button').click()");
+                await Script(web, "document.querySelector('[data-save]').click()");
                 await Wait(async () => await Text(web, "document.querySelector('input[type=password]').value") == "");
-                Assert.Contains("已保存", await Text(web, "document.querySelector('.settings-footer-feedback').textContent"));
-                await Script(web, "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='清除已保存密钥').click()");
+                Assert.Contains("Saved", await Text(web, "document.querySelector('[data-status]').textContent"));
+                await Script(web, "document.querySelector('[data-clear-key]').click()");
                 await Wait(() => Task.FromResult(owner.Calls.Contains("modelConnection.clearKey")));
                 await Ready(web);
-                Assert.Equal("true", await Script(web, "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='清除已保存密钥').disabled"));
+                Assert.Equal("true", await Script(web, "document.querySelector('[data-clear-key]').disabled"));
 
-                await Script(web, "document.querySelector('.settings-advanced').open=true");
-                Assert.Equal("true", await Script(web, "document.querySelector('.settings-advanced input').getBoundingClientRect().height>0"));
-                await Script(web, "document.querySelector('.settings-footer-actions .settings-secondary-button').click()");
+                await Script(web, "document.querySelector('.mc-advanced').open=true");
+                Assert.Equal("true", await Script(web, "document.querySelector('.mc-advanced input').getBoundingClientRect().height>0"));
+                await Script(web, "document.querySelector('[data-test]').click()");
                 await Wait(() => Task.FromResult(owner.Calls.Contains("modelConnection.test")));
                 await Ready(web);
                 Assert.Equal("2", owner.Calls.Count(c => c == "modelConnection.save").ToString());
-                await Wait(async () => await Script(web, "document.fonts.check('14px \"DM Sans\"')") == "true");
+
                 await Capture(web, "model-normal");
 
                 window.Width = 360;
                 await Wait(async () => await Script(web, "innerWidth<=360") == "true");
-                Assert.Equal("1", await Text(web, "String(getComputedStyle(document.querySelector('.settings-connection-layout')).gridTemplateColumns.split(' ').length)"));
+                Assert.Equal("1", await Text(web, "String(getComputedStyle(document.querySelector('.mc-fields')).gridTemplateColumns.split(' ').length)"));
                 Assert.Equal("true", await Script(web, "document.documentElement.scrollWidth<=innerWidth && document.querySelector('main').scrollWidth<=document.querySelector('main').clientWidth"));
-                await Script(web, "document.querySelector('.settings-primary-button').scrollIntoView({block:'center'})");
-                Assert.Equal("true", await Script(web, "(()=>{const r=document.querySelector('.settings-primary-button').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"));
+                await Script(web, "document.querySelector('[data-save]').scrollIntoView({block:'center'})");
+                Assert.Equal("true", await Script(web, "(()=>{const r=document.querySelector('[data-save]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"));
                 await Capture(web, "model-narrow");
-                await Script(web, "document.getElementById('settings-back').click()");
-                await Wait(async () => await Script(web, "!document.querySelector('.settings-native-entry')") == "true");
-                await Script(web, "document.querySelector('[data-page-id=ModelConnection]').click()");
+                await Navigate(web, "UserProfile");
+                await Wait(async () => await Script(web, "!!document.querySelector('#profile-display-name')") == "true");
+                await Navigate(web, "ModelConnection");
                 await Ready(web);
                 Assert.Equal("", await Text(web, "document.querySelector('input[type=password]').value"));
-                Assert.Equal("fixture-model", await Text(web, "document.querySelector('[aria-label=\"模型 ID\"]').value"));
-                Assert.Equal("1", await Script(web, "document.querySelectorAll('link[data-margin-settings-style]').length"));
+                Assert.Equal("fixture-model", await Text(web, "document.querySelector('[data-field=modelId]').value"));
+                Assert.Equal("1", await Script(web, "document.querySelectorAll('link[data-settings-owner=model-connection]').length"));
             }
             finally { window.Close(); }
         });
@@ -96,10 +96,10 @@ public sealed class MarginReactSettingsWebTests
                 window.Show();
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
-                await Wait(async () => await Script(web, "!!document.querySelector('.settings-native-load[role=alert] button')") == "true");
+                await Wait(async () => await Script(web, "document.querySelector('.mc-page')?.dataset.state==='read-error' && !document.querySelector('[data-retry]').hidden") == "true");
                 Assert.DoesNotContain("modelConnection.save", owner.Calls);
                 owner.FailRead = false;
-                await Script(web, "document.querySelector('.settings-native-load button').click()");
+                await Script(web, "document.querySelector('[data-retry]').click()");
                 await Ready(web);
                 Assert.DoesNotContain("modelConnection.save", owner.Calls);
             }
@@ -108,19 +108,30 @@ public sealed class MarginReactSettingsWebTests
     }
 
     private static SettingsWebRootFactory Factory(ISettingsWebPage owner) => new(
-        new SettingsPageCatalog([new SettingsPageViewFactory("ModelConnection", _ => throw new InvalidOperationException(), "Model", order: 10)]),
-        [owner], Path.Combine(Path.GetTempPath(), "margin-react-settings-" + Guid.NewGuid().ToString("N")));
+        new SettingsPageCatalog([new SettingsPageViewFactory("ModelConnection", _ => throw new InvalidOperationException(), "Model", order: 10),
+            new SettingsPageViewFactory("UserProfile", _ => throw new InvalidOperationException(), "Profile", order: 20)]),
+        [owner, new ProfileOwner()], Path.Combine(Path.GetTempPath(), "margin-react-settings-" + Guid.NewGuid().ToString("N")));
     private static Task<string> Script(WebView2 web, string script) => web.CoreWebView2.ExecuteScriptAsync(script);
     private static async Task<string> Text(WebView2 web, string script) => JsonSerializer.Deserialize<string>(await Script(web, script)) ?? "";
     private static Task Input(WebView2 web, string selector, string value) => Script(web,
         $"(()=>{{const e=document.querySelector({JsonSerializer.Serialize(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,{JsonSerializer.Serialize(value)});e.dispatchEvent(new Event('input',{{bubbles:true}}));}})()");
     private static Task Ready(WebView2 web) => Wait(async () => await Script(web,
-        "!!document.querySelector('.connection-page') && document.querySelector('.settings-native-entry').getAttribute('aria-busy')==='false' && !document.querySelector('.settings-primary-button').disabled") == "true");
+        "document.querySelector('.mc-page')?.dataset.state === 'ready'") == "true");
+    private static Task Navigate(WebView2 web, string pageId) => Script(web,
+        $"(()=>{{const select=document.getElementById('settings-mobile-page');select.value={JsonSerializer.Serialize(pageId)};select.dispatchEvent(new Event('change',{{bubbles:true}}));}})()");
+    private sealed class ProfileOwner : ISettingsWebPage
+    {
+        public string SettingsPageId => "UserProfile";
+        public string ModulePath => "pages/user-profile.js";
+        public IReadOnlyList<string> Commands => ["getProfile", "saveProfile", "resetProfile"];
+        public ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken token)
+            => ValueTask.FromResult(new WebSurfaceCommandResult(true, new { displayName = "Fixture" }));
+    }
     private static async Task Wait(Func<Task<bool>> condition)
     {
         var until = DateTime.UtcNow.AddSeconds(15);
         while (!await condition() && DateTime.UtcNow < until) await Task.Delay(25);
-        Assert.True(await condition(), "Synthetic React settings did not settle.");
+        Assert.True(await condition(), "Synthetic model settings did not settle.");
     }
     private static async Task Capture(WebView2 web, string scene)
     {

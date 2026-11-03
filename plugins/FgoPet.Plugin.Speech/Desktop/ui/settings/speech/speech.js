@@ -113,134 +113,135 @@ function ownerFeedback(text) {
 // sent as a pending draft but never echoed back into the DOM. Voice entries only
 // ever expose { id, name }; the on-disk reference audio path is never returned.
 const MARKUP = `
-  <div class="sc-page" data-state="loading">
-    <p class="sc-dirty" data-dirty role="status" aria-live="polite" hidden>${t("speech.dirty")}</p>
+  <div class="sc-page settings-page-body" data-state="loading">
+    <p class="sc-dirty settings-status" data-dirty role="status" aria-live="polite" hidden>${t("speech.dirty")}</p>
 
-    <section class="sc-card" aria-label="${t("speech.reading")}">
-      <label class="sc-switch-row">
-        <span class="sc-switch-copy">
-          <span class="sc-switch-title">${t("speech.enabled")}</span>
-          <span class="sc-switch-description">${t("speech.enabledHint")}</span>
+    <section class="sc-card settings-section" aria-label="${t("speech.reading")}">
+      <label class="sc-switch-row settings-row">
+        <span class="sc-switch-copy settings-row-copy">
+          <span class="sc-switch-title settings-label">${t("speech.enabled")}</span>
+          <span class="sc-switch-description settings-help">${t("speech.enabledHint")}</span>
         </span>
-        <input type="checkbox" data-field="enabled" aria-label="${t("speech.enabled")}">
-        <span class="sc-switch-control" aria-hidden="true"><i></i></span>
+        <input type="checkbox" role="switch" data-field="enabled" aria-label="${t("speech.enabled")}">
       </label>
     </section>
 
-    <section class="sc-card" aria-labelledby="sc-provider-heading">
-      <div class="sc-card-heading"><h2 id="sc-provider-heading">${t("speech.provider")}</h2></div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-provider">${t("speech.provider")}</label>
-        <select id="sc-provider" class="sc-input" data-field="provider" aria-label="${t("speech.provider")}"></select>
+    <section class="sc-card settings-section" aria-labelledby="sc-provider-heading">
+      <div class="sc-card-heading settings-section-copy"><h2 class="settings-section-heading" id="sc-provider-heading">${t("speech.provider")}</h2></div>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-provider">${t("speech.provider")}</label>
+        <select id="sc-provider" class="sc-input settings-input" data-field="provider" aria-label="${t("speech.provider")}"></select>
       </div>
     </section>
 
-    <section class="sc-card" data-card="openai" aria-labelledby="sc-openai-heading">
-      <div class="sc-card-heading"><h2 id="sc-openai-heading">${t("speech.openai")}</h2></div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-openai-base">${t("speech.endpoint")}</label>
-        <input id="sc-openai-base" class="sc-input" type="text" inputmode="url" autocomplete="off"
+    <section class="sc-card settings-section" data-card="openai" aria-labelledby="sc-openai-heading">
+      <div class="sc-card-heading settings-section-copy"><h2 class="settings-section-heading" id="sc-openai-heading">${t("speech.openai")}</h2></div>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-openai-base">${t("speech.endpoint")}</label>
+        <input id="sc-openai-base" class="sc-input settings-input" type="text" inputmode="url" autocomplete="off"
                data-field="openAiBaseUrl" aria-label="${t("speech.endpointAria")}">
       </div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-openai-model">${t("speech.model")}</label>
-        <input id="sc-openai-model" class="sc-input" type="text" autocomplete="off"
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-openai-model">${t("speech.model")}</label>
+        <input id="sc-openai-model" class="sc-input settings-input" type="text" autocomplete="off"
                data-field="openAiModel" aria-label="${t("speech.modelAria")}">
       </div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-openai-voice">${t("speech.voice")}</label>
-        <input id="sc-openai-voice" class="sc-input" type="text" autocomplete="off"
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-openai-voice">${t("speech.voice")}</label>
+        <input id="sc-openai-voice" class="sc-input settings-input" type="text" autocomplete="off"
                data-field="openAiVoice" aria-label="${t("speech.voiceAria")}">
       </div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-key">${t("speech.key")}</label>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-key">${t("speech.key")}</label>
         <div class="sc-key">
-          <input id="sc-key" class="sc-input" type="password" autocomplete="new-password" data-field="apiKey"
+          <input id="sc-key" class="sc-input settings-input" type="password" autocomplete="new-password" data-field="apiKey"
                  aria-label="${t("speech.key")}" aria-describedby="sc-key-state">
-          <button type="button" class="sc-button sc-immediate" data-clear-key aria-label="${t("speech.clearKeyAria")}">${t("speech.clearKey")}</button>
+          <button type="button" class="sc-button sc-immediate settings-secondary" data-clear-key aria-label="${t("speech.clearKeyAria")}">${t("speech.clearKey")}</button>
         </div>
-        <p class="sc-field-hint" id="sc-key-state" data-key-state></p>
+        <p class="sc-field-hint settings-help" id="sc-key-state" data-key-state></p>
       </div>
     </section>
 
-    <section class="sc-card" data-card="indextts" aria-labelledby="sc-indextts-heading">
-      <div class="sc-card-heading"><h2 id="sc-indextts-heading">${t("speech.indextts")}</h2></div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-indextts-base">${t("speech.indexEndpoint")}</label>
-        <input id="sc-indextts-base" class="sc-input" type="text" inputmode="url" autocomplete="off"
+    <section class="sc-card settings-section" data-card="indextts" aria-labelledby="sc-indextts-heading">
+      <div class="sc-card-heading settings-section-copy"><h2 class="settings-section-heading" id="sc-indextts-heading">${t("speech.indextts")}</h2></div>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-indextts-base">${t("speech.indexEndpoint")}</label>
+        <input id="sc-indextts-base" class="sc-input settings-input" type="text" inputmode="url" autocomplete="off"
                data-field="indexTtsBaseUrl" aria-label="${t("speech.indexEndpoint")}">
       </div>
-      <p class="sc-field-hint">${t("speech.indexHint")}</p>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-voice">${t("speech.voices")}</label>
+      <p class="sc-field-hint settings-help">${t("speech.indexHint")}</p>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-voice">${t("speech.voices")}</label>
         <div class="sc-voice-row">
-          <select id="sc-voice" class="sc-input" data-voice-select aria-label="${t("speech.chooseVoice")}"></select>
-          <button type="button" class="sc-button sc-immediate" data-delete-voice hidden>${t("speech.deleteCopy")}</button>
+          <select id="sc-voice" class="sc-input settings-input" data-voice-select aria-label="${t("speech.chooseVoice")}"></select>
+          <button type="button" class="sc-button sc-immediate settings-secondary" data-delete-voice hidden>${t("speech.deleteCopy")}</button>
         </div>
         <div class="sc-delete-confirm" data-delete-confirm hidden role="group" aria-label="${t("speech.confirm")}">
           <p class="sc-delete-text" data-delete-text></p>
           <div class="sc-delete-actions">
-            <button type="button" class="sc-button" data-delete-cancel>${t("speech.cancel")}</button>
-            <button type="button" class="sc-button sc-immediate" data-delete-confirm-btn>${t("speech.delete")}</button>
+            <button type="button" class="sc-button settings-secondary" data-delete-cancel>${t("speech.cancel")}</button>
+            <button type="button" class="sc-button sc-immediate settings-secondary" data-delete-confirm-btn>${t("speech.delete")}</button>
           </div>
         </div>
       </div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-voice-name">${t("speech.newVoice")}</label>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-voice-name">${t("speech.newVoice")}</label>
         <div class="sc-voice-row">
-          <input id="sc-voice-name" class="sc-input" type="text" maxlength="80" autocomplete="off"
+          <input id="sc-voice-name" class="sc-input settings-input" type="text" maxlength="80" autocomplete="off"
                  data-field="voiceName" aria-label="${t("speech.newVoice")}">
-          <button type="button" class="sc-button sc-immediate" data-import-voice>${t("speech.import")}</button>
+          <button type="button" class="sc-button sc-immediate settings-secondary" data-import-voice>${t("speech.import")}</button>
         </div>
-        <p class="sc-field-hint">${t("speech.importHint")}</p>
+        <p class="sc-field-hint settings-help">${t("speech.importHint")}</p>
       </div>
     </section>
 
-    <section class="sc-card" aria-labelledby="sc-play-heading">
-      <div class="sc-card-heading"><h2 id="sc-play-heading">${t("speech.playback")}</h2></div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-rate">${t("speech.rate")}</label>
+    <details class="sc-advanced settings-advanced">
+      <summary>${t("speech.advanced")}</summary>
+    <section class="sc-card settings-section" aria-labelledby="sc-play-heading">
+      <div class="sc-card-heading settings-section-copy"><h2 class="settings-section-heading" id="sc-play-heading">${t("speech.playback")}</h2></div>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-rate">${t("speech.rate")}</label>
         <div class="sc-slider-row">
           <input id="sc-rate" type="range" min="0.5" max="2" step="0.1" data-field="rate" aria-label="${t("speech.rate")}">
           <span class="sc-slider-value" data-rate-value></span>
         </div>
       </div>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-volume">${t("speech.volume")}</label>
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-volume">${t("speech.volume")}</label>
         <div class="sc-slider-row">
           <input id="sc-volume" type="range" min="0" max="1" step="0.05" data-field="volume" aria-label="${t("speech.volume")}">
           <span class="sc-slider-value" data-volume-value></span>
         </div>
       </div>
-      <label class="sc-switch-row">
-        <span class="sc-switch-copy"><span class="sc-switch-title">${t("speech.autoRead")}</span></span>
-        <input type="checkbox" data-field="autoReadEnabled" aria-label="${t("speech.autoRead")}">
-        <span class="sc-switch-control" aria-hidden="true"><i></i></span>
+      <label class="sc-switch-row settings-row">
+        <span class="sc-switch-copy settings-row-copy"><span class="sc-switch-title settings-label">${t("speech.autoRead")}</span></span>
+        <input type="checkbox" role="switch" data-field="autoReadEnabled" aria-label="${t("speech.autoRead")}">
       </label>
-      <label class="sc-switch-row">
-        <span class="sc-switch-copy"><span class="sc-switch-title">${t("speech.dnd")}</span></span>
-        <input type="checkbox" data-field="doNotDisturb" aria-label="${t("speech.dnd")}">
-        <span class="sc-switch-control" aria-hidden="true"><i></i></span>
+      <label class="sc-switch-row settings-row">
+        <span class="sc-switch-copy settings-row-copy"><span class="sc-switch-title settings-label">${t("speech.dnd")}</span></span>
+        <input type="checkbox" role="switch" data-field="doNotDisturb" aria-label="${t("speech.dnd")}">
       </label>
-      <div class="sc-field">
-        <label class="sc-label" for="sc-limit">${t("speech.limit")}</label>
-        <input id="sc-limit" class="sc-input sc-input--narrow" type="text" inputmode="numeric" autocomplete="off"
+      <div class="sc-field settings-field">
+        <label class="sc-label settings-label" for="sc-limit">${t("speech.limit")}</label>
+        <input id="sc-limit" class="sc-input sc-input--narrow settings-input" type="text" inputmode="numeric" autocomplete="off"
                data-field="autoReadLimit" aria-label="${t("speech.limitAria")}">
-        <p class="sc-field-hint" data-limit-hint>${t("speech.limitHint")}</p>
+        <p class="sc-field-hint settings-help" data-limit-hint>${t("speech.limitHint")}</p>
       </div>
     </section>
 
-    <div class="sc-actions">
-      <button type="button" class="sc-button sc-immediate" data-preview>${t("speech.preview")}</button>
-      <button type="button" class="sc-button" data-stop-preview>${t("speech.stop")}</button>
-      <button type="button" class="sc-button sc-button--primary" data-save>${t("speech.save")}</button>
+    </details>
+
+    <div class="sc-actions settings-actions">
+      <button type="button" class="sc-button sc-immediate settings-secondary" data-preview>${t("speech.preview")}</button>
+      <button type="button" class="sc-button settings-secondary" data-stop-preview>${t("speech.stop")}</button>
+      <button type="button" class="sc-button sc-button--primary settings-secondary settings-primary" data-save>${t("speech.save")}</button>
     </div>
-    <p class="sc-test-note">${t("speech.immediateHint")}</p>
+    <p class="sc-test-note settings-help">${t("speech.immediateHint")}</p>
 
     <div class="sc-feedback" aria-live="polite" aria-atomic="true">
-      <p class="sc-status" role="status" data-status></p>
-      <p class="sc-error" role="alert" aria-live="assertive" data-error></p>
-      <button type="button" class="sc-button sc-retry" data-retry hidden>${t("speech.retry")}</button>
+      <p class="sc-status settings-status" role="status" data-status></p>
+      <p class="sc-error settings-status is-error" role="alert" aria-live="assertive" data-error></p>
+      <button type="button" class="sc-button sc-retry settings-secondary" data-retry hidden>${t("speech.retry")}</button>
     </div>
   </div>`;
 
@@ -365,13 +366,8 @@ export async function mount(container, context) {
   stylesheet.href = new URL("./speech.css", import.meta.url).href;
   stylesheet.dataset.settingsOwner = "speech";
   container.innerHTML = MARKUP;
-  const advanced = document.createElement("details");
-  advanced.className = "sc-advanced";
+  const advanced = container.querySelector(".sc-advanced");
   advanced.open = context?.state?.advancedOpen === true;
-  const advancedLabel = document.createElement("summary");
-  advancedLabel.textContent = t("speech.advanced");
-  advanced.append(advancedLabel, container.querySelector("#sc-play-heading").closest("section"));
-  container.querySelector(".sc-test-note").after(advanced);
 
   let disposed = false;
   let mode = "loading";

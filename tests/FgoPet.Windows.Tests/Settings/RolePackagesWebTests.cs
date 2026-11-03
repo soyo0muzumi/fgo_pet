@@ -79,11 +79,9 @@ public sealed class RolePackagesWebTests
                 Assert.Equal(0, installer.InstallCount);
                 Assert.Empty(portrait.Activations);
                 window.Width = 824;
-                Assert.Equal("Choose local file", await Script(web, "document.querySelector('[data-select-file]').getAttribute('aria-label')"));
-                Assert.Equal("16px", await Script(web, "getComputedStyle(document.querySelector('[data-select-file] svg')).width"));
-                Assert.Equal("true", await Script(web, "(() => { const input=document.querySelector('[data-catalog-search]').getBoundingClientRect(), picker=document.querySelector('[data-select-file]').getBoundingClientRect(); return picker.left>=input.right && Math.abs(picker.top-input.top)<1; })()"));
-                Assert.Equal("18px", await Script(web, "getComputedStyle(document.querySelector('.rp-package-name')).fontSize"));
-                Assert.Equal("32px", await Script(web, "getComputedStyle(document.querySelector('[data-catalog-search]')).height"));
+                Assert.Equal("Choose local file", await Script(web, "document.querySelector('[data-select-file]').textContent.trim()"));
+                Assert.Equal("true", await Script(web, "(() => { const input=document.querySelector('[data-catalog-search]').getBoundingClientRect(), picker=document.querySelector('[data-select-file]').getBoundingClientRect(); return input.width>0 && picker.width>0 && picker.height>=32 && picker.top>=input.bottom; })()"));
+                Assert.Equal("true", await Script(web, "(() => { const input=document.querySelector('[data-catalog-search]').getBoundingClientRect(); return input.height>=36 && input.left>=0 && input.right<=innerWidth; })()"));
                 await MarginCharacterCapture.Save(web, "characters-catalog");
 
                 navigation.OpenPackageCommand.Execute(new PackageDetailRoute("community.sample", "测试角色"));
@@ -125,7 +123,7 @@ public sealed class RolePackagesWebTests
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
                 LogBoundary("webview-narrow", "role-packages-root", "layout.check", "success");
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-save-package-settings]').scrollIntoView({block:'center'})");
-                Assert.Equal("true", await Script(web, "(() => { const r=document.querySelector('[data-save-package-settings]').getBoundingClientRect(); return r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth; })()"));
+                Assert.Equal("true", await Script(web, "(() => { const button=document.querySelector('[data-save-package-settings]'), r=button.getBoundingClientRect(); return !button.closest('[data-section-panel]').hidden && r.width>0 && r.height>0 && r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth; })()"));
                 await MarginCharacterCapture.Save(web, "characters-small");
                 Assert.Equal(0, settings.SaveCount);
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");

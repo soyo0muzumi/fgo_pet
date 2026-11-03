@@ -80,7 +80,7 @@ public sealed class PersonalizationWebTests
 
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelectorAll('main h1#page-title').length"));
-                Assert.Equal("Companion", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Character & presence", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('[data-role-image]').src.startsWith('data:image/png;base64,')"));
                 Assert.Equal(PersonalizationWebPage.TryCreatePreviewDataUrl(previewPath),
@@ -107,21 +107,17 @@ public sealed class PersonalizationWebTests
                 window.Width = 824;
                 await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("innerWidth > 650") == "true");
                 await CaptureScene("settings-companion");
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=services]').click()");
-                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "services");
-                Assert.Equal("3", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
-                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.overview-rows > [data-page-id=Qq]').disabled"));
+                Assert.Equal("2", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.navigation-page').length"));
+                Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.navigation-page[data-page-id=Qq]') === null"));
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').hidden"));
-                await CaptureScene("settings-services");
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=privacy]').click()");
-                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "privacy");
-                Assert.Equal("3", await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('.overview-rows > .detail-row').length"));
-                await CaptureScene("settings-privacy");
+                await NavigateTo(web, "UserProfile");
+                await WaitUntil(async () => await Script(web, "document.body.dataset.pageId") == "UserProfile");
+                await CaptureScene("settings-direct-navigation");
                 window.Width = 240;
                 await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync("innerWidth <= 240") == "true");
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync("document.documentElement.scrollWidth <= innerWidth"));
                 await CaptureScene("settings-small-workspace");
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=companion]').click()");
+                await NavigateTo(web, "Personalization");
                 await WaitUntil(async () => await Script(web, "document.querySelector('[data-role-name]')?.textContent ?? ''") == "测试从者");
 
                 window.Width = 320;
@@ -135,46 +131,45 @@ public sealed class PersonalizationWebTests
                 Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
 
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-section=app]').click()");
-                await WaitUntil(async () => await Script(web, "document.body.dataset.settingsOverview") == "app");
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-page-id=UserProfile]').click()");
+                await NavigateTo(web, "UserProfile");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('#profile-display-name')?.value ?? ''") == "原名称");
                 Assert.Equal("Your name", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("App", await Script(web, "document.querySelector('#settings-parent').textContent"));
                 await CaptureScene("settings-detail-back");
                 await web.CoreWebView2.ExecuteScriptAsync(
-                    "(() => { const input=document.querySelector('#profile-display-name'); input.value='跨页保存'; input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('[data-action=save]').click(); })()");
+                    "(() => { const input=document.querySelector('#profile-display-name'); input.value='跨页保存'; input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+                await ClickVisible(web, "[data-action=save]");
                 await WaitUntil(() => settings.Value.UserProfile?.DisplayName == "跨页保存");
 
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-section=companion]').click()");
+                await NavigateTo(web, "Personalization");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('[data-role-name]')?.textContent ?? ''") == "测试从者");
-                Assert.Equal("Companion", await Script(web, "document.querySelector('#page-title').textContent"));
+                Assert.Equal("Character & presence", await Script(web, "document.querySelector('#page-title').textContent"));
                 Assert.Equal("1", await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelectorAll('main h1#page-title').length"));
 
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('input[name=\"pref-scale\"][value=\"0.6\"]').click()");
+                await ClickVisible(web, ".pref-scale-choice input[value='0.6'] + span");
                 await WaitUntil(() => settings.Value.Scale == 0.6);
                 Assert.Contains(0.6, portrait.Scales);
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-field=topmost]').click()");
+                await ClickVisible(web, "[data-field=topmost]");
                 await WaitUntil(() => settings.Value.Topmost);
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-field=autoCollapseExpandedPanel]').click()");
+                await ClickVisible(web, "[data-field=autoCollapseExpandedPanel]");
                 await WaitUntil(() => settings.Value.AutoCollapseExpandedPanel);
 
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('input[name=pref-theme][value=FgoDark]').click()");
+                Assert.Equal("false", await web.CoreWebView2.ExecuteScriptAsync(
+                    "document.querySelector('.companion-more').open"));
+                await ClickVisible(web, ".companion-more > summary");
+                await ClickVisible(web, ".pref-theme-choice[data-theme-choice=FgoDark]");
                 await WaitUntil(() => themeStore.Value.Theme == AppTheme.FgoDark);
                 await WaitUntil(() => host.AckedThemeVersion >= 2);
-                Assert.Equal("#FBFAF8", await Script(web,
+                Assert.Equal("#292629", await Script(web,
                     "getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()"));
+                Assert.Equal("dark", await Script(web, "getComputedStyle(document.documentElement).colorScheme"));
                 await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
                     "document.querySelector('input[name=pref-theme][value=FgoDark]').checked") == "true");
 
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-reset]').click()");
+                await ClickVisible(web, "[data-reset]");
                 await WaitUntil(() => settings.Value.Scale == CharacterSettings.Defaults.Scale
                     && settings.Value.Topmost == CharacterSettings.Defaults.Topmost
                     && settings.Value.AutoCollapseExpandedPanel == CharacterSettings.Defaults.AutoCollapseExpandedPanel);
@@ -301,6 +296,38 @@ public sealed class PersonalizationWebTests
 
     private static async Task<string> Script(WebView2 web, string code) =>
         JsonSerializer.Deserialize<string>(await web.CoreWebView2.ExecuteScriptAsync(code)) ?? string.Empty;
+
+    private static async Task NavigateTo(WebView2 web, string pageId)
+    {
+        if (await web.CoreWebView2.ExecuteScriptAsync(
+                "document.getElementById('settings-mobile-page').getBoundingClientRect().width > 0") == "true")
+        {
+            await web.CoreWebView2.ExecuteScriptAsync($$"""
+                (() => {
+                    const select = document.getElementById('settings-mobile-page');
+                    select.value = {{JsonSerializer.Serialize(pageId)}};
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                })()
+                """);
+        }
+        else await ClickVisible(web, $".navigation-page[data-page-id='{pageId}']");
+    }
+
+    private static async Task ClickVisible(WebView2 web, string selector)
+    {
+        await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                const element = document.querySelector({{JsonSerializer.Serialize(selector)}});
+                if (!element) return false;
+                element.scrollIntoView({ block: 'center' });
+                const bounds = element.getBoundingClientRect();
+                return bounds.width > 0 && bounds.height > 0
+                    && getComputedStyle(element).visibility !== 'hidden' && !element.matches(':disabled')
+                    && !element.closest('[aria-busy=true]');
+            })()
+            """) == "true");
+        await web.CoreWebView2.ExecuteScriptAsync($"document.querySelector({JsonSerializer.Serialize(selector)}).click()");
+    }
 
     private static async Task WaitUntil(Func<bool> condition)
     {

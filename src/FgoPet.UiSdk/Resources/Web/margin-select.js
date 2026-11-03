@@ -6,7 +6,7 @@
     if (!current) return;
     const { menu, trigger } = current;
     menu.remove(); trigger.setAttribute("aria-expanded", "false"); current = null;
-    if (restore) trigger.focus();
+    if (restore) trigger.focus({ preventScroll: true });
   }
   function install(select) {
     if (select.dataset.marginSelect) return;
@@ -49,13 +49,16 @@
       document.body.append(menu); current = { menu, trigger, select };
       trigger.setAttribute("aria-expanded", "true");
       const rect = trigger.getBoundingClientRect(), margin = 8;
+      current.anchorRect = rect;
       menu.style.width = `${Math.min(Math.max(rect.width, 160), innerWidth - margin * 2)}px`;
       menu.style.maxHeight = `${Math.max(30, innerHeight - margin * 2)}px`;
       const height = menu.getBoundingClientRect().height;
       menu.style.left = `${Math.max(margin, Math.min(rect.left, innerWidth - menu.offsetWidth - margin))}px`;
       menu.style.top = `${Math.max(margin, Math.min(rect.bottom + 4, innerHeight - height - margin))}px`;
       const available = options.filter(button => !button.disabled);
-      (available.find(button => button.getAttribute("aria-selected") === "true") || available[0])?.focus();
+      // Focusing a portal option must not scroll the settings pane: its scroll
+      // handler correctly dismisses menus when their anchor moves.
+      (available.find(button => button.getAttribute("aria-selected") === "true") || available[0])?.focus({ preventScroll: true });
       menu.addEventListener("keydown", event => {
         const index = available.indexOf(document.activeElement);
         let next = index;
@@ -66,7 +69,7 @@
         else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); return; }
         else if (event.key === "Tab") { close(true); return; }
         else return;
-        event.preventDefault(); available[next]?.focus();
+        event.preventDefault(); available[next]?.focus({ preventScroll: true });
       });
     }
     trigger.addEventListener("click", () => current?.trigger === trigger ? close(true) : open());
@@ -82,6 +85,12 @@
   }
   document.addEventListener("pointerdown", event => { if (current && !current.menu.contains(event.target) && !current.trigger.contains(event.target)) close(); });
   window.addEventListener("resize", () => close());
-  document.addEventListener("scroll", event => { if (current && !current.menu.contains(event.target)) close(); }, true);
+  document.addEventListener("scroll", event => {
+    if (!current || current.menu.contains(event.target)) return;
+    // An earlier scroll can be delivered after opening. Dismiss only when the
+    // anchor actually moved, so queued events cannot close a fresh menu.
+    const rect = current.trigger.getBoundingClientRect(), anchor = current.anchorRect;
+    if (rect.top !== anchor.top || rect.left !== anchor.left || rect.width !== anchor.width) close();
+  }, true);
   new MutationObserver(scan).observe(document.body, { childList:true, subtree:true }); scan();
 })();

@@ -43,11 +43,63 @@ const SCALE_OPTIONS = [0.5, 0.6, 0.75];
 const THEMES = ["System", "FgoLight", "FgoDark"];
 
 const MARKUP = `
-  <div class="pref-page" data-state="loading">
-    <section class="pref-card pref-theme-card" aria-labelledby="pref-theme-heading">
-      <div class="pref-card-heading">
+  <div class="pref-page settings-page-body" data-state="loading">
+    <section class="pref-card pref-role-card settings-section" aria-labelledby="pref-role-heading">
+      <div class="pref-avatar" data-role-avatar aria-hidden="true">
+        <img data-role-image alt="">
+        <span class="pref-avatar-fallback"><i></i><b></b></span>
+      </div>
+      <div class="pref-role-copy">
+        <h2 class="settings-section-heading" id="pref-role-heading">${t("companion.character")}</h2>
+        <p class="pref-role-name" data-role-name>${t("companion.loading")}</p>
+        <p class="pref-role-caption">${t("companion.characterHint")}</p>
+      </div>
+      <div class="pref-role-action">
+        <button class="pref-button settings-secondary" type="button" data-role-change>${t("companion.changeCharacter")}</button>
+        <p class="pref-role-migration" id="pref-role-migration" data-role-migration></p>
+      </div>
+    </section>
+
+    <section class="pref-card settings-section" aria-labelledby="pref-scale-heading">
+      <div class="pref-card-heading settings-section-copy">
         <div>
-          <h2 id="pref-theme-heading">${t("companion.theme")}</h2>
+          <h2 class="settings-section-heading" id="pref-scale-heading">${t("companion.display")}</h2>
+          <p>${t("companion.displayHint")}</p>
+        </div>
+      </div>
+      <fieldset class="pref-scale-fieldset">
+        <legend>${t("companion.scale")}</legend>
+        <div class="pref-scale-options">
+          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.5" data-field="scale"><span>50%</span></label>
+          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.6" data-field="scale"><span>60%</span></label>
+          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.75" data-field="scale"><span>75%</span></label>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="pref-card settings-section" aria-labelledby="pref-behavior-heading">
+      <div class="pref-card-heading settings-section-copy">
+        <div>
+          <h2 class="settings-section-heading" id="pref-behavior-heading">${t("companion.presence")}</h2>
+          <p>${t("companion.presenceHint")}</p>
+        </div>
+      </div>
+      <label class="pref-switch-row settings-row">
+        <span class="pref-switch-copy settings-row-copy"><span class="pref-switch-title settings-label">${t("companion.topmost")}</span><span class="pref-switch-description settings-help">${t("companion.topmostHint")}</span></span>
+        <input type="checkbox" role="switch" data-field="topmost" aria-label="${t("companion.topmost")}">
+      </label>
+      <label class="pref-switch-row settings-row">
+        <span class="pref-switch-copy settings-row-copy"><span class="pref-switch-title settings-label">${t("companion.collapse")}</span><span class="pref-switch-description settings-help">${t("companion.collapseHint")}</span></span>
+        <input type="checkbox" role="switch" data-field="autoCollapseExpandedPanel" aria-label="${t("companion.collapse")}">
+      </label>
+    </section>
+
+    <details class="companion-more settings-advanced">
+      <summary>${t("companion.more")}</summary>
+    <section class="pref-card pref-theme-card settings-section" aria-labelledby="pref-theme-heading">
+      <div class="pref-card-heading settings-section-copy">
+        <div>
+          <h2 class="settings-section-heading" id="pref-theme-heading">${t("companion.theme")}</h2>
           <p>${t("companion.themeHint")}</p>
         </div>
       </div>
@@ -75,70 +127,20 @@ const MARKUP = `
       <p class="pref-theme-effective" id="pref-theme-effective" data-theme-status></p>
     </section>
 
-    <section class="pref-card pref-role-card" aria-labelledby="pref-role-heading">
-      <div class="pref-avatar" data-role-avatar aria-hidden="true">
-        <img data-role-image alt="">
-        <span class="pref-avatar-fallback"><i></i><b></b></span>
-      </div>
-      <div class="pref-role-copy">
-        <h2 id="pref-role-heading">${t("companion.character")}</h2>
-        <p class="pref-role-name" data-role-name>${t("companion.loading")}</p>
-        <p class="pref-role-caption">${t("companion.characterHint")}</p>
-      </div>
-      <div class="pref-role-action">
-        <button class="pref-button" type="button" data-role-change>${t("companion.changeCharacter")}</button>
-        <p class="pref-role-migration" id="pref-role-migration" data-role-migration></p>
-      </div>
-    </section>
-
-    <section class="pref-card" aria-labelledby="pref-scale-heading">
-      <div class="pref-card-heading">
-        <div>
-          <h2 id="pref-scale-heading">${t("companion.display")}</h2>
-          <p>${t("companion.displayHint")}</p>
-        </div>
-      </div>
-      <fieldset class="pref-scale-fieldset">
-        <legend>${t("companion.scale")}</legend>
-        <div class="pref-scale-options">
-          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.5" data-field="scale"><span>50%</span></label>
-          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.6" data-field="scale"><span>60%</span></label>
-          <label class="pref-scale-choice"><input type="radio" name="pref-scale" value="0.75" data-field="scale"><span>75%</span></label>
-        </div>
-      </fieldset>
-    </section>
-
-    <section class="pref-card" aria-labelledby="pref-behavior-heading">
-      <div class="pref-card-heading">
-        <div>
-          <h2 id="pref-behavior-heading">${t("companion.presence")}</h2>
-          <p>${t("companion.presenceHint")}</p>
-        </div>
-      </div>
-      <label class="pref-switch-row">
-        <span class="pref-switch-copy"><span class="pref-switch-title">${t("companion.topmost")}</span><span class="pref-switch-description">${t("companion.topmostHint")}</span></span>
-        <input type="checkbox" data-field="topmost" aria-label="${t("companion.topmost")}">
-        <span class="pref-switch-control" aria-hidden="true"><i></i></span>
-      </label>
-      <label class="pref-switch-row">
-        <span class="pref-switch-copy"><span class="pref-switch-title">${t("companion.collapse")}</span><span class="pref-switch-description">${t("companion.collapseHint")}</span></span>
-        <input type="checkbox" data-field="autoCollapseExpandedPanel" aria-label="${t("companion.collapse")}">
-        <span class="pref-switch-control" aria-hidden="true"><i></i></span>
-      </label>
-    </section>
-
-    <section class="pref-card pref-reset-card" aria-labelledby="pref-reset-heading">
+    <section class="pref-card pref-reset-card settings-section" aria-labelledby="pref-reset-heading">
       <div>
-        <h2 id="pref-reset-heading">${t("companion.reset")}</h2>
+        <h2 class="settings-section-heading" id="pref-reset-heading">${t("companion.reset")}</h2>
         <p>${t("companion.resetHint")}</p>
       </div>
-      <button class="pref-button" type="button" data-reset>${t("companion.resetButton")}</button>
+      <button class="pref-button settings-secondary" type="button" data-reset>${t("companion.resetButton")}</button>
     </section>
 
+    </details>
+
     <div class="pref-feedback" aria-live="polite" aria-atomic="true">
-      <p class="pref-status" role="status" data-status></p>
-      <p class="pref-error" role="alert" aria-live="assertive" data-error></p>
-      <button class="pref-button pref-retry" type="button" data-retry hidden>${t("companion.retry")}</button>
+      <p class="pref-status settings-status" role="status" data-status></p>
+      <p class="pref-error settings-status is-error" role="alert" aria-live="assertive" data-error></p>
+      <button class="pref-button pref-retry settings-secondary" type="button" data-retry hidden>${t("companion.retry")}</button>
     </div>
   </div>`;
 
@@ -231,15 +233,8 @@ export async function mount(container, context) {
   stylesheet.href = new URL("./personalization.css", import.meta.url).href;
   stylesheet.dataset.settingsOwner = "personalization";
   container.innerHTML = MARKUP;
-  if (context?.overview) {
-    const more = document.createElement("details");
-    more.className = "companion-more";
-    const summary = document.createElement("summary");
-    summary.textContent = t("companion.more");
-    const resetCard = container.querySelector(".pref-reset-card");
-    resetCard.before(more);
-    more.append(summary, resetCard);
-  }
+  const more = container.querySelector(".companion-more");
+  more.open = context?.state?.moreOpen === true;
 
   let disposed = false;
   let mode = "loading";
@@ -456,6 +451,7 @@ export async function mount(container, context) {
     signal?.removeEventListener("abort", dispose);
     stylesheet.remove();
   };
+  dispose.getState = () => ({ moreOpen: more.open });
   signal?.addEventListener("abort", dispose, { once: true });
   if (signal?.aborted) dispose();
 

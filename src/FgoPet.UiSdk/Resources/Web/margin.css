@@ -1,10 +1,11 @@
 /* Margin v5: frozen paper, type roles and reusable controls. */
 :root {
-  color-scheme: light;
+  --color-scheme:light;
+  color-scheme:var(--color-scheme);
   --surface:#FBFAF8; --page:#FCFBF9; --paper:#FBFAF8; --paper-sunk:#F2F0EB; --paper-edge:#EDEAE4;
-  --text:#221F1B; --ink:#221F1B; --ink-2:#45403A; --muted:#6E6961; --faint:#9B958B;
+  --text:#221F1B; --ink:#221F1B; --ink-2:#45403A; --muted:#6E6961; --faint:#776E64;
   --line:#E1DCD3; --rule:#E1DCD3; --rule-2:#CFC8BC;
-  --accent:#B2718B; --accent-soft:rgba(178,113,139,.14); --accent-line:rgba(178,113,139,.42);
+  --accent:#9E6078; --accent-soft:rgba(178,113,139,.12); --accent-line:rgba(178,113,139,.42);
   --on-accent:#fff; --danger:#A85460; --ok:#5E7F63;
   --ui:"Segoe UI Variable Text","Segoe UI",system-ui,"Microsoft YaHei UI","Noto Sans SC",sans-serif;
   --voice:"Noto Serif SC","Source Han Serif SC","STSong","Yu Mincho",serif;

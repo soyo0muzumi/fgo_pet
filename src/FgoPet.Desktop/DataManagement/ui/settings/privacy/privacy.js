@@ -28,52 +28,54 @@ const t = key => english[key] || key;
 const OWNER = "privacy";
 
 const MARKUP = `
-  <section class="pp-page" data-state="loading" aria-busy="true">
-    <p class="pp-error" data-error role="alert" aria-live="assertive" hidden></p>
+  <section class="pp-page settings-page-body" data-state="loading" aria-busy="true">
+    <p class="pp-error settings-status is-error" data-error role="alert" aria-live="assertive" hidden></p>
 
-    <section class="pp-card" aria-label="${t("data.export")}">
-      <h2>${t("data.export")}</h2>
-      <p class="pp-note">${t("data.exportHint")}</p>
-      <div class="pp-actions">
-        <button type="button" class="pp-button pp-primary" data-export>${t("data.exportTo")}</button>
+    <section class="pp-card settings-section" aria-label="${t("data.export")}">
+      <h2 class="settings-section-heading">${t("data.export")}</h2>
+      <p class="pp-note settings-help">${t("data.exportHint")}</p>
+      <div class="pp-actions settings-actions">
+        <button type="button" class="pp-button pp-primary settings-secondary settings-primary" data-export>${t("data.exportTo")}</button>
       </div>
-      <p class="pp-status" data-export-status role="status" aria-live="polite"></p>
+      <p class="pp-status settings-status" data-export-status role="status" aria-live="polite"></p>
     </section>
 
-    <section class="pp-card" aria-label="${t("data.backup")}">
-      <h2>${t("data.backup")}</h2>
-      <p class="pp-note">${t("data.backupHint")}</p>
-      <div class="pp-actions">
-        <button type="button" class="pp-button pp-primary" data-create-backup>${t("data.createBackup")}</button>
-        <button type="button" class="pp-button pp-danger" data-restore-backup>${t("data.restoreBackup")}</button>
+    <section class="pp-card settings-section" aria-label="${t("data.backup")}">
+      <h2 class="settings-section-heading">${t("data.backup")}</h2>
+      <p class="pp-note settings-help">${t("data.backupHint")}</p>
+      <div class="pp-actions settings-actions">
+        <button type="button" class="pp-button pp-primary settings-secondary settings-primary" data-create-backup>${t("data.createBackup")}</button>
+        <button type="button" class="pp-button pp-danger settings-secondary settings-danger" data-restore-backup>${t("data.restoreBackup")}</button>
       </div>
-      <p class="pp-status" data-backup-status role="status" aria-live="polite"></p>
+      <p class="pp-status settings-status" data-backup-status role="status" aria-live="polite"></p>
 
       <div class="pp-confirm" data-restore-confirm hidden role="group" aria-label="${t("data.restoreGroup")}">
         <p>${t("data.restorePrompt")}</p>
-        <div class="pp-actions">
-          <button type="button" class="pp-button pp-danger" data-restore-confirm-btn>${t("data.confirmRestore")}</button>
-          <button type="button" class="pp-button" data-restore-cancel>${t("data.cancel")}</button>
+        <div class="pp-actions settings-actions">
+          <button type="button" class="pp-button pp-danger settings-secondary settings-danger" data-restore-confirm-btn>${t("data.confirmRestore")}</button>
+          <button type="button" class="pp-button settings-secondary" data-restore-cancel>${t("data.cancel")}</button>
         </div>
       </div>
     </section>
 
-    <section class="pp-card" aria-label="${t("data.deleteAll")}">
-      <h2 class="pp-danger-title">${t("data.deleteAll")}</h2>
-      <p class="pp-note">${t("data.deleteHint")}</p>
-      <div class="pp-actions">
-        <button type="button" class="pp-button pp-danger" data-delete-all>${t("data.deleteAll")}</button>
+    <details class="settings-advanced pp-maintenance"><summary>${t("data.deleteAll")}</summary>
+    <section class="pp-card settings-section" aria-label="${t("data.deleteAll")}">
+      <h2 class="pp-danger-title settings-section-heading">${t("data.deleteAll")}</h2>
+      <p class="pp-note settings-help">${t("data.deleteHint")}</p>
+      <div class="pp-actions settings-actions">
+        <button type="button" class="pp-button pp-danger settings-secondary settings-danger" data-delete-all>${t("data.deleteAll")}</button>
       </div>
-      <p class="pp-status" data-delete-status role="status" aria-live="polite"></p>
+      <p class="pp-status settings-status" data-delete-status role="status" aria-live="polite"></p>
 
       <div class="pp-confirm" data-delete-confirm hidden role="group" aria-label="${t("data.deleteGroup")}">
         <p>${t("data.deletePrompt")}</p>
-        <div class="pp-actions">
-          <button type="button" class="pp-button pp-danger" data-delete-confirm-btn>${t("data.confirmDelete")}</button>
-          <button type="button" class="pp-button" data-delete-cancel>${t("data.cancel")}</button>
+        <div class="pp-actions settings-actions">
+          <button type="button" class="pp-button pp-danger settings-secondary settings-danger" data-delete-confirm-btn>${t("data.confirmDelete")}</button>
+          <button type="button" class="pp-button settings-secondary" data-delete-cancel>${t("data.cancel")}</button>
         </div>
       </div>
     </section>
+    </details>
   </section>
 `;
 

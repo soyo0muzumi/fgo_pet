@@ -1,0 +1,54 @@
+/* Shared page primitives. The shell supplies size, palette and the only document scroll. */
+.settings-page-body { display:grid; align-content:start; gap:26px; min-width:0; }
+.settings-page-body h2,.settings-page-body h3,.settings-page-body p { margin:0; }
+.settings-page-body button,.settings-page-body input,.settings-page-body textarea,.settings-page-body select { font:inherit; }
+.settings-section { display:grid; align-content:start; gap:18px; min-width:0; padding:24px 0 0; border-top:1px solid var(--rule); }
+.settings-section:first-child { padding-top:0; border-top:0; }
+.settings-section-heading { color:var(--ink); font:500 14px/1.5 var(--ui); }
+.settings-section-heading h2,.settings-section-heading h3 { color:inherit; font:inherit; }
+.settings-section-copy,.settings-section-description,.settings-help { color:var(--muted); font:12px/1.75 var(--ui); overflow-wrap:anywhere; }
+.settings-section-copy { margin-top:5px!important; }
+.settings-help { margin-top:7px!important; }
+.settings-help.is-error { color:var(--danger); }
+.settings-row { display:flex; align-items:center; justify-content:space-between; gap:24px; min-width:0; padding:13px 0; border-bottom:1px solid var(--soft-rule,var(--rule)); }
+.settings-row:last-child { border-bottom:0; }
+.settings-row-copy { display:grid; flex:1; min-width:0; gap:4px; }
+.settings-row-copy>strong,.settings-row-copy>span:first-child { color:var(--ink); font:500 13px/1.5 var(--ui); }
+.settings-row-copy .settings-help { margin-top:0!important; }
+.settings-row-control { display:flex; align-items:center; flex:none; gap:8px; min-width:0; max-width:55%; }
+.settings-row>input[type=checkbox],.settings-row-control>input[type=checkbox] { flex:none; width:18px; height:18px; margin:0 1px; accent-color:var(--accent); cursor:pointer; }
+.settings-row>input[type=checkbox]:disabled { cursor:default; }
+.settings-field { display:grid; gap:8px; min-width:0; }
+.settings-label { display:block; color:var(--ink); font:500 12px/1.5 var(--ui); }
+.settings-input,.settings-select,.settings-page-body .margin-select-trigger { width:100%; min-width:0; min-height:38px; padding:9px 11px; border:1px solid var(--rule-2); border-radius:7px; background:var(--paper); color:var(--ink); font:13px/1.5 var(--ui); }
+textarea.settings-input { min-height:100px; resize:vertical; }
+.settings-input:disabled,.settings-select:disabled { opacity:.65; }
+.settings-input[aria-invalid=true] { border-color:var(--danger); }
+.settings-input::placeholder { color:var(--faint); }
+.settings-actions,.settings-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:9px; min-width:0; }
+.settings-actions { padding-top:6px; }
+.settings-actions>button,.settings-primary,.settings-secondary,.settings-danger { display:inline-flex; justify-content:center; align-items:center; gap:7px; min-height:35px; padding:8px 13px; border:1px solid var(--rule-2); border-radius:7px; background:var(--paper); color:var(--ink); cursor:pointer; font:12px/1.5 var(--ui); }
+.settings-primary,.settings-actions>.settings-primary { border-color:transparent; background:var(--primary,var(--accent)); color:var(--on-accent); }
+.settings-primary:hover:not(:disabled),.settings-actions>.settings-primary:hover:not(:disabled) { background:var(--primary-hover,var(--accent)); }
+.settings-secondary:hover:not(:disabled),.settings-actions>button:hover:not(:disabled) { border-color:var(--accent-line); }
+.settings-danger,.settings-actions>.settings-danger { color:var(--danger); border-color:color-mix(in srgb,var(--danger) 42%,var(--rule)); }
+.settings-primary:disabled,.settings-secondary:disabled,.settings-danger:disabled,.settings-actions>button:disabled { cursor:default; opacity:.5; }
+.settings-status,.settings-feedback { min-width:0; margin:0; padding:10px 12px; border:1px solid var(--rule); border-radius:7px; background:var(--paper); color:var(--muted); font:12px/1.75 var(--ui); overflow-wrap:anywhere; }
+.settings-status:empty,.settings-feedback:empty { display:none; }
+.settings-status.is-error,.settings-feedback.is-error { color:var(--danger); border-color:color-mix(in srgb,var(--danger) 40%,var(--rule)); }
+.settings-status.is-success,.settings-feedback.is-success { color:var(--ok); }
+.settings-advanced { min-width:0; padding-top:16px; border-top:1px solid var(--rule); }
+.settings-advanced>summary { width:fit-content; color:var(--muted); cursor:pointer; font:12px/1.6 var(--ui); }
+.settings-advanced[open]>summary { margin-bottom:18px; }
+.settings-list { display:grid; gap:12px; min-width:0; }
+.settings-item { min-width:0; padding:16px; border:1px solid var(--rule); border-radius:9px; background:var(--paper); }
+.settings-empty { padding:26px 18px; border:1px dashed var(--rule-2); border-radius:9px; color:var(--muted); text-align:center; font:12px/1.8 var(--ui); }
+@media(max-width:580px) {
+  .settings-row { gap:15px; }
+  .settings-row-control { max-width:50%; }
+  .settings-item { padding:13px; }
+  .settings-actions { gap:8px; }
+}
+@media(forced-colors:active) {
+  .settings-primary,.settings-danger,.settings-secondary { border:1px solid ButtonText; }
+}

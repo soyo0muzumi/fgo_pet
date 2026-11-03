@@ -210,31 +210,34 @@ public sealed class ThemeWebTests
                 await WaitUntil(() => host.State == WebSurfaceState.Ready);
                 var web = Assert.Single(host.Children.OfType<WebView2>());
                 await WaitUntil(async () => await Script(web,
-                    "!!document.querySelector('.settings-native-load[role=alert]')") == "true");
+                    "document.querySelector('.theme-page')?.dataset.state === 'read-error'") == "true");
                 Assert.Equal("true", await Script(web,
-                    "!document.querySelector('.theme-choices')"));
-                Assert.Equal("false", await Script(web, "document.querySelector('.settings-native-load button').disabled"));
+                    "Array.from(document.querySelectorAll('input[name=theme-choice]')).every(input => input.disabled)"));
+                Assert.Equal("false", await Script(web, "document.querySelector('[data-retry]').hidden"));
                 readGate.FailReads = false;
-                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.settings-native-load button').click()");
+                await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-retry]').click()");
                 await WaitUntil(async () => await Script(web,
-                    "!!document.querySelector('.theme-choices') && document.querySelector('.settings-native-entry').getAttribute('aria-busy') === 'false'") == "true");
+                    "document.querySelector('.theme-page')?.dataset.state === 'ready'") == "true");
                 LogBoundary("webview-ready", "theme-root", "theme.get", "success");
                 window.Width = 824;
-                Assert.Equal("true", await Script(web, "document.querySelector('.theme-choice[aria-label=跟随系统]').getAttribute('aria-pressed')"));
-                Assert.Equal("true", await Script(web, "document.querySelector('link[data-margin-settings-style]').sheet !== null"));
+                Assert.Equal("Follow Windows", await Script(web, "document.querySelector('[data-theme-choice=System] .theme-choice-title').textContent"));
+                Assert.Equal("10px", await Script(web, "getComputedStyle(document.querySelector('.theme-choice')).borderRadius"));
                 await MarginCharacterCapture.Save(web, "appearance-normal");
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('main h1#page-title').length"));
-                Assert.Equal("0", await Script(web, "document.querySelectorAll('.settings-native-entry h1').length"));
-                Assert.Equal("跟随系统", await Script(web,
-                    "document.querySelector('.theme-choice[aria-pressed=true]').getAttribute('aria-label')"));
-                Assert.Equal("dark", await Script(web, "document.querySelector('.settings-native-entry').dataset.theme"));
+                Assert.Equal("0", await Script(web, "document.querySelectorAll('.theme-page h1').length"));
+                Assert.Equal("System", await Script(web,
+                    "document.querySelector('input[name=theme-choice]:checked')?.value ?? ''"));
+                Assert.Contains("FGO Dark", await Script(web, "document.querySelector('[data-theme-effective]').textContent"));
 
+                Assert.Equal("true", await Script(web,
+                    "document.querySelector('.theme-choice[data-theme-choice=FgoDark]').getBoundingClientRect().width > 0"));
                 await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('.theme-choice[aria-label=夜间]').click()");
+                    "document.querySelector('.theme-choice[data-theme-choice=FgoDark]').click()");
                 LogBoundary("webview-selection", "theme-root", "theme.select", "started");
                 await WaitUntil(() => themeSettings.Value.Theme == AppTheme.FgoDark);
                 await WaitUntil(async () => await Script(web,
-                    "document.querySelector('.theme-choice[aria-label=夜间]').getAttribute('aria-pressed')") == "true");
+                    "document.querySelector('input[name=theme-choice]:checked')?.value ?? ''") == "FgoDark");
+                Assert.Equal("dark", await Script(web, "getComputedStyle(document.documentElement).colorScheme"));
                 LogBoundary("webview-selection", "theme-root", "theme.select", "success");
 
                 var savesBeforeSystemChange = themeSettings.SaveCount;
@@ -243,9 +246,11 @@ public sealed class ThemeWebTests
                 system.Change(AppTheme.FgoLight);
                 await WaitUntil(() => theme.CurrentTheme == AppTheme.FgoLight);
                 await WaitUntil(async () => await Script(web,
-                    "document.querySelector('.theme-choice[aria-label=跟随系统]').getAttribute('aria-pressed')") == "true");
-                Assert.Equal("light", await Script(web,
-                    "document.querySelector('.settings-native-entry').dataset.theme"));
+                    "document.querySelector('input[name=theme-choice]:checked')?.value ?? ''") == "System");
+                Assert.Contains("FGO Light", await Script(web,
+                    "document.querySelector('[data-theme-effective]').textContent"));
+                await WaitUntil(async () => await Script(web,
+                    "getComputedStyle(document.documentElement).colorScheme") == "light");
                 Assert.Equal(savesBeforeSystemChange + 1, themeSettings.SaveCount);
                 Assert.NotEqual(statusBeforeSystemChange, theme.StatusText);
                 LogBoundary("theme-broadcast", "theme-root", "theme.changed", "success");
@@ -262,25 +267,15 @@ public sealed class ThemeWebTests
                     "document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
 
                 await MarginCharacterCapture.Save(web, "appearance-small");
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('#settings-back').click()");
-                await WaitUntil(async () => await Script(web,
-                    "document.body.dataset.settingsOverview === 'app'") == "true");
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-page-id=UserProfile]').click()");
+                await NavigateMobile(web, "UserProfile");
                 LogBoundary("webview-navigation", "theme-root", "settings.navigate", "started");
                 await WaitUntil(async () => await Script(web,
                     "document.querySelector('#profile-display-name') !== null") == "true");
                 await WaitUntil(async () => await Script(web,
-                    "document.querySelector('.settings-native-entry') === null") == "true");
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('#settings-back').click()");
+                    "document.querySelector('link[data-settings-owner=theme]') === null") == "true");
+                await NavigateMobile(web, "Theme");
                 await WaitUntil(async () => await Script(web,
-                    "document.body.dataset.settingsOverview === 'app'") == "true");
-                await web.CoreWebView2.ExecuteScriptAsync(
-                    "document.querySelector('[data-page-id=Theme]').click()");
-                await WaitUntil(async () => await Script(web,
-                    "!!document.querySelector('.theme-choices') && document.querySelector('.settings-native-entry').getAttribute('aria-busy') === 'false'") == "true");
+                    "document.querySelector('.theme-page')?.dataset.state === 'ready'") == "true");
                 LogBoundary("webview-navigation", "theme-root", "settings.navigate", "success");
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('main h1#page-title').length"));
             }
@@ -307,14 +302,10 @@ public sealed class ThemeWebTests
     {
         var destination = Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "settings", "root", "pages");
         var script = await File.ReadAllTextAsync(Path.Combine(destination, "theme.js"));
-        var shared = Path.GetFullPath(Path.Combine(destination, "..", "margin"));
-        var style = await File.ReadAllTextAsync(Path.Combine(shared, "margin-settings.css"));
-        Assert.Contains("mount", script);
-        Assert.Contains("../margin/", script);
-        Assert.Contains(".settings-native-entry", style);
-        Assert.NotEmpty(Directory.GetFiles(Path.Combine(shared, "assets"), "*.js"));
-        Assert.NotEmpty(Directory.GetFiles(Path.Combine(shared, "fonts"), "*.woff2"));
-        Assert.True(File.Exists(Path.Combine(shared, "fonts", "OFL-DM-Sans.txt")));
+        var style = await File.ReadAllTextAsync(Path.Combine(destination, "theme.css"));
+        Assert.Contains("theme.select", script);
+        Assert.Contains("data-theme-status", script);
+        Assert.Contains(".theme-page", style);
     }
 
     private static void AssertSnapshot(WebSurfaceCommandResult result, AppTheme selected, AppTheme effective,
@@ -395,6 +386,19 @@ public sealed class ThemeWebTests
             outcome,
             errorCode,
         }));
+
+    private static async Task NavigateMobile(WebView2 web, string pageId)
+    {
+        Assert.Equal("true", await Script(web,
+            "document.getElementById('settings-mobile-page').getBoundingClientRect().width > 0"));
+        await web.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                const select = document.getElementById('settings-mobile-page');
+                select.value = {{JsonSerializer.Serialize(pageId)}};
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            })()
+            """);
+    }
 
     private static async Task<string> Script(WebView2 web, string code)
     {

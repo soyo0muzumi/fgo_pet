@@ -76,70 +76,73 @@ const PAGE_ID = "RolePackages";
 const MAX_PREVIEW_LENGTH = 2_000_000;
 
 const MARKUP = `
-  <div class="rp-page" data-role-packages-page data-state="loading">
+  <div class="rp-page settings-page-body" data-role-packages-page data-state="loading">
     <div class="rp-feedback" aria-live="polite" aria-atomic="true">
-      <p data-busy hidden>${t("characters.busy")}</p>
-      <p data-status role="status" hidden></p>
-      <p data-error role="alert" aria-live="assertive" hidden></p>
+      <p class="settings-status" data-busy hidden>${t("characters.busy")}</p>
+      <p class="settings-status" data-status role="status" hidden></p>
+      <p class="settings-status is-error" data-error role="alert" aria-live="assertive" hidden></p>
       <div class="rp-diagnostic" data-diagnostic hidden><strong data-diagnostic-heading></strong><p data-diagnostic-text></p></div>
-      <button class="rp-button" type="button" data-retry hidden>${t("characters.reload")}</button>
+      <button class="rp-button settings-secondary" type="button" data-retry hidden>${t("characters.reload")}</button>
     </div>
     <section class="rp-catalog" data-route="catalog" aria-label="${t("characters.catalog")}">
-      <div class="rp-toolbar">
-        <label class="rp-search-label">${t("characters.search")}<span class="rp-search-field"><input type="search" data-catalog-search maxlength="256" autocomplete="off" placeholder="${t("characters.searchHint")}"><button class="rp-button rp-file-picker" type="button" data-select-file aria-label="${t("characters.chooseFile")}" title="${t("characters.chooseFile")}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3Z"/></svg></button></span></label>
-        <span class="rp-file-name" data-selected-file-name>${t("characters.noFile")}</span>
-        <button class="rp-button rp-primary" type="button" data-install-package disabled>${t("characters.install")}</button>
-        <button class="rp-button" type="button" data-rescan>${t("characters.scan")}</button>
+      <div class="rp-toolbar settings-toolbar">
+        <label class="rp-search-label settings-field"><span class="settings-label">${t("characters.search")}</span><input class="settings-input" type="search" data-catalog-search maxlength="256" autocomplete="off" placeholder="${t("characters.searchHint")}"></label>
+        <div class="rp-import-actions settings-actions">
+          <button class="rp-button rp-file-picker settings-secondary" type="button" data-select-file>${t("characters.chooseFile")}</button>
+          <button class="rp-button rp-primary settings-primary" type="button" data-install-package disabled>${t("characters.install")}</button>
+          <button class="rp-button settings-secondary" type="button" data-rescan>${t("characters.scan")}</button>
+        </div>
+        <span class="rp-file-name settings-help" data-selected-file-name>${t("characters.noFile")}</span>
       </div>
       <p class="rp-scan-status" data-scan-status></p>
       <div class="rp-package-grid" data-package-list></div>
-      <p class="rp-empty" data-catalog-empty hidden>${t("characters.empty")}</p>
+      <p class="rp-empty settings-empty" data-catalog-empty hidden>${t("characters.empty")}</p>
       <p class="rp-safety-note">${t("characters.safety")}</p>
-      <button class="rp-text-button" type="button" data-back-to-personalization>${t("characters.companion")}</button>
+      <button class="rp-text-button settings-secondary" type="button" data-back-to-personalization>${t("characters.companion")}</button>
     </section>
     <section class="rp-detail" data-route="detail" aria-label="${t("characters.detail")}" hidden>
       <header class="rp-detail-header" data-detail-header>
-        <button class="rp-back-button" type="button" data-back-to-catalog aria-label="${t("characters.backAria")}">${t("characters.back")}</button>
+        <button class="rp-back-button settings-secondary" type="button" data-back-to-catalog aria-label="${t("characters.backAria")}">${t("characters.back")}</button>
         <div class="rp-detail-title"><h2 data-detail-name></h2><p data-detail-version></p></div>
         <span class="rp-badge" data-detail-source></span>
         <img class="rp-detail-preview" data-detail-preview alt="${t("characters.preview")}" hidden>
         <p class="rp-detail-unavailable" data-detail-unavailable hidden>${t("characters.removed")}</p>
       </header>
       <nav class="rp-tabs" aria-label="${t("characters.sections")}">
-        <button type="button" data-section="appearance">${t("characters.looks")}</button>
-        <button type="button" data-section="address">${t("characters.addressSettings")}</button>
-        <button type="button" data-section="packageInfo">${t("characters.info")}</button>
+        <button class="settings-secondary" type="button" data-section="appearance">${t("characters.looks")}</button>
+        <button class="settings-secondary" type="button" data-section="address">${t("characters.addressSettings")}</button>
+        <button class="settings-secondary" type="button" data-section="packageInfo">${t("characters.info")}</button>
       </nav>
       <div class="rp-section-panel" data-section-panel="appearance">
-        <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>${t("characters.availableLooks")}</h3><p data-active-status></p></div><button class="rp-button" type="button" data-open-detail-folder>${t("characters.folder")}</button></div>
+        <section class="rp-card settings-section">
+          <div class="rp-card-heading settings-section-copy"><div><h3 class="settings-section-heading">${t("characters.availableLooks")}</h3><p data-active-status></p></div><button class="rp-button settings-secondary" type="button" data-open-detail-folder>${t("characters.folder")}</button></div>
           <div class="rp-appearance-list" data-appearance-list></div>
-          <div class="rp-action-row"><button class="rp-button rp-primary" type="button" data-activate-appearance>${t("characters.useLook")}</button><button class="rp-button rp-danger" type="button" data-uninstall-package>${t("characters.uninstall")}</button></div>
+          <div class="rp-action-row settings-actions"><button class="rp-button rp-primary settings-secondary settings-primary" type="button" data-activate-appearance>${t("characters.useLook")}</button><button class="rp-button rp-danger settings-secondary settings-danger" type="button" data-uninstall-package>${t("characters.uninstall")}</button></div>
         </section>
       </div>
       <div class="rp-section-panel" data-section-panel="address" hidden>
-        <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>${t("characters.address")}</h3><p>${t("characters.addressHint")}</p></div></div>
+        <section class="rp-card settings-section">
+          <div class="rp-card-heading settings-section-copy"><div><h3 class="settings-section-heading">${t("characters.address")}</h3><p>${t("characters.addressHint")}</p></div></div>
           <p class="rp-default-address" data-address-default></p>
-          <fieldset class="rp-address-modes"><legend>${t("characters.addressSource")}</legend>
+          <fieldset class="rp-address-modes settings-field"><legend>${t("characters.addressSource")}</legend>
             <label><input type="radio" name="rp-address-mode" value="packageDefault" data-address-mode="packageDefault">${t("characters.packageDefault")}</label>
             <label><input type="radio" name="rp-address-mode" value="custom" data-address-mode="custom">${t("characters.custom")}</label>
           </fieldset>
-          <label class="rp-field-label">${t("characters.customAddress")}<input type="text" data-custom-address maxlength="256" autocomplete="off"></label>
+          <label class="rp-field-label settings-field">${t("characters.customAddress")}<input class="settings-input" type="text" data-custom-address maxlength="256" autocomplete="off"></label>
           <p class="rp-inline-status" data-address-status></p>
-          <button class="rp-button rp-primary" type="button" data-save-address>${t("characters.saveAddress")}</button>
+          <button class="rp-button rp-primary settings-secondary settings-primary" type="button" data-save-address>${t("characters.saveAddress")}</button>
         </section>
       </div>
       <div class="rp-section-panel" data-section-panel="packageInfo" hidden>
-        <section class="rp-card">
-          <div class="rp-card-heading"><div><h3>${t("characters.info")}</h3><p data-package-summary></p></div></div>
+        <section class="rp-card settings-section">
+          <div class="rp-card-heading settings-section-copy"><div><h3 class="settings-section-heading">${t("characters.info")}</h3><p data-package-summary></p></div></div>
           <p class="rp-compatibility" data-compatibility></p>
-          <dl class="rp-info-list"><div><dt>${t("characters.id")}</dt><dd data-package-id></dd></div><div><dt>${t("characters.version")}</dt><dd data-info-version></dd></div><div><dt>${t("characters.source")}</dt><dd data-info-source></dd></div></dl>
+          <dl class="rp-info-list settings-list"><div><dt>${t("characters.id")}</dt><dd data-package-id></dd></div><div><dt>${t("characters.version")}</dt><dd data-info-version></dd></div><div><dt>${t("characters.source")}</dt><dd data-info-source></dd></div></dl>
           <p class="rp-availability" data-availability></p>
-          <button class="rp-button" type="button" data-open-package-folder>${t("characters.folder")}</button>
+          <button class="rp-button settings-secondary" type="button" data-open-package-folder>${t("characters.folder")}</button>
         </section>
         <p class="rp-notice" data-migration-notice hidden></p>
-        <section class="rp-card"><div class="rp-card-heading"><div><h3>${t("characters.settings")}</h3><p>${t("characters.settingsHint")}</p></div></div><div class="rp-settings-list" data-package-settings></div><p class="rp-empty" data-package-settings-empty hidden>${t("characters.noSettings")}</p><p class="rp-inline-status" data-package-settings-status></p><button class="rp-button" type="button" data-save-package-settings>${t("characters.saveSettings")}</button></section>
+        <section class="rp-card settings-section"><div class="rp-card-heading settings-section-copy"><div><h3 class="settings-section-heading">${t("characters.settings")}</h3><p>${t("characters.settingsHint")}</p></div></div><div class="rp-settings-list" data-package-settings></div><p class="rp-empty settings-empty" data-package-settings-empty hidden>${t("characters.noSettings")}</p><p class="rp-inline-status" data-package-settings-status></p><button class="rp-button settings-secondary" type="button" data-save-package-settings>${t("characters.saveSettings")}</button></section>
       </div>
     </section>
   </div>`;
@@ -153,6 +156,9 @@ function text(node, value) { node.textContent = typeof value === "string" ? valu
 function make(tag, className, content) {
   const node = document.createElement(tag);
   if (className) node.className = className;
+  if (tag === "button") node.classList.add(node.classList.contains("rp-primary") ? "settings-primary" : "settings-secondary");
+  if (className === "rp-package-card") node.classList.add("settings-item");
+  if (className === "rp-setting") node.classList.add("settings-field");
   if (content !== undefined) text(node, content);
   return node;
 }
@@ -345,11 +351,13 @@ export async function mount(container, context) {
       const settingValue = draftSettings.has(setting.key) ? draftSettings.get(setting.key) : setting.value;
       const group = make("label", "rp-setting");
       group.dataset.packageSettingKey = setting.key;
-      group.append(make("span", "rp-setting-label", setting.label || setting.key));
+      group.append(make("span", "rp-setting-label settings-label", setting.label || setting.key));
       let control;
       if (setting.type === "toggle") {
         control = document.createElement("input");
         control.type = "checkbox";
+        control.setAttribute("role", "switch");
+        group.classList.replace("settings-field", "settings-row");
         control.dataset.settingToggle = "";
         control.checked = settingValue === "true";
       } else if (setting.type === "choice") {
@@ -371,6 +379,7 @@ export async function mount(container, context) {
         control.value = typeof settingValue === "string" ? settingValue : "";
       } else continue;
       control.dataset.settingKey = setting.key;
+      if (control.type !== "checkbox") control.classList.add("settings-input");
       group.append(control);
       list.append(group);
     }
@@ -450,7 +459,7 @@ export async function mount(container, context) {
     else renderDetail(value);
     if (renderedRoute !== value.route) {
       renderedRoute = value.route;
-      context.onRouteChanged?.();
+      context.onRouteChanged?.({ canGoBack: value.route === "detail" });
     }
     if (!localError) retry.hidden = true;
     setBusy();

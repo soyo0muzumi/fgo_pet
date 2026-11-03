@@ -1,57 +1,58 @@
 const MARKUP = `
-  <div class="qq-page" data-state="loading">
-    <p class="qq-lead">Continue a conversation in a private QQ chat. Keep FGO Pet open and this computer online.</p>
-    <form data-credentials aria-label="QQ bot settings">
-      <div class="qq-field">
+  <div class="qq-page settings-page-body" data-state="loading">
+    <p class="qq-lead settings-help">Continue a conversation in a private QQ chat. Keep FGO Pet open and this computer online.</p>
+    <form class="settings-section" data-credentials aria-label="QQ bot settings">
+      <h2 class="settings-section-heading">Bot connection</h2>
+      <div class="qq-field settings-field">
         <label for="qq-app-id">App ID</label>
-        <input id="qq-app-id" class="qq-input" name="appId" inputmode="numeric" autocomplete="off" maxlength="32" pattern="[0-9]+" required>
+        <input id="qq-app-id" class="qq-input settings-input" name="appId" inputmode="numeric" autocomplete="off" maxlength="32" pattern="[0-9]+" required>
       </div>
-      <div class="qq-field">
+      <div class="qq-field settings-field">
         <label for="qq-app-secret">App Secret</label>
-        <input id="qq-app-secret" class="qq-input" name="appSecret" type="password" autocomplete="new-password" maxlength="4096" aria-describedby="qq-secret-state">
-        <p class="qq-hint" id="qq-secret-state" data-secret-state></p>
+        <input id="qq-app-secret" class="qq-input settings-input" name="appSecret" type="password" autocomplete="new-password" maxlength="4096" aria-describedby="qq-secret-state">
+        <p class="qq-hint settings-help" id="qq-secret-state" data-secret-state></p>
       </div>
-      <p class="qq-hint" data-dirty hidden>You have unsaved changes.</p>
-      <div class="qq-actions"><button class="qq-button qq-button--primary" type="submit" data-save disabled>Save bot settings</button></div>
+      <p class="qq-hint settings-help" data-dirty hidden>You have unsaved changes.</p>
+      <div class="qq-actions settings-actions"><button class="qq-button qq-button--primary settings-secondary settings-primary" type="submit" data-save disabled>Save bot settings</button></div>
     </form>
 
-    <section class="qq-section" aria-labelledby="qq-connection-heading">
-      <h2 id="qq-connection-heading">Private chat</h2>
+    <section class="qq-section settings-section" aria-labelledby="qq-connection-heading">
+      <h2 class="settings-section-heading" id="qq-connection-heading">Private chat</h2>
       <p class="qq-connection" role="status" aria-live="polite" data-connection>Loading…</p>
-      <p class="qq-hint" data-paired></p>
-      <p class="qq-hint" data-pairing-hint>Open a conversation in FGO Pet, then start pairing. Send the code to your bot from the QQ account you want to use.</p>
+      <p class="qq-hint settings-help" data-paired></p>
+      <p class="qq-hint settings-help" data-pairing-hint>Open a conversation in FGO Pet, then start pairing. Send the code to your bot from the QQ account you want to use.</p>
       <div class="qq-pairing" data-pairing hidden>
         <label for="qq-pairing-code">Send this code in your private chat with the bot</label>
         <output id="qq-pairing-code" data-pairing-code></output>
-        <p class="qq-hint" data-pairing-expiry></p>
+        <p class="qq-hint settings-help" data-pairing-expiry></p>
       </div>
-      <div class="qq-actions">
-        <button class="qq-button qq-button--primary" type="button" data-pair disabled>Start pairing</button>
-        <button class="qq-button" type="button" data-toggle disabled>Enable</button>
+      <div class="qq-actions settings-actions">
+        <button class="qq-button qq-button--primary settings-secondary settings-primary" type="button" data-pair disabled>Start pairing</button>
+        <button class="qq-button settings-secondary" type="button" data-toggle disabled>Enable</button>
       </div>
     </section>
 
-    <section class="qq-section" aria-labelledby="qq-conversation-heading">
-      <h2 id="qq-conversation-heading">Conversation</h2>
-      <p class="qq-hint" data-binding>No desktop conversation linked yet.</p>
-      <button class="qq-button" type="button" data-bind disabled>Use current conversation</button>
+    <section class="qq-section settings-section" aria-labelledby="qq-conversation-heading">
+      <h2 class="settings-section-heading" id="qq-conversation-heading">Conversation</h2>
+      <p class="qq-hint settings-help" data-binding>No desktop conversation linked yet.</p>
+      <button class="qq-button settings-secondary" type="button" data-bind disabled>Use current conversation</button>
     </section>
 
     <div class="qq-feedback">
-      <p class="qq-hint" role="status" aria-live="polite" data-feedback></p>
-      <p class="qq-error" role="alert" data-error hidden></p>
-      <button class="qq-button" type="button" data-retry hidden>Reload</button>
+      <p class="qq-hint settings-status" role="status" aria-live="polite" data-feedback></p>
+      <p class="qq-error settings-status is-error" role="alert" data-error hidden></p>
+      <button class="qq-button settings-secondary" type="button" data-retry hidden>Reload</button>
     </div>
-    <div class="qq-reset">
-      <button class="qq-button" type="button" data-reset disabled>Clear bot settings & pairing</button>
+    <details class="qq-reset settings-advanced"><summary>Reset connection</summary>
+      <button class="qq-button settings-secondary" type="button" data-reset disabled>Clear bot settings & pairing</button>
       <div class="qq-confirm" data-reset-confirm hidden>
         <p>This disconnects QQ and clears the saved App Secret and account pairing. Your conversation stays in FGO Pet.</p>
-        <div class="qq-actions">
-          <button class="qq-button qq-button--danger" type="button" data-reset-accept>Clear settings</button>
-          <button class="qq-button" type="button" data-reset-cancel>Cancel</button>
+        <div class="qq-actions settings-actions">
+          <button class="qq-button qq-button--danger settings-secondary settings-danger" type="button" data-reset-accept>Clear settings</button>
+          <button class="qq-button settings-secondary" type="button" data-reset-cancel>Cancel</button>
         </div>
       </div>
-    </div>
+    </details>
   </div>`;
 
 const STATES = {
@@ -231,9 +232,20 @@ export async function mount(container, context) {
     context.signal?.removeEventListener("abort", dispose);
     style.remove();
   }
+  // Credential input remains transient; keep only the non-secret draft and disclosure.
+  dispose.getState = () => ({ appId: appId.value, dirty, resetOpen: find(".qq-reset").open });
   context.signal?.addEventListener("abort", dispose, { once: true });
   if (context.signal?.aborted) dispose();
   render();
   await refresh();
+  if (!disposed && context.state) {
+    if (context.state.dirty === true && typeof context.state.appId === "string") {
+      appId.value = context.state.appId;
+      dirty = appId.value !== snapshot?.appId;
+      if (dirty) feedback = "Your App ID draft was kept. Re-enter the App Secret before saving.";
+    }
+    find(".qq-reset").open = context.state.resetOpen === true;
+    render();
+  }
   return dispose;
 }

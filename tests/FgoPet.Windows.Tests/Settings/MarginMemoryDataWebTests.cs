@@ -31,7 +31,8 @@ public sealed class MarginMemoryDataWebTests
                 var web = Assert.Single(host.Children.OfType<WebView2>());
                 await Ready(web, prefix);
                 Assert.Equal("Delete all user data", await Text(web, "document.querySelector('[data-delete-all]').textContent"));
-                Assert.Equal("3px", await Text(web, "getComputedStyle(document.querySelector('[data-delete-all]')).borderRadius"));
+                Assert.Equal("7px", await Text(web, "getComputedStyle(document.querySelector('[data-delete-all]')).borderRadius"));
+                Assert.Equal("false", await Script(web, $"document.querySelector('.{prefix}-maintenance').open"));
                 await Capture(web, prefix + "-normal");
                 if (prefix == "cm")
                 {
@@ -40,6 +41,11 @@ public sealed class MarginMemoryDataWebTests
                     await Click(web, "[data-approve-candidate]");
                     await Wait(() => Task.FromResult(owner.Calls.Contains("memory.approveCandidate")));
                     await Ready(web, prefix);
+                    await Click(web, "[data-memory-view=confirmed]");
+                    Assert.Equal("true", await Script(web,
+                        "document.querySelector('[data-memory-pane=candidates]').hidden && !document.querySelector('[data-memory-pane=confirmed]').hidden"));
+                    Assert.Equal("true", await Script(web,
+                        "document.querySelector('[data-memory-edit]').getBoundingClientRect().width > 0"));
                 }
                 else
                 {
@@ -60,6 +66,8 @@ public sealed class MarginMemoryDataWebTests
                     await Wait(() => Task.FromResult(owner.Calls.Contains("privacy.restoreBackup")));
                     await Ready(web, prefix);
                 }
+                await Click(web, $".{prefix}-maintenance > summary");
+                Assert.Equal("true", await Script(web, $"document.querySelector('.{prefix}-maintenance').open"));
                 await Click(web, "[data-delete-all]");
                 Assert.DoesNotContain(owner.CommandPrefix + ".deleteAll", owner.Calls);
                 Assert.Equal("false", await Script(web, "document.querySelector('[data-delete-confirm]').hidden"));
@@ -71,13 +79,15 @@ public sealed class MarginMemoryDataWebTests
                 await Click(web, "[data-delete-all]");
                 await Script(web, "document.querySelector('[data-delete-confirm-btn]').scrollIntoView({block:'center'})");
                 Assert.Equal("true", await Script(web, "document.documentElement.scrollWidth <= innerWidth && document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
-                Assert.Equal("true", await Script(web, "(() => {const r=document.querySelector('[data-delete-confirm-btn]').getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth;})()"));
+                Assert.Equal("true", await Script(web, "(() => {const r=document.querySelector('[data-delete-confirm-btn]').getBoundingClientRect();return r.width>0 && r.height>0 && r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth;})()"));
                 await Capture(web, prefix + "-small-confirm");
                 await Click(web, "[data-delete-confirm-btn]");
                 await Wait(() => Task.FromResult(owner.Calls.Contains(owner.CommandPrefix + ".deleteAll")));
                 await Ready(web, prefix);
-                await Click(web, "#settings-back");
-                await Wait(async () => await Text(web, "document.body.dataset.settingsOverview") == "privacy");
+                Assert.Equal("true", await Script(web,
+                    "document.querySelector('#settings-back').hidden && document.querySelector('.navigation-page[aria-current=page]') !== null"));
+                Assert.Equal(pageId == "Privacy" ? "app" : "knowledge", await Text(web,
+                    "document.body.dataset.settingsSection"));
             }
             finally { window.Close(); }
         });
@@ -112,7 +122,21 @@ public sealed class MarginMemoryDataWebTests
         new SettingsPageCatalog([new SettingsPageViewFactory(owner.SettingsPageId,
             _ => throw new InvalidOperationException(), "Synthetic settings", order: 10)]), [owner],
         Path.Combine(Path.GetTempPath(), "margin-memory-data-" + Guid.NewGuid().ToString("N")));
-    private static Task Click(WebView2 web, string selector) => Script(web, $"document.querySelector({JsonSerializer.Serialize(selector)}).click()");
+    private static async Task Click(WebView2 web, string selector)
+    {
+        Assert.Equal("true", await Script(web, $$"""
+            (() => {
+                const element = document.querySelector({{JsonSerializer.Serialize(selector)}});
+                if (!element) return false;
+                element.scrollIntoView({ block: 'center' });
+                const bounds = element.getBoundingClientRect();
+                const visible = bounds.width > 0 && bounds.height > 0
+                    && getComputedStyle(element).visibility !== 'hidden' && !element.matches(':disabled');
+                if (visible) element.click();
+                return visible;
+            })()
+            """));
+    }
     private static Task Ready(WebView2 web, string prefix) => Wait(async () =>
         await Text(web, $"document.querySelector('.{prefix}-page')?.dataset.state ?? ''") == "ready"
         && await Script(web, $"document.querySelector('.{prefix}-page').getAttribute('aria-busy') === 'false'") == "true");

@@ -4,6 +4,8 @@
   const t = window.MarginSettingsI18n.t;
   const bridge = window.chrome && window.chrome.webview;
   const navigation = document.getElementById("settings-navigation");
+  const mobileNavigation = document.getElementById("settings-mobile-page");
+  const scrollRegion = document.getElementById("settings-scroll");
   const back = document.getElementById("settings-back");
   const parent = document.getElementById("settings-parent");
   const title = document.getElementById("page-title");
@@ -11,15 +13,13 @@
   const status = document.getElementById("root-status");
   const pageContent = document.getElementById("page-content");
   const pending = new Map();
-  const sections = ["companion", "services", "app", "privacy"];
+  const sections = ["companion", "services", "knowledge", "app"];
   const sectionPages = {
     companion: ["Personalization", "RolePackages"],
-    services: ["ModelConnection", "Speech", "Qq"],
-    app: ["UserProfile", "Theme"],
-    privacy: ["AgentConnection", "ConversationMemory", "Privacy"],
+    services: ["ModelConnection", "Speech", "Qq", "WebAccess", "AgentConnection"],
+    knowledge: ["ConversationMemory", "Understanding"],
+    app: ["UserProfile", "Theme", "Privacy"],
   };
-  let selectedSection = "companion";
-  let overview = false;
   const pageStates = new Map();
   const themeChangedListeners = new Set();
   const modulePathPattern = /^pages\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.js$/;
@@ -96,119 +96,111 @@
     return t(key) !== key ? t(key) : (page.title || t("settings.untitled"));
   }
 
+  function pageDescription(page) {
+    const key = `settings.description.${page.id}`;
+    return t(key) !== key ? t(key) : (page.description || "");
+  }
+
+  function orderedSectionPages(section) {
+    const known = sectionPages[section].map(id => pages.find(page => page.id === id)).filter(Boolean);
+    if (section !== "app") return known;
+    return known.concat(pages.filter(page => !sections.some(group => sectionPages[group].includes(page.id))));
+  }
+
+  function navigationGlyph(pageId) {
+    const paths = {
+      Personalization: "M8 20v-2a4 4 0 0 1 8 0v2M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+      RolePackages: "M4 20v-2a4 4 0 0 1 8 0v2M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM16 4a4 4 0 0 1 0 8m0 4a4 4 0 0 1 4 4",
+      ModelConnection: "M8 8h8v8H8ZM9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3",
+      Speech: "M5 10H2v4h3l5 4V6l-5 4Zm9-2a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14",
+      Qq: "M20 11a8 8 0 0 1-8 8H4l1.5-3A8 8 0 1 1 20 11Z",
+      WebAccess: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3a19 19 0 0 1 0 18 19 19 0 0 1 0-18Z",
+      ConversationMemory: "M4 4h7a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4V4Zm10 3a3 3 0 0 1 3-3h3v15h-3a4 4 0 0 0-3 2",
+      Understanding: "M12 3v18M9 4a4 4 0 0 0-5 5 4 4 0 0 0 0 6 4 4 0 0 0 5 5M15 4a4 4 0 0 1 5 5 4 4 0 0 1 0 6 4 4 0 0 1-5 5M8 9h4m0 6h4",
+      UserProfile: "M4 21v-2a6 6 0 0 1 12 0v2M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+      Theme: "M21 13a9 9 0 0 1-10-10 9 9 0 1 0 10 10Z",
+      Privacy: "M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3ZM9 12l2 2 4-4",
+      AgentConnection: "M8 11V7a4 4 0 0 1 8 0v4M5 11h14v10H5Z",
+    };
+    const icon = document.createElement("span");
+    icon.className = "navigation-glyph";
+    icon.setAttribute("aria-hidden", "true");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", paths[pageId] || "M5 5h14v14H5ZM9 9h6m-6 6h6");
+    svg.append(path);
+    icon.append(svg);
+    return icon;
+  }
+
   function renderNavigation() {
     const fragment = document.createDocumentFragment();
+    const mobile = document.createDocumentFragment();
     for (const section of sections) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "section-button";
-      item.dataset.section = section;
-      if (section === selectedSection) item.setAttribute("aria-current", "page");
-      const name = document.createElement("span");
-      name.className = "section-name";
-      name.textContent = t(`settings.${section}`);
-      const subtitle = document.createElement("span");
-      subtitle.className = "section-subtitle";
-      subtitle.textContent = t(`settings.${section}Sub`);
-      item.append(name, subtitle);
-      item.addEventListener("click", () => { void openSection(section); });
-      fragment.append(item);
+      const entries = orderedSectionPages(section);
+      if (!entries.length) continue;
+      const group = document.createElement("div");
+      group.className = "navigation-group";
+      group.dataset.section = section;
+      const heading = document.createElement("h2");
+      heading.className = "section-name";
+      heading.textContent = t(`settings.${section}`);
+      group.append(heading);
+      const options = document.createElement("optgroup");
+      options.label = heading.textContent;
+      for (const page of entries) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "navigation-page";
+        item.dataset.pageId = page.id;
+        item.disabled = !availablePage(page.id);
+        if (page.id === document.body.dataset.pageId) item.setAttribute("aria-current", "page");
+        const name = document.createElement("span");
+        name.className = "navigation-label";
+        name.textContent = pageTitle(page);
+        item.append(navigationGlyph(page.id), name);
+        if (item.disabled) {
+          const state = document.createElement("span");
+          state.className = "navigation-state";
+          state.textContent = t("settings.unavailable");
+          item.append(state);
+        } else if (pageStates.get(page.id)?.dirty === true) {
+          const draft = document.createElement("span");
+          draft.className = "navigation-draft";
+          draft.title = t("settings.unsavedDraft");
+          draft.setAttribute("aria-label", draft.title);
+          item.append(draft);
+        }
+        item.addEventListener("click", () => { void navigateTo(page); });
+        group.append(item);
+        const option = document.createElement("option");
+        option.value = page.id;
+        option.textContent = pageTitle(page) + (item.disabled ? ` · ${t("settings.unavailable")}` : "");
+        option.disabled = item.disabled;
+        options.append(option);
+      }
+      fragment.append(group);
+      mobile.append(options);
     }
     navigation.replaceChildren(fragment);
+    mobileNavigation.replaceChildren(mobile);
+    mobileNavigation.value = document.body.dataset.pageId || "";
   }
 
-  function detailRow(label, pageId, hint = "") {
-    const page = pages.find(candidate => candidate.id === pageId);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "detail-row";
-    button.dataset.pageId = pageId;
-    button.disabled = !availablePage(pageId);
-    const copy = document.createElement("span");
-    copy.className = "row-copy";
-    const name = document.createElement("span");
-    name.className = "row-label";
-    name.textContent = label;
-    copy.append(name);
-    if (hint || button.disabled) {
-      const detail = document.createElement("span");
-      detail.className = "row-description";
-      detail.textContent = button.disabled && hint === t("settings.checkService")
-        ? t("settings.unavailable") : (hint || t("settings.unavailable"));
-      copy.append(detail);
-    }
-    const arrow = document.createElement("span");
-    arrow.className = "row-chevron";
-    arrow.setAttribute("aria-hidden", "true");
-    arrow.textContent = "›";
-    button.append(copy, arrow);
-    if (page) button.addEventListener("click", () => { void navigateTo(page); });
-    return button;
-  }
-
-  async function openSection(section) {
-    if (!sections.includes(section) || closed) return;
-    selectedSection = section;
-    if (section === "companion" && availablePage("Personalization")) {
-      await navigateTo(availablePage("Personalization"), undefined, true);
-      return;
-    }
-    routeGeneration++;
-    cleanupActivePage();
-    overview = true;
-    document.body.dataset.settingsSection = section;
-    document.body.dataset.settingsOverview = section;
-    delete document.body.dataset.pageId;
-    title.textContent = t(`settings.${section}`);
-    description.textContent = t(`settings.${section}Lead`);
-    back.hidden = true;
-    setStatus("");
-    renderNavigation();
-    const rows = document.createElement("div");
-    rows.className = "overview-rows";
-    if (section === "privacy") {
-      rows.append(detailRow(t("settings.scope"), "AgentConnection", t("settings.scopeUnavailable")),
-        detailRow(t("settings.permissions"), "ActionPermissions", t("settings.permissionsUnavailable")),
-        detailRow(t("settings.page.ConversationMemory"), "ConversationMemory"));
-      const more = document.createElement("details");
-      more.className = "overview-more";
-      const summary = document.createElement("summary");
-      summary.textContent = t("settings.more");
-      more.append(summary, detailRow(t("settings.page.Privacy"), "Privacy"));
-      rows.append(more);
-    } else {
-      const included = sectionPages[section];
-      for (const pageId of included) rows.append(detailRow(t(`settings.page.${pageId}`), pageId,
-        section === "services" ? t("settings.checkService") : ""));
-      if (section === "app") {
-        const additional = pages.filter(page => !sections.some(group => sectionPages[group].includes(page.id)));
-        if (additional.length) {
-          const more = document.createElement("details");
-          more.className = "overview-more";
-          const summary = document.createElement("summary");
-          summary.textContent = t("settings.more");
-          more.append(summary);
-          for (const page of additional) more.append(detailRow(pageTitle(page), page.id));
-          rows.append(more);
-        }
-      }
-    }
-    pageContent.append(rows);
-    if (section === "services") {
-      const note = document.createElement("p");
-      note.className = "offline-note";
-      note.textContent = t("settings.offline");
-      pageContent.append(note);
-    }
-  }
   function availablePage(pageId) {
     return pages.find(page => page.id === pageId && page.available === true
       && typeof page.module === "string" && modulePathPattern.test(page.module)) || null;
   }
 
-  async function navigateTo(page, itemId, asOverview = false) {
+  function restoreNavigationFocus() {
+    if (getComputedStyle(mobileNavigation.parentElement).display !== "none") mobileNavigation.focus({ preventScroll: true });
+    else navigation.querySelector(`[data-page-id="${document.body.dataset.pageId}"]`)?.focus({ preventScroll: true });
+  }
+
+  async function navigateTo(page, itemId) {
     if (!page || page.available !== true || typeof page.module !== "string" || !modulePathPattern.test(page.module)) return;
-    if (activePage && activePage.id === page.id && overview === asOverview) {
+    if (activePage && activePage.id === page.id) {
       if (itemId !== undefined && typeof activeCleanup?.openItem === "function") {
         const owner = activeCleanup;
         const generation = routeGeneration;
@@ -223,18 +215,17 @@
       return;
     }
 
-    const restoreNavigationFocus = navigation.contains(document.activeElement);
+    const navigationHadFocus = navigation.contains(document.activeElement) || document.activeElement === mobileNavigation;
     const generation = ++routeGeneration;
     cleanupActivePage();
-    overview = asOverview;
-    selectedSection = sectionFor(page);
+    const selectedSection = sectionFor(page);
     document.body.dataset.settingsSection = selectedSection;
-    document.body.dataset.settingsOverview = asOverview ? selectedSection : "";
     document.body.dataset.pageId = page.id;
-    back.hidden = asOverview;
+    back.hidden = true;
     parent.textContent = t(`settings.${selectedSection}`);
-    title.textContent = asOverview ? t(`settings.${selectedSection}`) : pageTitle(page);
-    description.textContent = asOverview ? t(`settings.${selectedSection}Lead`) : "";
+    title.textContent = pageTitle(page);
+    description.textContent = pageDescription(page);
+    scrollRegion.scrollTop = 0;
     setStatus(t("settings.opening"));
     renderNavigation();
 
@@ -255,7 +246,7 @@
       const stagingContent = document.createElement("div");
       const cleanup = await pageModule.mount(stagingContent, {
         pageId: page.id,
-        overview: asOverview,
+        overview: false,
         itemId,
         state: pageStates.get(page.id),
         signal: controller.signal,
@@ -267,9 +258,11 @@
           return activePage?.id === pageId;
         },
         canNavigate: pageId => availablePage(pageId) !== null,
-        onRouteChanged: () => {
-          if (!closed && generation === routeGeneration && !controller.signal.aborted)
-            pageContent.closest(".settings-main").scrollTop = 0;
+        onRouteChanged: route => {
+          if (!closed && generation === routeGeneration && !controller.signal.aborted) {
+            scrollRegion.scrollTop = 0;
+            if (route && typeof route.canGoBack === "boolean") back.hidden = !route.canGoBack;
+          }
         },
         onThemeChanged: callback => {
           if (typeof callback !== "function" || closed || controller.signal.aborted) return () => {};
@@ -291,8 +284,7 @@
       pageContent.replaceChildren(stagingContent);
       setStatus("");
       renderNavigation();
-      if (restoreNavigationFocus)
-        navigation.querySelector(`[data-section="${selectedSection}"]`)?.focus({ preventScroll: true });
+      if (navigationHadFocus) restoreNavigationFocus();
     } catch (error) {
       if (closed || generation !== routeGeneration) return;
       cleanupActivePage();
@@ -300,8 +292,7 @@
         ? t("settings.pageUnavailable")
         : t("settings.openFailed"), true);
       renderNavigation();
-      if (restoreNavigationFocus)
-        navigation.querySelector(`[data-section="${selectedSection}"]`)?.focus({ preventScroll: true });
+      if (navigationHadFocus) restoreNavigationFocus();
     }
   }
 
@@ -311,6 +302,8 @@
         if (key.startsWith("--") && typeof value === "string")
           document.documentElement.style.setProperty(key, value);
       }
+    if (variables?.["--color-scheme"] === "light" || variables?.["--color-scheme"] === "dark")
+      document.documentElement.dataset.theme = variables["--color-scheme"];
     if (bridge && Number.isFinite(version)) bridge.postMessage({ type: "theme.ack", version });
   }
 
@@ -329,8 +322,7 @@
       requestedHostItemId = typeof response.itemId === "string" && response.itemId.length <= 256
         ? response.itemId : null;
       const destination = availablePage(requestedHostPageId);
-      if (destination) void navigateTo(destination, requestedHostItemId,
-        destination.id === "Personalization" && !requestedHostItemId);
+      if (destination) void navigateTo(destination, requestedHostItemId);
     } else if (response.type === "command.result") {
       const waiter = pending.get(response.requestId);
       if (!waiter) return;
@@ -352,10 +344,14 @@
 
   back.addEventListener("click", async () => {
     try {
-      if (typeof activeCleanup?.goBack === "function" && await activeCleanup.goBack()) return;
+      if (typeof activeCleanup?.goBack === "function" && await activeCleanup.goBack()) {
+        if (!closed) title.focus({ preventScroll: true });
+      }
     } catch { return; /* The module retains its route and presents the owner error. */ }
-    await openSection(selectedSection);
-    if (!closed) navigation.querySelector(`[data-section="${selectedSection}"]`)?.focus({ preventScroll: true });
+  });
+  mobileNavigation.addEventListener("change", () => {
+    const destination = availablePage(mobileNavigation.value);
+    if (destination) void navigateTo(destination);
   });
   window.addEventListener("pagehide", () => {
     closed = true;
@@ -379,7 +375,7 @@
       || pages.filter(page => page.available === true && typeof page.module === "string" && modulePathPattern.test(page.module))
         .sort((left, right) => (Number(left.order) || 0) - (Number(right.order) || 0)
           || String(left.title || "").localeCompare(String(right.title || ""), "zh-CN"))[0];
-    if (initial) void navigateTo(initial, requestedHostItemId, initial.id === "Personalization" && !requestedHostItemId);
+    if (initial) void navigateTo(initial, requestedHostItemId);
     else setStatus(t("settings.noPages"), true);
   }).catch(() => {
     if (closed) return;

@@ -33,11 +33,11 @@ public sealed class SettingsWebEntryTests
                     + JsonSerializer.Serialize(id)
                     + " && document.getElementById('page-content').children.length > 0 && !document.getElementById('root-status').textContent") == "true");
             await PageReady("RolePackages");
-            Assert.Equal("[\"Companion\",\"Services\",\"App\",\"Privacy & Safety\"]",
+            Assert.Equal("[\"Companion\",\"Services\",\"Memory & understanding\",\"App\"]",
                 await web.CoreWebView2.ExecuteScriptAsync(
                     "Array.from(document.querySelectorAll('#settings-navigation .section-name')).map(node => node.textContent)"));
             foreach (var id in new[] { "UserProfile", "Personalization", "ModelConnection", "Speech",
-                         "ConversationMemory", "Privacy", "Theme", "RolePackages" })
+                         "Qq", "WebAccess", "ConversationMemory", "Understanding", "Privacy", "Theme", "RolePackages" })
             {
                 vm.Navigate(id);
                 window.NavigateToSelectedPage();
@@ -55,25 +55,18 @@ public sealed class SettingsWebEntryTests
                         Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, file);
                 }
             }
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=services]').click()");
-            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
-                "document.body.dataset.settingsOverview === 'services'") == "true");
-            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
-                "Array.from(document.querySelectorAll('.detail-row')).every(row => !row.disabled)"));
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-page-id=ModelConnection]').click()");
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.navigation-page[data-page-id=ModelConnection]').click()");
             await PageReady("ModelConnection");
             Assert.Equal("Services", JsonSerializer.Deserialize<string>(
                 await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-parent').textContent")));
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");
-            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
-                "document.body.dataset.settingsOverview === 'services'") == "true");
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('[data-section=privacy]').click()");
-            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
-                "document.body.dataset.settingsOverview === 'privacy'") == "true");
             Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
-                "document.querySelector('.detail-row[data-page-id=AgentConnection]').disabled"));
+                "document.querySelector('.navigation-page[data-page-id=AgentConnection]').disabled"));
             Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
-                "document.querySelector('.detail-row[data-page-id=ActionPermissions]').disabled"));
+                "document.querySelector('.navigation-page[data-page-id=ActionPermissions]') === null"));
+            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('#settings-back').hidden && !document.querySelector('.overview-rows')"));
+            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('[data-section=knowledge] .navigation-page[data-page-id=Understanding]') !== null"));
             vm.Select(SettingsSection.UserProfile);
             window.NavigateToSelectedPage();
             await PageReady("UserProfile");
@@ -86,10 +79,11 @@ public sealed class SettingsWebEntryTests
             await PageReady("UserProfile");
             Assert.Equal("未保存的查验草稿", JsonSerializer.Deserialize<string>(
                 await web.CoreWebView2.ExecuteScriptAsync("document.getElementById('profile-display-name').value")));
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#settings-back').click()");
-            await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
-                "document.body.dataset.settingsOverview === 'app'") == "true");
-            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.detail-row[data-page-id=UserProfile]').click()");
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.navigation-page[data-page-id=Theme]').click()");
+            await PageReady("Theme");
+            Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
+                "document.querySelector('.navigation-page[data-page-id=UserProfile] .navigation-draft') !== null"));
+            await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('.navigation-page[data-page-id=UserProfile]').click()");
             await PageReady("UserProfile");
             await WaitUntil(async () => await web.CoreWebView2.ExecuteScriptAsync(
                 "document.getElementById('profile-display-name').value === '未保存的查验草稿'") == "true");
@@ -126,9 +120,9 @@ public sealed class SettingsWebEntryTests
             var window = provider.GetRequiredService<SettingsWindow>();
             Assert.IsType<WebView2SurfaceHost>(window.Content);
             var owners = provider.GetServices<ISettingsWebPage>().Select(page => page.SettingsPageId).ToArray();
-            Assert.Equal(10, owners.Length);
+            Assert.Equal(11, owners.Length);
             foreach (var id in new[] { "UserProfile", "Personalization", "ModelConnection", "RolePackages",
-                         "Speech", "Qq", "ConversationMemory", "Understanding", "Privacy", "Theme" }) Assert.Contains(id, owners);
+                         "Speech", "Qq", "WebAccess", "ConversationMemory", "Understanding", "Privacy", "Theme" }) Assert.Contains(id, owners);
             Assert.Equal(owners.Length, owners.Distinct(StringComparer.Ordinal).Count());
         });
     }

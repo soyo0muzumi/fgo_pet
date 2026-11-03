@@ -26,19 +26,19 @@ public sealed class MarginServiceSettingsWebTests
                 window.Show();
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
-                await ReadyModel(web);
+                await Ready(web, "mc");
                 await Wait(() => Task.FromResult(owner.Calls.Contains("modelConnection.refreshModels")));
-                await Wait(async () => await Script(web, "!Array.from(document.querySelectorAll('.settings-model-picker button')).some(b=>b.disabled)") == "true");
+                await Wait(async () => await Text(web, "document.querySelector('[data-model-list]').getAttribute('aria-busy')") == "false");
                 var count = owner.Calls.Count(call => call == "modelConnection.refreshModels");
-                await Script(web, "document.querySelector('[aria-label=查看可用模型]').click()");
+                await Script(web, "document.querySelector('[data-model-toggle]').click()");
                 await Wait(() => Task.FromResult(owner.Calls.Count(call => call == "modelConnection.refreshModels") > count));
-                await Wait(async () => await Script(web, "!Array.from(document.querySelectorAll('.settings-model-picker button')).some(b=>b.disabled)") == "true");
+                await Wait(async () => await Text(web, "document.querySelector('[data-model-list]').getAttribute('aria-busy')") == "false");
 
-                await Script(web, "var key=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(key,'fixture-provider-a');key.dispatchEvent(new Event('input',{bubbles:true}))");
-                await ReadyModel(web);
-                await Script(web, "Array.from(document.querySelectorAll('.settings-provider-options button')).find(b=>b.textContent==='Local provider').click()");
-                await Wait(async () => await Script(web, "document.querySelector('input[type=password]').value==='' && Array.from(document.querySelectorAll('.settings-provider-options button')).some(b=>b.textContent==='Local provider'&&b.getAttribute('aria-pressed')==='true')") == "true");
-                await ReadyModel(web);
+                await Script(web, "var key=document.querySelector('[data-field=apiKey]');key.value='fixture-provider-a';key.dispatchEvent(new Event('input',{bubbles:true}))");
+                await Ready(web, "mc");
+                await Script(web, "var provider=document.getElementById('mc-provider');provider.value='local';provider.dispatchEvent(new Event('change',{bubbles:true}))");
+                await Ready(web, "mc");
+                Assert.Equal("", await Text(web, "document.querySelector('[data-field=apiKey]').value"));
                 Assert.DoesNotContain("modelConnection.test", owner.Calls);
                 Assert.DoesNotContain("modelConnection.save", owner.Calls);
             }
@@ -47,6 +47,7 @@ public sealed class MarginServiceSettingsWebTests
     }
 
     [Theory]
+    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Known_owner_feedback_is_English_and_unknown_content_remains_literal(string pageId, string prefix)
     {
@@ -98,6 +99,7 @@ public sealed class MarginServiceSettingsWebTests
     }
 
     [Theory]
+    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Service_details_disclose_options_preserve_commands_and_keep_keys_write_only(string pageId, string prefix)
     {
@@ -121,7 +123,7 @@ public sealed class MarginServiceSettingsWebTests
                 Assert.Equal("Services", await Text(web, "document.querySelector('#settings-parent').textContent"));
                 await Capture(web, prefix + "-normal");
 
-                await Script(web, $"document.querySelector('.{prefix}-advanced').open=true");
+                await ClickVisible(web, $".{prefix}-advanced > summary");
                 var advancedField = prefix == "mc" ? "mc-base" : "sc-limit";
                 Assert.Equal("true", await Script(web, $"document.getElementById('{advancedField}').getBoundingClientRect().height > 0"));
                 await Capture(web, prefix + "-advanced");
@@ -140,6 +142,8 @@ public sealed class MarginServiceSettingsWebTests
                 await Script(web, $"document.getElementById('{providerId}').nextElementSibling.click()");
                 await Wait(async () => await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden]) .margin-select-option').length >= 2") == "true", web, "provider-menu-open");
                 Assert.Equal("1", await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden]) [aria-selected=true]').length"));
+                await Script(web, "document.getElementById('settings-scroll').dispatchEvent(new Event('scroll'))");
+                Assert.Equal("1", await Script(web, "document.querySelectorAll('.margin-select-menu:not([hidden])').length"));
                 await Capture(web, prefix + "-dropdown");
                 await Script(web, "document.querySelector('.margin-select-menu:not([hidden]) .margin-select-option').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
                 await Wait(async () => await Script(web, "!document.querySelector('.margin-select-menu:not([hidden])')") == "true");
@@ -170,14 +174,14 @@ public sealed class MarginServiceSettingsWebTests
                 Assert.Equal("true", await Script(web, "document.documentElement.scrollWidth <= innerWidth && document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth"));
                 await Capture(web, prefix + "-small-workspace");
                 await Script(web, "document.querySelector('[data-save]').scrollIntoView({block:'center'})");
-                Assert.Equal("true", await Script(web, "(() => {const r=document.querySelector('[data-save]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;})()"));
+                Assert.Equal("true", await Script(web, "(() => {const r=document.querySelector('[data-save]').getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;})()"));
                 await Capture(web, prefix + "-small-actions");
                 await Script(web, $"document.getElementById('{advancedField}').scrollIntoView({{block:'center'}})");
-                Assert.Equal("true", await Script(web, $"(() => {{const r=document.getElementById('{advancedField}').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;}})()"));
+                Assert.Equal("true", await Script(web, $"(() => {{const r=document.getElementById('{advancedField}').getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;}})()"));
                 await Capture(web, prefix + "-small-options");
-                await Script(web, "document.getElementById('settings-back').click()");
-                await Wait(async () => await Text(web, "document.body.dataset.settingsOverview") == "services");
-                await Script(web, $"document.querySelector('[data-page-id={pageId}]').click()");
+                await NavigateMobile(web, "UserProfile");
+                await Wait(async () => await Script(web, "!!document.getElementById('profile-display-name')") == "true");
+                await NavigateMobile(web, pageId);
                 await Ready(web, prefix);
                 Assert.Equal("", await Text(web, "document.querySelector('[data-field=apiKey]').value"));
                 Assert.Equal("true", await Script(web, $"document.querySelector('.{prefix}-advanced').open"));
@@ -187,6 +191,7 @@ public sealed class MarginServiceSettingsWebTests
     }
 
     [Theory]
+    [InlineData("ModelConnection", "mc")]
     [InlineData("Speech", "sc")]
     public async Task Failed_read_keeps_retry_and_write_only_key_usable(string pageId, string prefix)
     {
@@ -215,14 +220,53 @@ public sealed class MarginServiceSettingsWebTests
 
     private static SettingsWebRootFactory Factory(FixtureOwner owner) => new(
         new SettingsPageCatalog([new SettingsPageViewFactory(owner.SettingsPageId,
-            _ => throw new InvalidOperationException(), "Synthetic service", order: 10)]), [owner],
+            _ => throw new InvalidOperationException(), "Synthetic service", order: 10),
+            new SettingsPageViewFactory("UserProfile", _ => throw new InvalidOperationException(), "Synthetic profile", order: 20)]),
+        [owner, new NavigationFixturePage()],
         Path.Combine(Path.GetTempPath(), "margin-service-fixture-" + Guid.NewGuid().ToString("N")));
+
+    private sealed class NavigationFixturePage : ISettingsWebPage
+    {
+        public string SettingsPageId => "UserProfile";
+        public string ModulePath => "pages/user-profile.js";
+        public IReadOnlyList<string> Commands => ["getProfile", "saveProfile", "resetProfile"];
+        public ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new WebSurfaceCommandResult(true, new { displayName = "Synthetic profile" }));
+        }
+    }
     private static Window Window(WebView2SurfaceHost host) => new()
         { Content = host, Width = 824, Height = 740, ShowInTaskbar = false, Left = -10000, Top = -10000 };
     private static Task Ready(WebView2 web, string prefix) => Wait(async () =>
         await Text(web, $"document.querySelector('.{prefix}-page')?.dataset.state ?? ''") == "ready");
-    private static Task ReadyModel(WebView2 web) => Wait(async () => await Script(web,
-        "!!document.querySelector('.connection-page') && document.querySelector('.settings-native-entry').getAttribute('aria-busy')==='false' && !document.querySelector('.settings-primary-button').disabled") == "true");
+    private static async Task NavigateMobile(WebView2 web, string pageId)
+    {
+        Assert.Equal("true", await Script(web,
+            "document.getElementById('settings-mobile-page').getBoundingClientRect().width > 0"));
+        await Script(web, $$"""
+            (() => {
+                const select = document.getElementById('settings-mobile-page');
+                select.value = {{JsonSerializer.Serialize(pageId)}};
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            })()
+            """);
+    }
+    private static async Task ClickVisible(WebView2 web, string selector)
+    {
+        Assert.Equal("true", await Script(web, $$"""
+            (() => {
+                const element = document.querySelector({{JsonSerializer.Serialize(selector)}});
+                if (!element) return false;
+                element.scrollIntoView({ block: 'center' });
+                const bounds = element.getBoundingClientRect();
+                const visible = bounds.width > 0 && bounds.height > 0
+                    && getComputedStyle(element).visibility !== 'hidden' && !element.matches(':disabled');
+                if (visible) element.click();
+                return visible;
+            })()
+            """));
+    }
     private static Task<string> Script(WebView2 web, string script) => web.CoreWebView2.ExecuteScriptAsync(script);
     private static async Task<string> Text(WebView2 web, string script) =>
         JsonSerializer.Deserialize<string>(await Script(web, script)) ?? "";
@@ -244,7 +288,7 @@ public sealed class MarginServiceSettingsWebTests
             if(events.length>=32)events.shift();
             events.push({at:performance.now(),stage,width:innerWidth,height:innerHeight,scrollY,
               disabled:select?.disabled,triggerDisabled:select?.nextElementSibling?.disabled,
-              options:select?.options.length,menu:document.querySelectorAll('.margin-select-menu').length});
+              anchorTop:select?.nextElementSibling?.getBoundingClientRect().top,paneTop:document.getElementById("settings-scroll")?.scrollTop,options:select?.options.length,menu:document.querySelectorAll('.margin-select-menu').length});
           }
           window.addEventListener('resize',()=>record('resize'));
           document.addEventListener('scroll',()=>record('scroll'),true);

@@ -10,6 +10,8 @@ const english = {
   "memory.approve": "Confirm",
   "memory.reject": "Reject",
   "memory.replace": "Correct selected memory",
+  "memory.chooseReplacement": "Choose memory to correct",
+  "memory.useReplacement": "Use for selected candidate",
   "memory.confirmed": "Confirmed memories",
   "memory.editMemory": "Edit memory",
   "memory.disable": "Disable",
@@ -39,75 +41,85 @@ const t = key => english[key] || key;
 const OWNER = "conversation-memory";
 
 const MARKUP = `
-  <section class="cm-page" data-state="loading" aria-busy="true">
-    <p class="cm-error" data-error role="alert" aria-live="assertive" hidden></p>
+  <section class="cm-page settings-page-body" data-state="loading" aria-busy="true">
+    <p class="cm-error settings-status is-error" data-error role="alert" aria-live="assertive" hidden></p>
 
-    <section class="cm-card" aria-label="${t("memory.feature")}">
-      <label class="cm-switch-row">
-        <span class="cm-switch-copy">
-          <span class="cm-switch-title">${t("memory.enabled")}</span>
-          <span class="cm-switch-description">${t("memory.enabledHint")}</span>
+    <section class="cm-card settings-section" aria-label="${t("memory.feature")}">
+      <label class="cm-switch-row settings-row">
+        <span class="cm-switch-copy settings-row-copy">
+          <span class="cm-switch-title settings-label">${t("memory.enabled")}</span>
+          <span class="cm-switch-description settings-help">${t("memory.enabledHint")}</span>
         </span>
-        <input type="checkbox" id="cm-enabled" data-field="memoryEnabled" />
-        <span class="cm-switch-control" aria-hidden="true"><i></i></span>
+        <input type="checkbox" role="switch" id="cm-enabled" data-field="memoryEnabled" />
       </label>
-      <p class="cm-note">${t("memory.instant")}</p>
+      <p class="cm-note settings-help">${t("memory.instant")}</p>
     </section>
 
+    <nav class="cm-tabs settings-toolbar" aria-label="Memory views">
+      <button type="button" class="settings-secondary" data-memory-view="candidates" aria-pressed="true">${t("memory.review")}</button>
+      <button type="button" class="settings-secondary" data-memory-view="confirmed" aria-pressed="false">${t("memory.confirmed")}</button>
+      <button type="button" class="cm-button settings-secondary" data-refresh>${t("memory.refresh")}</button>
+    </nav>
+    <p class="settings-status" data-edit-status role="status" aria-live="polite" hidden>Unsaved edits are kept when you switch pages. Select Save edit to apply them.</p>
     <div class="cm-columns">
-      <section class="cm-card" aria-label="${t("memory.review")}">
-        <div class="cm-card-heading">
-          <h2>${t("memory.review")}</h2>
+      <section class="cm-card settings-section" data-memory-pane="candidates" aria-label="${t("memory.review")}">
+        <div class="cm-card-heading settings-section-copy">
+          <h2 class="settings-section-heading">${t("memory.review")}</h2>
           <p data-candidates-status role="status" aria-live="polite"></p>
         </div>
         <ul class="cm-list" data-candidates role="listbox" aria-label="${t("memory.candidates")}"></ul>
-        <div class="cm-detail">
+        <div class="cm-detail" data-candidate-editor hidden>
           <p class="cm-detail-text" data-candidate-details></p>
-          <label class="cm-label" for="cm-candidate-edit">${t("memory.editCandidate")}</label>
-          <textarea id="cm-candidate-edit" class="cm-input cm-textarea" data-candidate-edit rows="3"></textarea>
-          <div class="cm-actions">
-            <button type="button" class="cm-button" data-edit-candidate>${t("memory.save")}</button>
-            <button type="button" class="cm-button cm-primary" data-approve-candidate>${t("memory.approve")}</button>
-            <button type="button" class="cm-button" data-reject-candidate>${t("memory.reject")}</button>
-            <button type="button" class="cm-button" data-select-replacement>${t("memory.replace")}</button>
+          <label class="cm-label settings-label" for="cm-candidate-edit">${t("memory.editCandidate")}</label>
+          <textarea id="cm-candidate-edit" class="cm-input cm-textarea settings-input" data-candidate-edit rows="3"></textarea>
+          <p class="settings-help" data-replacement-note></p>
+          <div class="cm-actions settings-actions">
+            <button type="button" class="cm-button settings-secondary" data-edit-candidate>${t("memory.save")}</button>
+            <button type="button" class="cm-button cm-primary settings-secondary settings-primary" data-approve-candidate>${t("memory.approve")}</button>
+            <button type="button" class="cm-button settings-secondary" data-reject-candidate>${t("memory.reject")}</button>
+            <button type="button" class="cm-button settings-secondary" data-pick-replacement>${t("memory.chooseReplacement")}</button>
+            <button type="button" class="cm-button settings-secondary" data-select-replacement>${t("memory.replace")}</button>
           </div>
         </div>
       </section>
 
-      <section class="cm-card" aria-label="${t("memory.confirmed")}">
-        <div class="cm-card-heading">
-          <h2>${t("memory.confirmed")}</h2>
+      <section class="cm-card settings-section" data-memory-pane="confirmed" aria-label="${t("memory.confirmed")}" hidden>
+        <div class="cm-card-heading settings-section-copy">
+          <h2 class="settings-section-heading">${t("memory.confirmed")}</h2>
           <p data-memories-status role="status" aria-live="polite"></p>
         </div>
         <ul class="cm-list" data-memories role="listbox" aria-label="${t("memory.confirmed")}"></ul>
-        <div class="cm-detail">
+        <div class="cm-detail" data-memory-editor hidden>
           <p class="cm-detail-text" data-memory-details></p>
-          <label class="cm-label" for="cm-memory-edit">${t("memory.editMemory")}</label>
-          <textarea id="cm-memory-edit" class="cm-input cm-textarea" data-memory-edit rows="3"></textarea>
-          <div class="cm-actions">
-            <button type="button" class="cm-button" data-edit-memory>${t("memory.save")}</button>
-            <button type="button" class="cm-button" data-disable-memory>${t("memory.disable")}</button>
-            <button type="button" class="cm-button" data-enable-memory>${t("memory.enable")}</button>
-            <button type="button" class="cm-button cm-danger" data-delete-memory>${t("memory.delete")}</button>
+          <label class="cm-label settings-label" for="cm-memory-edit">${t("memory.editMemory")}</label>
+          <textarea id="cm-memory-edit" class="cm-input cm-textarea settings-input" data-memory-edit rows="3"></textarea>
+          <div class="cm-actions settings-actions">
+            <button type="button" class="cm-button settings-secondary" data-edit-memory>${t("memory.save")}</button>
+            <button type="button" class="cm-button settings-secondary" data-disable-memory>${t("memory.disable")}</button>
+            <button type="button" class="cm-button settings-secondary" data-enable-memory>${t("memory.enable")}</button>
+            <button type="button" class="cm-button cm-danger settings-secondary settings-danger" data-delete-memory>${t("memory.delete")}</button>
+            <button type="button" class="cm-button settings-secondary" data-use-replacement hidden>${t("memory.useReplacement")}</button>
           </div>
         </div>
       </section>
     </div>
 
-    <section class="cm-card" aria-label="${t("memory.maintenance")}">
-      <div class="cm-actions">
-        <button type="button" class="cm-button" data-refresh>${t("memory.refresh")}</button>
-        <button type="button" class="cm-button cm-danger" data-delete-all>${t("memory.deleteAll")}</button>
+    <p class="cm-status settings-status" data-status role="status" aria-live="polite"></p>
+    <details class="settings-advanced cm-maintenance">
+      <summary>${t("memory.maintenance")}</summary>
+    <section class="cm-card settings-section" aria-label="${t("memory.maintenance")}">
+      <div class="cm-actions settings-actions">
+        <button type="button" class="cm-button cm-danger settings-secondary settings-danger" data-delete-all>${t("memory.deleteAll")}</button>
       </div>
       <div class="cm-confirm" data-delete-confirm hidden role="group" aria-label="${t("memory.deleteGroup")}">
         <p>${t("memory.deletePrompt")}</p>
-        <div class="cm-actions">
-          <button type="button" class="cm-button cm-danger" data-delete-confirm-btn>${t("memory.confirmDelete")}</button>
-          <button type="button" class="cm-button" data-delete-cancel>${t("memory.cancel")}</button>
+        <div class="cm-actions settings-actions">
+          <button type="button" class="cm-button cm-danger settings-secondary settings-danger" data-delete-confirm-btn>${t("memory.confirmDelete")}</button>
+          <button type="button" class="cm-button settings-secondary" data-delete-cancel>${t("memory.cancel")}</button>
         </div>
       </div>
-      <p class="cm-status" data-status role="status" aria-live="polite"></p>
     </section>
+    </details>
   </section>
 `;
 
@@ -173,6 +185,38 @@ export async function mount(container, context) {
   let snapshot = null;
   let disposed = false;
   let unsubscribeTheme = null;
+  let view = context.state?.view === "confirmed" ? "confirmed" : "candidates";
+  const editDrafts = new Map();
+  for (const entry of Array.isArray(context.state?.edits) ? context.state.edits : []) {
+    if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string")
+      editDrafts.set(entry[0], entry[1]);
+  }
+
+  function renderView() {
+    for (const button of page.querySelectorAll("[data-memory-view]"))
+      button.setAttribute("aria-pressed", String(button.dataset.memoryView === view));
+    for (const panel of page.querySelectorAll("[data-memory-pane]")) panel.hidden = panel.dataset.memoryPane !== view;
+    page.querySelector("[data-edit-status]").hidden = editDrafts.size === 0;
+  }
+  for (const button of page.querySelectorAll("[data-memory-view]")) button.addEventListener("click", () => {
+    if (disposed || page.getAttribute("aria-busy") === "true") return;
+    view = button.dataset.memoryView;
+    renderView();
+  });
+  function preserveEdit(kind, input, id) {
+    if (disposed || !id) return;
+    const items = kind === "candidate" ? snapshot.candidates : snapshot.storedMemories;
+    const saved = items.find(item => item.id === id)?.text;
+    if (input.value.trim() === saved) editDrafts.delete(`${kind}:${id}`);
+    else editDrafts.set(`${kind}:${id}`, input.value);
+    renderView();
+  }
+  candidateEdit.addEventListener("input", () => preserveEdit("candidate", candidateEdit, snapshot?.selectedCandidateId));
+  memoryEdit.addEventListener("input", () => preserveEdit("memory", memoryEdit, snapshot?.selectedMemoryId));
+  function renderEdit(kind, input, id, text) {
+    const key = `${kind}:${id}`;
+    input.value = editDrafts.has(key) ? editDrafts.get(key) : text;
+  }
 
   function presentFailure(errorText) {
     errorEl.textContent = typeof errorText === "string" && errorText.length > 0
@@ -194,10 +238,12 @@ export async function mount(container, context) {
 
     const hasCandidate = snapshot.selectedCandidateId.length > 0;
     for (const button of page.querySelectorAll(
-      "[data-edit-candidate],[data-approve-candidate],[data-reject-candidate],[data-select-replacement]")) {
+      "[data-edit-candidate],[data-approve-candidate],[data-reject-candidate],[data-pick-replacement]")) {
       button.disabled = !hasCandidate;
     }
     const hasMemory = snapshot.selectedMemoryId.length > 0;
+    page.querySelector("[data-select-replacement]").disabled = !hasCandidate || !hasMemory;
+    page.querySelector("[data-use-replacement]").disabled = !hasCandidate || !hasMemory;
     for (const button of page.querySelectorAll(
       "[data-edit-memory],[data-enable-memory],[data-disable-memory],[data-delete-memory]")) {
       button.disabled = !hasMemory;
@@ -214,7 +260,7 @@ export async function mount(container, context) {
     list.replaceChildren();
     if (items.length === 0) {
       const empty = document.createElement("li");
-      empty.className = "cm-empty";
+      empty.className = "cm-empty settings-empty";
       empty.textContent = t("memory.empty");
       list.append(empty);
       return;
@@ -249,20 +295,44 @@ export async function mount(container, context) {
 
   function render() {
     if (snapshot === null) return;
+    const availableDrafts = new Set([
+      ...snapshot.candidates.map(item => `candidate:${item.id}`),
+      ...snapshot.storedMemories.map(item => `memory:${item.id}`),
+    ]);
+    for (const key of editDrafts.keys()) if (!availableDrafts.has(key)) editDrafts.delete(key);
+    // Review actions refresh the native lists and clear selection. Only persisted
+    // list text acknowledges a saved edit; the selected editor also echoes failed drafts.
+    for (const [kind, items] of [["candidate", snapshot.candidates], ["memory", snapshot.storedMemories]]) {
+      for (const item of items) {
+        const key = `${kind}:${item.id}`;
+        if (editDrafts.get(key)?.trim() === item.text) editDrafts.delete(key);
+      }
+    }
     enabledInput.checked = snapshot.memoryEnabled;
     candidatesStatus.textContent = snapshot.candidatesStatusText;
     memoriesStatus.textContent = snapshot.storedMemoriesStatusText;
     statusEl.textContent = snapshot.statusText;
     candidateDetails.textContent = snapshot.candidateDetails;
     memoryDetails.textContent = snapshot.memoryDetails;
-    if (document.activeElement !== candidateEdit) candidateEdit.value = snapshot.candidateEditText;
-    if (document.activeElement !== memoryEdit) memoryEdit.value = snapshot.memoryEditText;
+    renderEdit("candidate", candidateEdit, snapshot.selectedCandidateId, snapshot.candidateEditText);
+    renderEdit("memory", memoryEdit, snapshot.selectedMemoryId, snapshot.memoryEditText);
+    page.querySelector("[data-candidate-editor]").hidden = !snapshot.selectedCandidateId;
+    page.querySelector("[data-memory-editor]").hidden = !snapshot.selectedMemoryId;
+    page.querySelector("[data-use-replacement]").hidden = !snapshot.selectedCandidateId;
+    const replacement = snapshot.storedMemories.find(item => item.id === snapshot.selectedMemoryId);
+    const candidate = snapshot.candidates.find(item => item.id === snapshot.selectedCandidateId);
+    page.querySelector("[data-replacement-note]").textContent = candidate?.hasReplacement
+      ? "A correction target is attached to this candidate. Review the original and new value above before confirming."
+      : replacement
+      ? `Selected memory to correct: ${replacement.text}`
+      : "To correct an existing memory, choose it in Confirmed memories first. Your candidate stays selected.";
 
     renderList(candidatesList, snapshot.candidates, snapshot.selectedCandidateId, id =>
       send("memory.selectCandidate", { candidateId: id }));
     renderList(memoriesList, snapshot.storedMemories, snapshot.selectedMemoryId, id =>
       send("memory.selectMemory", { memoryId: id }));
 
+    renderView();
     syncDisabled();
   }
 
@@ -318,6 +388,20 @@ export async function mount(container, context) {
       void send("memory.selectReplacement", { candidateId: snapshot.selectedCandidateId });
     }
   });
+  page.querySelector("[data-pick-replacement]").addEventListener("click", () => {
+    if (disposed || !snapshot?.selectedCandidateId) return;
+    view = "confirmed";
+    renderView();
+    memoriesList.querySelector("button")?.focus();
+  });
+  page.querySelector("[data-use-replacement]").addEventListener("click", async () => {
+    if (!snapshot?.selectedCandidateId || !snapshot?.selectedMemoryId) return;
+    const next = await send("memory.selectReplacement", { candidateId: snapshot.selectedCandidateId });
+    if (disposed || !next) return;
+    view = "candidates";
+    renderView();
+    page.querySelector("[data-approve-candidate]").focus();
+  });
 
   page.querySelector("[data-edit-memory]").addEventListener("click", () => {
     if (snapshot?.selectedMemoryId) {
@@ -359,7 +443,9 @@ export async function mount(container, context) {
     for (const control of page.querySelectorAll("button, input, textarea")) control.disabled = true;
     page.dataset.state = "disposed";
   }
+  dispose.getState = () => ({ view, edits: [...editDrafts], dirty: editDrafts.size > 0 });
 
+  renderView();
   await send("memory.get", {}, t("memory.unavailable"));
   return dispose;
 }

@@ -7,6 +7,7 @@ const english = {
   "profile.save": "Save",
   "profile.loading": "Loading your name…",
   "profile.draft": "Your unsaved changes were kept.",
+  "profile.unsaved": "You have unsaved changes.",
   "profile.loadFailed": "Your name could not be loaded. Try again.",
   "profile.saved": "Your name was saved.",
   "profile.saveFailed": "The change could not be saved. Your input was kept.",
@@ -23,16 +24,16 @@ export function mount(container, context) {
   let savedName = "";
   let busy = false;
   container.innerHTML = `
-    <form class="profile-panel" aria-label="${t("profile.title")}">
-      <label for="profile-display-name">${t("profile.name")}</label>
-      <input id="profile-display-name" class="profile-name" data-action="display-name" maxlength="80" autocomplete="off" disabled>
-      <p class="profile-explanation"></p>
-      <p class="profile-status" role="status" aria-live="polite"></p>
-      <button class="profile-button" data-action="retry" type="button" hidden>${t("profile.reload")}</button>
-      <div class="profile-actions">
-        <button class="profile-button" data-action="cancel" type="button" disabled>${t("profile.cancel")}</button>
-        <button class="profile-button" data-action="reset" type="button" disabled>${t("profile.reset")}</button>
-        <button class="profile-button profile-button--primary" data-action="save" type="submit" disabled>${t("profile.save")}</button>
+    <form class="profile-panel settings-page-body" aria-label="${t("profile.title")}">
+      <div class="settings-field"><label class="settings-label" for="profile-display-name">${t("profile.name")}</label>
+      <input id="profile-display-name" class="profile-name settings-input" data-action="display-name" maxlength="80" autocomplete="off" disabled>
+      <p class="profile-explanation settings-help"></p></div>
+      <p class="profile-status settings-status" role="status" aria-live="polite"></p>
+      <button class="profile-button settings-secondary" data-action="retry" type="button" hidden>${t("profile.reload")}</button>
+      <div class="profile-actions settings-actions">
+        <button class="profile-button settings-secondary" data-action="cancel" type="button" disabled>${t("profile.cancel")}</button>
+        <button class="profile-button settings-secondary" data-action="reset" type="button" disabled>${t("profile.reset")}</button>
+        <button class="profile-button profile-button--primary settings-secondary settings-primary" data-action="save" type="submit" disabled>${t("profile.save")}</button>
       </div>
     </form>`;
 
@@ -54,7 +55,8 @@ export function mount(container, context) {
   function setBusy(value) {
     busy = value;
     input.disabled = busy || !loaded;
-    cancel.disabled = reset.disabled = save.disabled = busy || !loaded;
+    cancel.disabled = save.disabled = busy || !loaded || input.value === savedName;
+    reset.disabled = busy || !loaded;
     retry.disabled = busy;
   }
 
@@ -103,7 +105,7 @@ export function mount(container, context) {
 
   form.addEventListener("submit", async event => {
     event.preventDefault();
-    if (disposed || busy || !loaded) return;
+    if (disposed || busy || !loaded || input.value === savedName) return;
     const draft = input.value;
     setBusy(true);
     try {
@@ -121,6 +123,7 @@ export function mount(container, context) {
   cancel.addEventListener("click", () => {
     if (disposed || busy || !loaded) return;
     input.value = savedName;
+    setBusy(false);
     report(t("profile.cancelled"));
     input.focus({ preventScroll: true });
   });
@@ -150,6 +153,11 @@ export function mount(container, context) {
       cancel.click();
     }
     if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) event.preventDefault();
+  });
+  input.addEventListener("input", () => {
+    if (disposed || busy || !loaded) return;
+    setBusy(false);
+    report(input.value === savedName ? "" : t("profile.unsaved"));
   });
 
   if (context.signal) {

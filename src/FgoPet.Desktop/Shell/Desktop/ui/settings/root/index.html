@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Settings</title>
-  <link rel="stylesheet" href="root.css">
   <link rel="stylesheet" href="margin.css">
+  <link rel="stylesheet" href="settings-components.css">
+  <link rel="stylesheet" href="root.css">
   <script defer src="margin-select.js"></script>
   <script defer src="root-i18n.js"></script>
   <script type="module" src="root.js"></script>
@@ -14,20 +15,24 @@
 <body>
   <div class="settings-layout">
     <aside class="settings-sidebar" aria-label="Settings navigation" data-i18n-aria-label="settings.navigation">
-      <div class="sidebar-heading" data-i18n="settings.title">Settings</div>
+      <div class="sidebar-brand"><span aria-hidden="true">m·</span><div class="sidebar-heading" data-i18n="settings.title">Settings</div></div>
       <nav id="settings-navigation" class="settings-navigation" aria-label="Settings groups" data-i18n-aria-label="settings.groups">
         <p class="navigation-loading" role="status">Loading settings…</p>
       </nav>
+      <label class="settings-mobile-navigation"><span class="settings-visually-hidden" data-i18n="settings.page">Settings page</span><select id="settings-mobile-page" data-margin-select="true" aria-label="Settings page" data-i18n-aria-label="settings.page"></select></label>
     </aside>
 
     <main class="settings-main">
+      <div class="settings-location"><span data-i18n="settings.title">Settings</span><span aria-hidden="true">/</span><span id="settings-parent"></span></div>
+      <div class="settings-scroll" id="settings-scroll">
       <header class="page-heading">
-        <button id="settings-back" class="crumb" type="button" hidden><span class="back-chevron" aria-hidden="true">‹</span><span data-i18n="settings.back">Back</span><span id="settings-parent" class="crumb-parent"></span></button>
+        <button id="settings-back" class="crumb" type="button" hidden><span class="back-chevron" aria-hidden="true">‹</span><span data-i18n="settings.back">Back</span></button>
         <h1 id="page-title" tabindex="-1">Settings</h1>
         <p id="page-description" class="page-description"></p>
       </header>
       <p id="root-status" class="root-status" role="status" aria-live="polite"></p>
       <section id="page-content" class="page-content" aria-label="Settings page" data-i18n-aria-label="settings.page"></section>
+      </div>
     </main>
   </div>
 </body>
