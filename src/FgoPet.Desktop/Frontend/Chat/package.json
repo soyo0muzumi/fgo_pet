@@ -1,0 +1,31 @@
+{
+  "name": "fgo-pet-chat",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader runner --host 127.0.0.1 --port 4173",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:browser": "node --experimental-strip-types tests/chatWindow.browser.mjs",
+    "build": "tsc --noEmit && vite build --configLoader runner && node scripts/sync-assets.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "motion": "^12.23.0",
+    "lucide-react": "^0.468.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "vite": "^6.4.0",
+    "typescript": "^5.9.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
