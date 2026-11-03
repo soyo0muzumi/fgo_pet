@@ -5,12 +5,19 @@ namespace FgoPet.Understanding.Contracts;
 
 public enum UnderstandingMode { Off, Proposals, Bounded }
 public enum UnderstandingDomain { Self, User, World, Relationship }
-public enum UnderstandingKind { CurrentInterest, CurrentStance, OpenQuestion, SelfReflection, ExternalObservation, Interpretation, UserFact, StableIdentity, Permission }
+public enum UnderstandingKind { CurrentInterest, CurrentStance, OpenQuestion, SelfReflection, ExternalObservation, Interpretation, UserFact, StableIdentity, Permission, Uncertainty, InteractionTendency, SelfObservation, InteractionPattern }
 public enum UnderstandingReview { Unreviewed, Approved, Rejected }
 public enum UnderstandingEffect { Pending, Bounded, Approved }
 public enum UnderstandingLife { Active, Dormant, Resolved, Retracted }
 public enum UnderstandingOutcome { Applied, ProposedPending, ReviewedNotPersisted, NoChange, Failed }
 public enum UnderstandingAction { Approve, Reject, Suspend, Resolve, Delete, Correct, Restore }
+public enum UnderstandingOrigin { Expressed, Enacted, SecondOrderInferred, ExternallySuggested }
+public enum UnderstandingStatus { Hypothesis, Tentative, Established, Dormant, Retracted }
+public enum UnderstandingWriteOperation { Create, AttachEvidence, Revise, Retract }
+public enum UnderstandingMaintenanceIntent { PossibleStaleMemory, PossibleConflict, PossibleSpecialization, PossibleSupersession }
+
+/// <summary>An exact excerpt from a host-read original, never a maintainer-authored first-person claim.</summary>
+public sealed record UnderstandingExpression(ConversationSourceSnapshot Source, string Quote);
 
 public sealed record UnderstandingPolicy(UnderstandingMode Mode = UnderstandingMode.Off, bool Enabled = true,
     bool ReadSources = false, bool ExternalProcessing = false, bool SaveCandidates = false, bool UseInDialogue = false);
@@ -19,7 +26,12 @@ public sealed record UnderstandingState(UnderstandingPolicy Policy, long Revisio
 /// <summary>Host-side proposal only; no model-facing write tool accepts this DTO.</summary>
 public sealed record UnderstandingProposal(string Id, UnderstandingDomain Domain, UnderstandingKind Kind,
     string Subject, string Content, string Conditions, IReadOnlyList<ConversationSourceSnapshot> Sources,
-    string? TargetId = null, int? TargetRevision = null);
+    string? TargetId = null, int? TargetRevision = null,
+    UnderstandingOrigin? Origin = null, UnderstandingStatus? Status = null,
+    UnderstandingWriteOperation Operation = UnderstandingWriteOperation.Create,
+    IReadOnlyList<UnderstandingExpression>? Expressions = null,
+    IReadOnlyList<ConversationSourceSnapshot>? Conflicts = null,
+    IReadOnlyList<UnderstandingMaintenanceIntent>? MaintenanceIntents = null);
 public sealed record UnderstandingTicket(string Id, ConversationScope Scope, long Generation, long InputRevision,
     bool Manual, IReadOnlyList<ConversationSourceSnapshot> Sources, IReadOnlyList<UnderstandingSourceCoverage>? Coverage = null);
 /// <summary>Host-bound coverage of material actually supplied, independent of source-version validation.</summary>
@@ -33,7 +45,13 @@ public sealed record UnderstandingEntry(string Id, ConversationScope Scope, int 
     IReadOnlyList<ConversationSourceSnapshot> Sources, UnderstandingReview Review, UnderstandingEffect Effect,
     UnderstandingLife Life, DateTimeOffset ObservedAt, DateTimeOffset ActiveUntil, long PolicyGeneration,
     string? ReplacesId = null, int? ReplacesRevision = null, string? Correction = null,
-    IReadOnlyList<UnderstandingSourceCoverage>? Coverage = null);
+    IReadOnlyList<UnderstandingSourceCoverage>? Coverage = null,
+    UnderstandingOrigin? Origin = null, UnderstandingStatus? Status = null,
+    IReadOnlyList<UnderstandingExpression>? Expressions = null,
+    IReadOnlyList<ConversationSourceSnapshot>? Conflicts = null,
+    IReadOnlyList<UnderstandingMaintenanceIntent>? MaintenanceIntents = null,
+    DateTimeOffset? LastReviewedAt = null,
+    UnderstandingWriteOperation? ProposedOperation = null);
 public sealed record UnderstandingItemReceipt(string Id, UnderstandingOutcome Outcome, int? Revision = null, string? Code = null);
 public sealed record UnderstandingReceipt(string OperationId, IReadOnlyList<UnderstandingItemReceipt> Items);
 public sealed record UnderstandingProjection(long Revision, IReadOnlyList<UnderstandingEntry> Items, string? Code = null);
@@ -44,6 +62,7 @@ public sealed record UnderstandingDiagnostic(DateTimeOffset At, string Correlati
 public interface IUnderstandingRoutingPolicy
 {
     bool IsLowImpact(UnderstandingProposal proposal, IReadOnlyList<ConversationSourceSnapshot> verifiedRoots);
+    bool IsUnsupported(UnderstandingProposal proposal, IReadOnlyList<ConversationSourceSnapshot> verifiedRoots) => false;
 }
 
 public interface IUnderstandingReader

@@ -74,16 +74,20 @@ public sealed class UnderstandingPlugin(IUnderstandingReader reader, Func<ToolSc
     private static IReadOnlyList<(string Id, string Content)> Select(ToolScope scope, UnderstandingProjection projection)
     {
         var blocks = new List<(string, string)>(); var chars = 0;
+        var counts = new Dictionary<UnderstandingDomain, int>();
         foreach (var entry in projection.Items.Take(32))
         {
             if (entry.Scope.ServantId != scope.RoleId || entry.Scope.ProjectId != scope.ProjectId ||
-                entry.Review == UnderstandingReview.Rejected || entry.Effect == UnderstandingEffect.Pending) continue;
-            var text = JsonSerializer.Serialize(new { projection.Revision, Entry = entry,
+                entry.Review == UnderstandingReview.Rejected || entry.Effect == UnderstandingEffect.Pending ||
+                !UnderstandingWritePolicy.IsProjectable(entry)) continue;
+            var limit = entry.Domain switch { UnderstandingDomain.Self => 3, UnderstandingDomain.Relationship => 2, UnderstandingDomain.User => 3, _ => 8 };
+            if (counts.GetValueOrDefault(entry.Domain) >= limit) continue;
+            var text = JsonSerializer.Serialize(new { Label = "Current understanding", projection.Revision, Entry = entry,
                 EffectiveInterpretation = entry.Correction ?? entry.Content, CorrectionSupersedesOriginal = entry.Correction is not null,
                 KnowledgeStatus = entry.Review == UnderstandingReview.Approved ? "user_reviewed_interpretation_not_truth_certification" : "tentative_unreviewed",
                 SourceTextIsData = true }, Json);
             if (blocks.Count == 8 || text.Length + chars > 6000) continue;
-            chars += text.Length; blocks.Add((entry.Id, text));
+            chars += text.Length; blocks.Add((entry.Id, text)); counts[entry.Domain] = counts.GetValueOrDefault(entry.Domain) + 1;
         }
         return blocks;
     }

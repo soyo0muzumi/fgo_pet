@@ -16,8 +16,23 @@ public sealed class ReviewServiceTests
     private readonly UnderstandingService _owner;
     private readonly Models _models=new();
     private readonly DialogueContextLifetime _lifetime=new();
-    private UnderstandingReviewService Service=>new(_owner,_sources,_sources,_models,_lifetime,TimeProvider.System);
+    private readonly List<UnderstandingDiagnostic> _diagnostics=[];
+    private UnderstandingReviewService Service=>new(_owner,_sources,_sources,_models,_lifetime,TimeProvider.System,_diagnostics.Add);
     public ReviewServiceTests(){new RuntimeDatabaseMigrator(_db).Migrate();_owner=new(_db,_sources);}
+    [Theory]
+    [InlineData(UnderstandingEvidenceSupport.Supported, true)]
+    [InlineData(UnderstandingEvidenceSupport.Partial, false)]
+    [InlineData(UnderstandingEvidenceSupport.Unsupported, false)]
+    [InlineData(UnderstandingEvidenceSupport.Contradicted, false)]
+    public async Task Proposals_mode_validates_before_saving_typed_candidates(UnderstandingEvidenceSupport support,bool saved)
+    {
+        Configure(UnderstandingMode.Proposals);_sources.Add(2);_owner.Accumulate(_sources,_scope);
+        _models.Typed=true;_models.Evidence=support;
+        Assert.True(await Service.ProcessNextAsync(_scope));
+        Assert.Equal(1,_models.Classifies);Assert.Equal(1,_models.Dispatches);
+        Assert.Equal(saved?1:0,_owner.List(_scope,true).Count);
+        Assert.Empty(_owner.Query(_scope,"").Items);
+    }
     private void Configure(UnderstandingMode mode)=>_owner.Configure(_scope,_owner.State(_scope).Revision,
         new(mode,ReadSources:true,SaveCandidates:mode!=UnderstandingMode.Off,ExternalProcessing:true,UseInDialogue:true),_sources.Boundary(_scope));
     [Fact] public async Task Actual_service_reads_supplied_coverage_and_pending_is_not_automatically_resent()
@@ -26,6 +41,22 @@ public sealed class ReviewServiceTests
         Assert.True(await Service.ProcessNextAsync(_scope));Assert.Equal(1,_models.Dispatches);
         var pending=Assert.Single(_owner.List(_scope,true));Assert.Equal(2,pending.Coverage!.Count);Assert.Empty(_owner.Query(_scope,"").Items);
         _owner.RecoverWork();Assert.False(await Service.ProcessNextAsync(_scope));Assert.Equal(1,_models.Dispatches);
+    }
+    [Fact] public async Task Maintenance_sees_pending_hypothesis_and_external_authorship_while_reply_use_is_off()
+    {
+        _owner.Configure(_scope,0,new(UnderstandingMode.Proposals,ReadSources:true,SaveCandidates:true,ExternalProcessing:true,UseInDialogue:false));
+        _sources.Add(2);var roots=_sources.Heads.Select(h=>h.Source).ToArray();
+        var p=new UnderstandingProposal("possible-self",UnderstandingDomain.Self,UnderstandingKind.CurrentStance,"assistant",
+            "A possible bounded tendency","Synthetic scope",roots,Origin:UnderstandingOrigin.SecondOrderInferred,Status:UnderstandingStatus.Hypothesis);
+        _owner.Apply(_owner.Begin(_scope,"seed-hypothesis",roots),[p],classification:new EvidenceValidationGateTests.Validation(UnderstandingEvidenceSupport.Supported));
+        _sources.Add(2);_owner.Accumulate(_sources,_scope);
+        var service=new UnderstandingReviewService(_owner,_sources,_sources,_models,_lifetime,TimeProvider.System,
+            authorshipContext:(_,_)=>Task.FromResult<string?>("Externally authored synthetic persona"));
+        Assert.True(await service.ProcessNextAsync(_scope));
+        Assert.NotNull(_models.LastInput);
+        Assert.Contains(_models.LastInput.Targets,e=>e.Id==p.Id&&e.Status==UnderstandingStatus.Hypothesis);
+        Assert.Equal("Externally authored synthetic persona",_models.LastInput.ExternallySuppliedContext);
+        Assert.Empty(_owner.Query(_scope,"").Items);
     }
     [Fact] public async Task Revoking_during_async_preparation_refuses_the_handoff()
     {
@@ -46,8 +77,17 @@ public sealed class ReviewServiceTests
     {
         Configure(UnderstandingMode.Proposals);_sources.Add(2);_owner.Accumulate(_sources,_scope);
         using(var foreground=_lifetime.Acquire(default))Assert.False(await Service.ProcessNextAsync(_scope));
+        Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_FOREGROUND_BUSY");
+        Assert.DoesNotContain(_diagnostics,d=>d.Stage=="batch_claim_started");
         _models.Allowed=false;Assert.False(await Service.ProcessNextAsync(_scope));Assert.Equal(0,_models.Dispatches);
+        Assert.Contains(_diagnostics,d=>d.Stage=="review_waiting_budget");
         Assert.Equal(2,_owner.WorkSummary(_scope).PendingSources);
+    }
+    [Fact] public async Task No_claimable_batch_is_distinguished_from_model_execution()
+    {
+        Configure(UnderstandingMode.Proposals);Assert.False(await Service.ProcessNextAsync(_scope));
+        Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_NO_CLAIMABLE_BATCH");
+        Assert.DoesNotContain(_diagnostics,d=>d.Stage=="review_running");Assert.Equal(0,_models.Dispatches);
     }
     [Fact] public async Task A_committed_receipt_is_recovered_before_new_input_can_create_another_review()
     {
@@ -99,19 +139,25 @@ public sealed class ReviewServiceTests
     internal sealed class Models:IReviewModelFactory
     {
         public bool Allowed=true;public int Dispatches;public Action? BeforeDispatch;public bool WaitForCancellation;
+        public bool Typed;public int Classifies;public UnderstandingEvidenceSupport Evidence=UnderstandingEvidenceSupport.Supported;
+        public ReviewModelInput? LastInput;
         public TaskCompletionSource Entered=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Available(ConversationScope scope)=>Allowed;
         public IReviewModel Create(ConversationScope scope,UnderstandingState state,IChatDispatchGate admission)=>new Model(this,admission);
+        public Task<IUnderstandingRoutingPolicy?> ClassifyAsync(ReviewModelInput input,ReviewModelResult result,UnderstandingState state,IChatDispatchGate admission,CancellationToken token)
+        {input.EnsureCurrent(token);Classifies++;return Task.FromResult<IUnderstandingRoutingPolicy?>(new EvidenceValidationGateTests.Validation(Evidence));}
         private sealed class Model(Models owner,IChatDispatchGate admission):IReviewModel
         {
             public async Task<ReviewModelResult> ReviewAsync(ReviewModelInput input,CancellationToken token=default)
             {
+                owner.LastInput=input;
                 await Task.Yield();owner.Entered.TrySetResult();if(owner.WaitForCancellation)await Task.Delay(Timeout.Infinite,token);
                 owner.BeforeDispatch?.Invoke();input.EnsureCurrent(token);
                 admission.Dispatch(new ChatRequest("mash","c",[new(ChatMessageRole.User,"Synthetic")]),
                     ModelRouteKey.From(new ModelConnectionSettings("deepseek","https://api.deepseek.com/v1","deepseek-flash")),()=>++owner.Dispatches,token);
                 var proposal=new UnderstandingProposal("candidate-"+input.OperationId,UnderstandingDomain.Self,UnderstandingKind.CurrentInterest,"assistant",
                     "Synthetic current interest","Synthetic current project at 2026-10-20",input.Originals.Select(m=>m.Source).ToArray());
+                if(owner.Typed)proposal=proposal with{Origin=UnderstandingOrigin.SecondOrderInferred,Status=UnderstandingStatus.Hypothesis};
                 return new([proposal],input.Originals.Select(m=>m.Coverage).ToArray(),new ChatUsage(100,10),new(100,TokenCountKind.Estimated,new('B',64)),new('A',64));
             }
         }

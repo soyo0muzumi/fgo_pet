@@ -43,7 +43,7 @@ public sealed class DailyReviewLedger(string databasePath, TimeProvider clock) :
     public ReviewCallReservation? TryReserve(ReviewCallPlan plan)
     {
         if (plan.Mode is not (UnderstandingMode.Proposals or UnderstandingMode.Bounded) || plan.PolicyGeneration < 0 ||
-            plan.Purpose is not ("review" or "classify") || plan.EstimatedInputTokens is < 1 or > 16000 ||
+            plan.Purpose is not ("review" or "classify") || plan.EstimatedInputTokens < 1 ||
             string.IsNullOrWhiteSpace(plan.ScopeKey) || string.IsNullOrWhiteSpace(plan.RequestId) || plan.RequestId.Length > 128 ||
             !Digest(plan.RouteHash) || !Digest(plan.InputHash)) return null;
         using var db = Open(); using var tx = db.BeginTransaction();

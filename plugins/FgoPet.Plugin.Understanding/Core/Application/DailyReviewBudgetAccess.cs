@@ -8,21 +8,27 @@ public sealed record UnderstandingAutomationStatus(string? RouteHash, DailyRevie
 
 /// <summary>The host grant is bound to the recipient; policy remains independently owned by Understanding.</summary>
 public sealed class DailyReviewBudgetAccess(DailyReviewLedger ledger, IDialogueSettingsStore settings,
-    UnderstandingService owner) : IReviewBudgetAccess
+    UnderstandingService owner, Action<UnderstandingDiagnostic>? diagnostics = null) : IReviewBudgetAccess
 {
+    private void Log(ConversationScope scope,string? code)=>UnderstandingDiagnostics.Write(diagnostics,TimeProvider.System,scope.Key,"daily_budget_checked",code);
     public UnderstandingAutomationStatus Status(ConversationScope scope)
     {
         var connection = settings.Load().ModelConnection;
-        if (connection is null) return new(null, null, "UNDERSTANDING_MODEL_UNAVAILABLE");
+        if (connection is null) { Log(scope,"UNDERSTANDING_MODEL_UNAVAILABLE");return new(null, null, "UNDERSTANDING_MODEL_UNAVAILABLE"); }
         var route = ReviewBudgetedChatProvider.RouteHash(ModelRouteKey.From(connection));
-        try { var budget = ledger.Status(scope.Key, route); return new(route, budget, budget.Code); }
-        catch { return new(route, null, "UNDERSTANDING_DAILY_STORE_UNAVAILABLE"); }
+        try { var budget = ledger.Status(scope.Key, route);Log(scope,budget.Code);return new(route, budget, budget.Code); }
+        catch { Log(scope,"UNDERSTANDING_DAILY_STORE_UNAVAILABLE");return new(route, null, "UNDERSTANDING_DAILY_STORE_UNAVAILABLE"); }
     }
 
     public ReviewBudgetUse? Get(ConversationScope scope)
     {
         var policy = owner.State(scope).Policy;
-        if (!policy.Enabled || !policy.ReadSources || !policy.ExternalProcessing || !policy.SaveCandidates || policy.Mode == UnderstandingMode.Off) return null;
+        if (!policy.Enabled || !policy.ReadSources || !policy.ExternalProcessing || !policy.SaveCandidates || policy.Mode == UnderstandingMode.Off)
+        {
+            Log(scope,!policy.Enabled?"UNDERSTANDING_DISABLED":policy.Mode==UnderstandingMode.Off?"UNDERSTANDING_OFF":
+                !policy.ReadSources?"UNDERSTANDING_READ_DENIED":!policy.ExternalProcessing?"UNDERSTANDING_EXTERNAL_DENIED":"UNDERSTANDING_SAVE_DENIED");
+            return null;
+        }
         var status = Status(scope);
         if (status.Code is not null) return null;
         return new(ledger, ReviewBatch.Formal, "daily", scope.Key);

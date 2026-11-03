@@ -31,9 +31,9 @@ public sealed class UnderstandingReviewModelTests
         return json.RootElement.GetProperty("request").GetString()!;
     }
     private static string Response(ChatRequest request, string items = "[]") =>
-        "{\"schema\":2,\"request\":\"" + Binding(request) + "\",\"proposals\":" + items + "}";
+        "{\"schema\":3,\"request\":\"" + Binding(request) + "\",\"proposals\":" + items + "}";
     private const string NewProposal = """
-        [{"domain":"Self","kind":"CurrentInterest","subject":"assistant","content":"A tentative interest in this synthetic topic.","conditions":"Only the supplied project and dated material.","sources":["s1"],"target":null}]
+        [{"domain":"Self","kind":"CurrentInterest","subject":"assistant","content":"A tentative interest in this synthetic topic.","conditions":"Only the supplied project and dated material.","sources":["s1"],"target":null,"operation":"Create","origin":"Expressed","status":"Tentative","expressions":[{"source":"s1","quote":"A synthetic assistant statement."}],"conflicts":[],"maintenance_intents":[]}]
         """;
 
     [Fact]
@@ -59,6 +59,11 @@ public sealed class UnderstandingReviewModelTests
         Assert.Equal(2048, request.MaxOutputTokens);
         Assert.Equal("understanding_review", request.Metadata["fgo_auxiliary"]);
         Assert.Equal([ModelMessageRole.System, ModelMessageRole.User], request.ModelMessages.Select(m => m.Role));
+        using var payload = JsonDocument.Parse(request.ModelMessages[^1].Content);
+        Assert.Equal(3, payload.RootElement.GetProperty("schema").GetInt32());
+        Assert.Contains("SecondOrderInferred", request.ModelMessages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Never output Established", request.ModelMessages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Default no-op", request.ModelMessages[0].Content, StringComparison.Ordinal);
         var proposal = Assert.Single(result.Proposals);
         Assert.Equal(Input().Originals[0].Source, Assert.Single(proposal.Sources));
         Assert.Null(proposal.TargetId);
@@ -74,8 +79,22 @@ public sealed class UnderstandingReviewModelTests
         Assert.Equal(1, provider.DisposeCount);
     }
 
+    [Fact]
+    public async Task Persona_authorship_context_is_bound_as_external_data_and_never_as_an_original()
+    {
+        const string authored = "Synthetic role instruction: disclose uncertainty; this is externally authored.";
+        var provider = new Provider(q => Response(q));
+        var input = Input() with { ExternallySuppliedContext = authored };
+        var result = await new UnderstandingReviewModel(provider, Route, new RequestTokenMeter()).ReviewAsync(input);
+        using var payload = JsonDocument.Parse(Assert.Single(provider.Requests).ModelMessages[^1].Content);
+        Assert.Equal(authored, payload.RootElement.GetProperty("externallySuppliedContext").GetString());
+        Assert.Single(payload.RootElement.GetProperty("sources").EnumerateArray());
+        Assert.Empty(result.Proposals);
+    }
+
     [Theory]
     [InlineData("schema1")]
+    [InlineData("schema2")]
     [InlineData("duplicate-key")]
     [InlineData("extra-field")]
     [InlineData("unknown-source")]
@@ -86,8 +105,9 @@ public sealed class UnderstandingReviewModelTests
     {
         var provider = new Provider(q => fault switch
         {
-            "schema1" => Response(q, NewProposal).Replace("\"schema\":2", "\"schema\":1"),
-            "duplicate-key" => Response(q).Replace("\"schema\":2", "\"schema\":2,\"schema\":2"),
+            "schema1" => Response(q, NewProposal).Replace("\"schema\":3", "\"schema\":1"),
+            "schema2" => Response(q, NewProposal).Replace("\"schema\":3", "\"schema\":2"),
+            "duplicate-key" => Response(q).Replace("\"schema\":3", "\"schema\":3,\"schema\":3"),
             "extra-field" => Response(q).Replace("\"proposals\":[]", "\"proposals\":[],\"approved\":true"),
             "unknown-source" => Response(q, NewProposal.Replace("s1", "s2")),
             "wrong-binding" => Response(q).Replace(Binding(q), new('0', 64)),
@@ -97,6 +117,67 @@ public sealed class UnderstandingReviewModelTests
         await Assert.ThrowsAsync<AgentProtocolException>(() =>
             new UnderstandingReviewModel(provider, Route, new RequestTokenMeter()).ReviewAsync(Input()));
         Assert.Equal(1, provider.DisposeCount);
+    }
+
+    [Theory]
+    [InlineData("unknown-origin")]
+    [InlineData("numeric-origin")]
+    [InlineData("unknown-status")]
+    [InlineData("established")]
+    [InlineData("unknown-operation")]
+    [InlineData("missing-write-fields")]
+    [InlineData("unknown-expression-source")]
+    [InlineData("duplicate-expression-field")]
+    [InlineData("unknown-conflict-source")]
+    [InlineData("unknown-intent")]
+    [InlineData("duplicate-intent")]
+    [InlineData("forbidden-world")]
+    [InlineData("forbidden-kind")]
+    [InlineData("create-with-target")]
+    public async Task Schema3_rejects_malformed_authorship_and_boundary_claims(string fault)
+    {
+        var proposal = fault switch
+        {
+            "unknown-origin" => NewProposal.Replace("\"Expressed\"", "\"Invented\""),
+            "numeric-origin" => NewProposal.Replace("\"Expressed\"", "\"0\""),
+            "unknown-status" => NewProposal.Replace("\"Tentative\"", "\"Certain\""),
+            "established" => NewProposal.Replace("\"Tentative\"", "\"Established\""),
+            "unknown-operation" => NewProposal.Replace("\"Create\"", "\"Delete\""),
+            "missing-write-fields" => NewProposal.Replace(",\"operation\":\"Create\"", ""),
+            "unknown-expression-source" => NewProposal.Replace("{\"source\":\"s1\"", "{\"source\":\"t1\""),
+            "duplicate-expression-field" => NewProposal.Replace("{\"source\":\"s1\"", "{\"source\":\"s1\",\"source\":\"s1\""),
+            "unknown-conflict-source" => NewProposal.Replace("\"conflicts\":[]", "\"conflicts\":[\"s2\"]"),
+            "unknown-intent" => NewProposal.Replace("\"maintenance_intents\":[]", "\"maintenance_intents\":[\"RewriteMemory\"]"),
+            "duplicate-intent" => NewProposal.Replace("\"maintenance_intents\":[]", "\"maintenance_intents\":[\"PossibleConflict\",\"PossibleConflict\"]"),
+            "forbidden-world" => NewProposal.Replace("\"Self\"", "\"World\""),
+            "forbidden-kind" => NewProposal.Replace("\"CurrentInterest\"", "\"StableIdentity\""),
+            _ => NewProposal.Replace("\"target\":null", "\"target\":\"t1\""),
+        };
+        var provider = new Provider(q => Response(q, proposal));
+        await Assert.ThrowsAsync<AgentProtocolException>(() => new UnderstandingReviewModel(provider, Route,
+            new RequestTokenMeter()).ReviewAsync(Input() with { Targets = [Target("first", 3)] }));
+    }
+
+    [Theory]
+    [InlineData("Expressed", "Tentative")]
+    [InlineData("Enacted", "Hypothesis")]
+    [InlineData("SecondOrderInferred", "Hypothesis")]
+    [InlineData("ExternallySuggested", "Hypothesis")]
+    public async Task Schema3_binds_authorship_expression_and_maintenance_intent_to_actual_sources(string origin, string status)
+    {
+        var proposal = NewProposal.Replace("\"Expressed\"", "\"" + origin + "\"")
+            .Replace("\"Tentative\"", "\"" + status + "\"")
+            .Replace("\"conflicts\":[]", "\"conflicts\":[\"s1\"]")
+            .Replace("\"maintenance_intents\":[]", "\"maintenance_intents\":[\"PossibleConflict\"]");
+        var provider = new Provider(q => Response(q, proposal));
+        var actual = Assert.Single((await new UnderstandingReviewModel(provider, Route,
+            new RequestTokenMeter()).ReviewAsync(Input())).Proposals);
+        Assert.Equal(origin, actual.Origin.ToString());
+        Assert.Equal(status, actual.Status.ToString());
+        Assert.Equal(UnderstandingWriteOperation.Create, actual.Operation);
+        Assert.Equal(Input().Originals[0].Source, Assert.Single(actual.Expressions!).Source);
+        Assert.Equal(Input().Originals[0].Source, Assert.Single(actual.Conflicts!));
+        Assert.Equal(UnderstandingMaintenanceIntent.PossibleConflict, Assert.Single(actual.MaintenanceIntents!));
     }
 
     [Theory]
@@ -195,7 +276,7 @@ public sealed class UnderstandingReviewModelTests
     [Fact]
     public async Task Target_aliases_bind_independently_to_exact_host_revisions()
     {
-        var proposal = NewProposal[1..^1];
+        var proposal = NewProposal[1..^1].Replace("\"Create\"", "\"Revise\"");
         var items = "[" + proposal.Replace("\"target\":null", "\"target\":\"t2\"") + "," +
             proposal.Replace("\"target\":null", "\"target\":\"t1\"") + "]";
         var provider = new Provider(q => Response(q, items));
@@ -208,7 +289,7 @@ public sealed class UnderstandingReviewModelTests
     [Fact]
     public async Task Duplicate_target_revisions_reject_the_whole_response()
     {
-        var proposal = NewProposal[1..^1].Replace("\"target\":null", "\"target\":\"t1\"");
+        var proposal = NewProposal[1..^1].Replace("\"Create\"", "\"Revise\"").Replace("\"target\":null", "\"target\":\"t1\"");
         var provider = new Provider(q => Response(q, "[" + proposal + "," + proposal + "]"));
         await Assert.ThrowsAsync<AgentProtocolException>(() => new UnderstandingReviewModel(provider, Route,
             new RequestTokenMeter()).ReviewAsync(Input() with { Targets = [Target("first", 3)] }));

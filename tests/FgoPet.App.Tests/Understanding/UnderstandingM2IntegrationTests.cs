@@ -22,6 +22,22 @@ namespace FgoPet.App.Tests.Understanding;
 [Collection("H1 full catalog isolation")]
 public sealed class UnderstandingM2IntegrationTests
 {
+    [Fact] public async Task Registered_diagnostics_persist_budget_denial_without_dispatch_or_authorization_changes()
+    {
+        await using var host=new Host(approved:false);
+        var scheduler=host.Provider.GetRequiredService<UnderstandingReviewScheduler>();
+        host.Enable();host.Append();host.Clock.Advance(120);
+        await scheduler.PulseAsync();
+        var path=Path.Combine(Path.GetDirectoryName(host.Provider.GetRequiredService<RuntimeDatabase>().DatabasePath)!,"understanding-diagnostics.jsonl");
+        var log=File.ReadAllText(path);
+        Assert.Contains("UNDERSTANDING_BUDGET_UNAUTHORIZED",log);
+        Assert.Contains("review_waiting_budget",log);
+        Assert.DoesNotContain("Synthetic story",log);Assert.DoesNotContain("Today I am curious",log);
+        Assert.Equal(0,host.Http.Sends);
+        Assert.Equal(2,host.Owner.WorkSummary(host.Scope).PendingSources);
+        var status=host.Provider.GetRequiredService<DailyReviewBudgetAccess>().Status(host.Scope);
+        Assert.False(status.Budget!.Authorized);Assert.Equal(0,status.Budget.Used);
+    }
     [Theory][InlineData(false)][InlineData(true)]
     public async Task Daily_exhaustion_between_review_and_classification_preserves_work_until_allowance_recovers(bool nextDay)
     {
@@ -61,7 +77,7 @@ public sealed class UnderstandingM2IntegrationTests
         Assert.DoesNotContain(host.Owner.WorkSummary(host.Scope).Batches,b=>b.State==ReviewWorkState.Failed);
         Assert.Equal(UnderstandingEffect.Bounded,Assert.Single(host.Owner.Query(host.Scope,"").Items).Effect);
     }
-    [Theory][InlineData(UnderstandingMode.Proposals,1)][InlineData(UnderstandingMode.Bounded,2)]
+    [Theory][InlineData(UnderstandingMode.Proposals,2)][InlineData(UnderstandingMode.Bounded,2)]
     public async Task Daily_host_runs_the_production_pipeline_and_only_bounded_results_enter_replies(UnderstandingMode mode,int calls)
     {
         await using var host=new Host(approved:false);await host.StartAsync();
@@ -139,6 +155,7 @@ public sealed class UnderstandingM2IntegrationTests
             services.Replace(ServiceDescriptor.Singleton<FgoPet.Infrastructure.Secrets.ICredentialReader>(Credentials));
             services.Replace(ServiceDescriptor.Singleton<FgoPet.Core.Secrets.ICredentialReader>(Credentials));
             services.Replace(ServiceDescriptor.Singleton<IConversationScopeAuthority>(new Authority(Scope)));
+            services.Replace(ServiceDescriptor.Singleton<IConversationContentResolver>(new SyntheticContent()));
             if(approved)services.Replace(ServiceDescriptor.Singleton<IReviewBudgetAccess>(new Access(new(Ledger,ReviewBatch.Formal,"R3A-1",Scope.Key))));
             Provider=services.BuildServiceProvider();
         }
@@ -157,6 +174,16 @@ public sealed class UnderstandingM2IntegrationTests
     }
     private sealed class Settings:IDialogueSettingsStore
     {public DialogueSettings Load()=>new(new("deepseek","https://api.deepseek.com/v1","deepseek-flash",contextWindowOverride:131072),true);public void Save(DialogueSettings s)=>throw new NotSupportedException();}
+    private sealed class SyntheticContent:IConversationContentResolver
+    {
+        public Task<FgoPet.Infrastructure.Packs.ContentBinding> ResolveAsync(string servantId,CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult(new FgoPet.Infrastructure.Packs.ContentBinding(new(servantId,"fixture","1.0.0","default","p1","k1"),
+                new FgoPet.Core.Packs.PersonaBundle(servantId,"fixture","1.0.0","p1","Synthetic role with no predefined listening stance.",[]),
+                [],[],new('A',64),new('B',64)));
+        }
+    }
     private sealed class Authority(ConversationScope scope):IConversationScopeAuthority
     {public ConversationScope? Current=>scope;public bool IsActive(ToolScope s)=>s.RoleId==scope.ServantId&&s.ProjectId==scope.ProjectId;}
     private sealed class Access(ReviewBudgetUse use):IReviewBudgetAccess{public ReviewBudgetUse? Get(ConversationScope scope)=>use;}
@@ -175,9 +202,12 @@ public sealed class UnderstandingM2IntegrationTests
             using var envelope=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
             using var body=JsonDocument.Parse(envelope.RootElement.GetProperty("messages").EnumerateArray().Last().GetProperty("content").GetString()!);
             var data=body.RootElement;var binding=data.GetProperty("request").GetString();object result;
-            if(data.TryGetProperty("proposals",out var candidates))result=new{schema=1,request=binding,verdicts=candidates.EnumerateArray().Select(p=>new{proposal=p.GetProperty("alias").GetString(),allow=true,reason="CURRENT_SELF"}).ToArray()};
-            else result=new{schema=2,request=binding,proposals=new[]{new{domain="Self",kind="CurrentInterest",subject="assistant",content="Today I am curious about listening before agreement.",
-                conditions="Synthetic project p at 2026-10-20; tentative current interest",sources=data.GetProperty("sources").EnumerateArray().Select(s=>s.GetProperty("alias").GetString()).ToArray(),target=(string?)null}}};
+            Assert.Equal("Synthetic role with no predefined listening stance.",data.GetProperty("externallySuppliedContext").GetString());
+            if(data.TryGetProperty("proposals",out var candidates))result=new{schema=2,request=binding,verdicts=candidates.EnumerateArray().Select(p=>new{proposal=p.GetProperty("alias").GetString(),allow=true,reason="CURRENT_SELF",support="SUPPORTED"}).ToArray()};
+            else result=new{schema=3,request=binding,proposals=new[]{new{domain="Self",kind="CurrentInterest",subject="assistant",content="Today I am curious about listening before agreement.",
+                conditions="Synthetic project p at 2026-10-20; tentative current interest",sources=data.GetProperty("sources").EnumerateArray().Select(s=>s.GetProperty("alias").GetString()).ToArray(),target=(string?)null,
+                operation="Create",origin="Expressed",status="Tentative",expressions=new[]{new{source=data.GetProperty("sources").EnumerateArray().Single(s=>s.GetProperty("speaker").GetString()=="Assistant").GetProperty("alias").GetString(),
+                    quote="Today I am curious about listening before agreement."}},conflicts=Array.Empty<string>(),maintenance_intents=Array.Empty<string>()}}};
             var completion=JsonSerializer.Serialize(new{choices=new[]{new{delta=new{content=JsonSerializer.Serialize(result)},finish_reason="stop"}},usage=new{prompt_tokens=1000,completion_tokens=50}});
             return new(HttpStatusCode.OK){Content=new StringContent("data: "+completion+"\n\ndata: [DONE]\n\n",Encoding.UTF8,"text/event-stream")};
         }

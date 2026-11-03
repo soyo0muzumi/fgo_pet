@@ -13,6 +13,7 @@ public interface IReviewModelFactory
 {
     bool Available(ConversationScope scope);
     IReviewModel Create(ConversationScope scope, UnderstandingState state, IChatDispatchGate admission);
+    IRecurrenceModel? CreateRecurrence(ConversationScope scope, UnderstandingState state, IChatDispatchGate admission) => null;
     Task<IUnderstandingRoutingPolicy?> ClassifyAsync(ReviewModelInput input, ReviewModelResult result,
         UnderstandingState state, IChatDispatchGate admission, CancellationToken token) => Task.FromResult<IUnderstandingRoutingPolicy?>(null);
 }

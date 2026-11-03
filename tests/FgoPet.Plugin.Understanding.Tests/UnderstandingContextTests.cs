@@ -53,6 +53,93 @@ public sealed class UnderstandingContextTests
         Assert.Empty(await plugin.BuildAsync(request, default)); Assert.Equal(0, resolver.Reads);
     }
 
+    [Theory]
+    [InlineData(UnderstandingOrigin.Expressed, UnderstandingStatus.Hypothesis)]
+    [InlineData(UnderstandingOrigin.Enacted, UnderstandingStatus.Hypothesis)]
+    [InlineData(UnderstandingOrigin.SecondOrderInferred, UnderstandingStatus.Hypothesis)]
+    [InlineData(UnderstandingOrigin.ExternallySuggested, UnderstandingStatus.Hypothesis)]
+    [InlineData(UnderstandingOrigin.ExternallySuggested, UnderstandingStatus.Tentative)]
+    public async Task Plugin_defends_every_projection_against_approved_hypotheses_and_external_self(
+        UnderstandingOrigin origin, UnderstandingStatus status)
+    {
+        var entry = Entry("blocked", UnderstandingDomain.Self) with { Origin = origin, Status = status };
+        await using var plugin = new UnderstandingPlugin(new FixedReader([entry]), _ => true, new Resolver());
+        await plugin.StartAsync(default);
+        var scope = new ToolScope("c", "mash", "p");
+        Assert.Empty(plugin.BuildPrompt(scope, "question", true));
+        Assert.Empty(await plugin.BuildAsync(Request(scope), default));
+        var tool = Assert.Single(plugin.Contributions.Tools);
+        var result = await tool.InvokeAsync(new(scope, JsonSerializer.SerializeToElement(new { query = "" })), default);
+        Assert.True(result.Success);
+        Assert.Equal(0, result.Payload.GetProperty("Items").GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData(UnderstandingDomain.Self, 3)]
+    [InlineData(UnderstandingDomain.Relationship, 2)]
+    [InlineData(UnderstandingDomain.User, 3)]
+    public async Task Domain_caps_apply_equally_to_ordinary_native_and_query_even_with_unbounded_reader(
+        UnderstandingDomain domain, int limit)
+    {
+        // Exercise each cap independently, leaving the shared character budget ample room.
+        var entries = Enumerable.Range(0, 7).Select(i => Entry("e" + i, domain)).ToArray();
+        await using var plugin = new UnderstandingPlugin(new FixedReader(entries), _ => true, new Resolver());
+        await plugin.StartAsync(default);
+        var scope = new ToolScope("c", "mash", "p");
+        var ordinary = plugin.BuildPrompt(scope, "question", true);
+        Assert.Equal(limit, ordinary.Count);
+        var native = await plugin.BuildAsync(Request(scope), default);
+        Assert.Equal(ordinary.Select(b => b.Text), native.Select(b => b.Content));
+        Assert.All(ordinary, b =>
+        {
+            using var json = JsonDocument.Parse(b.Text);
+            Assert.Equal("Current understanding", json.RootElement.GetProperty("Label").GetString());
+            Assert.Equal(domain.ToString(), json.RootElement.GetProperty("Entry").GetProperty("Domain").GetString());
+        });
+        var result = await Assert.Single(plugin.Contributions.Tools).InvokeAsync(
+            new(scope, JsonSerializer.SerializeToElement(new { query = "" })), default);
+        Assert.True(result.Success);
+        Assert.Equal(limit, result.Payload.GetProperty("Items").GetArrayLength());
+        Assert.True(result.Payload.GetProperty("Truncated").GetBoolean());
+        Assert.All(result.Payload.GetProperty("Items").EnumerateArray(), item =>
+            Assert.Equal("Current understanding", item.GetProperty("Label").GetString()));
+    }
+
+    [Fact] public async Task Maintenance_intents_remain_unchanged_data_with_only_readonly_query_contribution()
+    {
+        var entry = Entry("intent", UnderstandingDomain.Self) with { MaintenanceIntents = [
+            UnderstandingMaintenanceIntent.PossibleStaleMemory, UnderstandingMaintenanceIntent.PossibleConflict,
+            UnderstandingMaintenanceIntent.PossibleSpecialization, UnderstandingMaintenanceIntent.PossibleSupersession] };
+        var before = JsonSerializer.Serialize(entry);
+        await using var plugin = new UnderstandingPlugin(new FixedReader([entry]), _ => true, new Resolver());
+        await plugin.StartAsync(default);
+        var scope = new ToolScope("c", "mash", "p");
+        var descriptor = Assert.Single(plugin.Contributions.Tools).Descriptor;
+        Assert.Equal("understanding.query", descriptor.Name); Assert.Equal(ToolEffect.ReadOnly, descriptor.Effect);
+        Assert.Empty(plugin.Contributions.TextInterpreters); Assert.Empty(plugin.Contributions.PostTurnObservers);
+        Assert.Single(plugin.BuildPrompt(scope, "question", true));
+        Assert.Single(await plugin.BuildAsync(Request(scope), default));
+        var result = await Assert.Single(plugin.Contributions.Tools).InvokeAsync(
+            new(scope, JsonSerializer.SerializeToElement(new { query = "" })), default);
+        Assert.True(result.Success);
+        var intents = result.Payload.GetProperty("Items")[0].GetProperty("Entry").GetProperty("MaintenanceIntents");
+        Assert.Equal(entry.MaintenanceIntents!.Select(i => i.ToString()), intents.EnumerateArray().Select(i => i.GetString()));
+        Assert.Equal(before, JsonSerializer.Serialize(entry));
+    }
+
+    private static AgentContextRequest Request(ToolScope scope) => new(scope, "run", 1, new("u", new('A', 64)), 10000, []);
+    private static UnderstandingEntry Entry(string id, UnderstandingDomain domain) => new(id, new("mash", "p"), 1,
+        domain, domain == UnderstandingDomain.Relationship ? UnderstandingKind.InteractionPattern : UnderstandingKind.CurrentStance,
+        "assistant", "c", "p", "expressed", [], UnderstandingReview.Approved, UnderstandingEffect.Approved,
+        UnderstandingLife.Active, DateTimeOffset.UnixEpoch, DateTimeOffset.MaxValue, 1,
+        Origin: domain == UnderstandingDomain.User ? null : UnderstandingOrigin.Expressed,
+        Status: domain == UnderstandingDomain.User ? null : UnderstandingStatus.Tentative);
+
+    private sealed class FixedReader(IReadOnlyList<UnderstandingEntry> entries) : IUnderstandingReader
+    {
+        public UnderstandingProjection Query(ConversationScope scope, string query, bool historical = false, string? entryId = null) => new(1, entries);
+    }
+
     private sealed class Reader : IUnderstandingReader
     {
         public UnderstandingProjection Query(ConversationScope scope, string query, bool historical = false, string? entryId = null) =>

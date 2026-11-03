@@ -51,6 +51,9 @@ public sealed partial class UnderstandingService
                     Execute(db, tx, "DELETE FROM understanding_revisions WHERE scope=$scope AND entry_id=$id", ("$scope", scope.Key), ("$id", id));
                 }
                 var state = ReadState(db, tx, scope);
+                Execute(db, tx, "DELETE FROM understanding_recurrence_clues WHERE scope=$scope AND ($all=1 OR EXISTS " +
+                    "(SELECT 1 FROM json_each(clue_json,'$.SourceRefs') WHERE json_extract(value,'$.Source.Scope.ConversationId')=$conversation))",
+                    ("$scope", scope.Key), ("$all", conversationId is null ? 1 : 0), ("$conversation", conversationId));
                 WriteState(db, tx, scope, state with { Revision = state.Revision + 1, Generation = state.Generation + 1,
                     Policy = conversationId is null ? new() : state.Policy });
                 // These contain no bodies. Forgetting also removes their source hashes and receipts.
@@ -72,7 +75,7 @@ public sealed partial class UnderstandingService
                 // Keep the cursor: forgetting must not rediscover an old original as a fresh automatic interval.
             }
             tx.Commit();
-            foreach (var key in _previews.Where(p => roleId is null || p.Value.Scope.ServantId == roleId).Select(p => p.Key).ToArray()) _previews.Remove(key);
+            foreach (var key in _previews.Where(p => roleId is null || p.Value.Entry.Scope.ServantId == roleId).Select(p => p.Key).ToArray()) _previews.Remove(key);
             Log(roleId ?? "all", "forgotten");
         }
     }
@@ -131,6 +134,8 @@ public sealed partial class UnderstandingService
                 }
             }
             // Interrupted metadata never schedules a retry on restore/restart.
+            // Short-term hints are not restored; this also prevents forgotten roots from returning via a backup.
+            Execute(db, tx, "DELETE FROM understanding_recurrence_clues");
             Execute(db, tx, "UPDATE understanding_attempts SET status='Interrupted' WHERE status='Reserved'");
             Execute(db, tx, "UPDATE understanding_work_batches SET state=7 WHERE state IN (0,1)");
             Execute(db, tx, "UPDATE understanding_work_items SET state=7,batch_id=NULL WHERE state IN (0,1)");

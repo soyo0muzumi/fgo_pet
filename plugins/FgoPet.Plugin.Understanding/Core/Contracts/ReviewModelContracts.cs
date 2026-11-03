@@ -9,7 +9,7 @@ public sealed record ReviewOriginal(ConversationSourceSnapshot Source, string Te
 /// <summary>Prepared by the owner after source, scope and policy validation. Contains no write authority.</summary>
 public sealed record ReviewModelInput(string OperationId, ConversationScope Scope,
     IReadOnlyList<ReviewOriginal> Originals, IReadOnlyList<UnderstandingEntry> Targets,
-    Action<CancellationToken> EnsureCurrent);
+    Action<CancellationToken> EnsureCurrent, string? ExternallySuppliedContext = null);
 
 public sealed record ReviewModelResult(IReadOnlyList<UnderstandingProposal> Proposals,
     IReadOnlyList<UnderstandingSourceCoverage> SuppliedCoverage, ChatUsage Usage,

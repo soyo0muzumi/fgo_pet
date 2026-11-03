@@ -16,7 +16,7 @@ namespace FgoPet.App.Tests.Understanding;
 public sealed partial class ReviewPipelinePreparationTests
 {
     [Theory]
-    [InlineData("proposal", UnderstandingOutcome.ProposedPending)]
+    [InlineData("proposal", UnderstandingOutcome.NoChange)]
     [InlineData("no-change", UnderstandingOutcome.NoChange)]
     [InlineData("no-change-trailing-usage", UnderstandingOutcome.NoChange)]
     [InlineData("wrong-schema", UnderstandingOutcome.Failed)]
@@ -30,7 +30,8 @@ public sealed partial class ReviewPipelinePreparationTests
         var connection = new ModelConnectionSettings("deepseek", "https://api.deepseek.com/v1", "deepseek-flash", maxOutputTokens: 2048);
         var provider = new ChatProviderFactory(new ProviderCatalog(), credentials, http).Create(connection);
         var adapter = new UnderstandingReviewModel(provider, ModelRouteKey.From(connection), new RequestTokenMeter(), fixture.Diagnostics.Add);
-        fixture.ProduceAsync = async (request, token) => (await adapter.ReviewAsync(new("PRIVATE_OPERATION", fixture.Scope,
+        IReadOnlyList<UnderstandingProposal>? generated = null;
+        fixture.ProduceAsync = async (request, token) => generated = (await adapter.ReviewAsync(new("PRIVATE_OPERATION", fixture.Scope,
             request.Material.Select((m, i) => new ReviewOriginal(m.Source, m.Text, request.ReadProof[i].Coverage)).ToArray(),
             request.Targets, request.EnsureCurrent), token)).Proposals;
         var result = await fixture.Run();
@@ -39,14 +40,16 @@ public sealed partial class ReviewPipelinePreparationTests
         Assert.Equal(1, credentials.Reads);
         Assert.Equal(2, fixture.Originals.Reads);
         Assert.Empty(fixture.Owner.Query(fixture.Scope, "").Items);
-        if (expected == UnderstandingOutcome.ProposedPending)
+        if (response == "proposal")
         {
-            var entry = Assert.Single(fixture.Owner.List(fixture.Scope, true));
-            Assert.Equal(UnderstandingReview.Unreviewed, entry.Review);
-            Assert.Equal(UnderstandingEffect.Pending, entry.Effect);
-            Assert.Null(entry.Coverage); // Existing manual preview is not an automatic coverage-aware Review service.
+            var candidate = Assert.Single(generated!);
+            Assert.Equal(UnderstandingOrigin.SecondOrderInferred, candidate.Origin);
+            Assert.Equal(UnderstandingStatus.Hypothesis, candidate.Status);
+            Assert.Equal("UNDERSTANDING_EVIDENCE_VALIDATION_REQUIRED", Assert.Single(result.Items).Code);
         }
-        else Assert.Empty(fixture.Owner.List(fixture.Scope, true));
+        Assert.Empty(fixture.Owner.List(fixture.Scope, true));
+        Assert.Equal(0L, fixture.Count("understanding_entries"));
+        Assert.Equal(0L, fixture.Count("understanding_revisions"));
         Assert.DoesNotContain("synthetic provider candidate", JsonSerializer.Serialize(fixture.Diagnostics));
     }
 
@@ -77,8 +80,10 @@ public sealed partial class ReviewPipelinePreparationTests
             var binding = material.RootElement.GetProperty("request").GetString()!;
             var proposals = response.StartsWith("no-change", StringComparison.Ordinal) ? Array.Empty<object>() : [new {
                 domain = "Self", kind = "CurrentInterest", subject = "assistant", content = "synthetic provider candidate",
-                conditions = "Only this dated synthetic project; tentative.", sources = new[] { "s2" }, target = (string?)null }];
-            var json = JsonSerializer.Serialize(new { schema = response == "wrong-schema" ? 1 : 2, request = binding, proposals });
+                conditions = "Only this dated synthetic project; tentative.", sources = new[] { "s2" }, target = (string?)null,
+                operation = "Create", origin = "SecondOrderInferred", status = "Hypothesis", expressions = Array.Empty<object>(),
+                conflicts = Array.Empty<string>(), maintenance_intents = Array.Empty<string>() }];
+            var json = JsonSerializer.Serialize(new { schema = response == "wrong-schema" ? 1 : 3, request = binding, proposals });
             var choices = new[] { new { delta = new { content = json }, finish_reason = "stop" } };
             var usage = new { prompt_tokens = 700, completion_tokens = 100, total_tokens = 800 };
             var sse = response == "no-change-trailing-usage"

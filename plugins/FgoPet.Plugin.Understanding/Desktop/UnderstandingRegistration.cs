@@ -16,26 +16,48 @@ public static class UnderstandingRegistration
     public static IServiceCollection AddUnderstandingCapability(this IServiceCollection services,
         Func<IServiceProvider, ConversationScope, UnderstandingPagePresentation>? presentation = null)
     {
+        services.TryAddSingleton(p=>new UnderstandingDiagnosticLog(System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(p.GetRequiredService<RuntimeDatabase>().DatabasePath)!,"understanding-diagnostics.jsonl")));
+        static Action<UnderstandingDiagnostic> Diagnostics<T>(IServiceProvider provider)
+        {
+            var file=provider.GetRequiredService<UnderstandingDiagnosticLog>();
+            var logger=provider.GetRequiredService<ILogger<T>>();
+            return d=>
+            {
+                file.Record(d);
+                logger.LogInformation("Understanding {At} {Correlation} {Stage} {Code}",d.At,d.Correlation,d.Stage,d.Code);
+            };
+        }
         services.TryAddSingleton(p=>new DailyReviewLedger(System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(p.GetRequiredService<RuntimeDatabase>().DatabasePath)!,"understanding-daily-budget.db"),p.GetRequiredService<TimeProvider>()));
-        services.TryAddSingleton<DailyReviewBudgetAccess>();
+        services.TryAddSingleton(p=>new DailyReviewBudgetAccess(p.GetRequiredService<DailyReviewLedger>(),p.GetRequiredService<IDialogueSettingsStore>(),
+            p.GetRequiredService<UnderstandingService>(),Diagnostics<DailyReviewBudgetAccess>(p)));
         services.TryAddSingleton<IReviewBudgetAccess>(p=>p.GetRequiredService<DailyReviewBudgetAccess>());
         services.AddSingleton(provider => new UnderstandingService(provider.GetRequiredService<RuntimeDatabase>(),
             provider.GetRequiredService<IExperienceTimeline>(), provider.GetRequiredService<TimeProvider>(),
-            diagnostics: d => provider.GetRequiredService<ILogger<UnderstandingService>>().LogInformation(
-                "Understanding {At} {Correlation} {Stage} {Code}", d.At, d.Correlation, d.Stage, d.Code)))
+            diagnostics: Diagnostics<UnderstandingService>(provider)))
             .AddSingleton<IDerivedConversationData>(p => p.GetRequiredService<UnderstandingService>())
             .AddSingleton<IUnderstandingReader>(p => p.GetRequiredService<UnderstandingService>())
             .AddSingleton<IReviewModelFactory>(p=>new ConfiguredReviewModelFactory(p.GetRequiredService<IDialogueSettingsStore>(),
                 p.GetRequiredService<IChatProviderResolver>(),p.GetRequiredService<IRequestTokenMeter>(),p.GetRequiredService<IReviewBudgetAccess>(),
-                d=>p.GetRequiredService<ILogger<ConfiguredReviewModelFactory>>().LogInformation("Understanding {At} {Correlation} {Stage} {Code}",d.At,d.Correlation,d.Stage,d.Code),
+                Diagnostics<ConfiguredReviewModelFactory>(p),
                 p.GetRequiredService<IReviewBudgetAccess>() is DailyReviewBudgetAccess ? p.GetRequiredService<IModelContextResolver>() : null))
             .AddSingleton(p=>new UnderstandingReviewService(p.GetRequiredService<UnderstandingService>(),
                 p.GetRequiredService<IExperienceTimeline>(),p.GetRequiredService<IExperienceSourceReader>(),p.GetRequiredService<IReviewModelFactory>(),
-                p.GetRequiredService<IDialogueContextLifetime>(),p.GetRequiredService<TimeProvider>()))
+                p.GetRequiredService<IDialogueContextLifetime>(),p.GetRequiredService<TimeProvider>(),Diagnostics<UnderstandingReviewService>(p),
+                async (scope,token)=>
+                {
+                    var resolver=p.GetService<IConversationContentResolver>();
+                    if(resolver is null)return null;
+                    var binding=await resolver.ResolveAsync(scope.ServantId,token).ConfigureAwait(false);
+                    var persona=binding.Persona;
+                    if(persona is null)return null;
+                    var overlay=persona.FindAppearance(binding.Context.AppearanceId);
+                    return persona.CoreText+(overlay is null?"":"\n"+overlay.Text);
+                }))
             .AddSingleton(p=>new UnderstandingReviewScheduler(p.GetRequiredService<UnderstandingService>(),p.GetRequiredService<IExperienceTimeline>(),
                 p.GetRequiredService<UnderstandingReviewService>(),p.GetRequiredService<TimeProvider>(),
-                d=>p.GetRequiredService<ILogger<UnderstandingReviewScheduler>>().LogInformation("Understanding {At} {Correlation} {Stage} {Code}",d.At,d.Correlation,d.Stage,d.Code)))
+                Diagnostics<UnderstandingReviewScheduler>(p)))
             .AddSingleton<IFgoPetPlugin>(p => new UnderstandingPlugin(p.GetRequiredService<IUnderstandingReader>(),
                 p.GetRequiredService<IConversationScopeAuthority>().IsActive, p.GetRequiredService<IAgentQueryResolver>(),p.GetRequiredService<UnderstandingReviewScheduler>()))
             .AddSingleton<ISettingsPageViewFactory>(_ => new SettingsPageViewFactory("Understanding",

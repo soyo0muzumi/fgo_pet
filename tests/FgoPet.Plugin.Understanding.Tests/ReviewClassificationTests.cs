@@ -14,6 +14,27 @@ namespace FgoPet.Plugin.Understanding.Tests;
 
 public sealed class ReviewClassificationTests
 {
+    [Theory]
+    [InlineData(32768,16384)]
+    [InlineData(8192,8192)]
+    public async Task Daily_classification_uses_resolved_capacity_without_a_fixed_16k_gate(int modelOutput,int expectedOutput)
+    {
+        var settings=new Settings(16384);var resolver=new Resolver(true);var scope=new ConversationScope("mash","p");
+        var route=ModelRouteKey.From(settings.Load().ModelConnection!);
+        var ledger=new DailyReviewLedger(Path.Combine(Path.GetTempPath(),"daily-capacity-"+Guid.NewGuid().ToString("N"),"budget.db"),TimeProvider.System);
+        ledger.Authorize(scope.Key,ReviewBudgetedChatProvider.RouteHash(route),1);
+        var factory=new ConfiguredReviewModelFactory(settings,resolver,new RequestTokenMeter(),new Access(new(ledger,ReviewBatch.Formal,"daily",scope.Key)),contexts:new LargeContext(modelOutput));
+        var root=new ConversationSourceSnapshot(new("c","mash","p"),"a",new('B',64),DateTimeOffset.UtcNow,ConversationSourceKind.Assistant,"Synthetic",1);
+        var text=new string('中',6000);var coverage=new UnderstandingSourceCoverage(root,0,text.Length,text.Length);
+        var p=new UnderstandingProposal("p",UnderstandingDomain.Self,UnderstandingKind.CurrentStance,"assistant","bounded","today",[root]);
+        var input=new ReviewModelInput("capacity",scope,[new(root,text,coverage)],[],_=>{});
+        var result=new ReviewModelResult([p],[coverage],new(100,10),new(100,TokenCountKind.Estimated,new('C',64)),new('D',64));
+        Assert.NotNull(await factory.ClassifyAsync(input,result,new(new(UnderstandingMode.Bounded,ReadSources:true,ExternalProcessing:true),1,1,0),new Gate(),default));
+        Assert.Equal(1,resolver.Sends);Assert.Equal(expectedOutput,resolver.LastRequest!.MaxOutputTokens);
+        Assert.Equal(1,ledger.Status(scope.Key,ReviewBudgetedChatProvider.RouteHash(route)).Used);
+    }
+    private sealed class LargeContext(int output):IModelContextResolver
+    {public Task<ModelContextLimit> ResolveAsync(ModelConnectionSettings c,CancellationToken t)=>Task.FromResult(new ModelContextLimit(ModelRouteKey.From(c),131072,output,ContextLimitSource.ProviderMetadata,"synthetic"));}
     [Fact] public async Task Daily_classification_respects_actual_small_capacity_before_any_dispatch()
     {
         var settings=new Settings();var resolver=new Resolver(true);
@@ -55,13 +76,13 @@ public sealed class ReviewClassificationTests
         var call=Assert.Single(ledger.Snapshot().Calls);Assert.Equal("classify",call.Purpose);Assert.Equal(ReviewCallOutcome.Completed,call.Outcome);
         Assert.Equal(1,resolver.Sends);
     }
-    private sealed class Settings:IDialogueSettingsStore
-    {public DialogueSettings Load()=>new(new("deepseek","https://api.deepseek.com/v1","deepseek-flash"),true);public void Save(DialogueSettings s)=>throw new NotSupportedException();}
+    private sealed class Settings(int output=2048):IDialogueSettingsStore
+    {public DialogueSettings Load()=>new(new("deepseek","https://api.deepseek.com/v1","deepseek-flash",maxOutputTokens:output),true);public void Save(DialogueSettings s)=>throw new NotSupportedException();}
     private sealed class Access(ReviewBudgetUse use):IReviewBudgetAccess{public ReviewBudgetUse? Get(ConversationScope scope)=>use;}
     private sealed class Gate:IChatDispatchGate{public T Dispatch<T>(ChatRequest request,ModelRouteKey route,Func<T> start,CancellationToken token)=>start();}
     private sealed class Resolver(bool allow):IChatProviderResolver
     {
-        public int Sends;public IChatProvider Resolve()=>throw new NotSupportedException();
+        public int Sends;public ChatRequest? LastRequest;public IChatProvider Resolve()=>throw new NotSupportedException();
         public IChatProvider Resolve(ModelConnectionSettings connection,IChatDispatchGate gate)=>new Provider(this,connection,gate,allow);
         private sealed class Provider(Resolver owner,ModelConnectionSettings connection,IChatDispatchGate gate,bool allowed):IChatProvider
         {
@@ -69,12 +90,13 @@ public sealed class ReviewClassificationTests
             public Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken token)=>throw new NotSupportedException();
             public async IAsyncEnumerable<ChatStreamChunk> StreamAsync(ChatRequest request,[EnumeratorCancellation]CancellationToken token)
             {
+                owner.LastRequest=request;
                 Assert.Equal("understanding_review",request.Metadata["fgo_auxiliary"]);
                 Assert.Contains("json",request.ModelMessages[0].Content,StringComparison.OrdinalIgnoreCase);
                 using var data=JsonDocument.Parse(request.ModelMessages[^1].Content);
                 var binding=data.RootElement.GetProperty("request").GetString();
                 gate.Dispatch(request,ModelRouteKey.From(connection),()=>++owner.Sends,token);
-                await Task.Yield();var json=JsonSerializer.Serialize(new{schema=1,request=binding,verdicts=new[]{new{proposal="p1",allow=allowed,reason=allowed?"CURRENT_SELF":"REVIEW_REQUIRED"}}});
+                await Task.Yield();var json=JsonSerializer.Serialize(new{schema=2,request=binding,verdicts=new[]{new{proposal="p1",allow=allowed,reason=allowed?"CURRENT_SELF":"REVIEW_REQUIRED",support="SUPPORTED"}}});
                 yield return new(json,FinishReason:"stop",Usage:new(500,20));yield return new("",IsComplete:true,FinishReason:"stop");
             }
         }

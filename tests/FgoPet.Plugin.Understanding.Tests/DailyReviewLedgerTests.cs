@@ -12,6 +12,17 @@ public sealed class DailyReviewLedgerTests
     private static ReviewCallPlan Plan(string scope = "scope", string? id = null, string purpose = "review") =>
         new(ReviewBatch.Formal, "daily", scope, id ?? Guid.NewGuid().ToString("N"), Route, purpose, UnderstandingMode.Bounded, 1, new('B', 64), 1000);
 
+    [Fact] public void Model_admitted_large_estimates_still_obey_scope_route_and_daily_call_count()
+    {
+        var ledger=new DailyReviewLedger(_path,_clock);ledger.Authorize("scope",Route,1);
+        var large=Plan() with{EstimatedInputTokens=40000};
+        Assert.Null(ledger.TryReserve(large with{ScopeKey="other"}));
+        Assert.Null(ledger.TryReserve(large with{RouteHash=new('C',64)}));
+        Assert.NotNull(ledger.TryReserve(large));
+        Assert.Null(ledger.TryReserve(Plan()));
+        Assert.Equal(1,ledger.Status("scope",Route).Used);
+    }
+
     [Fact] public void Default_denies_and_authorization_is_exact_scope_and_route()
     {
         var ledger = new DailyReviewLedger(_path, _clock);
@@ -52,7 +63,7 @@ public sealed class DailyReviewLedgerTests
     {
         var ledger = new DailyReviewLedger(_path, _clock); ledger.Authorize("scope", Route, 12);
         var plan = Plan(); Assert.NotNull(ledger.TryReserve(plan)); Assert.Null(ledger.TryReserve(plan));
-        Assert.Null(ledger.TryReserve(Plan() with { EstimatedInputTokens = 16001 }));
+        Assert.Null(ledger.TryReserve(Plan() with { EstimatedInputTokens = 0 }));
         Assert.Null(ledger.TryReserve(Plan(purpose: "reply")));
         Assert.Null(ledger.TryReserve(Plan() with { Mode = UnderstandingMode.Off }));
         Assert.Equal(1, ledger.Status("scope", Route).Used);

@@ -44,6 +44,9 @@ public sealed partial class UnderstandingService
               scalar_offset INTEGER NOT NULL,state INTEGER NOT NULL,batch_id TEXT NULL,PRIMARY KEY(scope,id));
             CREATE TABLE understanding_work_batches(scope TEXT NOT NULL,id TEXT NOT NULL,batch_json TEXT NOT NULL,
               state INTEGER NOT NULL,outcomes_json TEXT NULL,code TEXT NULL,PRIMARY KEY(scope,id));
+            """), new(5, """
+            CREATE TABLE understanding_recurrence_clues(scope TEXT NOT NULL,clue_id TEXT NOT NULL,
+              observed_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,clue_json TEXT NOT NULL,PRIMARY KEY(scope,clue_id));
             """)]);
         _schemaReady = true;
     }

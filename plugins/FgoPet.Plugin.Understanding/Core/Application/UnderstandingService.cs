@@ -14,12 +14,24 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
     Action<UnderstandingDiagnostic>? diagnostics = null) : IUnderstandingReader, IDerivedConversationData
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, UnderstandingEntry> _previews = new(StringComparer.Ordinal);
+    private sealed record Preview(UnderstandingEntry Entry, string? EvidenceError);
+    private readonly Dictionary<string, Preview> _previews = new(StringComparer.Ordinal);
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private bool _schemaReady;
+    /// <summary>Host-only research fence; does not create candidates or grant any additional processing rights.</summary>
+    public bool TryCommitMaterialResearch(ConversationScope scope, Func<bool> action)
+    {
+        lock (_gate)
+        {
+            var policy = State(scope).Policy;
+            if (!policy.Enabled || policy.Mode == UnderstandingMode.Off || !policy.ReadSources || !policy.ExternalProcessing
+                || !policy.SaveCandidates || !policy.UseInDialogue) return false;
+            return action();
+        }
+    }
     private void PrunePreviews()
     {
-        foreach (var key in _previews.Where(p => p.Value.ObservedAt.AddMinutes(10) <= _clock.GetUtcNow()).Select(p => p.Key).ToArray()) _previews.Remove(key);
+        foreach (var key in _previews.Where(p => p.Value.Entry.ObservedAt.AddMinutes(10) <= _clock.GetUtcNow()).Select(p => p.Key).ToArray()) _previews.Remove(key);
     }
     public UnderstandingState State(ConversationScope scope)
     {
@@ -46,9 +58,11 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
                 Save(db, tx, entry with { Revision = entry.Revision + 1, PolicyGeneration = next.Generation,
                     Life = entry.Effect == UnderstandingEffect.Bounded && entry.Life == UnderstandingLife.Active ? UnderstandingLife.Dormant : entry.Life });
             WriteState(db, tx, scope, next);
+            // A changed permission/policy cannot later resurrect second-order short-term hints.
+            Execute(db, tx, "DELETE FROM understanding_recurrence_clues WHERE scope=$scope", ("$scope", scope.Key));
             token.ThrowIfCancellationRequested();
             tx.Commit();
-            foreach (var key in _previews.Where(p => p.Value.Scope == scope).Select(p => p.Key).ToArray()) _previews.Remove(key);
+            foreach (var key in _previews.Where(p => p.Value.Entry.Scope == scope).Select(p => p.Key).ToArray()) _previews.Remove(key);
             Log(scope.Key, "policy_changed"); return next;
         }
     }
@@ -76,7 +90,9 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
     }
 
     public UnderstandingReceipt Apply(UnderstandingTicket ticket, IReadOnlyList<UnderstandingProposal> proposals, CancellationToken token = default,
-        IUnderstandingRoutingPolicy? classification = null, Func<bool>? inputCurrent = null)
+        IUnderstandingRoutingPolicy? classification = null, Func<bool>? inputCurrent = null,
+        IReadOnlyList<ReviewOriginal>? originals = null,
+        IReadOnlyList<RecurrenceClueDraft>? clues = null, IReadOnlyList<ExperienceSourceHead>? clueHeads = null)
     {
         ArgumentNullException.ThrowIfNull(ticket);
         if (proposals is null || proposals.Count > 32 || proposals.Any(p => p is null))
@@ -105,13 +121,47 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
                 proposals.Where(p => p.TargetId is not null).Select(p => p.TargetId).Distinct().Count() != proposals.Count(p => p.TargetId is not null))
                 denial = "UNDERSTANDING_INVALID_BATCH";
             var prepared = new List<UnderstandingEntry>();
+            var blocked = new List<UnderstandingItemReceipt>();
+            var evidenceErrors = new Dictionary<string, string?>();
+            var persist = state.Policy.Mode != UnderstandingMode.Off && state.Policy.SaveCandidates;
             if (denial is null)
             foreach (var proposal in proposals)
             {
                 denial = ValidateProposal(ticket, proposal, existing);
+                denial ??= UnderstandingWritePolicy.Validate(ticket, proposal, existing.Concat(prepared).ToArray(), originals ?? [], _clock.GetUtcNow());
                 if (IsRevoked(db, tx, ticket.Scope.Key, proposal.Id)) denial = "UNDERSTANDING_REJECTED";
                 if (denial is not null) break;
+                string? evidenceError = null;
+                if (proposal.Origin is not null)
+                {
+                    var support = ((classification ?? routing) as IUnderstandingEvidenceValidation)?.Assess(proposal, ticket.Sources);
+                    evidenceError = UnderstandingEvidenceGate.Rejection(support);
+                    Log(ticket.Id, "evidence_validation_completed", evidenceError);
+                    if (persist && evidenceError is not null)
+                    {
+                        blocked.Add(new(proposal.Id, UnderstandingOutcome.NoChange, Code: evidenceError));
+                        Log(ticket.Id, "evidence_persistence_blocked", evidenceError);
+                        continue;
+                    }
+                }
                 var low = (classification??routing)?.IsLowImpact(proposal, ticket.Sources) ?? false;
+                if (proposal.Origin is not null && (classification??routing)?.IsUnsupported(proposal, ticket.Sources) == true) continue;
+                if (proposal.Origin is not null)
+                {
+                    var target = existing.SingleOrDefault(e => e.Id == proposal.TargetId);
+                    if (target is not null && CheckSources(ticket.Scope, target.Sources, ticket.Id) is { } sourceDenial)
+                    { denial = sourceDenial; break; }
+                    var entry = PrepareWrite(ticket, proposal, target, state, low);
+                    if (entry?.Effect != UnderstandingEffect.Pending && entry?.ReplacesId is { } predecessor && predecessor != entry.Id &&
+                        !existing.Any(e => e.Id == predecessor && e.Revision == entry.ReplacesRevision && e.Life != UnderstandingLife.Retracted))
+                    { denial = "UNDERSTANDING_STALE"; break; }
+                    if (entry is not null)
+                    {
+                        prepared.Add(entry);
+                        evidenceErrors[entry.Id] = evidenceError;
+                    }
+                    continue;
+                }
                 var bounded = state.Policy.Mode == UnderstandingMode.Bounded && low &&
                     (proposal.Domain == UnderstandingDomain.Self && proposal.Subject == "assistant" || proposal.Domain == UnderstandingDomain.World && proposal.Subject == "world") &&
                     proposal.Domain is UnderstandingDomain.Self or UnderstandingDomain.World &&
@@ -140,23 +190,25 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
                     proposals.Select(p => new UnderstandingItemReceipt(p.Id, UnderstandingOutcome.Failed, Code: denial)).ToArray());
             else
             {
-                var persist = state.Policy.Mode != UnderstandingMode.Off && state.Policy.SaveCandidates;
+                if (persist && state.Policy.ExternalProcessing && clues is { Count: > 0 })
+                    SaveClues(db, tx, ticket, clues, originals ?? [], clueHeads ?? []);
                 foreach (var entry in prepared)
                 {
                     if (persist)
                     {
-                        if (entry.Effect != UnderstandingEffect.Pending && entry.ReplacesId is { } target)
+                        if (entry.Effect != UnderstandingEffect.Pending && entry.ReplacesId is { } target && target != entry.Id)
                         {
                             var old = existing.Single(e => e.Id == target);
-                            Save(db, tx, old with { Revision = old.Revision + 1, Life = UnderstandingLife.Retracted });
+                            Save(db, tx, old with { Revision = old.Revision + 1, Life = UnderstandingLife.Retracted,
+                                Status = old.Status is null ? null : UnderstandingStatus.Retracted, LastReviewedAt = _clock.GetUtcNow() });
                         }
                         Save(db, tx, entry);
                     }
                 }
                 receipt = new(ticket.Id, prepared.Select(e => new UnderstandingItemReceipt(e.Id,
                     !persist ? UnderstandingOutcome.ReviewedNotPersisted : e.Effect == UnderstandingEffect.Pending
-                        ? UnderstandingOutcome.ProposedPending : UnderstandingOutcome.Applied, e.Revision)).ToArray());
-                if (prepared.Count == 0) receipt = new(ticket.Id, [new("read-set", UnderstandingOutcome.NoChange)]);
+                        ? UnderstandingOutcome.ProposedPending : UnderstandingOutcome.Applied, e.Revision)).Concat(blocked).ToArray());
+                if (prepared.Count == 0 && blocked.Count == 0) receipt = new(ticket.Id, [new("read-set", UnderstandingOutcome.NoChange)]);
                 if (persist) WriteState(db, tx, ticket.Scope, state with { Revision = state.Revision + 1 });
             }
             WriteReceipt(db, tx, ticket.Scope, receipt);
@@ -166,7 +218,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             tx.Commit();
             // Preview payload lives only in this owner's memory, after the metadata receipt commits.
             if (denial is null && (state.Policy.Mode == UnderstandingMode.Off || !state.Policy.SaveCandidates))
-                foreach (var entry in prepared) _previews[PreviewKey(ticket.Scope, entry.Id)] = entry with { Effect = UnderstandingEffect.Pending };
+                foreach (var entry in prepared) _previews[PreviewKey(ticket.Scope, entry.Id)] = new(entry with { Effect = UnderstandingEffect.Pending }, evidenceErrors.GetValueOrDefault(entry.Id));
             Log(ticket.Id, "batch_committed", denial); return receipt;
         }
     }
@@ -177,7 +229,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
         {
             PrunePreviews();
             EnsureSchema(); using var db = database.Open();
-            var entries = ReadEntries(db, null, scope).Concat(_previews.Values.Where(e => e.Scope == scope && e.ObservedAt.AddMinutes(10) > _clock.GetUtcNow()));
+            var entries = ReadEntries(db, null, scope).Concat(_previews.Values.Select(p => p.Entry).Where(e => e.Scope == scope && e.ObservedAt.AddMinutes(10) > _clock.GetUtcNow()));
             return entries.Where(e => pending ? e.Effect == UnderstandingEffect.Pending && e.Review == UnderstandingReview.Unreviewed
                     : e.Effect != UnderstandingEffect.Pending || e.Review == UnderstandingReview.Rejected)
                 .Select(NormalizeLife).OrderByDescending(e => e.ObservedAt).ThenBy(e => e.Id, StringComparer.Ordinal).ToArray();
@@ -197,8 +249,11 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             var version = DataVersion(db);
             var entry = ReadEntries(db, null, scope).SingleOrDefault(e => e.Id == id);
             var preview = entry is null;
-            entry ??= _previews.GetValueOrDefault(PreviewKey(scope, id));
+            var previewValue = _previews.GetValueOrDefault(PreviewKey(scope, id));
+            entry ??= previewValue?.Entry;
             var denial = entry is null || entry.Revision != revision ? "UNDERSTANDING_STALE" : null;
+            if (denial is null && preview && action == UnderstandingAction.Approve && entry!.Origin is not null)
+                denial = previewValue?.EvidenceError ?? (previewValue is null ? "UNDERSTANDING_EVIDENCE_VALIDATION_REQUIRED" : null);
             var admitted = ReadState(db, null, scope);
             if (action is UnderstandingAction.Approve or UnderstandingAction.Restore or UnderstandingAction.Correct &&
                 (!admitted.Policy.Enabled || !admitted.Policy.ReadSources)) denial = "UNDERSTANDING_NOT_AUTHORIZED";
@@ -223,7 +278,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             if (action is UnderstandingAction.Approve or UnderstandingAction.Restore or UnderstandingAction.Correct && !state.Policy.ReadSources)
                 denial = "UNDERSTANDING_NOT_AUTHORIZED";
             UnderstandingEntry? replacementTarget = null;
-            if (entry?.Effect == UnderstandingEffect.Pending && entry.ReplacesId is { } targetId &&
+            if (entry?.Effect == UnderstandingEffect.Pending && entry.ReplacesId is { } targetId && targetId != entry.Id &&
                 action is UnderstandingAction.Approve or UnderstandingAction.Restore)
             {
                 replacementTarget = ReadEntries(db, tx, scope).SingleOrDefault(e => e.Id == targetId);
@@ -234,19 +289,24 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             if (denial is not null) receipt = new(operationId, [new(id, UnderstandingOutcome.Failed, Code: denial)]);
             else
             {
-                var next = entry! with { Revision = entry!.Revision + 1 };
+                var next = entry! with { Revision = entry!.Revision + 1, LastReviewedAt = _clock.GetUtcNow() };
                 next = action switch
                 {
                     UnderstandingAction.Approve or UnderstandingAction.Restore => next with { Review = UnderstandingReview.Approved,
                         Effect = UnderstandingEffect.Approved, Life = UnderstandingLife.Active, PolicyGeneration = state.Generation },
-                    UnderstandingAction.Reject => next with { Review = UnderstandingReview.Rejected, Life = UnderstandingLife.Retracted },
+                    UnderstandingAction.Reject => next with { Review = UnderstandingReview.Rejected, Life = UnderstandingLife.Retracted,
+                        Status = next.Status is null ? null : UnderstandingStatus.Retracted },
                     UnderstandingAction.Suspend => next with { Life = UnderstandingLife.Dormant },
                     UnderstandingAction.Resolve => next with { Life = UnderstandingLife.Resolved },
                     UnderstandingAction.Correct => next with { Correction = correction },
                     _ => next
                 };
+                if (entry!.ProposedOperation == UnderstandingWriteOperation.Retract &&
+                    action is UnderstandingAction.Approve or UnderstandingAction.Restore)
+                    next = next with { Life = UnderstandingLife.Retracted, Status = UnderstandingStatus.Retracted, ProposedOperation = null };
                 if (replacementTarget is not null)
-                    Save(db, tx, replacementTarget with { Revision = replacementTarget.Revision + 1, Life = UnderstandingLife.Retracted });
+                    Save(db, tx, replacementTarget with { Revision = replacementTarget.Revision + 1, Life = UnderstandingLife.Retracted,
+                        Status = replacementTarget.Status is null ? null : UnderstandingStatus.Retracted, LastReviewedAt = _clock.GetUtcNow() });
                 if (action == UnderstandingAction.Delete)
                 {
                     Execute(db, tx, "DELETE FROM understanding_entries WHERE scope=$scope AND entry_id=$id", ("$scope", scope.Key), ("$id", id));
@@ -262,7 +322,8 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             if (denial is null)
             {
                 var key = PreviewKey(scope, id);
-                if (preview && action == UnderstandingAction.Correct) _previews[key] = entry! with { Revision = revision + 1, Correction = correction };
+                if (preview && action == UnderstandingAction.Correct) _previews[key] = new(entry! with { Revision = revision + 1, Correction = correction },
+                    entry.Origin is null ? null : "UNDERSTANDING_EVIDENCE_VALIDATION_REQUIRED");
                 else _previews.Remove(key);
             }
             Log(operationId, "review_committed", denial); return receipt;
@@ -279,11 +340,14 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             if (!state.Policy.Enabled) return new(state.Revision, [], "UNDERSTANDING_DISABLED");
             if (!state.Policy.UseInDialogue || !state.Policy.ReadSources) return new(state.Revision, [], "UNDERSTANDING_NOT_AUTHORIZED");
             var entries = ReadEntries(db, null, scope).Select(NormalizeLife).Where(e =>
+                UnderstandingWritePolicy.IsProjectable(e) &&
                 e.Review != UnderstandingReview.Rejected && e.Effect != UnderstandingEffect.Pending &&
                 (e.Effect == UnderstandingEffect.Approved || historical || state.Policy.Mode == UnderstandingMode.Bounded && e.PolicyGeneration == state.Generation) &&
                 (historical ? e.Id == entryId && e.Life is UnderstandingLife.Active or UnderstandingLife.Dormant : e.Life == UnderstandingLife.Active) &&
                 (query.Length == 0 || e.Content.Contains(query, StringComparison.OrdinalIgnoreCase) || e.Correction?.Contains(query, StringComparison.OrdinalIgnoreCase) == true))
                 .OrderByDescending(e => e.ObservedAt).ThenBy(e => e.Id, StringComparer.Ordinal).Take(32).ToArray();
+            if (!historical) entries = entries.GroupBy(e => e.Domain).SelectMany(g => g.Take(g.Key switch
+                { UnderstandingDomain.Self => 3, UnderstandingDomain.Relationship => 2, UnderstandingDomain.User => 3, _ => 32 })).ToArray();
             foreach (var entry in entries)
                 if (CheckSources(scope, entry.Sources) is { } code) return new(state.Revision, [], code);
             // No stale projection is returned across another connection's commit.
@@ -302,7 +366,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
             p.Sources.Any(s => !ticket.Sources.Contains(s))) return "UNDERSTANDING_INVALID_PROPOSAL";
         if (p.Kind == UnderstandingKind.UserFact) return "UNDERSTANDING_MEMORY_OWNER_REQUIRED";
         if (p.Kind is UnderstandingKind.StableIdentity or UnderstandingKind.Permission) return "UNDERSTANDING_DEFINITION_FLOW_REQUIRED";
-        if (p.Sources.All(s => s.Kind == ConversationSourceKind.Assistant) &&
+        if (p.Origin is null && p.Sources.All(s => s.Kind == ConversationSourceKind.Assistant) &&
             (p.Domain != UnderstandingDomain.Self || p.Kind is not (UnderstandingKind.CurrentInterest or UnderstandingKind.CurrentStance)))
             return "UNDERSTANDING_INSUFFICIENT_ROOTS";
         if (existing.Any(e => e.Id == p.Id) || _previews.ContainsKey(PreviewKey(ticket.Scope, p.Id))) return "UNDERSTANDING_DUPLICATE_ID";

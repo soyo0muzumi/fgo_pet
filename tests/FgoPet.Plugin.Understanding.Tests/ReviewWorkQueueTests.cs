@@ -61,7 +61,7 @@ public sealed class ReviewWorkQueueTests
     }
     internal sealed class Timeline:IExperienceTimeline,IExperienceSourceReader
     {
-        public readonly List<ExperienceSourceHead> Heads=[];public bool Current=true;public int BodyReads;
+        public readonly List<ExperienceSourceHead> Heads=[];public bool Current=true;public int BodyReads;public Exception? ScanFailure;
         public void Add(int count,int scalars=10)
         {
             for(var i=0;i<count;i++){var n=Heads.Count+1;var source=new ConversationSourceSnapshot(new("c","mash","p"),"m"+n,new('A',64),
@@ -71,7 +71,7 @@ public sealed class ReviewWorkQueueTests
         public long Boundary(ConversationScope scope)=>Heads.Count;
         public long InputRevision(ConversationScope scope)=>Heads.Count;
         public ExperienceScanPage ScanHeads(ConversationScope scope,ExperienceScanCursor cursor,int maxItems=32,CancellationToken token=default)
-        {var items=Heads.Where(h=>h.Source.SourceRevision>cursor.Sequence).Take(maxItems).ToArray();return new(ExperienceSourceStatus.Available,items,
+        {if(ScanFailure is not null)throw ScanFailure;var items=Heads.Where(h=>h.Source.SourceRevision>cursor.Sequence).Take(maxItems).ToArray();return new(ExperienceSourceStatus.Available,items,
             items.Length==0?cursor:new(items[^1].Source.SourceRevision,items[^1].Source.MessageId),Heads.Any(h=>h.Source.SourceRevision>(items.LastOrDefault()?.Source.SourceRevision??cursor.Sequence)));}
         public ExperienceSourceRead Read(ConversationScope scope,HistoryAnchor anchor,CancellationToken token=default)
         {BodyReads++;var head=Heads.Single(h=>h.Anchor==anchor);return new(ExperienceSourceStatus.Available,new(scope,anchor,head.Source.Kind,new string('x',head.TotalScalars),head.Source.Fingerprint));}

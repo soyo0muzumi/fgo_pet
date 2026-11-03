@@ -14,15 +14,49 @@ public sealed class ReviewSchedulerTests
     private readonly ReviewWorkQueueTests.Timeline _sources=new();
     private readonly ReviewServiceTests.Models _models=new();
     private readonly Clock _clock=new();
+    private readonly List<UnderstandingDiagnostic> _diagnostics=[];
     private readonly UnderstandingService _owner;
     private readonly UnderstandingReviewScheduler _scheduler;
     public ReviewSchedulerTests()
     {
         var db=new RuntimeDatabase(Path.Combine(Path.GetTempPath(),"fgo-scheduler-"+Guid.NewGuid().ToString("N"),"runtime.db"),pooling:false);
         new RuntimeDatabaseMigrator(db).Migrate();_owner=new(db,_sources,_clock);
-        _scheduler=new(_owner,_sources,new(_owner,_sources,_sources,_models,new DialogueContextLifetime(),_clock),_clock);
+        _scheduler=new(_owner,_sources,new(_owner,_sources,_sources,_models,new DialogueContextLifetime(),_clock,_diagnostics.Add),_clock,_diagnostics.Add);
     }
     private void Enable()=>_owner.Configure(_scope,0,new(UnderstandingMode.Proposals,ReadSources:true,ExternalProcessing:true,SaveCandidates:true));
+    [Fact] public async Task Diagnostics_distinguish_no_scope_empty_queue_threshold_budget_and_cooldown_without_dispatch()
+    {
+        await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_NO_AUTOMATIC_SCOPE");
+        Enable();await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_QUEUE_EMPTY");
+        _sources.Add(8);await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_WAITING_THRESHOLD");
+        _models.Allowed=false;_clock.Advance(120);await _scheduler.PulseAsync();
+        Assert.Contains(_diagnostics,d=>d.Stage=="review_waiting_budget");
+        await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_ATTEMPT_COOLDOWN");
+        Assert.Equal(0,_models.Dispatches);Assert.Equal(8,_owner.WorkSummary(_scope).PendingSources);
+        Assert.All(_diagnostics,d=>Assert.Matches("^[A-F0-9]{16}$",d.Correlation));
+    }
+    [Fact] public async Task Scan_failure_records_exact_stage_without_exception_payload_and_recovery_still_works()
+    {
+        Enable();_sources.ScanFailure=new InvalidOperationException("private prompt and credential must not appear");
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>_scheduler.PulseAsync());
+        Assert.Contains(_diagnostics,d=>d.Stage=="source_scan_failed"&&d.Code=="UNDERSTANDING_WORKER_FAILED");
+        Assert.DoesNotContain(_diagnostics,d=>d.Code?.Contains("private")==true);
+        _sources.ScanFailure=null;_sources.Add(2);_clock.Advance(120);await _scheduler.PulseAsync();
+        Assert.Equal(1,_models.Dispatches);Assert.Contains(_diagnostics,d=>d.Stage=="review_completed");
+    }
+    [Fact] public async Task Busy_and_stopped_pulses_have_reasons_and_diagnostic_failure_cannot_start_a_model()
+    {
+        Enable();_sources.Add(2);_clock.Advance(120);_models.WaitForCancellation=true;
+        var pulse=_scheduler.PulseAsync();await _models.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_PULSE_BUSY");
+        await _scheduler.DisposeAsync();await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>pulse);
+        await _scheduler.PulseAsync();Assert.Contains(_diagnostics,d=>d.Code=="UNDERSTANDING_WORKER_STOPPED");
+        _models.Allowed=false;
+        await using var other=new UnderstandingReviewScheduler(_owner,_sources,
+            new(_owner,_sources,_sources,_models,new DialogueContextLifetime(),_clock,_=>throw new IOException("private")),
+            _clock,_=>throw new IOException("private"));
+        _clock.Advance(120);await other.PulseAsync();Assert.Equal(0,_models.Dispatches);
+    }
     [Fact] public async Task A_large_backlog_does_not_dispatch_again_on_every_five_second_tick()
     {
         Enable();_sources.Add(20);_clock.Advance(120);await _scheduler.PulseAsync();

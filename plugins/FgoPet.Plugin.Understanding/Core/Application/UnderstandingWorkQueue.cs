@@ -10,7 +10,17 @@ public sealed partial class UnderstandingService
     private static bool Automatic(UnderstandingState state)=>state.Policy.Enabled&&state.Policy.ReadSources&&state.Policy.SaveCandidates&&state.Policy.Mode!=UnderstandingMode.Off;
     public IReadOnlyList<ConversationScope> AutomaticScopes()
     {
-        lock(_gate){EnsureSchema();using var db=database.Open();return Scopes(db,null).Where(s=>Automatic(ReadState(db,null,s))).ToArray();}
+        lock(_gate)
+        {
+            EnsureSchema();using var db=database.Open();
+            return Scopes(db,null).Where(s=>
+            {
+                var state=ReadState(db,null,s);var automatic=Automatic(state);
+                if(!automatic)Log(s.Key,"automatic_scope_skipped",!state.Policy.Enabled?"UNDERSTANDING_DISABLED":
+                    state.Policy.Mode==UnderstandingMode.Off?"UNDERSTANDING_OFF":!state.Policy.ReadSources?"UNDERSTANDING_READ_DENIED":"UNDERSTANDING_SAVE_DENIED");
+                return automatic;
+            }).ToArray();
+        }
     }
     public bool Accumulate(IExperienceTimeline timeline,ConversationScope scope,int capacity=256,CancellationToken token=default)
     {
@@ -18,11 +28,11 @@ public sealed partial class UnderstandingService
         lock(_gate)
         {
             token.ThrowIfCancellationRequested();EnsureSchema();using var db=database.Open();var state=ReadState(db,null,scope);
-            if(!Automatic(state))return false;
+            if(!Automatic(state)){Log(scope.Key,"source_scan_skipped","UNDERSTANDING_AUTOMATION_DISABLED");return false;}
             Execute(db,null,"UPDATE understanding_work_items SET state=7,batch_id=NULL WHERE scope=$scope AND state IN (0,1) AND json_extract(head_json,'$.Source.SourceRevision')<=$since",
                 ("$scope",scope.Key),("$since",state.AutoSince));
             using var count=Command(db,null,"SELECT COUNT(*) FROM understanding_work_items WHERE scope=$scope AND state IN (0,1)",("$scope",scope.Key));
-            var free=capacity-checked((int)(long)count.ExecuteScalar()!);if(free<=0)return false;
+            var free=capacity-checked((int)(long)count.ExecuteScalar()!);if(free<=0){Log(scope.Key,"source_scan_skipped","UNDERSTANDING_QUEUE_CAPACITY");return false;}
             using var previous=Command(db,null,"SELECT cursor_json FROM understanding_work_cursors WHERE scope=$scope",("$scope",scope.Key));
             var cursor=previous.ExecuteScalar() is string json?JsonSerializer.Deserialize<ExperienceScanCursor>(json)!:new(state.AutoSince,"\uffff");
             if(cursor.Sequence<state.AutoSince)cursor=new(state.AutoSince,"\uffff");
@@ -30,7 +40,8 @@ public sealed partial class UnderstandingService
             var page=timeline.ScanHeads(scope,cursor,Math.Min(32,free),token);
             if(page.Status!=ExperienceSourceStatus.Available)throw new InvalidOperationException("UNDERSTANDING_SOURCE_UNAVAILABLE");
             using var tx=db.BeginTransaction();var current=ReadState(db,tx,scope);
-            if(version!=DataVersion(db,tx)||current.Generation!=state.Generation||current.Revision!=state.Revision)return false;
+            if(version!=DataVersion(db,tx)||current.Generation!=state.Generation||current.Revision!=state.Revision)
+            {Log(scope.Key,"source_scan_skipped","UNDERSTANDING_SCAN_CHANGED");return false;}
             foreach(var head in page.Items)
             {
                 if(head.Source.SourceRevision<=state.AutoSince||head.Source.Scope.RoleId!=scope.ServantId||head.Source.Scope.ProjectId!=scope.ProjectId||head.TotalScalars is <1 or >12000)
@@ -40,7 +51,7 @@ public sealed partial class UnderstandingService
             }
             Execute(db,tx,"INSERT INTO understanding_work_cursors VALUES($scope,$cursor) ON CONFLICT(scope) DO UPDATE SET cursor_json=$cursor",
                 ("$scope",scope.Key),("$cursor",JsonSerializer.Serialize(page.Cursor)));
-            token.ThrowIfCancellationRequested();tx.Commit();Log(scope.Key,"work_range_registered");return page.Cursor!=cursor;
+            token.ThrowIfCancellationRequested();tx.Commit();Log(scope.Key,"work_range_registered",page.Cursor==cursor?"UNDERSTANDING_SCAN_CAUGHT_UP":null);return page.Cursor!=cursor;
         }
     }
     public ReviewWorkSummary WorkSummary(ConversationScope scope)
@@ -64,9 +75,9 @@ public sealed partial class UnderstandingService
         lock(_gate)
         {
             EnsureSchema();using var db=database.Open();using var tx=db.BeginTransaction();var state=ReadState(db,tx,scope);
-            if(!Automatic(state)||!state.Policy.ExternalProcessing)return null;
+            if(!Automatic(state)||!state.Policy.ExternalProcessing){Log(scope.Key,"batch_claim_skipped","UNDERSTANDING_POLICY_DENIED");return null;}
             using(var running=Command(db,tx,"SELECT COUNT(*) FROM understanding_work_batches WHERE scope=$scope AND state=1",("$scope",scope.Key)))
-                if((long)running.ExecuteScalar()!>0)return null;
+                if((long)running.ExecuteScalar()!>0){Log(scope.Key,"batch_claim_skipped","UNDERSTANDING_BATCH_RUNNING");return null;}
             Execute(db,tx,"UPDATE understanding_work_items SET state=6 WHERE scope=$scope AND batch_id IN (SELECT b.id FROM understanding_work_batches b WHERE b.scope=$scope AND b.state=0 AND json_extract(b.batch_json,'$.Attempts')>=2 AND NOT EXISTS(SELECT 1 FROM understanding_receipts r WHERE r.scope=b.scope AND r.operation_id=b.id))",("$scope",scope.Key));
             Execute(db,tx,"UPDATE understanding_work_batches SET state=6,code='UNDERSTANDING_RETRY_LIMIT' WHERE scope=$scope AND state=0 AND json_extract(batch_json,'$.Attempts')>=2 AND NOT EXISTS(SELECT 1 FROM understanding_receipts r WHERE r.scope=understanding_work_batches.scope AND r.operation_id=understanding_work_batches.id)",("$scope",scope.Key));
             ReviewWorkBatch? batch=null;
@@ -90,7 +101,7 @@ public sealed partial class UnderstandingService
                     var start=r.GetInt32(2);var take=Math.Min(remaining,head.TotalScalars-start);
                     items.Add(new(r.GetString(0),head,start,take));remaining-=take;if(items.Count==8||remaining==0)break;
                 }
-                if(items.Count==0){tx.Commit();return null;}
+                if(items.Count==0){tx.Commit();Log(scope.Key,"batch_claim_skipped","UNDERSTANDING_NO_ELIGIBLE_WORK");return null;}
                 var id="work-"+HashId(JsonSerializer.Serialize(new{scope=scope.Key,state.Generation,inputRevision,items}))[..48];
                 batch=new(id,scope,state.Generation,false,items,InputRevision:inputRevision);
             }
