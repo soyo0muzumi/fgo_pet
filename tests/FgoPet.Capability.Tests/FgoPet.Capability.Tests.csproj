@@ -8,6 +8,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj" />
+    <ProjectReference Include="../../plugins/FgoPet.Plugin.SocialSources/FgoPet.Plugin.SocialSources.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Browser/FgoPet.Plugin.Browser.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj" />
     <ProjectReference Include="../../plugins/FgoPet.Plugin.Skills/FgoPet.Plugin.Skills.csproj" />

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+
+- 新增三个只读社交信息源工具：`social.bilibili`（关键词搜索与视频详情）、`social.xiaohongshu`（笔记发现与详情）、`social.xiaoheihe`（帖子发现与详情）。
+- 每个平台使用独立本机授权文件（`social-<platform>.json`），任一份授权都不能用于其他平台；三个平台默认全部关闭，仅显式启用后发起请求。
+- `social.bilibili` 默认关闭：官方开放平台不提供内容检索接口且不接纳个人开发者，匿名接口亦未获平台条款与 robots 授权；启用属运营方明确决定，分发版本应保持关闭。
+- 新增可选的本机登录态搜索：`social.bilibili.search`、`social.xiaohongshu.search` 与 `social.xiaoheihe.search`，各自独立授权与连接，默认关闭。会话只存 Windows Credential Manager，不进入设置文件、模型输出或日志；缺密钥、已过期、授权变更分别返回独立安全错误码且不自动重试。
+- 小红书与小黑盒的 `query` 模式不调用平台搜索接口（前者匿名永久拒绝、后者被验证码挡住），改为通过公开搜索索引做 `site:` 限定发现；结果标注 `coverage=search_index_discovery`，查询会发送给该索引服务，需用 `reference` 读取平台自身字段。
+- 请求统一经 HTTP 边界发出（禁重定向、禁 Cookie、禁自动解压、20 秒总预算、512 KiB 响应上限），无重试、无后台轮询；结果携带快照 SHA-256、采集时间与覆盖范围声明。
 - 新增 Live2D 视线与头部悬停反应、聊天思考、情绪动作、闲置入睡和点击唤醒；短情绪动作结束后参数平滑回到默认值。
 - 新增基于实际音频播放的 Live2D 口型同步，并修复人物抬头裁切和右屏幕边缘附着面板抖动。
 

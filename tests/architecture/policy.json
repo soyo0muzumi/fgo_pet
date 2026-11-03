@@ -56,6 +56,12 @@
       "role": "production"
     },
     {
+      "path": "plugins/FgoPet.Plugin.SocialSources/FgoPet.Plugin.SocialSources.csproj",
+      "module": "social-sources",
+      "layer": "application",
+      "role": "production"
+    },
+    {
       "path": "plugins/FgoPet.Plugin.DesktopContext/FgoPet.Plugin.DesktopContext.csproj",
       "module": "desktop-context",
       "layer": "application",
@@ -519,6 +525,7 @@
       "fromModules": [
         "qq",
         "web-search",
+        "social-sources",
         "desktop-context",
         "browser",
         "shell",
@@ -637,6 +644,7 @@
         "skills",
         "browser",
         "web-search",
+        "social-sources",
         "desktop-context",
         "understanding",
         "reminders"
