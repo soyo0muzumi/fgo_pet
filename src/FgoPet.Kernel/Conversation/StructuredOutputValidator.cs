@@ -18,6 +18,10 @@ public sealed record ValidatedChatOutput(
 public static class StructuredOutputValidator
 {
     public const string InvalidResponseMessage = "无法解析模型回复，请重试。";
+    public const string OrdinaryOutputContract =
+        "普通回复采用 JSON 对象，text 为用户可读正文，emotion 为 neutral、happy、excited、shy、concerned、sad、surprised 或 angry；不确定时使用 neutral。不使用 Markdown 代码围栏。";
+    public const string OrdinaryToolStepOutputContract =
+        "调用工具时仅生成合法的工具参数，不输出 JSON 正文；直接回复用户时，普通回复采用 JSON 对象，text 为用户可读正文，emotion 为 neutral、happy、excited、shy、concerned、sad、surprised 或 angry；不确定时使用 neutral。不使用 Markdown 代码围栏。";
     public const string FinalStepInstructions = """
         Return exactly one complete JSON object: {"text":"reply","emotion":"neutral"}.
         Style/no internal labels apply INSIDE text; never omit JSON.

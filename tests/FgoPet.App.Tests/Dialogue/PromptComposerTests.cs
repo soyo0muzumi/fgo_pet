@@ -2,6 +2,7 @@ using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
+using FgoPet.Extensibility;
 using Xunit;
 
 namespace FgoPet.App.Tests.Dialogue;
@@ -324,5 +325,151 @@ public sealed class PromptComposerTests
 
         var error = Assert.Throws<PromptBudgetException>(() => Compose(context));
         Assert.Equal(PromptBudgetFailure.InsufficientContext, error.Failure);
+    }
+
+    [Fact]
+    public void Compose_places_persona_in_identity_slot_before_capability_context_and_late_policy()
+    {
+        var key = new ContentContextKey("mash_kyrielight", "official.mash", "1", "casual", "1", "1");
+        var now = DateTimeOffset.UtcNow;
+        var recalled = new HistoryHit(
+            new HistoryAnchor("conv-old", "msg-old", 1, now),
+            "旧对话",
+            "历史片段内容",
+            false);
+        var context = new PromptContext(
+            key,
+            new PersonaBundle("mash_kyrielight", "official.mash", "1", "1", "核心人格定义", [new PersonaAppearanceOverlay("casual", "休闲装扮")]),
+            [new KnowledgeEntry("profile", "mash_kyrielight", "资料", "角色档案摘要", "approved")],
+            [
+                new ConversationPromptBlock("cap_inst", "能力规则说明", ConversationPromptBlockKind.Instruction),
+                new ConversationPromptBlock("cap_data", "插件背景数据", ConversationPromptBlockKind.Data),
+            ],
+            "专注状态",
+            [new PromptMessage(ChatMessageRole.User, "上一轮输入")],
+            "本轮输入",
+            new ConversationRequestContext("proj-1", "测试项目", [], "", "",
+                new SelectedWindowContent("窗口标题", "Code.exe", "窗口正文", now, false)),
+            "待确认草稿",
+            [recalled],
+            RecallStatus.Found,
+            new ConversationSummary("sum-1", "conv-1", "mash_kyrielight", "早期摘要内容", 1, "msg-0", key, now, now));
+
+        var prompt = new PromptComposer(null, null, ExpressionMode.Full).Compose(context, Route, Budget);
+        var texts = prompt.Messages.Select(m => m.Text).ToList();
+
+        int FindIndex(string marker) => texts.FindIndex(t => t.Contains(marker, StringComparison.Ordinal));
+
+        var safetyIndex = FindIndex("安全规则：");
+        var boundariesIndex = FindIndex("产品能力边界：");
+        var personaCoreIndex = FindIndex("source=\"servant_core\"");
+        var personaAppearanceIndex = FindIndex("source=\"appearance:casual\"");
+        var recallPolicyIndex = FindIndex("历史召回默认仅作静默背景参考");
+        var capabilityInstIndex = FindIndex("能力规则说明");
+        var pendingDraftIndex = FindIndex("source=\"pending_capability_state\"");
+        var selectedWindowIndex = FindIndex("source=\"selected_window_content\"");
+        var summaryIndex = FindIndex("source=\"conversation_summary\"");
+        var recalledItemIndex = FindIndex("source=\"recalled:conv-old:msg-old\"");
+        var knowledgeIndex = FindIndex("source=\"knowledge:profile:profile\"");
+        var runtimeStateIndex = FindIndex("source=\"runtime_state\"");
+        var sessionContextIndex = FindIndex("source=\"session_context\"");
+        var pluginDataIndex = FindIndex("source=\"cap_data\"");
+        var expressionIndex = FindIndex("Expression Layer v0.2");
+        var outputContractIndex = FindIndex("普通回复采用 JSON 对象");
+        var historyIndex = FindIndex("source=\"history:1\"");
+        var currentUserIndex = FindIndex("<current_user_message");
+
+        Assert.True(safetyIndex < boundariesIndex);
+        Assert.True(boundariesIndex < personaCoreIndex);
+        Assert.True(personaCoreIndex < personaAppearanceIndex);
+        Assert.True(personaAppearanceIndex < recallPolicyIndex);
+        Assert.True(recallPolicyIndex < capabilityInstIndex);
+        Assert.True(capabilityInstIndex < pendingDraftIndex);
+        Assert.True(pendingDraftIndex < selectedWindowIndex);
+        Assert.True(selectedWindowIndex < summaryIndex);
+        Assert.True(summaryIndex < recalledItemIndex);
+        Assert.True(recalledItemIndex < knowledgeIndex);
+        Assert.True(knowledgeIndex < runtimeStateIndex);
+        Assert.True(runtimeStateIndex < sessionContextIndex);
+        Assert.True(sessionContextIndex < pluginDataIndex);
+        Assert.True(pluginDataIndex < expressionIndex);
+        Assert.True(expressionIndex < outputContractIndex);
+        Assert.True(outputContractIndex < historyIndex);
+        Assert.True(historyIndex < currentUserIndex);
+    }
+
+    [Fact]
+    public void Compose_selects_phase_specific_output_contract_and_records_manifest()
+    {
+        var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
+        var baseContext = new PromptContext(key, new PersonaBundle("800100", "test", "1", "1", "核心人格", []),
+            [], [], "", [], "请帮忙");
+        var composer = new PromptComposer();
+
+        var ordinaryChat = composer.Compose(baseContext, Route, Budget);
+        Assert.NotNull(ordinaryChat.Manifest);
+        Assert.Equal(PromptPhase.OrdinaryChat, ordinaryChat.Manifest!.Phase);
+        Assert.Contains(ordinaryChat.Manifest.Blocks, b => b.Id == "output.ordinary_response" && b.Outcome == PromptBlockOutcome.Included);
+        Assert.Contains(ordinaryChat.Manifest.Blocks, b => b.Id == "output.ordinary_tool_step" && b.Outcome == PromptBlockOutcome.DroppedByPhase);
+
+        var ordinaryTool = composer.Compose(baseContext, Route, Budget,
+            [TodoToolContracts.CreateSubmitTodoProposals().ToChatDefinition()], "auto");
+        Assert.NotNull(ordinaryTool.Manifest);
+        Assert.Equal(PromptPhase.OrdinaryToolStep, ordinaryTool.Manifest!.Phase);
+        Assert.Contains(ordinaryTool.Manifest.Blocks, b => b.Id == "output.ordinary_tool_step" && b.Outcome == PromptBlockOutcome.Included);
+        Assert.Contains(ordinaryTool.Manifest.Blocks, b => b.Id == "output.ordinary_response" && b.Outcome == PromptBlockOutcome.DroppedByPhase);
+        Assert.Contains(ordinaryTool.Messages, m => m.Text == StructuredOutputValidator.OrdinaryToolStepOutputContract);
+
+        var nativeStep = composer.Compose(baseContext with { Phase = PromptPhase.NativeToolStep }, Route, Budget, nativeAgent: true);
+        Assert.NotNull(nativeStep.Manifest);
+        Assert.Equal(PromptPhase.NativeToolStep, nativeStep.Manifest!.Phase);
+        Assert.Contains(nativeStep.Manifest.Blocks, b => b.Id == "output.ordinary_response" && b.Outcome == PromptBlockOutcome.DroppedByPhase);
+        Assert.Contains(nativeStep.Manifest.Blocks, b => b.Id == "output.ordinary_tool_step" && b.Outcome == PromptBlockOutcome.DroppedByPhase);
+    }
+
+    [Fact]
+    public void Compose_gates_recall_challenge_policy_strictly_by_state_without_keyword_heuristics()
+    {
+        var key = new ContentContextKey("800100", "test", "1", "casual", "1", "1");
+        var hit = new HistoryHit(
+            new HistoryAnchor("conv-old", "msg-old", 1, DateTimeOffset.UtcNow),
+            "旧对话",
+            "之前讨论过 TypeScript",
+            false);
+        var composer = new PromptComposer();
+
+        // Contains keywords "之前", "刚才", "为什么问", "哪件事", but RecallPolicyState is None: must NOT trigger challenge policy.
+        var normalRecallContext = new PromptContext(
+            key,
+            new PersonaBundle("800100", "test", "1", "1", "核心人格", []),
+            [], [], "",
+            [new PromptMessage(ChatMessageRole.Assistant, "你想继续哪一件事？")],
+            "之前刚才为什么问哪件事？",
+            recalledHistory: [hit],
+            recallStatus: RecallStatus.Found)
+        {
+            RecallPolicyState = RecallPolicyState.None,
+        };
+
+        var normalPrompt = composer.Compose(normalRecallContext, Route, Budget);
+        Assert.Contains(normalPrompt.Manifest!.Blocks, b => b.Id == "recall.evidence_contract" && b.Outcome == PromptBlockOutcome.Included);
+        Assert.Contains(normalPrompt.Manifest.Blocks, b => b.Id == "recall.challenge_policy" && b.Outcome == PromptBlockOutcome.DroppedByState);
+        Assert.DoesNotContain(normalPrompt.Messages, m => m.Text.Contains("用户询问系统为何追问历史时", StringComparison.Ordinal));
+
+        // Explicit state signal activates recall.challenge_policy even without keywords in UserMessage.
+        var challengeContext = new PromptContext(
+            key,
+            new PersonaBundle("800100", "test", "1", "1", "核心人格", []),
+            [], [], "",
+            [],
+            "不是那个项目，我说的是另一个。",
+            recalledHistory: [hit],
+            recallStatus: RecallStatus.Found)
+        {
+            RecallPolicyState = RecallPolicyState.UserChallengedRecall,
+        };
+        var challengePrompt = composer.Compose(challengeContext, Route, Budget);
+        Assert.Contains(challengePrompt.Manifest!.Blocks, b => b.Id == "recall.challenge_policy" && b.Outcome == PromptBlockOutcome.Included);
+        Assert.Contains(challengePrompt.Messages, m => m.Text.Contains("用户询问系统为何追问历史时", StringComparison.Ordinal));
     }
 }

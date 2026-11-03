@@ -6,7 +6,7 @@
   "persona_version": "1.0.0",
   "core": {
     "path": "core_persona.json",
-    "sha256": "A1EDBF6C82D7B55A09D4F4C6D337D50E016C88FE3CB921D6F4B97CD37115EBF0"
+    "sha256": "74AD2394C1274DF98D6931DC0963C701D55D97CFECBB3415368755A8EA92E10F"
   },
   "appearances": {}
 }

@@ -160,7 +160,145 @@ public sealed record PromptContext
     public RecallStatus RecallStatus { get; }
     public ConversationSummary? ConversationSummary { get; }
     public ResponseIntent? ResponseIntent { get; init; }
+    public RecallPolicyState RecallPolicyState { get; init; } = RecallPolicyState.None;
+    public PromptPhase? Phase { get; init; }
 }
+
+[Flags]
+public enum RecallPolicyState
+{
+    None = 0,
+    PriorClarificationUnresolved = 1 << 0,
+    CandidateConflict = 1 << 1,
+    UserChallengedRecall = 1 << 2,
+}
+
+public enum PromptPlacement
+{
+    HostPrimacy = 0,
+    Identity = 10,
+    ConversationPolicy = 20,
+    CapabilityPolicy = 30,
+    ContextEvidence = 40,
+    LatePolicy = 50,
+    TurnTail = 60,
+}
+
+[Flags]
+public enum PromptPhase
+{
+    None = 0,
+    OrdinaryChat = 1 << 0,
+    OrdinaryToolStep = 1 << 1,
+    NativeToolStep = 1 << 2,
+    NativeFinalOutput = 1 << 3,
+
+    AllOrdinary = OrdinaryChat | OrdinaryToolStep,
+    AllNative = NativeToolStep | NativeFinalOutput,
+    All = AllOrdinary | AllNative,
+}
+
+public enum PhaseRequirement
+{
+    Disabled = 0,
+    Optional = 1,
+    Compact = 2,
+    Required = 3,
+}
+
+public enum PromptBudgetTier
+{
+    Core = 0,
+    ExplicitAttachment = 10,
+    TaskRelevant = 20,
+    Supporting = 30,
+    Enhancement = 40,
+}
+
+public enum PromptEvictionPolicy
+{
+    Never = 0,
+    PrefixTruncate = 1,
+    WholeDrop = 2,
+    SoftDrop = 3,
+}
+
+public enum PromptAuthority
+{
+    Host = 0,
+    Capability = 1,
+    Persona = 2,
+    User = 3,
+    Evidence = 4,
+}
+
+public enum PromptDataTrust
+{
+    TrustedSystemText = 0,
+    PersonaEnvelope = 1,
+    CurrentUserEnvelope = 2,
+    UntrustedDataEnvelope = 3,
+    UntrustedChunkedData = 4,
+}
+
+public sealed record PromptBlock(
+    string Id,
+    string Source,
+    string Owner,
+    PromptPlacement Placement,
+    int OrderWithinPlacement,
+    PromptPhase ActivePhases,
+    PhaseRequirement BaseRequirement,
+    PromptBudgetTier BudgetTier,
+    int BudgetPriority,
+    PromptEvictionPolicy EvictionPolicy,
+    PromptAuthority Authority,
+    PromptDataTrust DataTrust,
+    string Content,
+    ChatMessageRole Role = ChatMessageRole.System,
+    PromptBudgetFailure OverflowFailure = PromptBudgetFailure.InsufficientContext,
+    PromptPhase CompactPhases = PromptPhase.None,
+    string? CompactContent = null,
+    bool IsStateActive = true)
+{
+    public PhaseRequirement ResolveRequirement(PromptPhase phase) =>
+        (ActivePhases & phase) == 0 ? PhaseRequirement.Disabled :
+        (CompactPhases & phase) != 0 ? PhaseRequirement.Compact :
+        BaseRequirement;
+
+    public string ResolveContent(PromptPhase phase) =>
+        (CompactPhases & phase) != 0 && !string.IsNullOrWhiteSpace(CompactContent)
+            ? CompactContent
+            : Content;
+}
+
+public enum PromptBlockOutcome
+{
+    Included,
+    Compacted,
+    Truncated,
+    DroppedByPhase,
+    DroppedByState,
+    DroppedByBudget,
+}
+
+public sealed record PromptBlockTrace(
+    string Id,
+    string Source,
+    PromptPlacement Placement,
+    PromptBudgetTier Tier,
+    PhaseRequirement Requirement,
+    PromptBlockOutcome Outcome,
+    int OriginalChars,
+    int IncludedChars,
+    int EstimatedTokenDelta);
+
+public sealed record PromptManifest(
+    PromptPhase Phase,
+    IReadOnlyList<PromptBlockTrace> Blocks,
+    int TotalInputTokens,
+    int InputTokenBudget,
+    bool FitsBudget);
 
 public enum PromptAssemblyStatus
 {
@@ -177,7 +315,8 @@ public sealed record ComposedPrompt
         TokenMeasurement usage,
         PromptAssemblyStatus status,
         int maxOutputTokens,
-        bool fitsBudget)
+        bool fitsBudget,
+        PromptManifest? manifest = null)
     {
         ContentContext = contentContext ?? throw new ArgumentNullException(nameof(contentContext));
         Messages = messages is null ? throw new ArgumentNullException(nameof(messages)) : messages.ToArray();
@@ -185,6 +324,7 @@ public sealed record ComposedPrompt
         Status = status;
         MaxOutputTokens = maxOutputTokens;
         FitsBudget = fitsBudget;
+        Manifest = manifest;
     }
 
     public ContentContextKey ContentContext { get; }
@@ -194,4 +334,5 @@ public sealed record ComposedPrompt
     public int MaxOutputTokens { get; }
     public bool FitsBudget { get; }
     public PromptAssemblyStatus Status { get; }
+    public PromptManifest? Manifest { get; }
 }
