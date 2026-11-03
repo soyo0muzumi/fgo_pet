@@ -10,6 +10,18 @@
 
 ## 构建与测试
 
+桌面应用构建会自动携带 Live2D 运行资源。首次构建前，用本机已准备的官方 Cubism Web SDK 和 esbuild 生成一次运行目录（生成物保持在 Git 忽略的 `artifacts/` 中）：
+
+```powershell
+python tools/scripts/prepare_live2d_runtime.py --sdk <CubismSdkForWeb目录> --esbuild <esbuild可执行文件> --output artifacts/live2d-runtime
+```
+
+普通 `dotnet build`、IDE 构建与 `dotnet publish` 默认读取 `artifacts/live2d-runtime`，也支持环境变量 `FGOPET_LIVE2D_RUNTIME`；显式 `-p:FgoPetLive2DRuntime=<目录>` 的优先级最高。项目会自动复制脚本、着色器和许可文件，缺少必需资源时以 `FGOPET_LIVE2D_MISSING` 终止，不再静默生成只有静态立绘的应用。不要将构建输出中的 `Live2D/` 当作输入目录。
+
+修改 `plugins/providers/FgoPet.Portrait.Live2D/Runtime/*.mjs` 或运行目录生成脚本后，需要用生成脚本输出到一个新的目录，再通过上述属性或环境变量选择它；生成脚本不会覆盖已有目录。运行资源不会从网络自动下载，构建也不会自动接受 SDK 许可。
+
+没有 SDK 资源的 CI 或仅验证静态回退的测试构建，可明确传入 `-p:FgoPetRequireLive2D=false`。这会输出“static-portrait test build”提示，只允许普通测试构建缺省运行目录；显式指定但不完整的目录仍会失败，桌面应用发布始终要求完整资源。此测试例外不代表 Live2D 渲染验收通过。
+
 ```powershell
 dotnet build FgoPet.sln -c Release -warnaserror
 dotnet test FgoPet.sln -c Release --no-build -m:1

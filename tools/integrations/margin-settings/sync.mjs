@@ -12,6 +12,13 @@ const targets = {
   'pages/theme.js': 'plugins/FgoPet.Plugin.Content/Desktop/Desktop/ui/settings/theme/theme.js',
   'pages/model-connection.js': 'plugins/FgoPet.Plugin.Dialogue/Desktop/ui/settings/model-connection/model-connection.js',
 };
+// The current UI replaced these generated entries with owner-maintained modules.
+// Guard the whole operation before copying even one file.
+for (const relative of Object.values(targets)) {
+  const installed = await readFile(path.join(repo, relative), 'utf8');
+  if (!installed.includes('../margin/assets/'))
+    throw new Error('Legacy Settings sync refused: active owner-maintained modules must not be overwritten.');
+}
 const manifest = [];
 async function copy(relative) {
   const source = path.join(build, relative);

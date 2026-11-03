@@ -1,11 +1,13 @@
-# Margin Settings frontend
+# Legacy Margin Settings frontend
 
-Editable React sources for the `Theme` and `ModelConnection` modules hosted by the
-existing Settings root. Adapted from the supplied Margin 0.4.0 migration bundle.
+Retained React sources from the earlier `Theme` and `ModelConnection` integration.
+The active application now uses the owner-maintained modules under Character and
+Dialogue, with the shared Settings shell styles. This legacy tool is no longer a
+production build step; `sync` refuses to overwrite the replacement modules.
 The browser-only preview pages, sample data, Chat resources and character artwork
 are not part of this integration.
 
-## Build and update
+## Legacy build and checks
 
 Requires Node.js 22.18+ and npm. From this directory:
 
