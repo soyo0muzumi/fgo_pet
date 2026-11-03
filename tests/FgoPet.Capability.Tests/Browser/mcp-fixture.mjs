@@ -11,7 +11,7 @@ input.on('line', line => {
   } else if (request.method === 'notifications/initialized') {
     initialized = true;
   } else if (request.method === 'tools/list' && initialized) {
-    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot', 'take_screenshot'].map(name => ({ name })) });
+    reply(request.id, { tools: ['list_pages', 'new_page', 'take_snapshot', 'take_screenshot', 'click', 'fill'].map(name => ({ name })) });
   } else if (request.method === 'tools/call' && initialized) {
     sequence++;
     const mode = request.params.arguments.fixtureMode;
@@ -29,6 +29,11 @@ input.on('line', line => {
     const profileIndex = process.argv.indexOf('--user-data-dir');
     const explicitProfile = profileIndex >= 0 && process.argv[profileIndex + 1] === request.params.arguments.expectedDirectory;
     const visualFlags = ['--screenshot-max-width=1024', '--screenshot-max-height=1024', '--screenshot-format=jpeg', '--screenshot-quality=60'].every(flag => process.argv.includes(flag));
-    reply(request.id, { sequence, safeFlags, explicitProfile, visualFlags, scratch: process.env.TMPDIR });
+    const interaction = ['click', 'fill'].includes(request.params.name) ? request.params.name : null;
+    const args = request.params.arguments;
+    const validInteraction = interaction && args.pageId === 7 && args.uid === '1_3' && args.includeSnapshot === false
+      && Object.keys(args).sort().join(',') === (interaction === 'fill' ? 'includeSnapshot,pageId,uid,value' : 'includeSnapshot,pageId,uid')
+      && (interaction !== 'fill' || args.value === '合成文字😀\n第二行');
+    reply(request.id, { sequence, safeFlags, explicitProfile, visualFlags, scratch: process.env.TMPDIR, interaction, validInteraction });
   }
 });

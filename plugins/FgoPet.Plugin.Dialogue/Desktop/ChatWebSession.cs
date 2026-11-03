@@ -251,6 +251,7 @@ internal sealed class ChatWebSession : IChatWebSession
 
         if (action == "removeContextChip")
         {
+            if (_conversation.IsStreaming || _conversation.HasPendingRun) return Failure("CHAT_NOT_AVAILABLE");
             var chip = _conversation.SessionContext.Chips.FirstOrDefault(item => item.Id == command.TargetId);
             if (chip is null || !_conversation.SessionContext.TryRemove(chip.Id)) return Failure("CHAT_TARGET_INVALID");
             return Success(BuildSnapshot());
@@ -293,8 +294,7 @@ internal sealed class ChatWebSession : IChatWebSession
         "openSpeechSettings" => availability.CanOpenSpeechSettings,
         "openModelSettings" => availability.CanOpenModelSettings
             && (_conversation.CanOpenModelSettings || _conversation.IsConfigurationRequired),
-        "refreshProjects" => availability.CanRefreshProjects && !_conversation.IsStreaming,
-        "selectProject" => !_conversation.IsStreaming,
+        "refreshProjects" or "selectProject" => false,
         "selectModel" => !_conversation.IsStreaming,
         "refreshModels" => !_conversation.IsStreaming && !_conversation.HasPendingRun,
         "chooseWindowContext" => availability.CanChooseWindowContext && !_conversation.IsStreaming && !_conversation.HasPendingRun,
@@ -303,9 +303,8 @@ internal sealed class ChatWebSession : IChatWebSession
         "clearWindowContext" => availability.CanClearWindowContext && !_conversation.IsStreaming && !_conversation.HasPendingRun,
         "chooseImage" => availability.CanChooseImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
         "clearImage" => availability.CanClearImage && !_conversation.IsStreaming && !_conversation.HasPendingRun,
-        "configureBrowserImages" => availability.CanConfigureBrowserImages,
-        "chooseWorkspace" => availability.CanChooseWorkspace && !_conversation.IsStreaming,
-        "clearWorkspace" => availability.CanClearWorkspace && !_conversation.IsStreaming,
+        "chooseWorkspace" => availability.CanChooseWorkspace && !_conversation.IsStreaming && !_conversation.HasPendingRun,
+        "clearWorkspace" => availability.CanClearWorkspace && !_conversation.IsStreaming && !_conversation.HasPendingRun,
         _ => false,
     };
 
@@ -335,7 +334,6 @@ internal sealed class ChatWebSession : IChatWebSession
             "clearWindowContext" => ChatWebHostAction.ClearWindowContext,
             "chooseImage" => ChatWebHostAction.ChooseImage,
             "clearImage" => ChatWebHostAction.ClearImage,
-            "configureBrowserImages" => ChatWebHostAction.ConfigureBrowserImages,
             "chooseWorkspace" => ChatWebHostAction.ChooseWorkspace,
             "clearWorkspace" => ChatWebHostAction.ClearWorkspace,
             _ => (ChatWebHostAction?)null,

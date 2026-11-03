@@ -140,6 +140,46 @@ public sealed class ChatWebSessionTests : IDisposable
     }
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"fgo-chat-web-{Guid.NewGuid():N}.db");
 
+    [Theory]
+    [InlineData("refreshProjects")]
+    [InlineData("selectProject")]
+    public async Task Legacy_catalog_commands_cannot_change_the_project_even_if_advertised(string action)
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        var host = new RecordingChatHostActions
+        {
+            Presentation = new("Role", null, [new("legacy", "Legacy project", false, true)], [],
+                Actions: new(CanRefreshProjects: true)),
+        };
+        using var session = new ChatWebSession(conversation, host);
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}') + ",\"action\":\"" + action + "\""
+            + (action == "selectProject" ? ",\"targetId\":\"legacy\"" : "") + "}";
+        var result = await session.HandleCommandAsync(Message("chat.host", payload), default);
+        Assert.False(result.Success);
+        Assert.Empty(host.Requests);
+        Assert.Empty(conversation.SessionContext.ProjectId);
+    }
+
+    [Fact]
+    public async Task Removing_project_chip_preserves_draft_and_is_denied_while_generating()
+    {
+        using var conversation = TestDialogueFakes.CreateConversation();
+        conversation.SetActiveServant("800100");
+        conversation.SessionContext.TrySetProject("synthetic-project", "Synthetic project");
+        conversation.InputText = "synthetic unsent draft";
+        using var session = new ChatWebSession(conversation, new RecordingChatHostActions());
+        var payload = Identity(session.ReadSnapshot().Identity).TrimEnd('}')
+            + ",\"action\":\"removeContextChip\",\"targetId\":\"project\"}";
+        conversation.IsStreaming = true;
+        Assert.False((await session.HandleCommandAsync(Message("chat.host", payload), default)).Success);
+        Assert.Equal("synthetic-project", conversation.SessionContext.ProjectId);
+        conversation.IsStreaming = false;
+        Assert.True((await session.HandleCommandAsync(Message("chat.host", payload), default)).Success);
+        Assert.Empty(conversation.SessionContext.ProjectId);
+        Assert.Equal("synthetic unsent draft", conversation.InputText);
+    }
+
     [Fact]
     public void Disposed_surface_does_not_destroy_the_shared_conversation()
     {

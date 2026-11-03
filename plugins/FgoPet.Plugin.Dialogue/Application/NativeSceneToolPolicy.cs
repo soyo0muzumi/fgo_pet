@@ -3,7 +3,7 @@ using FgoPet.Kernel.Agent;
 
 namespace FgoPet.App.Dialogue;
 
-/// <summary>Only the bounded P5 mutations are reachable through explicit per-call human approval.</summary>
+/// <summary>Only named scene and browser commands are reachable through explicit per-call human approval.</summary>
 public sealed class NativeSceneToolPolicy : IToolPolicy
 {
     public ToolPolicyDecision Decide(ToolExecutionRequest request, RegisteredTool tool)
@@ -14,6 +14,7 @@ public sealed class NativeSceneToolPolicy : IToolPolicy
         {
             ("reminders", "reminder.create" or "reminder.cancel") => ToolPolicyDecision.Ask,
             ("firstparty.focus", "focus.resume") => ToolPolicyDecision.Ask,
+            ("browser", "browser.click" or "browser.fill") => ToolPolicyDecision.Ask,
             _ => ToolPolicyDecision.Deny
         };
     }

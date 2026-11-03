@@ -6,6 +6,20 @@ namespace FgoPet.Capability.Tests.Browser;
 
 public sealed class ChromeMcpConnectionTests
 {
+    [Theory]
+    [InlineData("click")]
+    [InlineData("fill")]
+    public async Task Interaction_protocol_preserves_page_target_and_unicode_without_script_or_submit(string method)
+    {
+        await using var connection = new ChromeMcpConnection();
+        var args = new Dictionary<string, object> { ["pageId"] = 7, ["uid"] = "1_3", ["includeSnapshot"] = false };
+        if (method == "fill") args["value"] = "合成文字😀\n第二行";
+        var response = await connection.CallAsync(Settings(), method, JsonSerializer.SerializeToElement(args), default);
+        Assert.True(response.GetProperty("safeFlags").GetBoolean());
+        Assert.Equal(method, response.GetProperty("interaction").GetString());
+        Assert.True(response.GetProperty("validInteraction").GetBoolean());
+    }
+
     [Fact]
     public async Task Visual_calls_reuse_connection_bound_resolution_and_remove_owned_scratch_on_close()
     {

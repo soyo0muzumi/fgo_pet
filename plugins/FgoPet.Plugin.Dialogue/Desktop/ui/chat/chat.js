@@ -817,8 +817,7 @@
     ["canCreateWorkspaceItem", "newWorkspaceItem", t("chat.new.note")],
     ["canOpenPersonalizationSettings", "openPersonalizationSettings", t("chat.companion.settings")],
     ["canOpenSpeechSettings", "openSpeechSettings", t("chat.speech.settings")],
-    ["canOpenModelSettings", "openModelSettings", t("chat.model.settings")],
-    ["canConfigureBrowserImages", "configureBrowserImages", t("chat.browser.images")]
+    ["canOpenModelSettings", "openModelSettings", t("chat.model.settings")]
   ];
 
   function renderMoreActions(snapshot) {

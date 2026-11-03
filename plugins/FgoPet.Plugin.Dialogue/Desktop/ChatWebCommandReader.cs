@@ -275,5 +275,5 @@ internal static class ChatWebCommandReader
         or "openPersonalizationSettings" or "openSpeechSettings" or "openModelSettings"
         or "refreshProjects" or "refreshModels" or "selectProject" or "selectModel" or "removeContextChip"
         or "chooseWindowContext" or "previewWindowContext" or "rereadWindowContext" or "clearWindowContext"
-        or "chooseWorkspace" or "clearWorkspace" or "chooseImage" or "clearImage" or "configureBrowserImages";
+        or "chooseWorkspace" or "clearWorkspace" or "chooseImage" or "clearImage";
 }

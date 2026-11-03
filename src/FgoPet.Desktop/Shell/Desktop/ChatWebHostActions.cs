@@ -63,14 +63,13 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         {
             var picker = new Microsoft.Win32.OpenFolderDialog
             {
-                Title = MarginStrings.Get("chat.choose.workspace"), Multiselect = false,
+                Title = "选择项目文件夹", Multiselect = false,
             };
             return picker.ShowDialog(_window) == true ? picker.FolderName : null;
         });
         if (_localWorkspace is not null) _localWorkspace.Changed += OnChanged;
         vm.PropertyChanged += OnChanged;
         vm.ModelSelection.PropertyChanged += OnChanged;
-        vm.ProjectSelection.PropertyChanged += OnChanged;
     }
     private void OnChanged(object? sender, EventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
     public ChatWebHostPresentation ReadPresentation()
@@ -81,16 +80,16 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         var roleName = _vm.SelectedServant is not null ? _vm.ActiveServantDisplayName
             : MarginStrings.Get(string.IsNullOrWhiteSpace(_vm.Conversation.ActiveServantId) ? "chat.noCharacter" : "chat.currentCharacter");
         return new(roleName, _avatar,
-            _vm.ProjectSelection.Projects.Select(p => new ChatWebChoice(p.Id, p.Label,
-                p.Id == _vm.Conversation.SessionContext.ProjectId, !streaming)).ToArray(),
+            Array.Empty<ChatWebChoice>(),
             _vm.ModelSelection.Models.Select(m => new ChatWebChoice(m.Id, m.DisplayName,
                 m.Id == _vm.ModelSelection.SelectedModelId, !_vm.ModelSelection.IsGenerating)).ToArray(),
-            _vm.ProjectSelection.IsLoading, _vm.ProjectSelection.StatusText,
+            false, string.Empty,
             new(_panel is not null, _workspace is not null && _defaultWorkspace is not null,
                 _workspace is not null && _defaultWorkspace is not null, true, true, _vm.Conversation.CanOpenModelSettings,
-                _vm.ProjectSelection.IsAvailable && !streaming,
+                false,
                 _localWorkspace?.CanChoose == true,
-                _localWorkspace?.Label is not null && !streaming,
+                _localWorkspace is not null && (_localWorkspace.Label is not null || !string.IsNullOrWhiteSpace(_vm.Conversation.SessionContext.ProjectId))
+                    && !streaming && !_vm.Conversation.HasPendingRun,
                 _selectedImage?.CanChoose == true,
                 _selectedImage?.Label is not null && !streaming && !_vm.Conversation.HasPendingRun,
                 _browserImages?.IsAvailable == true && (_browserImages.Enabled || (!streaming && !_vm.Conversation.HasPendingRun))),
@@ -137,19 +136,6 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         var turn = matches.Length == 1 ? matches[0] : null;
         switch (request.Action)
         {
-            case ChatWebHostAction.ConfigureBrowserImages when _window.IsVisible && _browserImages?.IsAvailable == true
-                && (_browserImages.Enabled || (!_vm.Conversation.IsStreaming && !_vm.Conversation.HasPendingRun)):
-                var enable = !_browserImages.Enabled;
-                var question = enable
-                    ? "允许 FGO Pet 在对话需要时读取网页图片吗？\n\n页面截图（可能包含登录后可见的内容）会发送给当前选择的模型。每次任务最多一张；不会自动发送整页或后台截图。\n\n使用本机 Buddy 时，截图可能落盘、重新编码并转发给腾讯 CodeBuddy CN；代理可能重试或换号。同一张图可能随任务多次发送，停止无法撤回已发送的图片。\n\n此权限用于之后的对话，可在此处关闭。Chrome 的连接批准仍然保留。"
-                    : "关闭网页读图权限吗？关闭后，模型将不能获取新的网页截图。";
-                if (MessageBox.Show(_window, question, "网页读图权限", MessageBoxButton.YesNo,
-                    MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return new(true);
-                if (cancellationToken.IsCancellationRequested || !_window.IsVisible || _disposed
-                    || (enable && (_vm.Conversation.IsStreaming || _vm.Conversation.HasPendingRun))) return new(false, ErrorCode: "CHAT_NOT_AVAILABLE");
-                if (!_browserImages.TrySetEnabled(enable)) return new(false, ErrorCode: "CHAT_HOST_ACTION_FAILED");
-                Changed?.Invoke(this, EventArgs.Empty);
-                break;
             case ChatWebHostAction.ChooseImage when _window.IsVisible && _selectedImage?.CanChoose == true:
                 if (!await _selectedImage.ChooseAsync(() =>
                 {
@@ -167,7 +153,9 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
                     return cancellationToken.IsCancellationRequested || !_window.IsVisible ? null : directory;
                 })) return new(false, ErrorCode: "CHAT_HOST_ACTION_FAILED");
                 break;
-            case ChatWebHostAction.ClearWorkspace when _window.IsVisible && !_vm.Conversation.IsStreaming && _localWorkspace?.Label is not null:
+            case ChatWebHostAction.ClearWorkspace when _window.IsVisible && !_vm.Conversation.IsStreaming
+                && !_vm.Conversation.HasPendingRun && _localWorkspace is not null
+                && (_localWorkspace.Label is not null || !string.IsNullOrWhiteSpace(_vm.Conversation.SessionContext.ProjectId)):
                 _localWorkspace.Clear(); break;
             case ChatWebHostAction.Hide: _window.Hide(); break;
             case ChatWebHostAction.SetExpanded when request.Expanded is { } expanded: _window.SetExpanded(expanded); break;
@@ -198,13 +186,6 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
             case ChatWebHostAction.OpenSpeechSettings: _vm.NavigateToSettings(SettingsSection.Speech); break;
             case ChatWebHostAction.OpenModelSettings when _vm.Conversation.CanOpenModelSettings:
                 _vm.NavigateToSettings(SettingsSection.ModelConnection); break;
-            case ChatWebHostAction.RefreshProjects when !_vm.Conversation.IsStreaming && _vm.ProjectSelection.IsAvailable && !_vm.ProjectSelection.IsLoading:
-                await _vm.ProjectSelection.RefreshAsync(cancellationToken); break;
-            case ChatWebHostAction.SelectProject when !_vm.Conversation.IsStreaming:
-                var projects = _vm.ProjectSelection.Projects.Where(p => p.Id == request.TargetId).Take(2).ToArray();
-                var project = projects.Length == 1 ? projects[0] : null;
-                if (project is null || !_vm.SelectProject(project)) return new(false, ErrorCode: "CHAT_TARGET_UNAVAILABLE");
-                break;
             case ChatWebHostAction.SelectModel when !_vm.ModelSelection.IsGenerating:
                 if (!_vm.ModelSelection.TrySelect(request.TargetId ?? "")) return new(false, ErrorCode: "CHAT_TARGET_UNAVAILABLE");
                 break;
@@ -242,7 +223,6 @@ internal sealed class ChatWebHostActions : IChatWebHostActions, IDisposable
         if (_disposed) return; _disposed = true;
         _approvalDialog?.Close();
         _vm.PropertyChanged -= OnChanged; _vm.ModelSelection.PropertyChanged -= OnChanged;
-        _vm.ProjectSelection.PropertyChanged -= OnChanged;
         if (_localWorkspace is not null) _localWorkspace.Changed -= OnChanged;
         if (_selectedImage is not null) _selectedImage.Changed -= OnChanged;
     }
