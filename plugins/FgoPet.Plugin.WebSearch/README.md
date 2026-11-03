@@ -1,46 +1,53 @@
 # Web Search Plugin
 
-`WebSearchPlugin` contributes the read-only `web.search` tool to the existing Native runtime. Tavily's official Search API supplies search, ranking and source snippets; this plugin only validates input, enforces the host grant, makes one bounded HTTP request and projects bounded source data. It introduces no search engine, MCP client platform, CLI, agent scheduler or third-party package.
+`WebSearchPlugin` contributes the read-only `web.search` tool to the Native runtime. It invokes the bundled Python helper with one bounded JSON request on stdin. The helper uses the pinned DDGS DuckDuckGo engine directly, without an API key, metasearch fallback, MCP service, shell command, or runtime package installation. Full-page reading remains the separately authorized Browser capability.
 
-The plugin targets .NET 8 and references only the existing Extensibility contracts. Its production HTTP client disables redirects and cookies and uses the fixed `https://api.tavily.com/search` endpoint. Model arguments are limited to `query` (1–400 Unicode scalars, nonblank and without control characters) and optional `maxResults` (1–5, default 5). Extra or duplicate arguments are rejected before credentials or HTTP access.
+General research does not require a browser connection. The tool description guides focused follow-up searches for missing facts, candidate names and relevant source domains, then comparison of supported findings. A returned link or snippet does not attest that the destination page was read or that current availability was verified.
 
-The host fixes `topic=general`, `search_depth=basic`, `auto_parameters=false`, `include_answer=false`, `include_raw_content=false`, `include_images=false`, `chunks_per_source=1` and `include_usage=true`. Response limits are enforced locally regardless of upstream chunk behavior. The adapter does not retry, switch providers, enter keyless mode, upgrade a plan or start authentication.
+## Host and configuration
 
-## Host ownership and authorization
-
-The host supplies three delegates: the current `WebSearchSettings`, the active-role/current-conversation/project scope check, and a protected key reader. The public constructor is:
+The host supplies the current grant, current role/conversation/project scope, the existing `IBoundedProcessRunner`, and the absolute path `WebSearch/FgoPet.WebSearch.exe` beneath the application directory. The public constructor is:
 
 ```csharp
 WebSearchPlugin(
     Func<WebSearchSettings?> settings,
     Func<ToolScope, bool> scopeCurrent,
-    Func<CancellationToken, Task<string?>> readProtectedKey,
-    Action<WebSearchDiagnostic>? diagnostics = null)
+    IBoundedProcessRunner runner,
+    string workerPath,
+    Action<WebSearchDiagnostic>? diagnostics = null,
+    Func<string?>? configurationError = null)
 ```
 
-`WebSearchSettings.Load(path)` reads at most 4 KiB and accepts exactly `Enabled`, `AuthorizationId` and `AuthorizationVersion`. The identifier is a nonzero GUID in `N` format; the revision is positive. Missing, invalid or disabled settings deny access. No credential, custom endpoint or other configuration property is accepted. `WebSearchSettings.CredentialTarget` is `FgoPet:WebSearch:Tavily`; the App host owns Windows Credential Manager access. The plugin does not read ambient environment variables or write settings or credentials.
+`WebSearchSettingsStore` owns the local `web-search.json` grant. Reading settings or asking for availability does not create files, install dependencies, or access the network. An explicit `SetEnabledAsync` creates or rotates a grant containing `Enabled`, `AuthorizationId`, `AuthorizationVersion`, and `Provider=duckduckgo`. Disabled settings are retained for the UI but never authorize execution. Malformed JSON can be repaired by an explicit settings action; an unreadable file is not overwritten.
 
-Use a fresh authorization identifier for a new grant and advance the revision when reauthorizing or changing its scope. Before credential changes or revocation, withdraw or advance the grant so in-flight results cannot outlive that authorization. A configured tool is still denied without a valid host grant, current scope and protected credential. Registration and skill loading do not authorize a call.
+The old three-field Tavily grant returns `WEB_SEARCH_PROVIDER_CHANGED` until the user explicitly enables the new provider. Existing credentials are not read, modified, or deleted. Provider changes cannot silently reuse consent for another external service.
 
-The adapter checks the grant and scope before reading the key, again before dispatch, after HTTP and body reads, and before returning results. A changed grant or scope discards the response; a failed host authorization read safely denies access. Each serialized operation has a 45-second total deadline including queued time and credential access. Caller cancellation and plugin shutdown cancel work; no request is replayed. Synchronous and asynchronous disposal share idempotent termination and owned HTTP-client cleanup; synchronous disposal does not wait for a request to finish.
+`GetSnapshot()` exposes `Configured`, `Enabled`, `Available`, and `ErrorCode`. Missing, disabled, invalid, unreadable, provider-changed, and missing-runtime states are distinct. The tool implements `IToolAvailabilityProvider` for the current model catalog, while execution always revalidates the grant and scope. Availability means the local prerequisites are ready, not that a network connection has already been tested.
 
-## Data, coverage and diagnostics
+`CheckConnectionAsync` is an explicit settings-page operation. It requires an enabled grant and searches only the fixed public query `DuckDuckGo`, with one result. It returns a safe availability/error result, never source text or conversation data.
 
-Queries and fixed search parameters go to Tavily only when the host authorizes the call. Result snippets enter the existing conversation/model loop. Browser reading has its own authorization and website/model data boundary; this plugin never opens a result URL or reads browser state. Account creation, credentials, service use and any costs are separate host/user operations.
+## Execution and results
 
-HTTP bodies are capped at 128 KiB with or without Content-Length. Only JSON without content encoding is accepted. Source URLs must be bounded HTTP(S) URLs with no user information or control characters. Invalid URLs are omitted. Titles and snippets must contain valid Unicode; only line breaks and tabs are allowed as controls in snippets. Returned titles are capped at 256 Unicode scalars and snippets at 2,000, with per-field truncation flags. The current protected credential cannot appear in returned source fields.
+Model arguments remain `query` (1–400 Unicode scalars, nonblank, no control characters) and optional `maxResults` (1–5, default 5). Extra or duplicate arguments are rejected before process creation. Model arguments cannot choose a provider, executable, script, endpoint, environment, or working directory.
 
-Results carry URL, title, snippet, capture time and a SHA-256 search-response snapshot hash. `sourceVersionKind=search_snapshot_sha256` names the hash's meaning: it is not an origin webpage version. `coverage=search_snippets` and `exhaustive=false` disclose the actual coverage. `returnedResults` counts only the returned array; `truncated` marks omitted or clipped response data. The actual serialized UTF-8 payload is capped at 48 KiB; lower-ranked entries are omitted with disclosure before reaching the Native host's 64-KiB payload cap. No total web result count, search cursor, full-page claim or confirmed memory is fabricated. Empty results remain distinct from denial, unavailable credentials, HTTP failure and malformed responses. Untrusted snippets never provide instructions or authority.
+The Windows bounded process runner uses one process, bounded memory/output, and the plugin's 45-second total deadline. The query is sent through stdin rather than command-line arguments. Cancellation and plugin shutdown cancel the process; the grant/scope is checked before launch, at the runner's start boundary, after completion, and before releasing results. Revocation discards results. No automatic retry occurs.
 
-HTTP authentication, forbidden, rate-limit, quota, payment-limit, redirect and service errors have separate safe codes. Upstream error bodies, exception messages and credentials are never returned or logged. Diagnostics contain only timestamp, a hashed correlation, stage and safe error code; they exclude query, URL, arguments, content, key and request/response bodies. Diagnostic callbacks are isolated from operation outcomes.
+The Python helper accepts protocol version 1. It uses `ddgs==9.16.1` and only the DuckDuckGo HTML engine with TLS verification and redirects disabled. HTTP rejection, rate-limit/challenge pages, timeouts, malformed responses, and recognized empty results are distinct outcomes. It never visits returned URLs. See [the integration](../../tools/integrations/web-search/README.md) for dependency and bundle details.
 
-## Verification
+Results retain URL, title, snippet, capture time, and SHA-256 response snapshot hash. `coverage=search_snippets`, `exhaustive=false`, `sourceVersionKind=search_snapshot_sha256`, `returnedResults`, and clipping flags retain their meanings. Titles and snippets are capped at 256 and 2,000 Unicode scalars. Unsafe URLs are omitted. Helper output is capped at 128 KiB and the model payload at 48 KiB; omitted or clipped sources are disclosed. Search data cannot grant permissions or turn itself into confirmed memory.
+
+Failures return allowlisted error codes, never stderr or exception text. Diagnostics contain only timestamp, hashed correlation, stage, and safe error code; they do not contain queries, URLs, source bodies, or local paths.
+
+## Build and verification
+
+The test package must include the complete helper directory, including its Python runtime, native dependencies, licenses, and `runtime-manifest.json`. `FgoPetWebSearchRuntime` points MSBuild at the built directory. A local `artifacts/web-search/runtime` is detected for development; otherwise the UI reports `WEB_SEARCH_RUNTIME_MISSING`. Publishing requires a prepared bundle. Testers do not install Python or pip.
 
 ```powershell
+pwsh -File tools/integrations/web-search/build.ps1
+
 dotnet build plugins/FgoPet.Plugin.WebSearch/FgoPet.Plugin.WebSearch.csproj -c Release -warnaserror
 dotnet test tests/FgoPet.Capability.Tests/FgoPet.Capability.Tests.csproj -c Release --filter FullyQualifiedName~WebSearch
+python -m pytest tests/web_search
 ```
 
-Tests use the production adapter with synthetic `HttpMessageHandler` responses and temporary synthetic settings. They do not access Tavily, protected credentials, production settings or the application. Real service connectivity, account limits, language/search quality and browser/model acceptance require separate authorization and validation.
-
-Contract source: [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search). Service prices and terms are owned by Tavily and should be checked before authorized use; the MIT license of Tavily's MCP/skills does not license service access. The selection referenced official [MCP source at 1c1d54c](https://github.com/tavily-ai/tavily-mcp/tree/1c1d54c2a619afe52544f775c8d82a56ac6d8bb5) and [search skill at 778122e](https://github.com/tavily-ai/skills/blob/778122e5f9c680f541eeceda5a5b36405eb7980c/skills/tavily-search/SKILL.md); neither upstream runtime nor executable skill is bundled here.
+Unit tests use synthetic bounded process results and temporary settings. Windows boundary tests pass both search entry points through the real bounded process runner with an invalid executable fixture, verifying request validation and safe launch-failure handling without network access. The bundled executable's `--self-test` checks its protocol, pinned dependency, and engine imports without network access. Network reachability and successful helper startup are separate checks and must not be inferred from these tests.

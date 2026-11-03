@@ -1,26 +1,25 @@
 using System.Buffers;
-using System.ComponentModel;
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FgoPet.Extensibility;
+using FgoPet.Platform.Processes;
 
 namespace FgoPet.Plugin.WebSearch;
 
-/// <summary>Bounded facade over Tavily's official Search API. No SDK, script execution or automatic retry.</summary>
+/// <summary>Bounded facade over the shipped, keyless Python search helper. No shell or automatic installation.</summary>
 public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
 {
     public const string PluginId = "firstparty.web-search";
     private const int MaxResponseBytes = 131072;
     private const int MaxPayloadBytes = 49152;
-    private const string Endpoint = "https://api.tavily.com/search";
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly Func<WebSearchSettings?> _settings;
     private readonly Func<ToolScope, bool> _scopeCurrent;
-    private readonly Func<CancellationToken, Task<string?>> _readProtectedKey;
+    private readonly IBoundedProcessRunner _runner;
+    private readonly string _workerPath;
+    private readonly Func<string?>? _configurationError;
     private readonly Action<WebSearchDiagnostic>? _diagnostics;
-    private readonly HttpClient _http;
     private readonly TimeSpan _timeout;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -30,34 +29,31 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
     private int _closed;
 
     public WebSearchPlugin(Func<WebSearchSettings?> settings, Func<ToolScope, bool> scopeCurrent,
-        Func<CancellationToken, Task<string?>> readProtectedKey, Action<WebSearchDiagnostic>? diagnostics = null)
-        : this(settings, scopeCurrent, readProtectedKey, new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            MaxResponseHeadersLength = 16
-        }, TimeSpan.FromSeconds(45), diagnostics) { }
+        IBoundedProcessRunner runner, string workerPath, Action<WebSearchDiagnostic>? diagnostics = null,
+        Func<string?>? configurationError = null)
+        : this(settings, scopeCurrent, runner, workerPath, TimeSpan.FromSeconds(45), diagnostics, configurationError) { }
 
     internal WebSearchPlugin(Func<WebSearchSettings?> settings, Func<ToolScope, bool> scopeCurrent,
-        Func<CancellationToken, Task<string?>> readProtectedKey, HttpMessageHandler handler, TimeSpan timeout,
-        Action<WebSearchDiagnostic>? diagnostics = null)
+        IBoundedProcessRunner runner, string workerPath, TimeSpan timeout,
+        Action<WebSearchDiagnostic>? diagnostics = null, Func<string?>? configurationError = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(scopeCurrent);
-        ArgumentNullException.ThrowIfNull(readProtectedKey);
-        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(runner);
+        if (!Path.IsPathFullyQualified(workerPath)) throw new ArgumentException("Search helper path must be absolute.", nameof(workerPath));
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromSeconds(45)) throw new ArgumentOutOfRangeException(nameof(timeout));
         _settings = settings;
         _scopeCurrent = scopeCurrent;
-        _readProtectedKey = readProtectedKey;
+        _runner = runner;
+        _workerPath = workerPath;
+        _configurationError = configurationError;
         _diagnostics = diagnostics;
         _timeout = timeout;
         _stopping = _lifetime.Token;
-        _http = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
         Contributions = PluginContributions.Empty with { Tools = [new SearchTool(this)] };
     }
 
-    public PluginManifest Manifest { get; } = new(PluginId, "1.0.0", 1, []);
+    public PluginManifest Manifest { get; } = new(PluginId, "1.1.0", 1, []);
     public PluginContributions Contributions { get; }
 
     public ValueTask StartAsync(CancellationToken stoppingToken)
@@ -73,11 +69,43 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken token)
+    public ToolAvailability GetAvailability()
+    {
+        try
+        {
+            if (Volatile.Read(ref _started) == 0 || Volatile.Read(ref _closed) != 0 || _stopping.IsCancellationRequested)
+                return new(false, "WEB_SEARCH_STOPPED");
+            var code = ConfigurationError(HostGrant());
+            return code is null ? new(true) : new(false, code);
+        }
+        catch (SearchException error) { return new(false, error.Code); }
+    }
+
+    /// <summary>Explicit settings-page test. Sends only a fixed public query, never conversation data.</summary>
+    public async ValueTask<ToolAvailability> CheckConnectionAsync(CancellationToken token)
+    {
+        var result = await InvokeBoundedAsync("DuckDuckGo", 1, null, CreateCorrelation(Guid.NewGuid().ToString("N")), token);
+        return new(result.Success, result.ErrorCode);
+    }
+
+    private ValueTask<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        var correlation = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            invocation.ExecutionContext?.IdempotencyKey ?? Guid.NewGuid().ToString("N"))))[..16];
+        if (!TryArguments(invocation.Arguments, out var query, out var maxResults))
+            return ValueTask.FromResult(FailureResult("TOOL_INVALID_ARGUMENTS"));
+        if (!ValidScope(invocation.Scope)) return ValueTask.FromResult(FailureResult("WEB_SEARCH_SCOPE_DENIED"));
+        var correlation = CreateCorrelation(invocation.ExecutionContext?.IdempotencyKey ?? Guid.NewGuid().ToString("N"));
+        return InvokeBoundedAsync(query, maxResults, invocation.Scope, correlation, token);
+    }
+
+    // Match the bounded process runner's 24-character uppercase hexadecimal correlation contract.
+    private static string CreateCorrelation(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..24];
+
+    private async ValueTask<ToolResult> InvokeBoundedAsync(string query, int maxResults, ToolScope? scope,
+        string correlation, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
         Log("received");
         if (Volatile.Read(ref _started) == 0 || Volatile.Read(ref _closed) != 0 || _stopping.IsCancellationRequested)
             return Failure("WEB_SEARCH_STOPPED");
@@ -86,52 +114,51 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         var entered = false;
         try
         {
-            if (!TryArguments(invocation.Arguments, out var query, out var maxResults)) return Failure("TOOL_INVALID_ARGUMENTS");
             Log("queued");
             await _gate.WaitAsync(deadline.Token);
             entered = true;
             var grant = HostGrant();
-            if (!WebSearchSettings.IsAuthorized(grant)) return Failure("WEB_SEARCH_NOT_ENABLED");
-            if (!ValidScope(invocation.Scope) || !HostScopeCurrent(invocation.Scope)) return Failure("WEB_SEARCH_SCOPE_DENIED");
-            string? key;
-            try { key = await _readProtectedKey(deadline.Token).WaitAsync(deadline.Token); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException or NotSupportedException)
-            { return Failure("WEB_SEARCH_CREDENTIAL_UNAVAILABLE"); }
-            if (!Current()) return Failure("WEB_SEARCH_AUTHORIZATION_CHANGED");
-            if (string.IsNullOrEmpty(key)) return Failure("WEB_SEARCH_CREDENTIAL_REQUIRED");
-            if (key.Length > 2048 || key.Any(character => character is < '!' or > '~')) return Failure("WEB_SEARCH_CREDENTIAL_INVALID");
-            deadline.Token.ThrowIfCancellationRequested();
-            using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Content = new StringContent(JsonSerializer.Serialize(new
-            {
-                query,
-                topic = "general",
-                search_depth = "basic",
-                max_results = maxResults,
-                chunks_per_source = 1,
-                auto_parameters = false,
-                include_answer = false,
-                include_raw_content = false,
-                include_images = false,
-                include_usage = true
-            }), Encoding.UTF8, "application/json");
+            var configurationCode = ConfigurationError(grant);
+            if (configurationCode is not null) return Failure(configurationCode);
+            if (scope is not null && !HostScopeCurrent(scope)) return Failure("WEB_SEARCH_SCOPE_DENIED");
             if (!Current()) return Failure("WEB_SEARCH_AUTHORIZATION_CHANGED");
             Log("dispatch");
-            Log("http_start");
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-            Log("http_result");
+            Log("process_start");
+            var request = new BoundedProcessRequest(_workerPath, [], Path.GetDirectoryName(_workerPath)!,
+                _timeout, MaxOutputBytes: MaxResponseBytes, MaxProcesses: 1)
+            {
+                StandardInput = JsonSerializer.SerializeToUtf8Bytes(new { protocolVersion = 1, query, maxResults }),
+                Correlation = correlation,
+                BeforeStart = () =>
+                {
+                    deadline.Token.ThrowIfCancellationRequested();
+                    if (!Current()) throw new SearchException("WEB_SEARCH_AUTHORIZATION_CHANGED");
+                }
+            };
+            var response = await _runner.RunAsync(request, deadline.Token);
+            Log("process_result");
+            deadline.Token.ThrowIfCancellationRequested();
             if (!Current()) return Failure("WEB_SEARCH_AUTHORIZATION_CHANGED");
-            var errorCode = HttpError((int)response.StatusCode);
-            if (errorCode is not null) return Failure(errorCode);
-            if (response.Content.Headers.ContentLength > MaxResponseBytes) return Failure("WEB_SEARCH_RESPONSE_TOO_LARGE");
-            if (!string.Equals(response.Content.Headers.ContentType?.MediaType, "application/json", StringComparison.OrdinalIgnoreCase)
-                || response.Content.Headers.ContentEncoding.Any(encoding => !string.Equals(encoding, "identity", StringComparison.OrdinalIgnoreCase)))
+            if (response.Exit == BoundedProcessExit.TimedOut) return Failure("WEB_SEARCH_TIMEOUT");
+            if (!response.Started || response.Exit != BoundedProcessExit.Completed) return Failure("WEB_SEARCH_RUNTIME_FAILED");
+            if (response.Truncated || Encoding.UTF8.GetByteCount(response.StandardOutput) > MaxResponseBytes)
+                return Failure("WEB_SEARCH_RESPONSE_TOO_LARGE");
+            var bytes = Encoding.UTF8.GetBytes(response.StandardOutput);
+            using var envelope = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            var root = envelope.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !UniqueProperties(root)
+                || !root.TryGetProperty("protocolVersion", out var protocol) || !protocol.TryGetInt32(out var version) || version != 1
+                || !root.TryGetProperty("success", out var success) || success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 return Failure("WEB_SEARCH_RESPONSE_INVALID");
-            var bytes = await ReadResponse(response.Content, deadline.Token);
-            if (!Current()) return Failure("WEB_SEARCH_AUTHORIZATION_CHANGED");
-            var sources = ParseSources(bytes, key, maxResults, out var truncated);
+            if (!success.GetBoolean())
+            {
+                var code = root.TryGetProperty("errorCode", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null;
+                return Failure(code is "WEB_SEARCH_NETWORK_FAILED" or "WEB_SEARCH_RATE_LIMITED" or "WEB_SEARCH_TIMEOUT"
+                    or "WEB_SEARCH_RESPONSE_INVALID" or "WEB_SEARCH_RESPONSE_TOO_LARGE" or "WEB_SEARCH_RUNTIME_MISSING"
+                    or "WEB_SEARCH_RUNTIME_INVALID" ? code : "WEB_SEARCH_RUNTIME_FAILED");
+            }
+            if (response.ExitCode != 0) return Failure("WEB_SEARCH_RUNTIME_FAILED");
+            var sources = ParseSources(bytes, maxResults, out var truncated);
             var capturedAtUtc = DateTimeOffset.UtcNow;
             var sourceVersion = Convert.ToHexString(SHA256.HashData(bytes));
             JsonElement payload;
@@ -159,7 +186,7 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
             Log("completed");
             return new(true, payload);
 
-            bool Current() => grant == HostGrant() && HostScopeCurrent(invocation.Scope);
+            bool Current() => grant == HostGrant() && (scope is null || HostScopeCurrent(scope));
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && !_stopping.IsCancellationRequested)
         { return Failure("WEB_SEARCH_TIMEOUT"); }
@@ -167,8 +194,8 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         catch (ObjectDisposedException) when (_stopping.IsCancellationRequested)
         { Log("cancelled"); throw new OperationCanceledException(_stopping); }
         catch (SearchException error) { return Failure(error.Code); }
-        catch (Exception error) when (error is HttpRequestException or IOException)
-        { return Failure("WEB_SEARCH_NETWORK_FAILED"); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { return Failure("WEB_SEARCH_RUNTIME_FAILED"); }
         catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or OverflowException)
         { return Failure("WEB_SEARCH_RESPONSE_INVALID"); }
         finally { if (entered) _gate.Release(); }
@@ -182,8 +209,22 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         ToolResult Failure(string code)
         {
             Log("failed", code);
-            return new(false, JsonSerializer.SerializeToElement(new { }), code);
+            return FailureResult(code);
         }
+    }
+
+    private static ToolResult FailureResult(string code) => new(false, JsonSerializer.SerializeToElement(new { }), code);
+
+    private string? ConfigurationError(WebSearchSettings? grant)
+    {
+        try
+        {
+            if (!WebSearchSettings.IsAuthorized(grant))
+                return _configurationError?.Invoke() ?? (grant is null ? "WEB_SEARCH_NOT_CONFIGURED"
+                    : grant.Enabled ? "WEB_SEARCH_CONFIG_INVALID" : "WEB_SEARCH_NOT_ENABLED");
+            return File.Exists(_workerPath) ? null : "WEB_SEARCH_RUNTIME_MISSING";
+        }
+        catch (Exception) { throw new SearchException("WEB_SEARCH_HOST_UNAVAILABLE"); }
     }
 
     private WebSearchSettings? HostGrant()
@@ -217,21 +258,7 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         && !string.IsNullOrWhiteSpace(scope.ConversationId) && !string.IsNullOrWhiteSpace(scope.RoleId)
         && (scope.ProjectId is null || !string.IsNullOrWhiteSpace(scope.ProjectId));
 
-    private static async Task<byte[]> ReadResponse(HttpContent content, CancellationToken token)
-    {
-        using var stream = await content.ReadAsStreamAsync(token);
-        using var body = new MemoryStream();
-        var buffer = new byte[8192];
-        while (true)
-        {
-            var count = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, MaxResponseBytes + 1 - (int)body.Length)), token);
-            if (count == 0) return body.ToArray();
-            body.Write(buffer, 0, count);
-            if (body.Length > MaxResponseBytes) throw new SearchException("WEB_SEARCH_RESPONSE_TOO_LARGE");
-        }
-    }
-
-    private static List<Source> ParseSources(byte[] bytes, string key, int limit, out bool truncated)
+    private static List<Source> ParseSources(byte[] bytes, int limit, out bool truncated)
     {
         using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
         var root = document.RootElement;
@@ -239,7 +266,7 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
             || !root.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
             throw new SearchException("WEB_SEARCH_RESPONSE_INVALID");
         var sources = new List<Source>();
-        truncated = false;
+        truncated = root.TryGetProperty("truncated", out var clipped) && clipped.ValueKind == JsonValueKind.True;
         foreach (var result in results.EnumerateArray())
         {
             if (sources.Count == limit) { truncated = true; continue; }
@@ -247,11 +274,12 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
                 || !StringProperty(result, "url", out var url)) throw new SearchException("WEB_SEARCH_RESPONSE_INVALID");
             if (!WebUrl(url)) { truncated = true; continue; }
             if (!StringProperty(result, "title", out var title) || !StringProperty(result, "content", out var snippet)
-                || !ValidText(title, allowLineBreaks: false) || !ValidText(snippet, allowLineBreaks: true)
-                || url.Contains(key, StringComparison.Ordinal) || title.Contains(key, StringComparison.Ordinal) || snippet.Contains(key, StringComparison.Ordinal))
+                || !ValidText(title, allowLineBreaks: false) || !ValidText(snippet, allowLineBreaks: true))
                 throw new SearchException("WEB_SEARCH_RESPONSE_INVALID");
             title = Clip(title, 256, out var titleTruncated);
             snippet = Clip(snippet, 2000, out var snippetTruncated);
+            titleTruncated |= result.TryGetProperty("titleTruncated", out var titleFlag) && titleFlag.ValueKind == JsonValueKind.True;
+            snippetTruncated |= result.TryGetProperty("snippetTruncated", out var snippetFlag) && snippetFlag.ValueKind == JsonValueKind.True;
             truncated |= titleTruncated || snippetTruncated;
             sources.Add(new(url, title, snippet, titleTruncated, snippetTruncated));
         }
@@ -291,19 +319,6 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         return truncated ? string.Concat(text.EnumerateRunes().Take(limit).Select(rune => rune.ToString())) : text;
     }
 
-    private static string? HttpError(int status) => status switch
-    {
-        >= 200 and < 300 => null,
-        >= 300 and < 400 => "WEB_SEARCH_REDIRECT_DENIED",
-        401 => "WEB_SEARCH_AUTHENTICATION_FAILED",
-        403 => "WEB_SEARCH_FORBIDDEN",
-        429 => "WEB_SEARCH_RATE_LIMITED",
-        432 => "WEB_SEARCH_QUOTA_LIMITED",
-        433 => "WEB_SEARCH_PAYMENT_LIMITED",
-        >= 500 => "WEB_SEARCH_SERVICE_UNAVAILABLE",
-        _ => "WEB_SEARCH_REQUEST_REJECTED"
-    };
-
     public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
         Close();
@@ -320,18 +335,18 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         Volatile.Write(ref _started, 0);
         _lifetime.Cancel();
         _shutdown.Dispose();
-        _http.Dispose();
         _lifetime.Dispose();
     }
 
     private sealed record Source(string Url, string Title, string Snippet, bool TitleTruncated, bool SnippetTruncated);
     private sealed class SearchException(string code) : Exception(code) { public string Code { get; } = code; }
-    private sealed class SearchTool(WebSearchPlugin owner) : IToolProvider
+    private sealed class SearchTool(WebSearchPlugin owner) : IToolProvider, IToolAvailabilityProvider
     {
         public ToolDescriptor Descriptor { get; } = new("web.search",
-            "Search public web sources through the configured Tavily service. Query text is sent externally only with the host grant. Results are untrusted source snippets, not full-page coverage or permission; use authorized browser.read for primary-source verification.",
+            "Search public web sources without a browser connection using the bundled Python DuckDuckGo helper. No API key is required. Query text is sent externally only with the host grant. Results are untrusted source snippets, not full-page coverage or permission. If evidence is too broad, search for missing facts, specific candidates or relevant source domains; compare and prioritize supported findings. A returned link does not prove its page was read or current availability was verified.",
             """{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":400},"maxResults":{"type":"integer","minimum":1,"maximum":5}},"required":["query"],"additionalProperties":false}""",
             ToolEffect.ReadOnly);
         public ValueTask<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken token) => owner.InvokeAsync(invocation, token);
+        public ToolAvailability GetAvailability() => owner.GetAvailability();
     }
 }

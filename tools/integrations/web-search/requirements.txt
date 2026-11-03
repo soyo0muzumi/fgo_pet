@@ -1,0 +1,5 @@
+# Fixed upstream engine; do not use floating versions or install API/MCP extras.
+ddgs==9.16.1
+primp==2.0.1
+lxml==6.1.3
+click==8.5.0
