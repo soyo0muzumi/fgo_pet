@@ -72,9 +72,11 @@ public sealed class BrowserImageStore(SelectedImageStore selected, Func<ToolScop
     public void Dispose() { lock (gate) { disposed = true; current = null; consumedRun = null; } }
 }
 
-internal sealed class ConversationImageResolver(SelectedImageStore selected, BrowserImageStore browser) : IChatImageResolver
+internal sealed class ConversationImageResolver(SelectedImageStore selected, BrowserImageStore browser,
+    SelectedImageStore? independent = null) : IChatImageResolver
 {
-    private IChatImageResolver Owner(ToolImageReference reference) => browser.Owns(reference) ? browser : selected;
+    private IChatImageResolver Owner(ToolImageReference reference) => browser.Owns(reference) ? browser :
+        independent?.Owns(reference) == true ? independent : selected;
     public ChatImageInput Resolve(ToolImageReference reference, string roleId, string conversationId, ModelRouteKey route, CancellationToken token) =>
         Owner(reference).Resolve(reference, roleId, conversationId, route, token);
     public IDisposable AcquireDispatch(ToolImageReference reference, string roleId, string conversationId, ModelRouteKey route, CancellationToken token) =>

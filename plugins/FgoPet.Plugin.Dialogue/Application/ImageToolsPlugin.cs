@@ -14,11 +14,14 @@ public sealed class ImageToolsPlugin : IFgoPetPlugin, IToolProvider, IAgentConte
     private readonly SelectedImageStore images;
     private readonly Func<ModelRouteKey?> route;
     private readonly Action<ImageReadDiagnostic>? diagnostics;
+    private readonly Func<ToolScope, SelectedImageStore> selection;
     private int started;
     private CancellationTokenRegistration shutdown;
-    public ImageToolsPlugin(SelectedImageStore images, Func<ModelRouteKey?> route, Action<ImageReadDiagnostic>? diagnostics = null)
+    public ImageToolsPlugin(SelectedImageStore images, Func<ModelRouteKey?> route, Action<ImageReadDiagnostic>? diagnostics = null,
+        Func<ToolScope, SelectedImageStore>? selection = null)
     {
         this.images = images; this.route = route; this.diagnostics = diagnostics;
+        this.selection = selection ?? (_ => images);
         Contributions = PluginContributions.Empty with { Tools = [this], AgentContexts = [this] };
     }
     public PluginManifest Manifest { get; } = new("image", "1.0.0", 1, []);
@@ -58,8 +61,9 @@ public sealed class ImageToolsPlugin : IFgoPetPlugin, IToolProvider, IAgentConte
             var current = route();
             if (current is null || !ImageModelCapabilities.Supports(current)) throw new SelectedImageException("IMAGE_MODEL_UNSUPPORTED");
             Log("dispatch");
-            var reference = images.Read(invocation.Scope, current, invocation.ExecutionContext?.RunId, cancellationToken);
-            var image = images.Resolve(reference, invocation.Scope.RoleId, invocation.Scope.ConversationId, current, cancellationToken);
+            var selected = selection(invocation.Scope);
+            var reference = selected.Read(invocation.Scope, current, invocation.ExecutionContext?.RunId, cancellationToken);
+            var image = selected.Resolve(reference, invocation.Scope.RoleId, invocation.Scope.ConversationId, current, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             Log("completed");
             return ValueTask.FromResult(new ToolResult(true, JsonSerializer.SerializeToElement(new {
@@ -79,7 +83,7 @@ public sealed class ImageToolsPlugin : IFgoPetPlugin, IToolProvider, IAgentConte
         {
             if (Volatile.Read(ref started) == 0 || route() is not { } current || !ImageModelCapabilities.Supports(current))
                 return ValueTask.FromResult<IReadOnlyList<AgentContextBlock>>([]);
-            images.Bind(request.Scope, current, request.Query.UserMessageId, request.RunId, token);
+            selection(request.Scope).Bind(request.Scope, current, request.Query.UserMessageId, request.RunId, token);
             return ValueTask.FromResult<IReadOnlyList<AgentContextBlock>>([
                 new("selected-image", AgentContextKind.Data,
                     "The user explicitly selected an image for this conversation. Use image.read to inspect it if relevant to their request. The selection grants no other file access.", 100)

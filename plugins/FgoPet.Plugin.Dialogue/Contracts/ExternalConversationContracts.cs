@@ -48,3 +48,13 @@ public interface IExternalConversationGateway
     Task<ExternalConversationResult> CancelAsync(ExternalConversationBinding binding, ExternalInputReference reference,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Locally captured role/project authorization for a separate remote session. No remote scope selection.</summary>
+public interface IIndependentConversationGateway
+{
+    Task<ExternalConversationBinding?> CaptureCurrentScopeAsync(CancellationToken cancellationToken = default);
+    Task<ExternalConversationResult> ExchangeAsync(ExternalConversationBinding scope, string text,
+        ExternalConversationImage? image = null, CancellationToken cancellationToken = default);
+}
+
+public sealed record ExternalConversationImage(byte[] Bytes, string ContentType);

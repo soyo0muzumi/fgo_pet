@@ -5,7 +5,10 @@ public sealed record QqBotConnection(string AppId, string AppSecretCredentialTar
 
 /// <summary>A validated C2C envelope. Unsupported media carries no body or attachment URL and never enters a model.</summary>
 public sealed record QqC2cMessage(string MessageId, string UserOpenId, string Content, DateTimeOffset Timestamp,
-    bool IsUnsupportedMedia = false);
+    bool IsUnsupportedMedia = false, QqImageAttachment? Image = null);
+
+public sealed record QqImageAttachment(string Url, string ContentType);
+public sealed record QqImageInput(byte[] Bytes, string ContentType);
 
 public enum QqTransportState { Connecting, Connected, Reconnecting, Stopped, Faulted }
 

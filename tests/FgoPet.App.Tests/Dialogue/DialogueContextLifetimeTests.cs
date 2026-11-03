@@ -6,6 +6,24 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class DialogueContextLifetimeTests
 {
     [Fact]
+    public async Task Independent_owner_survives_desktop_invalidation_but_joins_maintenance_and_background_fence()
+    {
+        var desktop = new DialogueContextLifetime();
+        using var remote = desktop.CreateIndependentOwner();
+        var lease = remote.Acquire(default);
+        desktop.Invalidate();
+        Assert.False(lease.Token.IsCancellationRequested);
+        Assert.Null(desktop.TryAcquireBackground(default));
+        var suspension = desktop.SuspendAsync(default);
+        Assert.True(lease.Token.IsCancellationRequested);
+        Assert.False(suspension.IsCompleted);
+        lease.Dispose();
+        using (await suspension)
+            Assert.Throws<OperationCanceledException>(() => remote.Acquire(default));
+        using var next = remote.Acquire(default);
+    }
+
+    [Fact]
     public void Process_shutdown_cancels_active_leases_and_rejects_new_ones()
     {
         using var stopping = new CancellationTokenSource();

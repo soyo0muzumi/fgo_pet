@@ -1,6 +1,6 @@
 const MARKUP = `
   <div class="qq-page settings-page-body" data-state="loading">
-    <p class="qq-lead settings-help">Continue a conversation in a private QQ chat. Keep FGO Pet open and this computer online.</p>
+    <p class="qq-lead settings-help">Chat in your own QQ conversation, separate from the desktop chat. Keep FGO Pet open and this computer online. Send /新对话 to start again. One PNG/JPEG with optional text is supported when your model can read images.</p>
     <form class="settings-section" data-credentials aria-label="QQ bot settings">
       <h2 class="settings-section-heading">Bot connection</h2>
       <div class="qq-field settings-field">
@@ -20,7 +20,7 @@ const MARKUP = `
       <h2 class="settings-section-heading" id="qq-connection-heading">Private chat</h2>
       <p class="qq-connection" role="status" aria-live="polite" data-connection>Loading…</p>
       <p class="qq-hint settings-help" data-paired></p>
-      <p class="qq-hint settings-help" data-pairing-hint>Open a conversation in FGO Pet, then start pairing. Send the code to your bot from the QQ account you want to use.</p>
+      <p class="qq-hint settings-help" data-pairing-hint>Select a role and optional project in FGO Pet, then start pairing. No existing conversation is required. Send the code to your bot from your QQ account. Sending an image shares it with QQ and the configured model provider; it does not grant access to desktop images or files.</p>
       <div class="qq-pairing" data-pairing hidden>
         <label for="qq-pairing-code">Send this code in your private chat with the bot</label>
         <output id="qq-pairing-code" data-pairing-code></output>
@@ -34,8 +34,8 @@ const MARKUP = `
 
     <section class="qq-section settings-section" aria-labelledby="qq-conversation-heading">
       <h2 class="settings-section-heading" id="qq-conversation-heading">Conversation</h2>
-      <p class="qq-hint settings-help" data-binding>No desktop conversation linked yet.</p>
-      <button class="qq-button settings-secondary" type="button" data-bind disabled>Use current conversation</button>
+      <p class="qq-hint settings-help" data-binding>No role selected for QQ yet.</p>
+      <button class="qq-button settings-secondary" type="button" data-bind disabled>Use current role and project</button>
     </section>
 
     <div class="qq-feedback">
@@ -119,8 +119,10 @@ export async function mount(container, context) {
     find("[data-paired]").textContent = snapshot?.isPaired ? "Your QQ account is paired." : "No QQ account paired.";
     find("[data-pairing-hint]").hidden = snapshot?.isPaired === true;
     find("[data-binding]").textContent = snapshot?.binding
-      ? "QQ uses the linked desktop conversation. Opening another conversation does not change this link. To switch, open it in FGO Pet and choose Use current conversation."
-      : "Open a desktop conversation before pairing. QQ will continue that conversation.";
+      ? snapshot.binding.independent === true
+        ? "QQ has an independent conversation for the role and project selected when you paired. Desktop chat changes do not move it. Selecting the current role and project here starts a fresh QQ session; old history remains available."
+        : "This is an older desktop-linked connection. Choose Use current role and project to enable independent QQ conversations and image input."
+      : "Select a role and optional project before pairing. Your first QQ message creates its own conversation.";
     const expires = Date.parse(snapshot?.pairingExpiresAt || "");
     const activeCode = !!snapshot?.pairingCode && Number.isFinite(expires) && expires > Date.now();
     find("[data-pairing]").hidden = !activeCode;
@@ -192,7 +194,7 @@ export async function mount(container, context) {
         }
         confirm.hidden = true;
         feedback = command === "qq.configure" ? "Bot settings saved."
-          : command === "qq.bindCurrentConversation" ? "QQ now uses the current desktop conversation."
+          : command === "qq.bindCurrentConversation" ? "QQ now has a separate session for the current role and project."
           : command === "qq.reset" ? "Bot settings and pairing cleared." : "";
       }
     } catch (error) {

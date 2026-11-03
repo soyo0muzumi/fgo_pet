@@ -3,35 +3,67 @@ using FgoPet.Core.Dialogue;
 namespace FgoPet.App.Dialogue;
 
 /// <summary>Owner-local cancellation and commit fence; invalidation waits for the old leases to drain.</summary>
-public sealed class DialogueContextLifetime : IDialogueContextLifetime
+public sealed class DialogueContextLifetime : IDialogueContextLifetime, IDisposable
 {
     private readonly object _gate = new();
     private readonly HashSet<Lease> _active = [];
     private long _generation;
-    private int _suspensions;
+    private bool _disposed;
+    private readonly Coordination _coordination;
     private readonly CancellationToken _processStopping;
-    public DialogueContextLifetime(CancellationToken processStopping = default) => _processStopping = processStopping;
+    public DialogueContextLifetime(CancellationToken processStopping = default) : this(processStopping, new Coordination()) { }
+    private DialogueContextLifetime(CancellationToken processStopping, Coordination coordination)
+    {
+        _processStopping = processStopping; _coordination = coordination;
+        lock (coordination.Gate) coordination.Owners.Add(new(this));
+    }
+    /// <summary>Local cancellation is independent; maintenance and foreground/background admission stay shared.</summary>
+    public DialogueContextLifetime CreateIndependentOwner() => new(_processStopping, _coordination);
+    private sealed class Coordination
+    {
+        internal object Gate { get; } = new();
+        internal List<WeakReference<DialogueContextLifetime>> Owners { get; } = [];
+        internal int Suspensions;
+        internal DialogueContextLifetime[] LiveOwners()
+        {
+            var live = new List<DialogueContextLifetime>();
+            for (var index = Owners.Count - 1; index >= 0; index--)
+            {
+                if (Owners[index].TryGetTarget(out var owner)) live.Add(owner);
+                else Owners.RemoveAt(index);
+            }
+            return live.ToArray();
+        }
+    }
     public long Generation { get { lock (_gate) return _generation; } }
     public IDialogueBackgroundLease? TryAcquireBackground(CancellationToken cancellationToken)
     {
-        lock (_gate)
+        lock (_coordination.Gate)
         {
             cancellationToken.ThrowIfCancellationRequested();_processStopping.ThrowIfCancellationRequested();
-            if (_suspensions>0 || _active.Count>0) return null;
-            var lease=new Lease(this,_generation,cancellationToken,_processStopping,background:true);
-            _active.Add(lease);return lease;
+            if (_coordination.Suspensions > 0 || _disposed || _coordination.LiveOwners().Any(owner =>
+                { lock (owner._gate) return owner._active.Count > 0; })) return null;
+            lock (_gate)
+            {
+                var lease=new Lease(this,_generation,cancellationToken,_processStopping,background:true);
+                _active.Add(lease);return lease;
+            }
         }
     }
     public Lease Acquire(CancellationToken cancellationToken)
     {
         Lease lease;Lease[] reviews;
-        lock (_gate)
+        lock (_coordination.Gate)
         {
             _processStopping.ThrowIfCancellationRequested();
-            if (_suspensions > 0) throw new OperationCanceledException("Dialogue maintenance is in progress.", cancellationToken);
-            lease = new Lease(this, _generation, cancellationToken, _processStopping);
-            _active.Add(lease);
-            reviews=_active.Where(item=>item.IsBackground).ToArray();
+            if (_coordination.Suspensions > 0 || _disposed) throw new OperationCanceledException("Dialogue maintenance is in progress.", cancellationToken);
+            lock (_gate)
+            {
+                lease = new Lease(this, _generation, cancellationToken, _processStopping);
+                _active.Add(lease);
+            }
+            reviews = _coordination.LiveOwners().SelectMany(owner =>
+                { lock (owner._gate) return owner._active.Where(item => item.IsBackground).ToArray(); }).ToArray();
         }
         // Acquiring the foreground fence is immediate. User cancellation callbacks never run under this lock.
         foreach(var review in reviews)review.CancelBackground();
@@ -53,21 +85,27 @@ public sealed class DialogueContextLifetime : IDialogueContextLifetime
     }
     public async Task<IDisposable> SuspendAsync(CancellationToken cancellationToken)
     {
-        lock (_gate) _suspensions++;
+        DialogueContextLifetime[] owners;
+        lock (_coordination.Gate) { _coordination.Suspensions++; owners = _coordination.LiveOwners(); }
         try
         {
-            await InvalidateAsync(cancellationToken).ConfigureAwait(false);
-            return new Suspension(this);
+            await Task.WhenAll(owners.Select(owner => owner.InvalidateAsync(cancellationToken))).ConfigureAwait(false);
+            return new Suspension(_coordination);
         }
-        catch { lock (_gate) _suspensions--; throw; }
+        catch { lock (_coordination.Gate) _coordination.Suspensions--; throw; }
     }
-    private sealed class Suspension(DialogueContextLifetime owner) : IDisposable
+    public void Dispose()
+    {
+        lock (_coordination.Gate) _disposed = true;
+        Invalidate();
+    }
+    private sealed class Suspension(Coordination coordination) : IDisposable
     {
         private int _disposed;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            lock (owner._gate) owner._suspensions--;
+            lock (coordination.Gate) coordination.Suspensions--;
         }
     }
     public sealed class Lease : IDialogueBackgroundLease

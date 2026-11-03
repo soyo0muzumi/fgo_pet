@@ -334,6 +334,47 @@ public sealed class QqChatPluginTests
         Assert.True(fixture.CurrentTransport.Disposed);
     }
 
+    [Fact]
+    public async Task Independent_image_is_dispatched_once_only_after_pairing_and_survives_receipt_restart()
+    {
+        await using var fixture = new Fixture();
+        fixture.Binding = new("mash", "qq-independent", null, true);
+        await fixture.StartAsync();
+        await fixture.PairAsync();
+        var image = Message("paired-image", "owner", "caption") with { Image = new("https://gchat.qpic.cn/fixture", "image/png") };
+        await fixture.CurrentTransport.EmitAsync(image with { MessageId = "stranger-image", UserOpenId = "stranger" });
+        await fixture.CurrentTransport.EmitAsync(image);
+        Assert.Equal("reply:caption", await fixture.CurrentTransport.NextReplyAsync());
+        await fixture.CurrentTransport.EmitAsync(image);
+        await fixture.CurrentTransport.EmitAsync(Message("image-barrier", "owner", "barrier"));
+        await fixture.CurrentTransport.NextReplyAsync();
+        Assert.Single(fixture.MessageExchanges.Where(m => m.Image is not null));
+        await fixture.RestartAsync();
+        await fixture.CurrentTransport.EmitAsync(image);
+        await fixture.CurrentTransport.EmitAsync(Message("restart-barrier", "owner", "barrier"));
+        await fixture.CurrentTransport.NextReplyAsync();
+        Assert.Single(fixture.MessageExchanges.Where(m => m.Image is not null));
+    }
+
+    [Fact]
+    public async Task Independent_pairing_has_a_fresh_session_identity_and_never_dispatches_an_unpaired_image()
+    {
+        await using var fixture = new Fixture();
+        fixture.Binding = new("mash", "qq-independent", null, true);
+        await fixture.StartAsync();
+        await fixture.PairAsync();
+        var first = (await fixture.Plugin.GetSnapshotAsync(default)).Binding!;
+        Assert.True(first.Independent);
+        Assert.StartsWith("qq-session-", first.ConversationId);
+        var image = Message("image", "stranger", "caption") with { Image = new("https://gchat.qpic.cn/fixture", "image/png") };
+        await fixture.CurrentTransport.EmitAsync(image);
+        await fixture.CurrentTransport.EmitAsync(Message("owner-text", "owner", "hello"));
+        await fixture.CurrentTransport.NextReplyAsync();
+        Assert.Single(fixture.Exchanges);
+        var rebound = await fixture.Plugin.BindCurrentConversationAsync(default);
+        Assert.NotEqual(first.ConversationId, rebound.Binding!.ConversationId);
+    }
+
     private static QqC2cMessage Message(string id, string sender, string text) => new(id, sender, text, DateTimeOffset.UtcNow);
 
     private sealed class Fixture : IAsyncDisposable
@@ -346,6 +387,7 @@ public sealed class QqChatPluginTests
         internal List<FakeTransport> Transports { get; } = [];
         internal FakeTransport CurrentTransport => Transports[^1];
         internal ConcurrentQueue<(QqConversationBinding Binding, string Text)> Exchanges { get; } = new();
+        internal ConcurrentQueue<QqC2cMessage> MessageExchanges { get; } = new();
         internal QqConversationBinding Binding { get; set; } = new("mash", "conversation-one", null);
         internal Func<QqConversationBinding, string, CancellationToken, Task<QqConversationReply>>? Exchange { get; set; }
         internal QqChatPlugin Plugin { get; private set; }
@@ -356,7 +398,12 @@ public sealed class QqChatPluginTests
             {
                 Exchanges.Enqueue((binding, text));
                 return Exchange is null ? new("reply:" + text) : await Exchange(binding, text, token);
-            }, timeProvider: _clock);
+            }, timeProvider: _clock, exchangeMessage: async (binding, message, token) =>
+            {
+                MessageExchanges.Enqueue(message);
+                Exchanges.Enqueue((binding, message.Content));
+                return Exchange is null ? new("reply:" + message.Content) : await Exchange(binding, message.Content, token);
+            });
         internal async Task StartAsync()
         { await Plugin.StartAsync(default); await Plugin.OnApplicationReadyAsync(new(true), default); }
         internal async Task RestartAsync()

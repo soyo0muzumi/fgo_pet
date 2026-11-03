@@ -15,6 +15,7 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
     private readonly Func<IQqBotTransport> _transportFactory;
     private readonly Func<CancellationToken, Task<QqConversationBinding?>> _captureBinding;
     private readonly Func<QqConversationBinding, string, CancellationToken, Task<QqConversationReply>> _exchange;
+    private readonly Func<QqConversationBinding, QqC2cMessage, CancellationToken, Task<QqConversationReply>>? _exchangeMessage;
     private readonly TimeProvider _time;
     private readonly Action<QqDiagnostic>? _diagnostics;
     private readonly SemaphoreSlim _configuration = new(1, 1);
@@ -34,10 +35,12 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
     public QqChatPlugin(QqStateStore store, ICredentialStore credentials, Func<IQqBotTransport> transportFactory,
         Func<CancellationToken, Task<QqConversationBinding?>> captureBinding,
         Func<QqConversationBinding, string, CancellationToken, Task<QqConversationReply>> exchange,
-        TimeProvider? timeProvider = null, Action<QqDiagnostic>? diagnostics = null)
+        TimeProvider? timeProvider = null, Action<QqDiagnostic>? diagnostics = null,
+        Func<QqConversationBinding, QqC2cMessage, CancellationToken, Task<QqConversationReply>>? exchangeMessage = null)
     {
         _store = store; _credentials = credentials; _transportFactory = transportFactory;
         _captureBinding = captureBinding; _exchange = exchange;
+        _exchangeMessage = exchangeMessage;
         _time = timeProvider ?? TimeProvider.System; _diagnostics = diagnostics;
         try { _state = store.Load(); }
         catch (Exception) { _stateUnavailable = true; _status = "Faulted"; _error = "QQ_STATE_UNAVAILABLE"; }
@@ -122,7 +125,7 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
             // Pairing always requires local interaction; an unknown sender is never auto-enrolled.
             Persist(_state with { Enabled = false, OwnerOpenId = null, Binding = null }, token);
             _pairing = new("FGO-" + RandomNumberGenerator.GetInt32(100_000_000).ToString("D8"),
-                _time.GetUtcNow().AddMinutes(5), binding!);
+                _time.GetUtcNow().AddMinutes(5), IndependentBinding(binding!));
             StartConnection();
         }
     }, token);
@@ -152,7 +155,7 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
         lock (_gate)
         {
             token.ThrowIfCancellationRequested();
-            Persist(_state with { Binding = binding }, token);
+            Persist(_state with { Binding = IndependentBinding(binding!) }, token);
             _pairing = null; _error = null;
             if (_state.Enabled) StartConnection();
         }
@@ -298,13 +301,14 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
         var now = _time.GetUtcNow();
         if (!QqValidation.Identifier(message.MessageId) || !QqValidation.Identifier(message.UserOpenId) ||
             (message.IsUnsupportedMedia ? message.Content != string.Empty
+                : message.Image is not null ? message.Content.Length > 8192
                 : message.Content is not { Length: > 0 and <= 8192 } || string.IsNullOrWhiteSpace(message.Content)) ||
             message.Timestamp < now.AddMinutes(-5) || message.Timestamp > now.AddMinutes(1)) return;
         Pairing? pairing;
         lock (_gate) pairing = _pairing;
         if (pairing is not null)
         {
-            if (message.IsUnsupportedMedia) return;
+            if (message.IsUnsupportedMedia || message.Image is not null) return;
             if (pairing.ExpiresAt <= now) return;
             var candidate = message.Content.Trim();
             if (!string.Equals(candidate, pairing.Code, StringComparison.Ordinal))
@@ -321,10 +325,12 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
                 if (!ReferenceEquals(_pairing, pairing) || !ReferenceEquals(_session, session)) return;
                 if (pairing.ExpiresAt <= _time.GetUtcNow())
                 { _pairing = null; _error = "QQ_PAIRING_EXPIRED"; session.Cancellation.Cancel(); return; }
-                if (pairing.Binding != current) { _error = "QQ_SCOPE_CHANGED"; return; }
+                if (pairing.Binding.Independent
+                    ? current is null || !current.Independent || pairing.Binding.RoleId != current.RoleId || pairing.Binding.ProjectId != current.ProjectId
+                    : pairing.Binding != current) { _error = "QQ_SCOPE_CHANGED"; return; }
                 var retained = (_state.Receipts ?? []).Where(r => r.AcceptedAt > now.AddMinutes(-10)).ToArray();
                 if (retained.Length >= 1024) { _error = "QQ_RECEIPT_CAPACITY"; return; }
-                Persist(_state with { Enabled = true, OwnerOpenId = message.UserOpenId, Binding = current,
+                Persist(_state with { Enabled = true, OwnerOpenId = message.UserOpenId, Binding = pairing.Binding,
                     Receipts = [.. retained, new(ReceiptId(session.AppId, message), now)] }, token);
                 _pairing = null; _error = null;
             }
@@ -347,25 +353,29 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
             if (retained.Length >= 1024) { _error = "QQ_RECEIPT_CAPACITY"; return; }
             // Commit admission before calling the model. An uncertain/crashed turn is never auto-replayed.
             Persist(_state with { Receipts = [.. retained, new(receiptId, now)] }, token);
-            if (message.IsUnsupportedMedia && (session.LastUnsupportedNoticeAt is null
+            if ((message.IsUnsupportedMedia || message.Image is not null && (!binding.Independent || _exchangeMessage is null)) && (session.LastUnsupportedNoticeAt is null
                 || now - session.LastUnsupportedNoticeAt.Value >= TimeSpan.FromSeconds(30)))
             {
                 session.LastUnsupportedNoticeAt = now;
                 notifyUnsupportedMedia = true;
             }
         }
-        if (message.IsUnsupportedMedia)
+        if (message.IsUnsupportedMedia || message.Image is not null && (!binding.Independent || _exchangeMessage is null))
         {
             Trace(message.MessageId, "unsupported", "QQ_MEDIA_NOT_SUPPORTED");
             if (notifyUnsupportedMedia)
-                await ReplyAsync(session, message, "当前 QQ 入口只支持文字，这条消息的图片或附件未被读取。请发送纯文字，或在桌面聊天中选图。", token).ConfigureAwait(false);
+                await ReplyAsync(session, message, binding.Independent
+                    ? "这条图片或附件未被读取。QQ 目前支持单张 PNG/JPEG 图片和配文；其他附件或多图请分开发送。"
+                    : "当前连接只支持文字，这条图片或附件未被读取。请在电脑 QQ 设置中选择当前角色和项目，启用独立会话与图片输入。", token).ConfigureAwait(false);
             return;
         }
         Trace(message.MessageId, "dispatch");
         QqConversationReply reply;
         using var turn = CancellationTokenSource.CreateLinkedTokenSource(token);
         turn.CancelAfter(TimeSpan.FromMinutes(4));
-        try { reply = await _exchange(binding, message.Content, turn.Token).ConfigureAwait(false); }
+        try { reply = _exchangeMessage is not null && binding.Independent
+            ? await _exchangeMessage(binding, message, turn.Token).ConfigureAwait(false)
+            : await _exchange(binding, message.Content, turn.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { reply = new("这次回复超时了，请稍后再试。", "QQ_TURN_TIMEOUT"); }
         catch (OperationCanceledException) { throw; }
@@ -438,6 +448,8 @@ public sealed class QqChatPlugin : IFgoPetPlugin, IApplicationReadyObserver, IDi
     public ValueTask DisposeAsync() => StopAsync(CancellationToken.None);
 
     private void Persist(QqStoredState state, CancellationToken token) { _store.Save(state, token); _state = state; }
+    private static QqConversationBinding IndependentBinding(QqConversationBinding binding) => binding.Independent
+        ? binding with { ConversationId = "qq-session-" + Guid.NewGuid().ToString("N") } : binding;
     private void Error(string code) { lock (_gate) _error = code; }
     private QqChannelSnapshot Snapshot(bool hasSecret) => new(_state.AppId, hasSecret, _state.Enabled,
         _state.OwnerOpenId is not null, _status, _error, _state.Binding, _pairing?.Code, _pairing?.ExpiresAt);

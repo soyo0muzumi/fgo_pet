@@ -1,6 +1,6 @@
 namespace FgoPet.Plugin.Qq;
 
-public sealed record QqConversationBinding(string RoleId, string ConversationId, string? ProjectId);
+public sealed record QqConversationBinding(string RoleId, string ConversationId, string? ProjectId, bool Independent = false);
 public sealed record QqConversationReply(string? Text, string? ErrorCode = null);
 public sealed record QqChannelSnapshot(string AppId, bool HasSecret, bool Enabled, bool IsPaired,
     string State, string? ErrorCode, QqConversationBinding? Binding, string? PairingCode,

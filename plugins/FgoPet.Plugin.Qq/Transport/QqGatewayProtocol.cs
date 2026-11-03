@@ -77,6 +77,27 @@ internal static class QqGatewayProtocol
         return new(id, user, content, time);
     }
 
+    internal static QqC2cMessage? ReadImageMessage(QqGatewayFrame frame)
+    {
+        var envelope = ReadUnsupportedMediaMessage(frame);
+        if (envelope is null) return null;
+        var data = frame.Data;
+        var attachments = data.GetProperty("attachments");
+        if (attachments.GetArrayLength() != 1 || HasContent(data, "ark_data") || HasNonTextElements(data)) return null;
+        if (data.TryGetProperty("message_type", out var kind) && (!kind.TryGetInt32(out var type) || type != 0)) return null;
+        var attachment = attachments[0];
+        if (!TryString(attachment, "content_type", 64, out var mime) || mime is not ("image/png" or "image/jpeg") ||
+            !TryString(attachment, "url", 4096, out var url) || !QqImageDownloader.IsAllowedUrl(url)) return null;
+        var caption = string.Empty;
+        if (data.TryGetProperty("content", out var content))
+        {
+            if (content.ValueKind != JsonValueKind.String) return null;
+            caption = content.GetString() ?? string.Empty;
+            if (caption.Length > 8192 || caption.Contains('\0') || !IsValidUtf16(caption)) return null;
+        }
+        return envelope with { Content = caption, IsUnsupportedMedia = false, Image = new(url, mime) };
+    }
+
     internal static QqC2cMessage? ReadUnsupportedMediaMessage(QqGatewayFrame frame)
     {
         if (frame.Op != 0 || frame.EventType != "C2C_MESSAGE_CREATE" || frame.Data.ValueKind != JsonValueKind.Object)

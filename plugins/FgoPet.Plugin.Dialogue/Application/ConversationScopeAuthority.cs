@@ -7,7 +7,7 @@ namespace FgoPet.App.Dialogue;
 
 /// <summary>Conversation owns project/session selection and validates its current tool scope.</summary>
 public sealed class ConversationScopeAuthority(Func<ConversationViewModel> currentModel, AppRuntime runtime,
-    SqliteConversationRepository conversations) : IConversationScopeAuthority
+    SqliteConversationRepository conversations, IndependentConversationScope? independent = null) : IConversationScopeAuthority
 {
     public ToolScope? ActiveConversation
     {
@@ -37,6 +37,11 @@ public sealed class ConversationScopeAuthority(Func<ConversationViewModel> curre
     }
     public bool IsActive(ToolScope scope)
     {
+        if (independent?.IsActive(scope) == true)
+        {
+            var remote = conversations.GetConversation(scope.ConversationId, scope.RoleId);
+            return remote is { IsArchived: false } && remote.ProjectId == scope.ProjectId;
+        }
         if (runtime.ActiveRole?.ServantId != scope.RoleId) return false;
         var conversation = conversations.GetConversation(scope.ConversationId, scope.RoleId);
         return conversation is { IsArchived: false } && conversation.ProjectId == scope.ProjectId &&

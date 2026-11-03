@@ -195,7 +195,8 @@ public sealed class QqBotTransport : IQqBotTransport
                         authenticationDeadline.CancelAfter(Timeout.InfiniteTimeSpan);
                         onConnected();
                     }
-                    else if ((QqGatewayProtocol.ReadTextMessage(frame) ?? QqGatewayProtocol.ReadUnsupportedMediaMessage(frame)) is { } message)
+                    else if ((QqGatewayProtocol.ReadTextMessage(frame) ?? QqGatewayProtocol.ReadImageMessage(frame)
+                        ?? QqGatewayProtocol.ReadUnsupportedMediaMessage(frame)) is { } message)
                     {
                         // During RESUME the gateway replays messages BEFORE RESUMED. A retained session admits those.
                         if (!ready && session.SessionId is null) throw new QqTransportException("QQ_GATEWAY_NOT_AUTHENTICATED");

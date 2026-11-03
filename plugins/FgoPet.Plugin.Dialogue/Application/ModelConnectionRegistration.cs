@@ -34,20 +34,28 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<TimeProvider>(),
             () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
                 ? ModelRouteKey.From(connection) : null))
+        .AddSingleton<IndependentConversationScope>()
+        .AddSingleton(provider => new IndependentConversationImages(provider.GetRequiredService<IndependentConversationScope>(),
+            provider.GetRequiredService<TimeProvider>(),
+            () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
+                ? ModelRouteKey.From(connection) : null))
         .AddSingleton(provider => new BrowserImageStore(provider.GetRequiredService<SelectedImageStore>(),
             scope => provider.GetRequiredService<IConversationScopeAuthority>().IsActive(scope),
             () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
                 ? ModelRouteKey.From(connection) : null, provider.GetRequiredService<TimeProvider>()))
         .AddSingleton<IBrowserImageSink>(provider => provider.GetRequiredService<BrowserImageStore>())
         .AddSingleton<IChatImageResolver>(provider => new ConversationImageResolver(
-            provider.GetRequiredService<SelectedImageStore>(), provider.GetRequiredService<BrowserImageStore>()))
+            provider.GetRequiredService<SelectedImageStore>(), provider.GetRequiredService<BrowserImageStore>(),
+            provider.GetRequiredService<IndependentConversationImages>().Store))
         .AddSingleton<IFgoPetPlugin>(provider => new ImageToolsPlugin(
             provider.GetRequiredService<SelectedImageStore>(),
             () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection is { } connection
                 ? ModelRouteKey.From(connection) : null,
             diagnostic => provider.GetRequiredService<ILogger<ImageToolsPlugin>>().LogInformation(
                 "Image read {Timestamp} {Correlation} {Stage} {ErrorCode}", diagnostic.TimestampUtc,
-                diagnostic.Correlation, diagnostic.Stage, diagnostic.ErrorCode)))
+                diagnostic.Correlation, diagnostic.Stage, diagnostic.ErrorCode),
+            scope => provider.GetRequiredService<IndependentConversationScope>().IsActive(scope)
+                ? provider.GetRequiredService<IndependentConversationImages>().Store : provider.GetRequiredService<SelectedImageStore>()))
         .AddSingleton<ProviderCatalog>()
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ApprovedKnowledgeQuery>()
@@ -95,7 +103,7 @@ public static class ModelConnectionRegistration
         .AddSingleton<IExperienceTimeline, SqliteExperienceTimeline>()
         .AddSingleton<IConversationScopeAuthority>(provider => new ConversationScopeAuthority(
             () => provider.GetRequiredService<ConversationViewModel>(), provider.GetRequiredService<FgoPet.App.Runtime.AppRuntime>(),
-            provider.GetRequiredService<SqliteConversationRepository>()))
+            provider.GetRequiredService<SqliteConversationRepository>(), provider.GetRequiredService<IndependentConversationScope>()))
         .AddSingleton<IFgoPetPlugin>(provider => new ExperienceToolsPlugin(
             provider.GetRequiredService<IConversationRecallRepository>(),
             provider.GetRequiredService<IExperienceSourceReader>(),

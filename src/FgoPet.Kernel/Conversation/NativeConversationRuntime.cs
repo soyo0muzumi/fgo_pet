@@ -83,6 +83,11 @@ public sealed class NativeConversationRuntime : IAsyncDisposable, IDisposable
         return cancelled;
     }
     public bool HasActiveConversation(string conversationId) => registrations.Values.Any(r => r.Identity.Scope.ConversationId == conversationId);
+    internal bool HasActiveRun(string runId) => registrations.ContainsKey(runId);
+    internal void CancelRun(string runId)
+    {
+        if (registrations.TryGetValue(runId, out var registration)) BeginCancel(registration.Identity);
+    }
     public void CancelConversation(string conversationId)
     {
         foreach (var registration in registrations.Values.Where(r => r.Identity.Scope.ConversationId == conversationId))

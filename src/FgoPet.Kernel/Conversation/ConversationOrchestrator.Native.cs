@@ -18,6 +18,7 @@ public sealed partial class ConversationOrchestrator
     private readonly IAgentRunStore? _agentRuns;
     private readonly IAgentFinalDeliveryStore? _finalDeliveries;
     private readonly Func<ToolScope, bool>? _nativeScopeCurrent;
+    private readonly HashSet<string> _ownedNativeRuns = new(StringComparer.Ordinal);
 
     public ValueTask<AgentInteractionSnapshot?> GetAgentInteractionAsync(string runId, ToolScope scope, CancellationToken token) =>
         _nativeRuntime?.GetInteractionAsync(runId, scope, token) ?? ValueTask.FromResult<AgentInteractionSnapshot?>(null);
@@ -39,7 +40,10 @@ public sealed partial class ConversationOrchestrator
             _activeCancellation = cancellation;
         }
         try { return await resume(cancellation.Token); }
-        finally { lock (_gate) { if (ReferenceEquals(_activeCancellation, cancellation)) _activeCancellation = null; } }
+        finally { lock (_gate) {
+            if (ReferenceEquals(_activeCancellation, cancellation)) _activeCancellation = null;
+            _ownedNativeRuns.RemoveWhere(id => !_nativeRuntime.HasActiveRun(id));
+        } }
     }
 
     private string NativeModelRevision() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
@@ -55,6 +59,7 @@ public sealed partial class ConversationOrchestrator
         var query = new ProtectedQueryReference(user.MessageId, source.Fingerprint);
         var identity = new AgentRunIdentity("run-" + Guid.NewGuid().ToString("N"), user.MessageId, scope,
             NativeModelRevision(), _lifetime.Generation);
+        lock (_gate) _ownedNativeRuns.Add(identity.RunId);
         void CheckCurrent()
         {
             token.ThrowIfCancellationRequested();

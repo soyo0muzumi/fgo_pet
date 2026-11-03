@@ -104,6 +104,7 @@ public sealed class SelectedImageStore(Func<ToolScope, bool> isActive, TimeProvi
         DateTimeOffset ExpiresAt, string UserMessageId, string? RunId = null);
     private Selection? selected;
     public bool HasSelection { get { lock (gate) return selected is not null && clock.GetUtcNow() < selected.ExpiresAt; } }
+    public bool Owns(ToolImageReference reference) { lock (gate) return selected?.Reference == reference; }
     public void Grant(ToolScope scope, ModelRouteKey route, ChatImageInput image, string userMessageId, DateTimeOffset? expiresAt = null)
     {
         if (string.IsNullOrWhiteSpace(scope.ConversationId) || !isActive(scope)) throw new SelectedImageException("IMAGE_SCOPE_DENIED");

@@ -30,6 +30,8 @@
     <Compile Include="Contracts\ChatWorkspaceSelection.cs" />
     <Compile Include="Contracts/ExternalConversationContracts.cs" />
     <Compile Include="Desktop/ExternalConversationGateway.cs" />
+    <Compile Include="Desktop/IndependentConversationGateway.cs" />
+    <Compile Include="Application/IndependentConversationScope.cs" />
     <Compile Include="Desktop/ConversationViewModel.External.cs" />
     <Compile Include="Contracts/ChatImageSelection.cs" />
     <Compile Include="Desktop/ChatImageSelection.cs" />

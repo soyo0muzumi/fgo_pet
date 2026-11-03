@@ -45,6 +45,7 @@ public sealed partial class ConversationOrchestrator
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
+    private readonly string _sessionNamespace;
 
     public ConversationOrchestrator(
         IChatProviderResolver providerResolver,
@@ -64,7 +65,7 @@ public sealed partial class ConversationOrchestrator
         NativeConversationRuntime? nativeRuntime = null,
         FgoPet.Kernel.Agent.IAgentRunStore? agentRuns = null,
         IAgentFinalDeliveryStore? finalDeliveries = null,
-        Func<ToolScope, bool>? nativeScopeCurrent = null)
+        Func<ToolScope, bool>? nativeScopeCurrent = null, string sessionNamespace = "")
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -84,11 +85,38 @@ public sealed partial class ConversationOrchestrator
         _agentRuns = agentRuns;
         _finalDeliveries = finalDeliveries;
         _nativeScopeCurrent = nativeScopeCurrent;
+        if (sessionNamespace.Length > 64 || sessionNamespace.Any(c => !char.IsAsciiLetterOrDigit(c)))
+            throw new ArgumentException("Invalid session namespace.", nameof(sessionNamespace));
+        _sessionNamespace = sessionNamespace;
         if (nativeRuntime is not null && (agentRuns is null || finalDeliveries is null))
             throw new ArgumentException("Native runtime requires durable run and final delivery owners.");
     }
 
     public event Action<ConversationUpdate>? Updated;
+
+    /// <summary>Separate selection and cancellation owner; shared persistence and model policies.</summary>
+    public ConversationOrchestrator CreateIndependentSession(string sessionNamespace, Func<ToolScope, bool> scopeCurrent)
+    {
+        if (string.IsNullOrWhiteSpace(sessionNamespace)) throw new ArgumentException("Session namespace required.");
+        return new(_providerResolver, _contentResolver, _conversations, _composer, _time, _settings, _summaries,
+            _capabilities, _logger, _contextResolver, _tokenMeter, _lifetime.CreateIndependentOwner(), _recall, _contextStore,
+            _nativeRuntime, _agentRuns, _finalDeliveries, scopeCurrent, sessionNamespace);
+    }
+
+    public void CloseIndependentSession()
+    {
+        if (_sessionNamespace.Length == 0) throw new InvalidOperationException("Not an independent session.");
+        CancelCurrent();
+        _lifetime.Dispose();
+    }
+
+    public async Task<string> PrepareConversationAsync(string roleId, string? projectId, CancellationToken token)
+    {
+        using var lease = _lifetime.Acquire(token);
+        var content = await _contentResolver.ResolveAsync(roleId, lease.Token);
+        if (content.Context.ServantId != roleId) throw new InvalidDataException("Content role mismatch.");
+        return lease.Commit(() => GetOrCreateConversation(roleId, content.Context, new(roleId, projectId), null));
+    }
 
     public async Task<ConversationSendResult> SendAsync(
         string servantId,
@@ -465,6 +493,7 @@ public sealed partial class ConversationOrchestrator
                 {
                     _activeCancellation = null;
                 }
+                _ownedNativeRuns.RemoveWhere(id => _nativeRuntime?.HasActiveRun(id) != true);
             }
         }
     }
@@ -472,9 +501,10 @@ public sealed partial class ConversationOrchestrator
     public void CancelCurrent()
     {
         _lifetime.Invalidate();
-        _nativeRuntime?.CancelAll();
         lock (_gate)
         {
+            foreach (var id in _ownedNativeRuns) _nativeRuntime?.CancelRun(id);
+            _ownedNativeRuns.Clear();
             _activeCancellation?.Cancel();
         }
     }
@@ -512,9 +542,12 @@ public sealed partial class ConversationOrchestrator
         CancelCurrent();
         lock (_gate)
         {
+            var key = ActiveConversationStateKey(servantId);
+            var previous = _conversationIds.GetValueOrDefault(servantId) ?? _conversations.ReadState(key);
             _conversationIds.Remove(servantId);
-            _conversations.DeleteState(ActiveConversationStateKey(servantId));
-            _capabilities?.ClearRole(servantId);
+            _conversations.DeleteState(key);
+            if (previous is not null && _conversations.GetConversation(previous, servantId) is { } conversation)
+                _capabilities?.RemoveConversation(new(previous, servantId, conversation.ProjectId));
         }
     }
 
@@ -580,6 +613,7 @@ public sealed partial class ConversationOrchestrator
             if (_conversationIds.TryGetValue(servantId, out var conversationId))
             {
                 if (_conversations.GetConversation(conversationId, servantId)?.ProjectId == scope.ProjectId &&
+                    _conversations.GetConversation(conversationId, servantId)?.IsArchived == false &&
                     _conversations.Exists(conversationId, servantId)) return conversationId;
                 _conversationIds.Remove(servantId);
             }
@@ -590,7 +624,7 @@ public sealed partial class ConversationOrchestrator
                 try
                 {
                     var existing = _conversations.GetConversation(saved, servantId);
-                    if (existing is not null && existing.ProjectId == scope.ProjectId)
+                    if (existing is { IsArchived: false } && existing.ProjectId == scope.ProjectId)
                     {
                         _conversationIds[servantId] = saved;
                         return saved;
@@ -610,7 +644,7 @@ public sealed partial class ConversationOrchestrator
         }
     }
 
-    private static string ActiveConversationStateKey(string servantId) => $"LastActiveConversationId:{servantId}";
+    private string ActiveConversationStateKey(string servantId) => $"{_sessionNamespace}LastActiveConversationId:{servantId}";
 
     private void TryAppendFailedMessage(string conversationId, string servantId, ContentContextKey? context)
     {

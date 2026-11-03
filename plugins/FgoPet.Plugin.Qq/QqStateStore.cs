@@ -64,6 +64,9 @@ public sealed class QqStateStore(string path, IProtectedStateProtector protector
         (state.OwnerOpenId is null && state.Binding is null ||
             QqValidation.Identifier(state.OwnerOpenId) && QqValidation.Binding(state.Binding) && QqValidation.AppId(state.AppId)) &&
         (!state.Enabled || state.OwnerOpenId is not null && state.Binding is not null) &&
+        (state.Binding?.Independent != true || state.Binding.ConversationId.Length == 43 &&
+            state.Binding.ConversationId.StartsWith("qq-session-", StringComparison.Ordinal) &&
+            state.Binding.ConversationId[11..].All(char.IsAsciiHexDigit)) &&
         (state.Receipts is null || state.Receipts.Length <= 1024 && state.Receipts.All(r => r is not null &&
             r.IdHash.Length == 64 && r.IdHash.All(char.IsAsciiHexDigit)));
 }

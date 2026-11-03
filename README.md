@@ -93,7 +93,7 @@ For image reading, choose, paste or drop one local PNG/JPEG into the chat compos
 
 ### Agent
 
-A development preview of text-only QQ private chat is available under Settings → Services → QQ, disabled by default. It links one locally paired QQ account to one existing desktop conversation. Unsent desktop images stay private to the desktop send; action approvals remain on the desktop. Completing a clarification or approval there does not automatically send its final answer to QQ. Real QQ account and Windows UI acceptance remain pending; see the [QQ module guide](plugins/FgoPet.Plugin.Qq/README.md).
+A development preview of QQ private chat is available under Settings → Services → QQ, disabled by default. A locally paired account has its own conversation for the selected role and project; its first message creates the conversation, and `/新对话` starts another without switching the desktop chat. Single PNG/JPEG images with optional text are supported on image-capable model connections. Unsent desktop images stay private to their desktop send. Actions needing approval must be initiated and confirmed on the desktop. Existing desktop-linked pairings require choosing **Use current role and project** to enable the new mode. Real QQ account and native settings UI acceptance remain pending; see the [QQ module guide](plugins/FgoPet.Plugin.Qq/README.md).
 
 Under **Settings → Capabilities → Agent Connection**, detect and approve a real source, select allowed projects, and explicitly confirm the permission scope. Unapproved sources or projects cannot receive tasks, and revocation takes effect immediately. A stop request is never presented as a confirmed stop, and an outcome-unknown dispatch is never retried automatically.
 
