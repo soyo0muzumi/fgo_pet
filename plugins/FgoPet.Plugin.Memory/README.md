@@ -60,3 +60,5 @@ Use the Memory Core/Desktop test projects under `tests/`, plus affected applicat
 `MemoryWebPage` owns the shared Settings Web module over `MemoryViewModel`. The former ConversationMemoryPage XAML is removed; role context, review, confirmation, and data policies retain their existing owners.
 
 The Margin detail uses English localization keys and paper controls, with candidate review and confirmed memories in vertically stacked sections. Memory bodies and owner status render as plain text. Editing, approval, enable/disable and deletion retain the existing commands; delete-all retains its inline confirmation. `MarginMemoryDataWebTests` exercises production page assets with synthetic data and does not access private memories or perform real deletion. Owner and backup tests verify data policies separately.
+
+关系与成长的“她记得的”Tab 保留 `ConversationMemory` 页面 ID 与 Memory 命令归属，默认显示已保存列表；候选逐条复核、编辑与更正对象选择、停用和删除仍由现有 owner 执行。记忆设置按需展开；切换 Tab 保留本机草稿，角色变化丢弃旧草稿；版本变化后阻止保存，需核对当前内容并明确重绑。单条删除与整体删除均先确认。验证入口包括 Windows `RelationshipV2WebTests`（临时合成数据库上的真实双 owner 与宿主）和 `MarginMemoryDataWebTests`。

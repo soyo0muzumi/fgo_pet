@@ -30,7 +30,7 @@ public sealed class MarginMemoryDataWebTests
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
                 await Ready(web, prefix);
-                Assert.Equal("Delete all user data", await Text(web, "document.querySelector('[data-delete-all]').textContent"));
+                Assert.Equal(prefix == "cm" ? "删除所有用户数据" : "Delete all user data", await Text(web, "document.querySelector('[data-delete-all]').textContent"));
                 Assert.Equal("7px", await Text(web, "getComputedStyle(document.querySelector('[data-delete-all]')).borderRadius"));
                 Assert.Equal("false", await Script(web, $"document.querySelector('.{prefix}-maintenance').open"));
                 await Capture(web, prefix + "-normal");
@@ -38,10 +38,13 @@ public sealed class MarginMemoryDataWebTests
                 {
                     Assert.Equal("0", await Script(web, "document.querySelectorAll('[data-candidates] img').length"));
                     Assert.Contains("<img", await Text(web, "document.querySelector('[data-candidates]').textContent"));
+                    await Click(web, "[data-memory-view=candidates]");
                     await Click(web, "[data-approve-candidate]");
                     await Wait(() => Task.FromResult(owner.Calls.Contains("memory.approveCandidate")));
                     await Ready(web, prefix);
                     await Click(web, "[data-memory-view=confirmed]");
+                    await Click(web, "[data-memories] .cm-list-button");
+                    await Ready(web, prefix);
                     Assert.Equal("true", await Script(web,
                         "document.querySelector('[data-memory-pane=candidates]').hidden && !document.querySelector('[data-memory-pane=confirmed]').hidden"));
                     Assert.Equal("true", await Script(web,
@@ -66,6 +69,7 @@ public sealed class MarginMemoryDataWebTests
                     await Wait(() => Task.FromResult(owner.Calls.Contains("privacy.restoreBackup")));
                     await Ready(web, prefix);
                 }
+                if (prefix == "cm") await Click(web, "[data-memory-settings]");
                 await Click(web, $".{prefix}-maintenance > summary");
                 Assert.Equal("true", await Script(web, $"document.querySelector('.{prefix}-maintenance').open"));
                 await Click(web, "[data-delete-all]");
@@ -110,7 +114,7 @@ public sealed class MarginMemoryDataWebTests
                 await Wait(() => Task.FromResult(host.State == WebSurfaceState.Ready));
                 var web = Assert.Single(host.Children.OfType<WebView2>());
                 await Wait(async () => await Text(web, $"document.querySelector('.{prefix}-page')?.dataset.state ?? ''") == "error");
-                Assert.Equal("This page is temporarily unavailable.", await Text(web, "document.querySelector('[data-error]').textContent"));
+                Assert.Equal(prefix == "cm" ? "此页面暂时不可用。" : "This page is temporarily unavailable.", await Text(web, "document.querySelector('[data-error]').textContent"));
                 Assert.Equal("false", await Script(web, "document.body.innerText.includes('SYNTHETIC_PRIVATE_ERROR')"));
                 await Capture(web, prefix + "-read-error");
             }
@@ -166,7 +170,7 @@ public sealed class MarginMemoryDataWebTests
         public string ModulePath => pageId == "Privacy" ? "pages/privacy.js" : "pages/conversation-memory.js";
         public IReadOnlyList<string> Commands => pageId == "Privacy"
             ? ["privacy.get", "privacy.export", "privacy.createBackup", "privacy.restoreBackup", "privacy.deleteAll"]
-            : ["memory.get", "memory.approveCandidate", "memory.deleteAll"];
+            : ["memory.get", "memory.selectMemory", "memory.selectCandidate", "memory.approveCandidate", "memory.deleteAll"];
         public List<string> Calls { get; } = [];
         public bool FailReads { get; init; }
         public ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken cancellationToken)

@@ -33,7 +33,7 @@ public sealed class SettingsWebEntryTests
                     + JsonSerializer.Serialize(id)
                     + " && document.getElementById('page-content').children.length > 0 && !document.getElementById('root-status').textContent") == "true");
             await PageReady("RolePackages");
-            Assert.Equal("[\"Companion\",\"Services\",\"Memory & understanding\",\"App\"]",
+            Assert.Equal("[\"Companion\",\"Services\",\"她与你\",\"App\"]",
                 await web.CoreWebView2.ExecuteScriptAsync(
                     "Array.from(document.querySelectorAll('#settings-navigation .section-name')).map(node => node.textContent)"));
             foreach (var id in new[] { "UserProfile", "Personalization", "ModelConnection", "Speech",
@@ -66,7 +66,7 @@ public sealed class SettingsWebEntryTests
             Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
                 "document.querySelector('#settings-back').hidden && !document.querySelector('.overview-rows')"));
             Assert.Equal("true", await web.CoreWebView2.ExecuteScriptAsync(
-                "document.querySelector('[data-section=knowledge] .navigation-page[data-page-id=Understanding]') !== null"));
+                "document.querySelector('[data-section=knowledge] .navigation-page[data-page-id=ConversationMemory]') !== null && document.querySelector('[data-relationship-page=Understanding]') !== null"));
             vm.Select(SettingsSection.UserProfile);
             window.NavigateToSelectedPage();
             await PageReady("UserProfile");

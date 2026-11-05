@@ -12,6 +12,8 @@
   const description = document.getElementById("page-description");
   const status = document.getElementById("root-status");
   const pageContent = document.getElementById("page-content");
+  const relationshipTabs = document.getElementById("relationship-tabs");
+  const isRelationship = id => id === "ConversationMemory" || id === "Understanding";
   const pending = new Map();
   const sections = ["companion", "services", "knowledge", "app"];
   const sectionPages = {
@@ -21,6 +23,7 @@
     app: ["UserProfile", "Theme", "Privacy"],
   };
   const pageStates = new Map();
+  const pageDirtyStates = new Map();
   const themeChangedListeners = new Set();
   const modulePathPattern = /^pages\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.js$/;
   let serial = 0;
@@ -92,6 +95,7 @@
   }
 
   function pageTitle(page) {
+    if (isRelationship(page.id)) return "关系与成长";
     const key = `settings.page.${page.id}`;
     return t(key) !== key ? t(key) : (page.title || t("settings.untitled"));
   }
@@ -103,6 +107,11 @@
 
   function orderedSectionPages(section) {
     const known = sectionPages[section].map(id => pages.find(page => page.id === id)).filter(Boolean);
+    if (section === "knowledge") {
+      const destination = known.find(page => page.id === "ConversationMemory" && availablePage(page.id))
+        || known.find(page => availablePage(page.id)) || known[0];
+      return destination ? [destination] : [];
+    }
     if (section !== "app") return known;
     return known.concat(pages.filter(page => !sections.some(group => sectionPages[group].includes(page.id))));
   }
@@ -145,7 +154,7 @@
       group.dataset.section = section;
       const heading = document.createElement("h2");
       heading.className = "section-name";
-      heading.textContent = t(`settings.${section}`);
+      heading.textContent = section === "knowledge" ? "她与你" : t(`settings.${section}`);
       group.append(heading);
       const options = document.createElement("optgroup");
       options.label = heading.textContent;
@@ -155,7 +164,7 @@
         item.className = "navigation-page";
         item.dataset.pageId = page.id;
         item.disabled = !availablePage(page.id);
-        if (page.id === document.body.dataset.pageId) item.setAttribute("aria-current", "page");
+        if (page.id === document.body.dataset.pageId || isRelationship(page.id) && isRelationship(document.body.dataset.pageId)) item.setAttribute("aria-current", "page");
         const name = document.createElement("span");
         name.className = "navigation-label";
         name.textContent = pageTitle(page);
@@ -165,7 +174,8 @@
           state.className = "navigation-state";
           state.textContent = t("settings.unavailable");
           item.append(state);
-        } else if (pageStates.get(page.id)?.dirty === true) {
+        } else if ((isRelationship(page.id) ? ["ConversationMemory", "Understanding"] : [page.id])
+          .some(id => (pageDirtyStates.get(id) ?? pageStates.get(id)?.dirty) === true)) {
           const draft = document.createElement("span");
           draft.className = "navigation-draft";
           draft.title = t("settings.unsavedDraft");
@@ -185,7 +195,8 @@
     }
     navigation.replaceChildren(fragment);
     mobileNavigation.replaceChildren(mobile);
-    mobileNavigation.value = document.body.dataset.pageId || "";
+    mobileNavigation.value = document.body.dataset.pageId === "Understanding" && availablePage("ConversationMemory")
+      ? "ConversationMemory" : document.body.dataset.pageId || "";
   }
 
   function availablePage(pageId) {
@@ -221,10 +232,29 @@
     const selectedSection = sectionFor(page);
     document.body.dataset.settingsSection = selectedSection;
     document.body.dataset.pageId = page.id;
+    document.body.dataset.relationship = String(isRelationship(page.id));
+    relationshipTabs.hidden = !isRelationship(page.id);
+    for (const tab of relationshipTabs.querySelectorAll("button")) {
+      const selected = tab.dataset.relationshipPage === page.id;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.id = "relationship-tab-" + tab.dataset.relationshipPage;
+      tab.setAttribute("aria-controls", "page-content");
+      tab.disabled = !availablePage(tab.dataset.relationshipPage);
+      tab.tabIndex = selected ? 0 : -1;
+    }
+    relationshipTabs.querySelector("[data-relationship-hint]").textContent = page.id === "ConversationMemory"
+      ? "记忆也可能过时，随时可以纠正" : "想法会随经历改变";
+    if (isRelationship(page.id)) {
+      pageContent.setAttribute("role", "tabpanel");
+      pageContent.setAttribute("aria-labelledby", "relationship-tab-" + page.id);
+    } else {
+      pageContent.removeAttribute("role");
+      pageContent.removeAttribute("aria-labelledby");
+    }
     back.hidden = true;
-    parent.textContent = t(`settings.${selectedSection}`);
+    parent.textContent = isRelationship(page.id) ? "关系与成长" : t(`settings.${selectedSection}`);
     title.textContent = pageTitle(page);
-    description.textContent = pageDescription(page);
+    description.textContent = isRelationship(page.id) ? "她记得的事，与她慢慢形成的想法。" : pageDescription(page);
     scrollRegion.scrollTop = 0;
     setStatus(t("settings.opening"));
     renderNavigation();
@@ -258,6 +288,12 @@
           return activePage?.id === pageId;
         },
         canNavigate: pageId => availablePage(pageId) !== null,
+        onDirtyChanged: dirty => {
+          if (!closed && generation === routeGeneration && !controller.signal.aborted) {
+            pageDirtyStates.set(page.id, dirty === true);
+            renderNavigation();
+          }
+        },
         onRouteChanged: route => {
           if (!closed && generation === routeGeneration && !controller.signal.aborted) {
             scrollRegion.scrollTop = 0;
@@ -349,6 +385,17 @@
       }
     } catch { return; /* The module retains its route and presents the owner error. */ }
   });
+  for (const tab of relationshipTabs.querySelectorAll("button")) {
+    tab.addEventListener("click", () => { void navigateTo(availablePage(tab.dataset.relationshipPage)); });
+    tab.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = [...relationshipTabs.querySelectorAll("button:not(:disabled)")];
+      const next = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1)
+        : tabs[(tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      next?.focus(); next?.click();
+    });
+  }
   mobileNavigation.addEventListener("change", () => {
     const destination = availablePage(mobileNavigation.value);
     if (destination) void navigateTo(destination);

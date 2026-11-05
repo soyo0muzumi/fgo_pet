@@ -93,6 +93,22 @@ public sealed class MigrationRepositoryTests
     }
 
     [Fact]
+    public void Project_scan_excludes_alternate_checkout_only_at_repository_root()
+    {
+        using var fixture = new EvaluationFixture();
+        string[] included = ["src/.worktree/NestedSource.csproj", "tools/Unclassified.csproj"];
+        foreach (var relative in included.Append(".worktree/personal/frozen-source/Snapshot.csproj"))
+        {
+            var path = Path.Combine(fixture.Root, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, "<Project />");
+        }
+
+        Assert.Equal(included.Concat(["A.csproj", "B.csproj"]).Order(StringComparer.Ordinal),
+            MigrationRepository.ProjectPaths(fixture.Root).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task Offline_diagnostic_runner_is_accepted_by_the_host_classification()
     {
         const string projectPath = "tools/integrations/persona-validation/finish-diagnostics/FinishDiagnostics.Offline.csproj";
@@ -165,6 +181,7 @@ internal static class MigrationRepository
     internal static IEnumerable<string> ProjectPaths(string root)
     {
         var reportDirectory = Path.GetFullPath(Path.Combine(root, "docs", "internal", "reports"));
+        var alternateCheckouts = Path.GetFullPath(Path.Combine(root, ".worktree"));
         var pending = new Stack<string>();
         pending.Push(root);
         while (pending.TryPop(out var directory))
@@ -172,6 +189,7 @@ internal static class MigrationRepository
             foreach (var project in Directory.EnumerateFiles(directory, "*.csproj")) yield return Relative(root, project);
             foreach (var child in Directory.EnumerateDirectories(directory))
                 if (Path.GetFileName(child) is not (".git" or ".worktrees" or "bin" or "obj" or "artifacts" or "spikes" or ".superpowers")
+                    && !string.Equals(Path.GetFullPath(child), alternateCheckouts, StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(Path.GetFullPath(child), reportDirectory, StringComparison.OrdinalIgnoreCase)) pending.Push(child);
         }
     }

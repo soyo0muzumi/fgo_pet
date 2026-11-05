@@ -19,3 +19,53 @@
 .cm-confirm { display:grid; gap:12px; padding:14px; border:1px solid var(--rule); border-radius:8px; background:var(--paper-sunk); }
 .cm-confirm p { margin:0; color:var(--muted); font-size:12px; line-height:1.7; }
 .cm-note:empty,.cm-status:empty,.cm-error:empty { display:none; }
+
+/* Final v2 presentation over the existing owner controls. */
+.cm-page { min-width:0; display:block; font:14px/1.6 var(--ui); }
+.cm-page [hidden] { display:none!important; }
+.memory-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 14px; }
+.memory-head p { margin:0; font-size:12.5px; color:var(--muted); }
+.memory-head>button { flex:none; border-color:transparent; background:transparent; color:var(--muted); font-size:12.5px; }
+.memory-settings { padding:14px 16px; margin-bottom:14px; background:var(--paper-sunk); border:1px solid var(--rule); border-radius:10px; }
+.cm-page .cm-tabs { display:flex; flex-wrap:wrap; border:0; padding:0; margin:0 0 24px; }
+.cm-page .memory-attention { display:flex; align-items:center; gap:12px; width:100%; padding:13px 15px; border:1px solid var(--accent-line); border-radius:10px; text-align:left; background:color-mix(in srgb,var(--accent) 6%,var(--page)); }
+.memory-attention>span:first-child { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; background:var(--paper); color:var(--accent); }
+.memory-attention>span:nth-child(2) { flex:1; min-width:0; }
+.memory-attention strong { display:block; color:var(--ink); font-size:14px; font-weight:600; }
+.memory-attention small { display:block; color:var(--muted); font-size:12px; }
+.memory-attention>span:last-child { color:var(--accent); font-size:12.5px; }
+.cm-page .cm-card { padding:0; border:0; background:transparent; gap:12px; }
+.cm-page .cm-card-heading { margin:0!important; }
+.cm-page .cm-card-heading h3 { margin:0; font:500 13px/1.5 var(--ui); color:var(--ink); }
+.cm-card-heading h3 span { margin-left:4px; color:var(--muted); font-size:12px; }
+.cm-page .cm-list { gap:10px; }
+.cm-page .cm-list-button { background:var(--paper); border-radius:10px; padding:14px 16px; font-size:15px; line-height:1.65; }
+.cm-page .cm-detail { padding:16px; border:1px solid var(--rule); border-radius:10px; background:var(--paper-sunk); }
+.cm-page .cm-list-item { display:flex; align-items:center; gap:4px; border:1px solid var(--rule); border-radius:10px; background:var(--paper); padding-right:8px; }
+.cm-page .cm-list-item>.cm-list-button { flex:1; min-width:0; border:0; }
+.cm-row-actions { display:flex; flex:none; gap:2px; }
+.cm-page .cm-row-actions button { display:grid; place-items:center; width:32px; min-height:32px; padding:3px; border:0; border-radius:7px; background:transparent; color:var(--muted); }
+.cm-row-actions svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
+.cm-page .cm-list-button .cm-badge { display:block; width:fit-content; margin:2px 0 0; padding:0; font-size:12px; background:none; color:var(--faint); }
+.cm-page .cm-status { margin-top:12px; }
+.memory-help { margin-top:20px; font-size:12.5px; color:var(--muted); }
+.memory-help summary { cursor:pointer; padding:6px 0; }
+.memory-help p { margin:5px 0 0; line-height:1.7; }
+.cm-candidate-pager { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; color:var(--muted); font-size:12px; }
+@media(max-width:650px) { .memory-attention small { display:none; } .cm-page .cm-list-button { padding:11px; font-size:14px; } }
+
+.cm-page [data-memory-pane=candidates] { padding:22px 24px; border:1px solid var(--rule); border-radius:12px; background:var(--paper); }
+.cm-page [data-memory-pane=candidates] .cm-detail { padding:0; border:0; background:transparent; }
+.cm-page [data-candidates] .cm-list-item { border:0; padding:0; }
+.cm-page [data-candidates] .cm-list-button { padding:0; background:none; font-size:17px; line-height:1.7; }
+.cm-page [data-memory-pane=candidates] h2 { font-size:12px; font-weight:600; color:var(--accent); }
+.cm-review-hint,.cm-candidate-options { color:var(--muted); font-size:12.5px; }
+.cm-candidate-options>summary { cursor:pointer; padding:6px 0; }
+.cm-page [data-candidate-later] { margin-left:auto; }
+@media(max-width:650px) { .cm-page [data-memory-pane=candidates] { padding:18px; } }
+
+.cm-memory-symbol { display:grid; place-items:center; flex:none; width:30px; height:30px; margin-left:16px; border-radius:8px; background:var(--paper-sunk); color:var(--muted); }
+.cm-memory-symbol svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
+.cm-page .cm-list-item[aria-selected=true] { border-color:var(--accent); }
+.cm-page .cm-list-item[aria-selected=true] .cm-list-button { background:transparent; }
+@media(max-width:650px) { .cm-memory-symbol { display:none; } }

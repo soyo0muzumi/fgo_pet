@@ -87,9 +87,25 @@ body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:
 .understanding-details>.understanding-actions { display:flex; }
 .understanding-details p { white-space:pre-wrap; }
 .understanding-details h4 { color:var(--ink-2,#48423c); font-size:11.5px; font-weight:600; }
-.understanding-item-details[open] { width:100%; }
-.understanding-item-details:not([open]) { flex:none; width:max-content; }
-.understanding-item-details>div { padding:12px 0; border-top:1px solid var(--u-soft-rule); }
+.understanding-page .understanding-item-details { display:grid; gap:16px; width:100%; min-width:0; padding:14px 0 2px; border-top:1px solid var(--rule); margin-top:2px; font-size:13px; line-height:1.75; }
+.understanding-page .understanding-detail-toggle { flex:none; margin-left:auto; padding:4px 0 4px 8px; font-size:12.5px; }
+.understanding-detail-toggle::after,.understanding-page [data-archive]::after { content:""; width:5px; height:5px; margin:0 3px 3px 3px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); }
+.understanding-detail-toggle[aria-expanded=true]::after,.understanding-page [data-archive][aria-expanded=true]::after { transform:rotate(225deg); }
+.understanding-detail-section { display:grid; gap:6px; min-width:0; }
+.understanding-detail-section h4 { margin:0; font-size:12px; font-weight:500; color:var(--muted); }
+.understanding-detail-section>p { color:var(--ink-2); }
+.understanding-metadata { display:grid; grid-template-columns:minmax(70px,auto) minmax(0,1fr); gap:5px 14px; padding:12px 14px; margin:0; border-radius:8px; background:var(--paper-sunk); font-size:12.5px; }
+.understanding-metadata dt { color:var(--muted); }
+.understanding-metadata dd { margin:0; color:var(--ink-2); overflow-wrap:anywhere; }
+.understanding-source-reference { padding:2px 0 2px 10px; border-left:2px solid var(--rule-2); }
+.understanding-history { font-size:12.5px; }
+.understanding-previous-version { display:grid; gap:4px; padding:10px 14px; margin-top:8px; border-radius:8px; background:var(--paper-sunk); }
+.understanding-lifecycle-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.understanding-lifecycle-action { min-width:0; }
+.understanding-lifecycle-action p { margin-top:6px; font-size:12px; line-height:1.65; }
+.understanding-page .understanding-lifecycle-action button { min-height:32px; padding:5px 10px; font-size:12.5px; }
+.understanding-archived { display:grid; gap:10px; }
+@media(max-width:650px) { .understanding-lifecycle-actions { grid-template-columns:minmax(0,1fr); } }
 .understanding-item-details .understanding-actions { padding-top:6px; }
 .understanding-empty { display:grid; justify-items:center; gap:5px; padding:33px 16px; color:var(--muted,#716b63); text-align:center; }
 .understanding-empty>.understanding-icon { width:25px; height:25px; margin-bottom:8px; color:var(--accent,#b2718b); stroke-width:1.5; }
@@ -164,3 +180,91 @@ body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:
 
 .understanding-choice { display:flex; align-items:flex-start; gap:8px; color:var(--ink); }
 .understanding-confirm select,.understanding-confirm input[type=number] { max-width:100%; min-width:0; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2); padding:6px; border-radius:4px; }
+
+/* Final v2 presentation over the existing owner controls. */
+.thought-toolbar { display:flex; align-items:center; gap:6px; min-width:0; }
+.thought-groups { display:flex; padding:3px; border:1px solid var(--rule); border-radius:9px; background:var(--paper-sunk); margin-right:auto; min-width:0; }
+.understanding-page .thought-groups button { border:0; background:transparent; padding:5px 13px; min-height:30px; font-size:13.5px; white-space:nowrap; }
+.understanding-page .thought-groups button[aria-pressed=true] { background:var(--paper); color:var(--ink); box-shadow:0 1px 2px #00000012; font-weight:600; }
+.understanding-page .thought-attention { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:12px 14px; border:1px solid var(--accent-line); border-radius:10px; background:color-mix(in srgb,var(--accent) 6%,var(--page)); text-align:left; }
+.thought-attention>span:nth-child(2) { flex:1; }
+.thought-attention strong { display:block; font-size:13.5px; }
+.thought-attention small { display:block; color:var(--muted); font-size:12px; }
+.thought-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.thought-tag { display:inline-flex; padding:2px 8px; border-radius:5px; background:#b15c7414; color:#b15c74; font-size:12px; }
+.thought-tag[data-kind=currentStance] { color:#4f6f8f; background:#4f6f8f14; }
+.thought-tag[data-kind=openQuestion] { color:#a87a2e; background:#a87a2e17; }
+.thought-tag[data-kind=selfReflection] { color:#3f8076; background:#3f807614; }
+.thought-age { color:var(--faint); font-size:11.5px; }
+.understanding-page .understanding-list { padding:0; border:0; background:transparent; box-shadow:none; gap:14px; }
+.understanding-page .understanding-entries { gap:10px; }
+.understanding-page .understanding-card { padding:16px 20px 11px; border:1px solid var(--rule); border-radius:11px; background:var(--paper); gap:10px; }
+.understanding-page .understanding-body { font-size:15.5px; line-height:1.78; }
+.understanding-page .understanding-entry-footer { gap:6px 12px; }
+.understanding-entry-footer>.understanding-state { margin-right:auto; }
+.understanding-page .understanding-details h4 { font-size:12px; font-weight:500; }
+.understanding-page .understanding-control-card h3 { font-size:12.5px; font-weight:500; }
+.understanding-page .understanding-settings { position:absolute; z-index:21; top:0; right:0; bottom:0; width:400px; max-width:100%; border-radius:0; border:0; border-left:1px solid var(--rule); background:var(--paper); box-shadow:-12px 0 32px #00000014; overflow:auto; }
+.understanding-page .understanding-settings[hidden] { display:none; }
+.understanding-page .understanding-settings>summary { display:none; }
+.understanding-drawer-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px 8px; }
+.understanding-drawer-heading h2 { font:600 17px/1.4 var(--ui); }
+.understanding-page .understanding-setup { border:0; padding:4px 20px 20px; gap:20px; }
+.understanding-scrim { position:absolute; inset:0; z-index:20; background:#1d151214; backdrop-filter:blur(1px); }
+body[data-relationship=true]:has(.understanding-page) .page-description { display:block; }
+body[data-relationship=true]:has(.understanding-page) .page-heading h1 { font-size:27px; }
+body[data-relationship=true]:has(.understanding-page) .page-content { margin-top:0; }
+@media(max-width:720px) { .understanding-page .understanding-card { padding:14px 15px 10px; } .understanding-page .thought-groups button { padding:5px 10px; font-size:12.5px; } }
+
+.thought-tags { display:flex; flex-wrap:wrap; gap:6px; padding:9px 0; border-top:1px solid var(--rule); }
+.understanding-page .thought-tags button { min-height:28px; padding:0 11px; border-radius:14px; background:transparent; font-size:12px; }
+.understanding-page .thought-tags button[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); border-color:var(--accent-line); }
+.understanding-page .understanding-tabs { padding:0; border:0; background:transparent; }
+.understanding-page [data-view=accumulated] { background:transparent; color:var(--muted); box-shadow:none; }
+.understanding-page [data-view=accumulated] [data-count] { display:none; }
+.understanding-page .understanding-browser-tools:has(.understanding-tabs button:not([hidden])) { margin-bottom:0; }
+.understanding-page .understanding-search-tools>summary { display:none; }
+.understanding-page .understanding-search-row { grid-template-columns:minmax(0,1fr); }
+.understanding-page [data-domain] { display:none; }
+.understanding-page .understanding-archive { margin-top:4px; justify-content:flex-start; font-size:13px; }
+.understanding-page .understanding-conditions { display:none; }
+@media(max-width:390px) { .thought-toolbar { flex-wrap:wrap; } .thought-groups { width:100%; justify-content:space-between; } .understanding-page .thought-groups button { padding-inline:7px; } }
+[data-theme=dark] .thought-tag { color:#e290a7; background:#e290a71f; }
+[data-theme=dark] .thought-tag[data-kind=currentStance] { color:#8fb1d3; background:#8fb1d31f; }
+[data-theme=dark] .thought-tag[data-kind=openQuestion] { color:#ddb36b; background:#ddb36b1f; }
+[data-theme=dark] .thought-tag[data-kind=selfReflection] { color:#7fc3b7; background:#7fc3b71f; }
+
+.understanding-page [data-automation-form] { display:grid; gap:12px; }
+.understanding-page [data-automation-form] h3 { font:500 12.5px/1.5 var(--ui); color:var(--muted); }
+.understanding-presets { display:grid; gap:8px; }
+.understanding-presets>label { display:grid; grid-template-columns:20px minmax(0,1fr); gap:10px; padding:12px 14px; border:1px solid var(--rule); border-radius:10px; background:var(--page); cursor:pointer; }
+.understanding-presets>label:has(input:checked) { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; background:var(--accent-soft); }
+.understanding-presets input { margin:3px 0 0; accent-color:var(--accent); }
+.understanding-presets strong { display:block; color:var(--ink); font-size:13.5px; font-weight:600; }
+.understanding-presets small { display:block; color:var(--muted); font-size:12.5px; line-height:1.6; margin-top:4px; }
+.understanding-frequency { display:flex; padding:3px; background:var(--paper-sunk); border:1px solid var(--rule); border-radius:9px; }
+.understanding-page .understanding-frequency button { flex:1; padding:5px; border:0; background:transparent; }
+.understanding-page .understanding-frequency button[aria-pressed=true] { background:var(--page); box-shadow:0 1px 2px #00000012; }
+.understanding-advanced { padding:10px 14px; border:1px solid var(--rule); border-radius:10px; background:var(--page); }
+.understanding-advanced>summary { width:100%; font-size:13.5px; }
+.understanding-advanced .understanding-choice { align-items:center; justify-content:space-between; flex-direction:row-reverse; border-top:1px solid var(--rule); padding:8px 0; }
+.understanding-advanced input[type=checkbox] { accent-color:var(--accent); }
+.understanding-advanced input[type=number] { width:80px; max-width:100%; padding:4px 8px; border:1px solid var(--rule-2); border-radius:6px; background:var(--paper); color:var(--ink); }
+.understanding-drawer-footer { justify-content:flex-end; border-top:1px solid var(--rule); padding-top:12px; }
+
+.understanding-page .understanding-settings:not([hidden]) { display:flex; flex-direction:column; overflow:hidden; }
+.understanding-drawer-heading { flex:none; }
+.understanding-page .understanding-setup { overflow:auto; min-height:0; flex:1; display:block; }
+.understanding-setup>section,.understanding-setup>details,.understanding-setup>header { margin-bottom:20px; }
+.understanding-page .understanding-drawer-footer { flex:none; margin:0; padding:12px 20px; }
+.understanding-correction-overlay { position:absolute; inset:0; z-index:30; display:grid; place-items:center; background:#1d15121f; padding:20px; }
+.understanding-correction-overlay .understanding-editor { width:460px; max-width:100%; max-height:100%; overflow:auto; padding:20px 22px 18px; border:1px solid var(--rule); border-radius:14px; background:var(--paper); box-shadow:0 8px 28px #2b201a14; }
+.understanding-editor h2 { font:600 17px/1.4 var(--ui); }
+.understanding-correction-lead { padding:8px 10px; border-radius:8px; background:var(--paper-sunk); color:var(--muted); font-size:13px; }
+.understanding-correction-options { display:grid; gap:6px; }
+.understanding-correction-options label { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid var(--rule); border-radius:9px; background:var(--page); cursor:pointer; }
+.understanding-correction-options label:has(input:checked) { border-color:var(--accent); background:var(--accent-soft); }
+.understanding-correction-options input { accent-color:var(--accent); }
+.understanding-correction-options small { color:var(--faint); font-size:12px; }
+
+.understanding-page .understanding-item-details>div { font-size:13px; line-height:1.75; gap:14px; }
