@@ -16,6 +16,24 @@ function setup(t: TestContext) {
   return { host, driver };
 }
 
+test("persisted sticker metadata survives snapshots and is withheld for streaming and user turns", async t => {
+  const { host, driver } = setup(t);
+  const turn = host.state.conversation.turns[0];
+  Object.assign(turn, { stickerId: "mash.happy", stickerPosition: "after", stickerLabel: "开心" });
+  await driver.connect();
+  assert.equal(driver.getSnapshot().messages[0].stickerId, "mash.happy");
+  turn.isStreaming = true;
+  host.publish(); await tick();
+  assert.equal(driver.getSnapshot().messages[0].stickerId, undefined);
+  turn.isStreaming = false; turn.role = "user";
+  host.publish(); await tick();
+  assert.equal(driver.getSnapshot().messages[0].stickerId, undefined);
+  turn.role = "assistant";
+  host.publish(); await tick();
+  assert.equal(driver.getSnapshot().messages[0].stickerId, "mash.happy");
+  assert.equal(driver.getSnapshot().messages[0].stickerPosition, "after");
+});
+
 test("explicit expansion supersedes queued stream heights without changing the draft", async t => {
   const { host, driver } = setup(t);
   await driver.connect();

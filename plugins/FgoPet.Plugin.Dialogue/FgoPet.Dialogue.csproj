@@ -91,6 +91,10 @@
     <Compile Include="Application/ExternalConversationRegistration.cs" />
     <Compile Include="Infrastructure/SqliteAgentRunStore.cs" />
     <Compile Include="Infrastructure/SqliteAgentFinalDeliveryStore.cs" />
+    <Compile Include="Infrastructure/SqliteStickerStore.cs" />
+    <Compile Include="Infrastructure/LocalStickerLoader.cs" />
+    <Compile Include="Infrastructure/ManagedStickerLibrary.cs" />
+    <Compile Include="Application/WebStickerPlugin.cs" />
     <Compile Include="Application/NativeAgentLifecyclePlugin.cs" />
     <Compile Include="Application/ExperienceToolsPlugin.cs" />
     <Compile Include="Application/ConversationScopeAuthority.cs" />

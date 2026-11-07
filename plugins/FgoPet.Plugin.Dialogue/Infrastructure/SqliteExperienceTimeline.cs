@@ -113,7 +113,7 @@ public sealed class SqliteExperienceTimeline(RuntimeDatabase database, IExperien
         ExperienceWindowCursor? cursor = null, int maxItems = 8, int maxScalars = 6000, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(conversationId) || conversationId.Length > 128 || startSequence < 1 || maxItems is < 1 or > 32 || maxScalars is < 1 or > 6000 ||
+        if (string.IsNullOrWhiteSpace(conversationId) || conversationId.Length > 128 || startSequence < 1 || maxItems is < 1 or > 32 || maxScalars is < 1 or > 36000 ||
             cursor is not null && (cursor.StartSequence != startSequence || cursor.Offset is < 0 or > 31 || cursor.ThroughSequence < startSequence || cursor.Version is not { Length: 64 }))
             return new(ExperienceSourceStatus.ScopeDenied, []);
         try

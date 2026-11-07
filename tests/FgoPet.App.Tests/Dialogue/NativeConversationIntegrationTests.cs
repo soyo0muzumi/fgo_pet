@@ -1047,15 +1047,15 @@ public sealed partial class NativeConversationIntegrationTests
             IRequestTokenMeter? tokenMeter, IAgentContextProvider? context, ILogger<ConversationOrchestrator>? logger, bool questions, TimeProvider? time,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator,
             IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools, IFgoPetPlugin? approvalPlugin,
-            Action<ContextBudgetDiagnostic>? contextDiagnostics, PromptComposer? composer)
+            Action<ContextBudgetDiagnostic>? contextDiagnostics, PromptComposer? composer, IStickerCatalogSource? stickerCatalog)
         {
             Directory.CreateDirectory(directory);
             Database = new(Path.Combine(directory, "runtime.db"), pooling: false);
             new RuntimeDatabaseMigrator(Database).Migrate();
-            Conversations = new(Database);
+            Conversations = new(Database, stickerCatalog);
             var clock = time ?? TimeProvider.System;
             Runs = new(Database, protector, clock);
-            Deliveries = new(Database, protector, Runs);
+            Deliveries = new(Database, protector, Runs, stickerCatalog);
             Settings = settings ?? TestSettingsStore.Create();
 
             var plugin = new TestPlugin(tool, observer, context, extraTools);
@@ -1105,9 +1105,9 @@ public sealed partial class NativeConversationIntegrationTests
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator = null,
             IConversationContentResolver? contentResolver = null, bool useNative = true, bool skills = false,
             IReadOnlyList<IToolProvider>? extraTools = null, IFgoPetPlugin? approvalPlugin = null,
-            Action<ContextBudgetDiagnostic>? contextDiagnostics = null, PromptComposer? composer = null)
+            Action<ContextBudgetDiagnostic>? contextDiagnostics = null, PromptComposer? composer = null, IStickerCatalogSource? stickerCatalog = null)
         {
-            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, approvalPlugin, contextDiagnostics, composer));
+            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, approvalPlugin, contextDiagnostics, composer, stickerCatalog));
         }
 
         public long CountRows(string table)

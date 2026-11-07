@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MarkdownContent } from "./MarkdownContent";
+import { ReplyImage } from "./ReplyImage";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUpRight,
@@ -124,9 +125,9 @@ export function Sheet({
         aria-modal="true"
         aria-label={title}
         className={`sheet ${className}`}
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 8 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
       >
         <header className="sheet-header">
           <div>
@@ -193,6 +194,9 @@ export function MessageItem({
           {message.imageLabel}
         </span>
       )}
+      {message.role === "assistant" && !message.streaming && message.stickerId && message.stickerPosition === "before" && (
+        <ReplyImage assetId={message.stickerId} alt={message.stickerLabel} streaming={false} />
+      )}
       <div
         className={`message-text ${message.streaming ? "is-streaming" : ""}`}
       >
@@ -205,6 +209,9 @@ export function MessageItem({
           <span className="stream-caret" aria-hidden="true" />
         )}
       </div>
+      {message.role === "assistant" && !message.streaming && message.stickerId && message.stickerPosition === "after" && (
+        <ReplyImage assetId={message.stickerId} alt={message.stickerLabel} streaming={false} />
+      )}
       {message.stopped && (
         <span className="stopped-note">
           回复已停止 · 已生成的内容保留在这里
@@ -255,7 +262,7 @@ export function MessageItem({
       {!message.streaming && message.text && (
         <div className="message-actions">
           {message.canCopy && (
-            <IconButton label="复制这条消息" onClick={onCopy}>
+            <IconButton label="复制这条消息" className={message.role === "user" ? "user-copy" : ""} onClick={onCopy}>
               <Copy size={13} />
             </IconButton>
           )}

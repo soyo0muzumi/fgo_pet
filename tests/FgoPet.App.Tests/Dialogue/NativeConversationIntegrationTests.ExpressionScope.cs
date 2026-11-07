@@ -24,7 +24,7 @@ public sealed partial class NativeConversationIntegrationTests
         var tool = new RecordingTool(ToolEffect.ReadOnly);
         await using var host = await TestHost.CreateAsync(provider, tool, new RecordingObserver(),
             settings: TestSettingsStore.Create(32768), contentResolver: new BoundPersonaResolver(binding),
-            useNative: true, composer: new PromptComposer(null, null, ExpressionMode.Full));
+            useNative: true, composer: new PromptComposer(null, null, ExpressionMode.Full, enableLocalStickers: true));
 
         Assert.Equal(ConversationSendStatus.Completed,
             (await host.Orchestrator.SendAsync(role, "今天好累呀", default, new(ProjectId))).Status);
@@ -39,9 +39,12 @@ public sealed partial class NativeConversationIntegrationTests
             var isFinal = request.Tools is null;
             Assert.True(isFinal || !hasHint,
                 $"request {index}: tools={(request.Tools is null ? "none" : request.Tools.Count.ToString())} hint={hasHint}");
+            Assert.True(isFinal || !request.ModelMessages.Any(message => message.Content.StartsWith("可选本地图文表情：", StringComparison.Ordinal)));
         }
         Assert.Contains(provider.Requests[^1].ModelMessages,
             message => message.Content.StartsWith("Expression Layer v0.2", StringComparison.Ordinal));
+        Assert.Contains(provider.Requests[^1].ModelMessages,
+            message => message.Content.StartsWith("可选本地图文表情：", StringComparison.Ordinal));
     }
 
     // Without offered tools the run has a single final step, which still receives the hint.

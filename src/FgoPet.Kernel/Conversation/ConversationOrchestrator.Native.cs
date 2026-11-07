@@ -289,7 +289,10 @@ public sealed partial class ConversationOrchestrator
             Publish(new(ConversationUpdateType.AssistantDelta, scope.ConversationId, delivery.Assistant.MessageId,
                 delivery.Assistant.Text, ServantId: scope.RoleId));
             Publish(new(ConversationUpdateType.AssistantCompleted, scope.ConversationId, delivery.Assistant.MessageId,
-                delivery.Assistant.Text, ServantId: scope.RoleId, Expression: output.Expression));
+                delivery.Assistant.Text, ServantId: scope.RoleId, Expression: output.Expression, Sticker: delivery.Assistant.Sticker));
+            _logger?.LogInformation(new EventId(4110, "StickerDelivery"),
+                "Sticker phase=delivered run={RunHash} selected={Selected}",
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity.RunId))), delivery.Assistant.Sticker is not null);
             Publish(new(ConversationUpdateType.RequestStage, scope.ConversationId, ServantId: scope.RoleId,
                 RequestStage: ConversationRequestStage.Completed));
             return new(ConversationSendStatus.Completed, scope.ConversationId, delivery.Assistant.MessageId);
@@ -418,7 +421,8 @@ public sealed partial class ConversationOrchestrator
                 // Expression guidance realizes the final answer. On a tool step it competes with tool
                 // selection, so withhold it there and keep it for FinalOutput only.
                 if (kind == ModelStepKind.Tools && message.Role == ModelMessageRole.System
-                    && message.Content.StartsWith(PreparedModel.ExpressionHintPrefix, StringComparison.Ordinal)) continue;
+                    && (message.Content.StartsWith(PreparedModel.ExpressionHintPrefix, StringComparison.Ordinal)
+                        || message.Content.StartsWith(StickerPolicy.PromptPrefix, StringComparison.Ordinal))) continue;
                 // Optional topic material is context for the answer, not for choosing a tool.
                 if ((kind == ModelStepKind.Tools || !allowMaterial) && ConversationMaterialPolicy.IsNativeMaterial(message)) continue;
                 if (message.Role != ModelMessageRole.System || message.Content != StructuredOutputValidator.FinalStepInstructions

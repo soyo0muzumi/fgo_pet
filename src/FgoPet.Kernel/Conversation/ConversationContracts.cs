@@ -141,6 +141,13 @@ public sealed record ChatMessage
     public DateTimeOffset CreatedAtUtc { get; }
     public ContentContextKey ContentContext { get; }
     public int Sequence { get; }
+    public FgoPet.App.Dialogue.StickerSelection? Sticker { get; init; }
+}
+
+/// <summary>Commits presentation selection and the completed reply in the same transaction.</summary>
+public interface IStickerReplyStore
+{
+    ChatMessage AppendReply(ChatMessage message, FgoPet.App.Dialogue.StickerCandidate? candidate, bool blocked);
 }
 
 public sealed record ConversationSendResult(
@@ -197,7 +204,8 @@ public sealed record ConversationUpdate(
     string? CreatedItemId = null,
     IReadOnlyList<HistoryHit>? HistorySources = null,
     string? WorkspaceId = null,
-    string? RequestId = null);
+    string? RequestId = null,
+    FgoPet.App.Dialogue.StickerSelection? Sticker = null);
 
 public sealed record ChatRequest
 {

@@ -14,12 +14,17 @@ public sealed class ChatWebSurfaceFactory
     private readonly ThemeService? _theme;
     private readonly Action<Uri> _openExternalLink;
     private readonly Func<Uri, CancellationToken, Task<string?>>? _loadImagePreview;
+    private readonly Func<string, CancellationToken, Task<string?>> _loadSticker;
     public ChatWebSurfaceFactory(IChatWebSessionFactory sessions, string storageRoot, ThemeService? theme = null,
-        Action<Uri>? openExternalLink = null, Func<Uri, CancellationToken, Task<string?>>? loadImagePreview = null)
+        Action<Uri>? openExternalLink = null, Func<Uri, CancellationToken, Task<string?>>? loadImagePreview = null,
+        Func<string, CancellationToken, Task<string?>>? loadSticker = null)
     {
         _sessions = sessions; _storageRoot = Path.GetFullPath(storageRoot); _theme = theme;
         _openExternalLink = openExternalLink ?? OpenInDefaultBrowser;
         _loadImagePreview = loadImagePreview;
+        _loadSticker = loadSticker ?? ChatWebRegistration.CreateLocalStickerLoader(
+            Environment.GetEnvironmentVariable("FGO_PET_STICKER_ROOT") ?? Path.Combine(_storageRoot, "expression"),
+            Path.Combine(_storageRoot, "StickerLibrary"));
     }
 
     public WebView2SurfaceHost CreateView(IChatWebHostActions actions)
@@ -35,7 +40,8 @@ public sealed class ChatWebSurfaceFactory
                  "chat.input.answer", "chat.input.cancel", "chat.approval.review", "chat.approval.deny", "chat.approval.cancel"]),
                 Path.Combine(AppContext.BaseDirectory, "Desktop", "ui", "chat"),
                 Path.Combine(_storageRoot, "WebView2", "chat"), session.HandleCommandAsync,
-                openExternalLink: _openExternalLink, loadImagePreview: _loadImagePreview ?? imagePreview!.LoadAsync);
+                openExternalLink: _openExternalLink, loadImagePreview: _loadImagePreview ?? imagePreview!.LoadAsync,
+                loadLocalImage: _loadSticker);
             void Publish(ChatWebSnapshot snapshot) => host.PostEvent(new { type = "chat.snapshot", payload = snapshot });
             session.Changed += Publish;
             host.Ready += (_, _) => Publish(session.ReadSnapshot());

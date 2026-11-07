@@ -12,7 +12,11 @@ public sealed record ValidatedChatOutput(
     string Text,
     ExpressionSemantic Expression,
     string? FeedbackType,
-    SuggestedFactDraft? SuggestedFact);
+    SuggestedFactDraft? SuggestedFact)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StickerCandidate? Sticker { get; init; }
+}
 
 /// <summary>Accepts a small, bounded model envelope and ignores unsupported presentation values.</summary>
 public static class StructuredOutputValidator
@@ -27,6 +31,7 @@ public static class StructuredOutputValidator
         Style/no internal labels apply INSIDE text; never omit JSON.
         text: nonempty; escape quotes/newlines. ASCII commas. No prose/fences outside JSON.
         emotion: neutral|happy|excited|shy|concerned|sad|surprised|angry.
+        Optional sticker is allowed only when the host supplied a local sticker policy; otherwise omit it.
         """;
     private const int MaxTextLength = 12_000;
     private const int MaxFactLength = 2_000;
@@ -110,7 +115,7 @@ public static class StructuredOutputValidator
             : ExpressionSemantic.Neutral;
         var feedbackType = ReadSafeId(root, "feedback_type", 64);
         var memoryCandidate = ReadSuggestedFact(root);
-        return new ValidatedChatOutput(safeText, expression, feedbackType, memoryCandidate);
+        return new ValidatedChatOutput(safeText, expression, feedbackType, memoryCandidate) { Sticker = StickerPolicy.ReadCandidate(root) };
     }
 
     private static ValidatedChatOutput Plain(string text) => new(Bound(text, MaxTextLength), ExpressionSemantic.Neutral, null, null);

@@ -9,6 +9,25 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class PromptComposerTests
 {
+    [Fact]
+    public void Local_sticker_policy_requires_capability_and_canonical_Mash_and_yields_whole_to_context()
+    {
+        var key = new ContentContextKey("mash_kyrielight", "official.mash", "1", "casual", "1", "1");
+        var context = new PromptContext(key, new PersonaBundle(key.ServantId, key.PackageId, "1", "1", "identity", []),
+            [], [], "", [], "终于完成了。");
+        var baseline = new PromptComposer().Compose(context, Route, Budget);
+        var composer = new PromptComposer(null, null, ExpressionMode.Off, enableLocalStickers: true);
+        Assert.DoesNotContain(baseline.Messages, m => m.Text.StartsWith("可选本地图文表情：", StringComparison.Ordinal));
+        Assert.Contains(composer.Compose(context, Route, Budget).Messages, m => m.Text.StartsWith("可选本地图文表情：", StringComparison.Ordinal));
+        var tight = composer.Compose(context, Route, Budget.ConstrainInput(baseline.Usage.InputTokens + 16));
+        Assert.Equal(baseline.Messages, tight.Messages);
+        var tool = composer.Compose(context with { Phase = PromptPhase.NativeToolStep }, Route, Budget, nativeAgent: true);
+        Assert.DoesNotContain(tool.Messages, m => m.Text.StartsWith("可选本地图文表情：", StringComparison.Ordinal));
+        var other = new ContentContextKey("other", "other", "1", "casual", "1", "1");
+        var otherContext = new PromptContext(other, new PersonaBundle("other", "other", "1", "1", "identity", []), [], [], "", [], "终于完成了。");
+        Assert.DoesNotContain(composer.Compose(otherContext, Route, Budget).Messages, m => m.Text.StartsWith("可选本地图文表情：", StringComparison.Ordinal));
+    }
+
     private static readonly ModelRouteKey Route = new("test", "endpoint", "model", "1");
     private static readonly PromptBudget Budget = PromptBudget.Resolve(
         new ModelContextLimit(Route, 16384, null, ContextLimitSource.Override, "test"), 2048);

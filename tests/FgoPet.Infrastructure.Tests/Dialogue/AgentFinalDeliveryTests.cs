@@ -18,6 +18,30 @@ namespace FgoPet.Infrastructure.Tests.Dialogue;
 
 public sealed class AgentFinalDeliveryTests
 {
+    [Fact]
+    public async Task Sticker_is_published_once_and_recovered_without_reselection()
+    {
+        const string raw = """{"text":"做到了呢。","emotion":"happy","sticker":{"assetId":"mash.happy","intent":"happy","utility":"enhance","salience":"high","context":"social","position":"after"}}""";
+        using var fixture = new Fixture("mash_kyrielight");
+        AgentFinalDelivery? delivery = null;
+        for (var i = 0; i < 40 && delivery?.Assistant.Sticker is null; i++)
+        {
+            var accepted = await fixture.StageCompletedRunAsync("sticker-" + i, rawFinal: raw);
+            Assert.True(fixture.Store.TryAccept(accepted));
+            delivery = fixture.Store.Publish(fixture.Scope, accepted.DeliveryId);
+            Assert.NotNull(delivery);
+        }
+        Assert.NotNull(delivery!.Assistant.Sticker);
+        var count = fixture.MessageCount();
+        var reopened = new SqliteAgentFinalDeliveryStore(fixture.Database, fixture.Protector, fixture.Runs);
+        var replay = reopened.Publish(fixture.Scope, delivery.Accepted.DeliveryId);
+        Assert.Equal(delivery.Assistant, replay!.Assistant);
+        Assert.Equal(count, fixture.MessageCount());
+        Assert.Equal(delivery.Assistant.Sticker, fixture.Conversations.LoadMessages(fixture.Scope.ConversationId, fixture.Scope.RoleId).Last().Sticker);
+        Assert.True(reopened.TryClaimObservers(fixture.Scope, delivery.Accepted.DeliveryId));
+        Assert.False(reopened.TryClaimObservers(fixture.Scope, delivery.Accepted.DeliveryId));
+    }
+
     private const string RawFinal = "{\"text\":\"final-public-marker\",\"emotion\":\"happy\"}";
 
     [Theory]
@@ -520,8 +544,9 @@ public sealed class AgentFinalDeliveryTests
         private readonly string directoryPath = Path.Combine(Path.GetTempPath(), "fgo-agent-final-delivery-" + Guid.NewGuid().ToString("N"));
         private readonly DateTimeOffset now;
 
-        public Fixture()
+        public Fixture(string role = "role")
         {
+            Scope = new("conversation", role, null);
             now = DateTimeOffset.UtcNow;
             Clock = new MutableTimeProvider(now);
             Directory.CreateDirectory(directoryPath);
@@ -529,7 +554,7 @@ public sealed class AgentFinalDeliveryTests
             new RuntimeDatabaseMigrator(Database).Migrate();
             Protector = new SyntheticProtector();
             Conversations = new SqliteConversationRepository(Database);
-            Conversations.CreateConversation("conversation", "role", ContextFor("role"), now);
+            Conversations.CreateConversation("conversation", role, ContextFor(role), now);
             Runs = new SqliteAgentRunStore(Database, Protector, Clock);
             Store = new SqliteAgentFinalDeliveryStore(Database, Protector, Runs);
         }
@@ -540,9 +565,9 @@ public sealed class AgentFinalDeliveryTests
         public SqliteConversationRepository Conversations { get; }
         public SqliteAgentRunStore Runs { get; }
         public SqliteAgentFinalDeliveryStore Store { get; }
-        public ToolScope Scope { get; } = new("conversation", "role", null);
-        public static ContentContextKey ContextFor(string role) => new(role, "synthetic-package", "1", "default", "persona-v1", "knowledge-v1");
-        public ContentContextKey Context => ContextFor("role");
+        public ToolScope Scope { get; }
+        public static ContentContextKey ContextFor(string role) => new(role, role == "mash_kyrielight" ? "official.mash" : "synthetic-package", "1", "default", "persona-v1", "knowledge-v1");
+        public ContentContextKey Context => ContextFor(Scope.RoleId);
 
         public async Task<AcceptedAgentFinal> StageCompletedRunAsync(string runId = "run", bool completed = true,
             bool withClarifications = false, bool includeToolTrace = false, string clarificationQuestion = "Which synthetic option?",

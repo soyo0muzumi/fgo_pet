@@ -14,6 +14,9 @@ export type ChatChoice = {
   canSelect: boolean;
 };
 export type ChatTurn = {
+  stickerId?: string;
+  stickerPosition?: "before" | "after";
+  stickerLabel?: string;
   id: string;
   role: string;
   text: string;

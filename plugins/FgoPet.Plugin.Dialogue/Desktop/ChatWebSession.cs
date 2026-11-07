@@ -15,6 +15,7 @@ internal sealed class ChatWebSession : IChatWebSession
     private const int MaxAvatarDataUrlLength = 512 * 1024;
     private readonly ConversationViewModel _conversation;
     private readonly IChatWebHostActions _host;
+    private readonly IStickerCatalogSource? _stickerCatalog;
     private readonly Dispatcher _dispatcher;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
     private readonly Dictionary<HistorySourceViewModel, string> _sourceIds =
@@ -34,10 +35,11 @@ internal sealed class ChatWebSession : IChatWebSession
     private CancellationTokenSource? _imageImport;
     private long _imageImportGeneration;
 
-    public ChatWebSession(ConversationViewModel conversation, IChatWebHostActions host)
+    public ChatWebSession(ConversationViewModel conversation, IChatWebHostActions host, IStickerCatalogSource? stickerCatalog = null)
     {
         _conversation = conversation ?? throw new ArgumentNullException(nameof(conversation));
         _host = host ?? throw new ArgumentNullException(nameof(host));
+        _stickerCatalog = stickerCatalog;
         _dispatcher = Dispatcher.CurrentDispatcher;
         _latestDraft = conversation.InputText;
         _conversation.PropertyChanged += OnConversationPropertyChanged;
@@ -393,6 +395,7 @@ internal sealed class ChatWebSession : IChatWebSession
         var presentation = ReadSafePresentation();
         var duplicateTurnIds = _conversation.Turns.GroupBy(turn => turn.MessageId, StringComparer.Ordinal)
             .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        var stickerAssets = _stickerCatalog?.ReadAssets() ?? StickerCatalog.Assets;
         var turns = _conversation.Turns.Select(turn => new ChatWebTurnSnapshot(
             Safe(turn.MessageId, 128),
             turn.Role == ChatMessageRole.User ? "user" : "assistant",
@@ -409,7 +412,12 @@ internal sealed class ChatWebSession : IChatWebSession
             turn.IsSpeechBusy,
             Safe(turn.SpeechActionText, 64),
             Safe(turn.SpeechStatusText, 256),
-            turn.SpeechNeedsConfiguration)).ToArray();
+            turn.SpeechNeedsConfiguration)
+        {
+            StickerId = !turn.IsStreaming && turn.IsAssistant ? stickerAssets.FirstOrDefault(a => a.Id == turn.Sticker?.AssetId)?.Id : null,
+            StickerPosition = turn.Sticker?.Position,
+            StickerLabel = stickerAssets.FirstOrDefault(a => a.Id == turn.Sticker?.AssetId)?.Label,
+        }).ToArray();
         var chips = _conversation.SessionContext.Chips
             .Select(chip => new ChatWebContextChip(Safe(chip.Id, 256), Safe(chip.Label, 320))).ToArray();
         var sources = CurrentSources().Select(source => new ChatWebSource(

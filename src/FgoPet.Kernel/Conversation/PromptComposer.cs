@@ -20,6 +20,8 @@ public sealed class PromptComposer
     private readonly IRequestTokenMeter _meter;
     private readonly ApprovedKnowledgeQuery _knowledgeQuery;
     private readonly ExpressionMode _expressionMode;
+    private readonly bool _enableLocalStickers;
+    private readonly IStickerCatalogSource? _stickerCatalog;
 
     public PromptComposer(IRequestTokenMeter? meter = null, ApprovedKnowledgeQuery? knowledgeQuery = null)
         : this(meter, knowledgeQuery, false) { }
@@ -27,17 +29,23 @@ public sealed class PromptComposer
     public PromptComposer(IRequestTokenMeter? meter, ApprovedKnowledgeQuery? knowledgeQuery, bool enableExpression)
         : this(meter, knowledgeQuery, enableExpression ? ExpressionMode.LegacyV0 : ExpressionMode.Off) { }
 
-    public PromptComposer(IRequestTokenMeter? meter, ApprovedKnowledgeQuery? knowledgeQuery, ExpressionMode expressionMode)
+    public PromptComposer(IRequestTokenMeter? meter, ApprovedKnowledgeQuery? knowledgeQuery, ExpressionMode expressionMode,
+        bool enableLocalStickers = false, IStickerCatalogSource? stickerCatalog = null)
     {
         _meter = meter ?? new FgoPet.Infrastructure.Providers.RequestTokenMeter();
         _knowledgeQuery = knowledgeQuery ?? new ApprovedKnowledgeQuery();
         if (!Enum.IsDefined(expressionMode)) throw new ArgumentOutOfRangeException(nameof(expressionMode));
         _expressionMode = expressionMode;
+        _enableLocalStickers = enableLocalStickers;
+        _stickerCatalog = stickerCatalog;
     }
 
     public ComposedPrompt Compose(PromptContext context, ModelRouteKey route, PromptBudget budget,
         IReadOnlyList<ChatToolDefinition>? tools = null, string? toolChoice = null, bool nativeAgent = false)
         => Compose(context, route, budget, tools, toolChoice, nativeAgent, null);
+
+    internal PromptComposer WithoutLocalStickers() => _enableLocalStickers
+        ? new(_meter, _knowledgeQuery, _expressionMode, enableLocalStickers: false) : this;
 
     // Native history uses ModelMessage limits. Its actual projected cost must still participate
     // in every optional-background fit check, without constructing a second legacy history.
@@ -528,6 +536,22 @@ public sealed class PromptComposer
             DataTrust: PromptDataTrust.TrustedSystemText,
             Content: expression ?? string.Empty,
             IsStateActive: !string.IsNullOrWhiteSpace(expression)));
+
+        blocks.Add(new(
+            Id: "expression.sticker",
+            Source: "local_sticker_policy",
+            Owner: "Expression",
+            Placement: PromptPlacement.LatePolicy,
+            OrderWithinPlacement: 1,
+            ActivePhases: PromptPhase.OrdinaryChat | PromptPhase.NativeFinalOutput,
+            BaseRequirement: PhaseRequirement.Optional,
+            BudgetTier: PromptBudgetTier.Enhancement,
+            BudgetPriority: 1,
+            EvictionPolicy: PromptEvictionPolicy.SoftDrop,
+            Authority: PromptAuthority.Host,
+            DataTrust: PromptDataTrust.TrustedSystemText,
+            Content: StickerPolicy.BuildPrompt(_stickerCatalog?.ReadAssets()),
+            IsStateActive: _enableLocalStickers && StickerPolicy.IsMash(context.ContentContext.ServantId, context.ContentContext.PackageId)));
 
         // Phase-specific output contracts (LatePolicy, right before TurnTail)
         blocks.Add(new(

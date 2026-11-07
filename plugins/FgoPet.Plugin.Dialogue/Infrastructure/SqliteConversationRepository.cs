@@ -7,11 +7,39 @@ using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Dialogue;
 
-public sealed class SqliteConversationRepository : IConversationStore
+public sealed class SqliteConversationRepository : IConversationStore, IStickerReplyStore
 {
     private readonly RuntimeDatabase _database;
+    private readonly object _stickerSchemaGate = new();
+    private bool _stickerSchemaReady;
+    private readonly FgoPet.App.Dialogue.IStickerCatalogSource? _stickerCatalog;
 
-    public SqliteConversationRepository(RuntimeDatabase database) => _database = database;
+    public SqliteConversationRepository(RuntimeDatabase database, FgoPet.App.Dialogue.IStickerCatalogSource? stickerCatalog = null)
+    {
+        _database = database;
+        _stickerCatalog = stickerCatalog;
+    }
+
+    private void EnsureStickerSchema()
+    {
+        lock (_stickerSchemaGate)
+        {
+            if (_stickerSchemaReady) return;
+            SqliteStickerStore.EnsureSchema(_database);
+            _stickerSchemaReady = true;
+        }
+    }
+
+    public ChatMessage AppendReply(ChatMessage message, FgoPet.App.Dialogue.StickerCandidate? candidate, bool blocked)
+    {
+        EnsureStickerSchema();
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var selected = message with { Sticker = SqliteStickerStore.Choose(connection, transaction, message, candidate, blocked, _stickerCatalog) };
+        Append(connection, transaction, selected);
+        transaction.Commit();
+        return selected;
+    }
 
     public ConversationHistoryPage ReadPage(string servantId, int pageSize = 50, ConversationHistoryCursor? before = null)
         => ReadPageCore(servantId, null, pageSize, before);
@@ -118,13 +146,14 @@ public sealed class SqliteConversationRepository : IConversationStore
     public void Append(ChatMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        EnsureStickerSchema();
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
         Append(connection, transaction, message);
         transaction.Commit();
     }
 
-    internal static void Append(SqliteConnection connection, SqliteTransaction transaction, ChatMessage message)
+    internal static void Append(SqliteConnection connection, SqliteTransaction transaction, ChatMessage message, bool isReply = true)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(transaction);
@@ -179,6 +208,8 @@ public sealed class SqliteConversationRepository : IConversationStore
             command.ExecuteNonQuery();
         }
 
+        if (isReply) SqliteStickerStore.Save(connection, transaction, message);
+
         using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -192,6 +223,7 @@ public sealed class SqliteConversationRepository : IConversationStore
 
     public IReadOnlyList<ChatMessage> LoadMessages(string conversationId, string servantId)
     {
+        EnsureStickerSchema();
         using var connection = _database.Open();
         return LoadMessages(connection, null, conversationId, servantId);
     }
@@ -200,14 +232,17 @@ public sealed class SqliteConversationRepository : IConversationStore
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_reply_presentations'";
+        var hasPresentations = command.ExecuteScalar() is not null;
+        command.CommandText = $"""
             SELECT m.message_id, m.conversation_id, m.servant_id, m.role, m.text, m.status,
                    m.created_at_utc, m.sequence,
                    b.servant_id, b.package_id, b.package_version, b.appearance_id,
-                   b.persona_version, b.knowledge_version
+                   b.persona_version, b.knowledge_version, {(hasPresentations ? "p.asset_id, p.intent, p.position" : "NULL, NULL, NULL")}
             FROM chat_messages m
             JOIN conversations c ON c.conversation_id=m.conversation_id
             LEFT JOIN content_bindings b ON b.binding_id=m.binding_id
+            {(hasPresentations ? "LEFT JOIN chat_reply_presentations p ON p.message_id=m.message_id" : "")}
             WHERE m.conversation_id=$conversation AND c.servant_id=$servant
             ORDER BY m.sequence
             """;
@@ -239,7 +274,7 @@ public sealed class SqliteConversationRepository : IConversationStore
                 ParseStatus(reader.GetString(5)),
                 ParseUtc(reader.GetString(6)),
                 context,
-                reader.GetInt32(7)));
+                reader.GetInt32(7)) { Sticker = reader.IsDBNull(14) ? null : new(reader.GetString(14), reader.GetString(15), reader.GetString(16)) });
         }
 
         return messages;

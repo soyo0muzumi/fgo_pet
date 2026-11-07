@@ -1,5 +1,7 @@
 # Native chat frontend
 
+Persisted local sticker IDs arrive only in completed assistant-turn metadata. `ReplyImage` uses the separate `web.localImage` native transport for these IDs, with before/after positioning, transparent thumbnails up to 160px and the existing zoom dialog. Markdown URLs never opt into local file access. Missing artwork leaves the independent text intact and supports manual retry; history does not reselect an asset. Run `npm run typecheck`, `npm test` and the Windows `ChatExternalLinkTests` for snapshot and native presentation coverage.
+
 This is the maintained React/TypeScript source for
 `plugins/FgoPet.Plugin.Dialogue/Desktop/ui/chat`. The production entry requires
 the WebView2 host bridge. Conversation state, approvals, model choices and drafts

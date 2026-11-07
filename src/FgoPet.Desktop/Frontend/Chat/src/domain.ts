@@ -25,6 +25,9 @@ export type Choice = {
   disabled?: boolean;
 };
 export type Message = {
+  stickerId?: string;
+  stickerPosition?: "before" | "after";
+  stickerLabel?: string;
   id: string;
   role: "user" | "assistant" | "system";
   text: string;

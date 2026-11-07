@@ -26,7 +26,12 @@ public sealed record ChatWebTurnSnapshot(
     bool SpeechBusy,
     string SpeechActionText,
     string SpeechStatusText,
-    bool SpeechNeedsConfiguration);
+    bool SpeechNeedsConfiguration)
+{
+    public string? StickerId { get; init; }
+    public string? StickerPosition { get; init; }
+    public string? StickerLabel { get; init; }
+}
 
 public sealed record ChatWebCapabilityNotice(string Text, string Kind);
 public sealed record ChatWebQuestion(string Id, string Text, IReadOnlyList<string> Options, bool AllowMultiple);

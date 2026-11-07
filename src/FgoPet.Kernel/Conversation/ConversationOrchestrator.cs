@@ -98,7 +98,7 @@ public sealed partial class ConversationOrchestrator
     public ConversationOrchestrator CreateIndependentSession(string sessionNamespace, Func<ToolScope, bool> scopeCurrent)
     {
         if (string.IsNullOrWhiteSpace(sessionNamespace)) throw new ArgumentException("Session namespace required.");
-        return new(_providerResolver, _contentResolver, _conversations, _composer, _time, _settings, _summaries,
+        return new(_providerResolver, _contentResolver, _conversations, _composer.WithoutLocalStickers(), _time, _settings, _summaries,
             _capabilities, _logger, _contextResolver, _tokenMeter, _lifetime.CreateIndependentOwner(), _recall, _contextStore,
             _nativeRuntime, _agentRuns, _finalDeliveries, scopeCurrent, sessionNamespace);
     }
@@ -365,7 +365,12 @@ public sealed partial class ConversationOrchestrator
                 _time.GetUtcNow(),
                 contentContext,
                 _conversations.LoadMessages(conversationId, servantId).Count + 1);
-            lease.Commit(() => _conversations.Append(assistant));
+            lease.Commit(() =>
+            {
+                if (_conversations is IStickerReplyStore stickers)
+                    assistant = stickers.AppendReply(assistant, output.Sticker, sawToolCalls || contribution is not null);
+                else _conversations.Append(assistant);
+            });
             lease.Commit(() =>
             {
                 session.EnsureCurrent(requestCancellation.Token);
@@ -384,7 +389,7 @@ public sealed partial class ConversationOrchestrator
                 CapabilityDetail: contribution?.Detail,
                 Expression: requestCancellation.IsCancellationRequested ? null : output.Expression,
                 DraftId: contribution?.DraftId,
-                DraftVersion: contribution?.DraftVersion, WorkspaceId: contribution?.WorkspaceId));
+                DraftVersion: contribution?.DraftVersion, WorkspaceId: contribution?.WorkspaceId, Sticker: assistant.Sticker));
             Publish(new ConversationUpdate(
                 ConversationUpdateType.RequestStage,
                 conversationId,

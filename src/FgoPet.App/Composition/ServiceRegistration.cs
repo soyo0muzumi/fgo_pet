@@ -195,6 +195,7 @@ public static class ServiceRegistration
         .AddNativeCapabilities()
         .AddCompanionAwareness()
         .AddDialogueRuntime(Path.Combine(paths.StorageRoot, "native-run-diagnostics.jsonl"))
+        .AddWebStickerCollection()
         .AddQqChannel(paths.StorageRoot)
         .AddWebAccessSettings()
         .AddChatWebPresentation()

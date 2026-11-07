@@ -14,6 +14,60 @@ namespace FgoPet.Windows.Tests.Dialogue;
 
 public sealed class ChatExternalLinkTests
 {
+    [Theory]
+    [InlineData("before", false)]
+    [InlineData("after", false)]
+    [InlineData("after", true)]
+    public Task Local_sticker_uses_native_pixels_and_preserves_text_order_and_zoom(string position, bool collected) => StaRunner.RunAsync(async () =>
+    {
+        var loaded = new List<string>();
+        var storage = Path.Combine(Path.GetTempPath(), "fgopet-chat-sticker-" + Guid.NewGuid().ToString("N"));
+        var assetId = collected ? "web." + new string('a', 48) : "mash.happy";
+        var factory = new ChatWebSurfaceFactory(new FixtureFactory("完整回复仍然可读。", position, assetId), storage,
+            loadSticker: (id, _) => { loaded.Add(id); return Task.FromResult<string?>(SyntheticPreview()); });
+        using var host = factory.CreateView(new FixtureActions());
+        var window = new Window { Content = host, Width = 360, Height = 700, ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        try
+        {
+            window.Show();
+            await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
+            var core = Assert.IsType<WebView2>(host.Children[0]).CoreWebView2;
+            await core.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
+            await MarginWebIntegrationTests.WaitUntil(async () => await core.ExecuteScriptAsync("!!document.querySelector('.is-sticker img')?.naturalWidth") == "true");
+            Assert.Equal(assetId, Assert.Single(loaded));
+            Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('.message-text').textContent.includes('完整回复仍然可读。')"));
+            Assert.Equal(position == "before" ? "true" : "false", await core.ExecuteScriptAsync("!!(document.querySelector('.is-sticker').compareDocumentPosition(document.querySelector('.message-text')) & Node.DOCUMENT_POSITION_FOLLOWING)"));
+            Assert.Equal("true", await core.ExecuteScriptAsync("(()=>{const r=document.querySelector('.is-sticker img').getBoundingClientRect();return r.width<=160 && r.height<=160 && !document.querySelector('.is-sticker .reply-image-source') && !document.querySelector('.is-sticker .reply-image-caption')})()"));
+            await Click(core, ".is-sticker .reply-image-thumbnail");
+            await MarginWebIntegrationTests.WaitUntil(async () => await core.ExecuteScriptAsync("!!document.querySelector('.reply-image-dialog[open] img')") == "true");
+            Assert.Equal("https://chat.fgopet.invalid/index.html", core.Source);
+        }
+        finally { window.Close(); }
+    }, TimeSpan.FromSeconds(35));
+
+    [Fact]
+    public Task Missing_local_sticker_keeps_text_and_can_retry_without_reselecting() => StaRunner.RunAsync(async () =>
+    {
+        var attempts = 0;
+        var storage = Path.Combine(Path.GetTempPath(), "fgopet-chat-sticker-failure-" + Guid.NewGuid().ToString("N"));
+        var factory = new ChatWebSurfaceFactory(new FixtureFactory("完整文字。", "after"), storage,
+            loadSticker: (_, _) => Task.FromResult(++attempts == 1 ? null : SyntheticPreview()));
+        using var host = factory.CreateView(new FixtureActions());
+        var window = new Window { Content = host, Width = 360, Height = 700, ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        try
+        {
+            window.Show();
+            await MarginWebIntegrationTests.WaitUntil(() => Task.FromResult(host.State == WebSurfaceState.Ready));
+            var core = Assert.IsType<WebView2>(host.Children[0]).CoreWebView2;
+            await MarginWebIntegrationTests.WaitUntil(async () => await core.ExecuteScriptAsync("document.querySelector('.is-sticker .reply-image-load')?.textContent === '重试加载表情'") == "true");
+            Assert.Equal("true", await core.ExecuteScriptAsync("document.querySelector('.message-text').textContent.includes('完整文字。')"));
+            await Click(core, ".is-sticker .reply-image-load");
+            await MarginWebIntegrationTests.WaitUntil(async () => await core.ExecuteScriptAsync("!!document.querySelector('.is-sticker img')?.naturalWidth") == "true");
+            Assert.Equal(2, attempts);
+        }
+        finally { window.Close(); }
+    }, TimeSpan.FromSeconds(35));
+
     [Fact]
     public Task Markdown_link_click_is_forwarded_once_and_chat_stays_on_its_local_page() => StaRunner.RunAsync(async () =>
     {
@@ -157,20 +211,21 @@ public sealed class ChatExternalLinkTests
         await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }));
     }
 
-    private sealed class FixtureFactory(string text = "这篇文章值得一起看看：[打开原文](https://example.org/article#detail)") : IChatWebSessionFactory
-    { public IChatWebSession Create(IChatWebHostActions host) => new FixtureSession(text); }
+    private sealed class FixtureFactory(string text = "这篇文章值得一起看看：[打开原文](https://example.org/article#detail)", string? stickerPosition = null, string stickerId = "mash.happy") : IChatWebSessionFactory
+    { public IChatWebSession Create(IChatWebHostActions host) => new FixtureSession(text, stickerPosition, stickerId); }
     private sealed class FixtureActions : IChatWebHostActions
     {
         public event EventHandler? Changed { add { } remove { } }
         public ChatWebHostPresentation ReadPresentation() => new("Synthetic companion", null, [], [], Window: new("conversation", false));
         public ValueTask<WebSurfaceCommandResult> HandleAsync(ChatWebHostRequest request, CancellationToken token) => ValueTask.FromResult(new WebSurfaceCommandResult(false));
     }
-    private sealed class FixtureSession(string text) : IChatWebSession
+    private sealed class FixtureSession(string text, string? stickerPosition, string stickerId) : IChatWebSession
     {
         public event Action<ChatWebSnapshot>? Changed { add { } remove { } }
         public ChatWebSnapshot ReadSnapshot() => new(new("synthetic-session", "synthetic-role", "synthetic-conversation"), 1,
             new("", 1), new("Synthetic companion", null, [], [], Window: new("conversation", false)),
-            new([new("synthetic-reply", "assistant", text, false, "", "", "", false, false, false, false, false, false, "", "", false)],
+            new([new("synthetic-reply", "assistant", text, false, "", "", "", false, false, false, false, false, false, "", "", false)
+                { StickerId = stickerPosition is null ? null : stickerId, StickerPosition = stickerPosition, StickerLabel = "开心" }],
                 false, false, "", "", "", false, "", "", false, true, false, false, false, new("", ""), new("", ""), [], []),
             new([], "", false, false, true, null, null, false));
         public ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken token) =>

@@ -23,6 +23,7 @@ See the [v0.1.2 external testing notes](docs/release/0.1.2-test-notes.md) for sc
 - **Desktop companion and windows** — the pet stays on the desktop; chat and settings are independent taskbar windows, and the task panel adapts to available width.
 - **Focus and Today** — preset or custom Pomodoro sessions, pause and recovery, a daily timeline, and servant bond progress.
 - **Dialogue and memory** — multi-turn conversations, history recovery, role persona and knowledge, with user-reviewed memory candidates.
+- **Local stickers (current source)** — optional Mash text-and-sticker replies from a local catalog, with separately enabled collection of public web images into a managed library. Artwork is not bundled; see the [configuration guide](docs/guides/local-stickers.md). Conversation quality still requires user acceptance.
 - **Todo and Agent** — tasks require confirmation before dispatch; Agent sources and project access are deny-by-default, while stop and unknown outcomes require source confirmation or explicit review.
 - **Speech** — optional synthesis, auto-read, manual playback, stop, and retry; speech failures do not block other features.
 - **Data and privacy** — safe sharing exports, private backup and restore, conversation deletion, and local data controls.

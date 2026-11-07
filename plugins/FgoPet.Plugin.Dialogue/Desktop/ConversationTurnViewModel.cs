@@ -64,6 +64,9 @@ public sealed partial class ConversationTurnViewModel : ObservableObject
     [ObservableProperty]
     private string _text;
 
+    [ObservableProperty]
+    private StickerSelection? _sticker;
+
     /// <summary>Capability item identity created by this live assistant reply.</summary>
     [ObservableProperty]
     private string? _createdItemId;

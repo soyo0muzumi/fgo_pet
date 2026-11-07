@@ -38,7 +38,7 @@ public sealed class ServiceRegistrationTests
         Assert.Same(provider.GetRequiredService<IWorkspaceAuthorizationSource>(),
             provider.GetRequiredService<IWorkspaceAuthorizationManager>());
         Assert.False(provider.GetRequiredService<FgoPet.Dialogue.Contracts.IChatWorkspaceSelection>().CanChoose);
-        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.expression-inbox", "firstparty.material-research", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.social-sources", "firstparty.topic-material", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
+        Assert.Equal(new[] { "browser", "companion-awareness", "desktop-context", "documents", "experience", "firstparty.content", "firstparty.expression-inbox", "firstparty.material-research", "firstparty.native-agent", "firstparty.portrait-live2d", "firstparty.portrait-static", "firstparty.skills", "firstparty.social-sources", "firstparty.stickers", "firstparty.topic-material", "firstparty.understanding", "firstparty.web-search", "image", "qq", "reminders", "shell", "workspace" },
             provider.GetRequiredService<PluginCatalog>().Plugins.Select(plugin => plugin.Manifest.Id));
         foreach (var materialPluginId in new[] { "firstparty.topic-material", "firstparty.material-research" })
             Assert.Empty(Assert.Single(provider.GetRequiredService<PluginCatalog>().Plugins,
@@ -47,6 +47,8 @@ public sealed class ServiceRegistrationTests
             p => p.Manifest.Id == "firstparty.expression-inbox");
         Assert.Empty(expression.Instance.Contributions.Tools);
         Assert.Empty(expression.Instance.Contributions.Prompts);
+        var stickers = Assert.Single(provider.GetRequiredService<PluginCatalog>().Plugins, p => p.Manifest.Id == "firstparty.stickers");
+        Assert.Empty(stickers.Instance.Contributions.Tools);
         var portrait = Assert.IsType<Live2DPortraitController>(provider.GetRequiredService<IPortraitBackend>());
         Assert.Same(portrait, provider.GetRequiredService<IPortraitSurface>());
         await AssertPluginActivationAsync(provider);

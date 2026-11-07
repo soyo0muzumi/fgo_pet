@@ -428,7 +428,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                     continue;
                 }
 
-                Turns.Add(new ConversationTurnViewModel(message.MessageId, message.Role, message.Text));
+                Turns.Add(new ConversationTurnViewModel(message.MessageId, message.Role, message.Text) { Sticker = message.Sticker });
             }
             ErrorText = string.Empty;
             OnPropertyChanged(nameof(IsConversationEmpty));
@@ -1191,6 +1191,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
                 if (completedTurn is not null)
                 {
                     completedTurn.IsStreaming = false;
+                    completedTurn.Sticker = update.Sticker;
                     if (completedTurn.Text.Length == 0)
                     {
                         completedTurn.IsThinkingActive = false;

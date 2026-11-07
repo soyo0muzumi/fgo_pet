@@ -38,6 +38,9 @@ Thumbs.db
 fgo_assets/
 assets/raw/
 assets/workspace/
+# User-supplied local sticker artwork is not redistributed.
+/expression/
+**/StickerLibrary/
 
 # Rendering-spike output
 tools/spikes/rendering/artifacts/*

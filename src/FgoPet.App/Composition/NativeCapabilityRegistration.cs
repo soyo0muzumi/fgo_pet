@@ -17,6 +17,7 @@ using FgoPet.Plugin.Workspace;
 using FgoPet.Plugin.WebSearch;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.App.Companion;
+using FgoPet.App.Dialogue;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -110,6 +111,15 @@ internal static class NativeCapabilityRegistration
             stores: provider.GetRequiredService<SocialSourceSettingsStores>(),
             credentials: provider.GetService<ICredentialReader>()))
         .AddSingleton<IFgoPetPlugin>(provider => provider.GetRequiredService<SocialSourcesPlugin>());
+
+    internal static IServiceCollection AddWebStickerCollection(this IServiceCollection services) => services
+        .AddSingleton<IFgoPetPlugin>(provider => ChatWebRegistration.CreateWebStickerPlugin(
+            provider.GetRequiredService<IStickerCatalogSource>(), provider.GetRequiredService<IConversationReader>(),
+            provider.GetRequiredService<IConversationScopeAuthority>(), provider.GetRequiredService<WebSearchPlugin>().CaptureAuthorization,
+            provider.GetRequiredService<WebSearchPlugin>().GetAvailability,
+            diagnostic => provider.GetRequiredService<ILogger<WebStickerPlugin>>().LogInformation(
+                "Sticker import {Timestamp} {Correlation} {Stage} {ErrorCode}", diagnostic.TimestampUtc,
+                diagnostic.Correlation, diagnostic.Stage, diagnostic.ErrorCode)));
 
     private sealed class ProcessDiagnostics(ILogger<ProcessDiagnostics> logger) : IBoundedProcessDiagnostics
     {

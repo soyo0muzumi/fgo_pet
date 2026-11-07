@@ -12,6 +12,8 @@ using FgoPet.UiSdk;
 using Microsoft.Extensions.DependencyInjection;
 using FgoPet.Kernel.Agent;
 using FgoPet.Platform.Secrets;
+using System.IO;
+using FgoPet.Infrastructure.Persistence;
 
 namespace FgoPet.App.Dialogue;
 
@@ -60,6 +62,11 @@ public static class ModelConnectionRegistration
         .AddSingleton<ChatProviderFactory>()
         .AddSingleton<ApprovedKnowledgeQuery>()
         .AddSingleton<IRequestTokenMeter, RequestTokenMeter>()
+        .AddSingleton(provider => new ManagedStickerLibrary(
+            Path.Combine(Path.GetDirectoryName(provider.GetRequiredService<RuntimeDatabase>().DatabasePath)!, "StickerLibrary"),
+            Environment.GetEnvironmentVariable("FGO_PET_STICKER_ROOT")
+                ?? Path.Combine(Path.GetDirectoryName(provider.GetRequiredService<RuntimeDatabase>().DatabasePath)!, "expression")))
+        .AddSingleton<IStickerCatalogSource>(provider => provider.GetRequiredService<ManagedStickerLibrary>())
         .AddSingleton<IModelContextResolver>(provider => new ModelContextResolver(
             connection => provider.GetRequiredService<ChatProviderFactory>().Create(connection),
             provider.GetRequiredService<TimeProvider>()))
@@ -157,8 +164,18 @@ public static class ModelConnectionRegistration
             ? ExpressionMode.Full : ExpressionMode.Off;
         provider.GetRequiredService<ILogger<PromptComposer>>().LogInformation(
             "Expression {Timestamp} {Stage} {Result}", DateTimeOffset.UtcNow, "session_configuration", mode);
+        var stickerRoot = Environment.GetEnvironmentVariable("FGO_PET_STICKER_ROOT");
+        if (stickerRoot is null && provider.GetService<RuntimeDatabase>() is { } database)
+            stickerRoot = Path.Combine(Path.GetDirectoryName(database.DatabasePath)!, "expression");
+        var stickersEnabled = stickerRoot is not null && Path.IsPathFullyQualified(stickerRoot)
+            && !stickerRoot.StartsWith("\\\\", StringComparison.Ordinal) && Directory.Exists(stickerRoot);
+        provider.GetRequiredService<ILogger<PromptComposer>>().LogInformation(
+            "Sticker {Timestamp} {Stage} {Enabled}", DateTimeOffset.UtcNow, "session_configuration", stickersEnabled);
+        var catalog = provider.GetService<IStickerCatalogSource>();
+        stickersEnabled |= string.Equals(Environment.GetEnvironmentVariable("FGO_PET_STICKER_IMPORT"), "1", StringComparison.Ordinal)
+            || catalog?.ReadAssets().Any(a => StickerPolicy.IsWebAssetId(a.Id)) == true;
         return new PromptComposer(provider.GetRequiredService<IRequestTokenMeter>(),
-            provider.GetRequiredService<ApprovedKnowledgeQuery>(), mode);
+            provider.GetRequiredService<ApprovedKnowledgeQuery>(), mode, enableLocalStickers: stickersEnabled, stickerCatalog: catalog);
     }
 
     public static IServiceCollection AddModelConnectionSettings(this IServiceCollection services)

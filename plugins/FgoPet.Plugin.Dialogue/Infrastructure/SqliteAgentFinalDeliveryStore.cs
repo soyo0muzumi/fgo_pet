@@ -52,14 +52,17 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
     private readonly RuntimeDatabase _database;
     private readonly IProtectedStateProtector _protector;
     private readonly IAgentRunStore _runs;
+    private readonly IStickerCatalogSource? _stickerCatalog;
     private readonly object _schemaGate = new();
     private bool _schemaReady;
 
-    public SqliteAgentFinalDeliveryStore(RuntimeDatabase database, IProtectedStateProtector protector, IAgentRunStore runs)
+    public SqliteAgentFinalDeliveryStore(RuntimeDatabase database, IProtectedStateProtector protector, IAgentRunStore runs,
+        IStickerCatalogSource? stickerCatalog = null)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
         _protector = protector ?? throw new ArgumentNullException(nameof(protector));
         _runs = runs ?? throw new ArgumentNullException(nameof(runs));
+        _stickerCatalog = stickerCatalog;
     }
 
     public bool TryAccept(AcceptedAgentFinal accepted)
@@ -196,12 +199,14 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
             {
                 SqliteConversationRepository.Append(connection, transaction, new ChatMessage(
                     projection.MessageId, scope.ConversationId, scope.RoleId, projection.Role,
-                    projection.Text, ChatMessageStatus.Completed, publishedAt, accepted.ContentContext, sequence++));
+                    projection.Text, ChatMessageStatus.Completed, publishedAt, accepted.ContentContext, sequence++), isReply: false);
             }
 
             var assistant = new ChatMessage(StableMessageId(deliveryId, "assistant"), scope.ConversationId,
                 scope.RoleId, ChatMessageRole.Assistant, accepted.Output.Text, ChatMessageStatus.Completed,
                 publishedAt, accepted.ContentContext, sequence);
+            assistant = assistant with { Sticker = SqliteStickerStore.Choose(connection, transaction, assistant,
+                accepted.Output.Sticker, StickerPolicy.HasBusinessTools(checkpoint!) || checkpoint!.ResolvedInputs.Length > 0, _stickerCatalog) };
             SqliteConversationRepository.Append(connection, transaction, assistant);
 
             using var delivered = connection.CreateCommand();
@@ -664,6 +669,7 @@ public sealed class SqliteAgentFinalDeliveryStore : IAgentFinalDeliveryStore
         lock (_schemaGate)
         {
             if (_schemaReady) return;
+            SqliteStickerStore.EnsureSchema(_database);
             // RunStore owns the prerequisite table and delays its migration until its first operation.
             _ = _runs.LoadAsync(SchemaProbeRunId, CancellationToken.None).AsTask().GetAwaiter().GetResult();
             new RuntimeDatabaseMigrator(_database).MigrateModule("native-agent-delivery", Migrations);
