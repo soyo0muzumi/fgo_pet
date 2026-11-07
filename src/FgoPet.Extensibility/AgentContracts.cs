@@ -7,6 +7,22 @@ public sealed record ToolExecutionContext(string RunId, int StepNumber, string C
 {
     public ToolResourceAuthorization? ResourceAuthorization { get; init; }
     public ToolBusinessConfirmation? BusinessConfirmation { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ToolAutomaticAuthorization? AutomaticAuthorization { get; init; }
+}
+
+/// <summary>Host-only standing grant. Model arguments cannot create the live revocation callback.</summary>
+public sealed class ToolAutomaticAuthorization(string ownerId, string toolName, ToolScope scope, Func<bool> current)
+{
+    public string OwnerId { get; } = ownerId;
+    public string ToolName { get; } = toolName;
+    public ToolScope Scope { get; } = scope;
+    public bool IsCurrent() { try { return current(); } catch (Exception) { return false; } }
+}
+
+public interface IToolAutomaticCommandAuthorizationProvider
+{
+    ToolAutomaticAuthorization? CaptureAutomaticAuthorization(ToolScope scope);
 }
 
 /// <summary>Owner-frozen business draft. Model arguments and generic policy cannot manufacture confirmation.</summary>

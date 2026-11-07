@@ -1,5 +1,7 @@
 # Extensibility
 
+`IToolAutomaticCommandAuthorizationProvider` optionally captures a live `ToolAutomaticAuthorization` for a user-enabled, bounded automatic Command. The host-only grant binds owner ID, tool name and exact scope to a revocation callback. Policy must independently Allow that registered tool; neither a descriptor, a model argument nor an intent supplies authority. The pipeline revalidates the grant around intent persistence and places the same grant in `ToolExecutionContext.AutomaticAuthorization`; the owner must continue checking it across asynchronous work and before committing. This is distinct from the existing per-call approval/business-confirmation path. The production policy currently uses this only for the separately enabled append-only sticker collector.
+
 Pure .NET contracts and an immutable startup catalog for trusted, statically registered first-party capabilities. Each plugin contributes typed tools, workspace, transient-surface and settings descriptors, and owns its start/stop/dispose implementation. Settings owners supply group, keywords and order metadata; the shell sorts and routes visible pages without a feature-ID map.
 
 The catalog validates IDs, API/version compatibility, dependency order and duplicate contributions. Feature state and user data belong to the plugin. Tool effects distinguish read-only, proposal and command behavior; declaring a command never grants execution authorization.

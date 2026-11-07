@@ -95,7 +95,28 @@ public sealed class ToolExecutionPipeline(ToolRegistry registry, ToolExecutor ex
                 Waiting: new(binding.RequestId, AgentWaitKind.Approval, binding.StepNumber, binding.CallId,
                     binding.WaitingRevision, binding.ExpiresAt)) { ApprovalRequest = approval });
         }
-        // A policy's Allow alone cannot manufacture evidence of a human-approved command.
+        if (decision == ToolPolicyDecision.Allow && tool.Descriptor.Effect == ToolEffect.Command
+            && tool.Provider is IToolAutomaticCommandAuthorizationProvider automaticOwner
+            && tool.Provider is not IToolBusinessConfirmationProvider)
+        {
+            ToolAutomaticAuthorization? automatic;
+            try { automatic = automaticOwner.CaptureAutomaticAuthorization(request.Identity.Scope); }
+            catch (Exception) { return ValueTask.FromResult(ToolResultNormalizer.Failure("TOOL_AUTHORIZATION_DENIED")); }
+            ToolExecutionOutcome? CheckAutomatic()
+            {
+                var denied = CheckResource();
+                if (denied is not null) return denied;
+                return automatic is not null && automatic.OwnerId == tool.PluginId && automatic.ToolName == tool.Descriptor.Name
+                    && automatic.Scope == request.Identity.Scope && automatic.IsCurrent()
+                    && policy?.Decide(request, tool) == ToolPolicyDecision.Allow
+                    ? null : ToolResultNormalizer.Failure("TOOL_AUTHORIZATION_DENIED");
+            }
+            var automaticDenied = CheckAutomatic();
+            if (automaticDenied is not null) return ValueTask.FromResult(automaticDenied);
+            return executor.ExecuteAsync(request, tool, arguments, intent, token, commandApproved: true,
+                approvalGuard: CheckAutomatic, resourceAuthorization: resource, automaticAuthorization: automatic);
+        }
+        // A policy's Allow alone is not a per-call approval or a live owner standing grant.
         return executor.ExecuteAsync(request, tool, arguments, intent, token, approvalGuard: CheckResource, resourceAuthorization: resource);
     }
 }

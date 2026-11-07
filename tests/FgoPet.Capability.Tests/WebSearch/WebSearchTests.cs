@@ -9,6 +9,27 @@ namespace FgoPet.Capability.Tests.WebSearch;
 
 public sealed class WebSearchTests
 {
+    [Fact]
+    public async Task Captured_web_authorization_revokes_on_grant_scope_or_lifecycle_change_without_network_io()
+    {
+        using var runner = new Runner();
+        var grant = Grant;
+        var active = true;
+        await using var plugin = Create(runner, () => grant, _ => active);
+        Assert.Null(plugin.CaptureAuthorization(Scope));
+        await plugin.StartAsync(default);
+        var lease = plugin.CaptureAuthorization(Scope);
+        Assert.NotNull(lease); Assert.True(lease!());
+        grant = grant with { AuthorizationVersion = grant.AuthorizationVersion + 1 };
+        Assert.False(lease());
+        var current = plugin.CaptureAuthorization(Scope)!;
+        active = false; Assert.False(current());
+        active = true; Assert.True(current());
+        await plugin.StopAsync(default);
+        Assert.False(current()); Assert.Null(plugin.CaptureAuthorization(Scope));
+        Assert.Equal(0, runner.Calls);
+    }
+
     private static readonly ToolScope Scope = new("conversation", "role", "project");
     private static readonly WebSearchSettings Grant = new(true, "8dc9a81a6aac4720a06fe4b936d69e24", 1);
     private const string Fixture = """

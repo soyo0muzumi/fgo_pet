@@ -1,5 +1,7 @@
 # Web Search Plugin
 
+`CaptureAuthorization(scope)` returns a host-only revocation callback for the exact enabled provider/grant revision and current scope, without network I/O. It becomes false on settings changes, scope loss, unavailable runtime or plugin stop. Consumers need their own explicit feature permission in addition to this Web grant; the callback grants no arbitrary local writes. The opt-in Dialogue sticker collector reuses it for bounded public image downloads. Search providers, search-worker protocol and full-page reading permissions are unchanged.
+
 `WebSearchPlugin` contributes the read-only `web.search` tool to the Native runtime. It invokes the bundled Python helper with one bounded JSON request on stdin. The helper uses the pinned DDGS DuckDuckGo engine directly, without an API key, metasearch fallback, MCP service, shell command, or runtime package installation. Full-page reading remains the separately authorized Browser capability.
 
 General research does not require a browser connection. The tool description guides focused follow-up searches for missing facts, candidate names and relevant source domains, then comparison of supported findings. A returned link or snippet does not attest that the destination page was read or that current availability was verified.

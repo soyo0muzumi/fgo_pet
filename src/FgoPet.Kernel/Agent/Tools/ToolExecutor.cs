@@ -11,7 +11,7 @@ public sealed class ToolExecutor(ToolRegistry registry, ToolScope hostScope, IAg
     internal async ValueTask<ToolExecutionOutcome> ExecuteAsync(ToolExecutionRequest request, RegisteredTool tool,
         JsonElement arguments, IToolExecutionIntent intent, CancellationToken token, bool commandApproved = false,
         Func<ToolExecutionOutcome?>? approvalGuard = null, ToolResourceAuthorization? resourceAuthorization = null,
-        ToolBusinessConfirmation? businessConfirmation = null)
+        ToolBusinessConfirmation? businessConfirmation = null, ToolAutomaticAuthorization? automaticAuthorization = null)
     {
         var denied = Guard(request, tool, token);
         denied ??= approvalGuard?.Invoke();
@@ -20,7 +20,7 @@ public sealed class ToolExecutor(ToolRegistry registry, ToolScope hostScope, IAg
         if (tool.Descriptor.Effect == ToolEffect.Command && (!commandApproved || approvalGuard is null))
             return ToolResultNormalizer.Failure("TOOL_AUTHORIZATION_DENIED");
 
-        var invocation = CreateInvocation(request, arguments, resourceAuthorization, businessConfirmation);
+        var invocation = CreateInvocation(request, arguments, resourceAuthorization, businessConfirmation, automaticAuthorization);
         await intent.CommitStartedAsync(tool.Descriptor, token);
         // Persistence can yield to shutdown or a role/project switch. Never use the earlier admission check.
         denied = Guard(request, tool, token);
@@ -42,13 +42,13 @@ public sealed class ToolExecutor(ToolRegistry registry, ToolScope hostScope, IAg
     }
 
     internal static ToolInvocation CreateInvocation(ToolExecutionRequest request, JsonElement arguments,
-        ToolResourceAuthorization? resource = null, ToolBusinessConfirmation? business = null)
+        ToolResourceAuthorization? resource = null, ToolBusinessConfirmation? business = null, ToolAutomaticAuthorization? automatic = null)
     {
         var key = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
             new { request.Identity.RunId, request.StepNumber, request.Call.CallId })));
         return new(request.Identity.Scope, arguments.Clone()) { ExecutionContext =
             new(request.Identity.RunId, request.StepNumber, request.Call.CallId, key)
-                { ResourceAuthorization = resource, BusinessConfirmation = business } };
+                { ResourceAuthorization = resource, BusinessConfirmation = business, AutomaticAuthorization = automatic } };
     }
 
     internal ToolExecutionOutcome? Guard(ToolExecutionRequest request, RegisteredTool tool, CancellationToken token)

@@ -81,6 +81,22 @@ public sealed class WebSearchPlugin : IFgoPetPlugin, IDisposable
         catch (SearchException error) { return new(false, error.Code); }
     }
 
+    /// <summary>A bounded consumer may reuse this exact public-Web grant; revocation and scope changes invalidate it.</summary>
+    public Func<bool>? CaptureAuthorization(ToolScope scope)
+    {
+        try
+        {
+            var grant = HostGrant();
+            if (!GetAvailability().IsAvailable || !ValidScope(scope) || !HostScopeCurrent(scope)) return null;
+            return () =>
+            {
+                try { return GetAvailability().IsAvailable && grant == HostGrant() && HostScopeCurrent(scope); }
+                catch (SearchException) { return false; }
+            };
+        }
+        catch (SearchException) { return null; }
+    }
+
     /// <summary>Explicit settings-page test. Sends only a fixed public query, never conversation data.</summary>
     public async ValueTask<ToolAvailability> CheckConnectionAsync(CancellationToken token)
     {
