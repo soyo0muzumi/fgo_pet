@@ -54,7 +54,8 @@ public static class UnderstandingRegistration
                     if(persona is null)return null;
                     var overlay=persona.FindAppearance(binding.Context.AppearanceId);
                     return persona.CoreText+(overlay is null?"":"\n"+overlay.Text);
-                }))
+                },
+                topicStore: p.GetService<IShortTermTopicStore>()))
             .AddSingleton(p=>new UnderstandingReviewScheduler(p.GetRequiredService<UnderstandingService>(),p.GetRequiredService<IExperienceTimeline>(),
                 p.GetRequiredService<UnderstandingReviewService>(),p.GetRequiredService<TimeProvider>(),
                 Diagnostics<UnderstandingReviewScheduler>(p)))

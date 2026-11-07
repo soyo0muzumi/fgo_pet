@@ -75,7 +75,7 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
     {
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
-        if(InputLimit<=0||OutputLimit<=0)throw InvalidMaterial();
+        if (InputLimit <= 0 || OutputLimit <= 0) throw InvalidMaterial();
         var correlation = Hash(input.OperationId ?? "")[..16];
         Log("review_model_received");
         try
@@ -90,32 +90,37 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
                 Expressions = t.Expressions?.ToArray(), Conflicts = t.Conflicts?.ToArray(), MaintenanceIntents = t.MaintenanceIntents?.ToArray() }).ToArray();
             Validate(input, originals, targets);
             var effectiveRules = hostBoundExpressions ? HostBoundRules : Rules;
-            var binding = Hash(JsonSerializer.Serialize(new { Rules = effectiveRules, operation = Hash(input.OperationId), scope = input.Scope.Key,
-                originals, targets, input.ExternallySuppliedContext, route, OutputLimit }, Json));
-            var data = JsonSerializer.Serialize(new { schema = hostBoundExpressions ? 4 : 3, request = binding, scope = Hash(input.Scope.Key),
-                externallySuppliedContext = input.ExternallySuppliedContext,
-                sources = originals.Select((m, i) => new {
-                    alias = "s" + (i + 1), conversationGroup = SemanticFormationContract.ConversationGroup(m.Source.Scope.ConversationId), speaker = m.Source.Kind.ToString(), m.Source.SourceLabel, m.Source.Author, atUtc = m.Source.OccurredAtUtc,
-                    version = m.Source.Fingerprint, startScalar = m.Coverage.StartScalar,
-                    includedScalars = m.Coverage.IncludedScalars, totalScalars = m.Coverage.TotalScalars, text = m.Text }),
-                targets = targets.Select((t, i) => new {
-                    alias = "t" + (i + 1), referenceKind = "derived_target", domain = t.Domain.ToString(), kind = t.Kind.ToString(),
-                    subject = t.Subject, content = t.Content, conditions = t.Conditions, correction = t.Correction,
-                    basis = t.BasisKind, review = t.Review.ToString(), effect = t.Effect.ToString(), life = t.Life.ToString(),
-                    origin = t.Origin?.ToString(), status = t.Status?.ToString(),
-                    observedAtUtc = t.ObservedAt, activeUntilUtc = t.ActiveUntil, lastReviewedAtUtc = t.LastReviewedAt,
-                    proposedOperation = t.ProposedOperation?.ToString(),
-                    expressions = t.Expressions?.Select(e => new { speaker = e.Source.Kind.ToString(), atUtc = e.Source.OccurredAtUtc,
-                        version = e.Source.Fingerprint, quote = e.Quote }),
-                    conflicts = t.Conflicts?.Select(s => new { speaker = s.Kind.ToString(), atUtc = s.OccurredAtUtc, version = s.Fingerprint }),
-                    sources = t.Sources.Select(s => new { speaker = s.Kind.ToString(), atUtc = s.OccurredAtUtc, version = s.Fingerprint }) }) }, Json);
+            var binding = BuildBinding(effectiveRules, input, originals, targets, OutputLimit);
+            var data = BuildUserJson(hostBoundExpressions ? 4 : 3, binding, input, originals, targets);
+
             var request = ChatRequest.CreateAgent(input.Scope.ServantId, "understanding-review",
                 [new(ModelMessageRole.System, effectiveRules, []), new(ModelMessageRole.User, data, [])],
                 metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "understanding_review" }, maxOutputTokens: OutputLimit);
+
             var measurement = meter.Measure(route, request);
-            if (measurement.InputTokens < 1 || measurement.InputTokens > InputLimit) throw new AgentProtocolException("UNDERSTANDING_REVIEW_INPUT_LIMIT");
+            var effectiveOriginals = originals;
+
+            // Model token capacity check and progressive compression if over capacity
+            if (measurement.InputTokens > InputLimit)
+            {
+                var compressed = TryCompressEarlierContext(effectiveOriginals, targets, effectiveRules, input, route, OutputLimit, meter, InputLimit, hostBoundExpressions ? 4 : 3);
+                if (compressed is not null)
+                {
+                    effectiveOriginals = compressed.Value.CompressedOriginals;
+                    request = compressed.Value.Request;
+                    binding = compressed.Value.Binding;
+                    measurement = compressed.Value.Measurement;
+                }
+                else
+                {
+                    throw new AgentProtocolException("UNDERSTANDING_CAPACITY_EXCEEDED");
+                }
+            }
+
+            if (measurement.InputTokens < 1 || measurement.InputTokens > InputLimit)
+                throw new AgentProtocolException("UNDERSTANDING_REVIEW_INPUT_LIMIT");
+
             Log("review_model_dispatch_ready");
-            // The host's provider wrapper owns atomic handoff/accounting. Check again at the final local boundary.
             input.EnsureCurrent(cancellationToken);
             var response = await ReadAsync(request, input.EnsureCurrent, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -125,11 +130,28 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
             if (usage.InputTokens < 1 || usage.InputTokens > InputLimit || usage.OutputTokens < 1 || usage.OutputTokens > OutputLimit)
                 throw new AgentProtocolException("UNDERSTANDING_REVIEW_USAGE_INVALID");
             meter.RecordUsage(route, request, usage);
-            var proposals = UnderstandingReviewResponse.Parse(response.AssistantMessage.Content, binding, originals, targets, hostBoundExpressions);
+
+            var content = response.AssistantMessage.Content.Trim();
+            var conversationId = originals.Length > 0 ? originals[0].Source.Scope.ConversationId : "";
+
+            IReadOnlyList<UnderstandingProposal> proposals;
+            IReadOnlyList<ConversationTopic>? topics = null;
+
+            if (content.Contains("\"theme_analysis_v1\""))
+            {
+                var parsed = ThemeAnalysisProtocol.Parse(content, binding, effectiveOriginals, input.Scope, conversationId, DateTimeOffset.UtcNow);
+                topics = parsed.Topics;
+                proposals = parsed.Proposals;
+            }
+            else
+            {
+                proposals = UnderstandingReviewResponse.Parse(content, binding, effectiveOriginals, targets, hostBoundExpressions);
+            }
+
             Log("review_model_completed");
             cancellationToken.ThrowIfCancellationRequested();
             input.EnsureCurrent(cancellationToken);
-            return new(proposals, Array.AsReadOnly(originals.Select(m => m.Coverage).ToArray()), usage, measurement, binding);
+            return new(proposals, Array.AsReadOnly(effectiveOriginals.Select(m => m.Coverage).ToArray()), usage, measurement, binding, topics);
         }
         catch (OperationCanceledException) { Log("review_model_cancelled", "UNDERSTANDING_REVIEW_CANCELLED"); throw; }
         catch (Exception) { Log("review_model_failed", "UNDERSTANDING_REVIEW_FAILED"); throw; }
@@ -141,10 +163,125 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
         }
     }
 
-    private async Task<ModelStepResponse> ReadAsync(ChatRequest request, Action<CancellationToken> ensureCurrent, CancellationToken token)
-        =>await ReadStreamAsync(provider,request,ensureCurrent,token).ConfigureAwait(false);
+    private static (ReviewOriginal[] CompressedOriginals, ChatRequest Request, string Binding, TokenMeasurement Measurement)? TryCompressEarlierContext(
+        ReviewOriginal[] originals,
+        UnderstandingEntry[] targets,
+        string effectiveRules,
+        ReviewModelInput input,
+        ModelRouteKey route,
+        int outputLimit,
+        IRequestTokenMeter meter,
+        int inputLimit,
+        int schema)
+    {
+        const int recentCount = 4;
+        if (originals.Length <= recentCount) return null;
 
-    internal static async Task<ModelStepResponse> ReadStreamAsync(IChatProvider provider,ChatRequest request,Action<CancellationToken> ensureCurrent,CancellationToken token)
+        // Keep exact source aliases and offsets so excerpts remain verifiable.
+        var earlierCount = originals.Length - recentCount;
+        var excerpts = originals.Take(earlierCount).Select(original =>
+            IsKeyCorrection(original.Text) ? null : original.Text.EnumerateRunes().ToArray()).ToArray();
+        effectiveRules += "\nEarlier sources marked isSummary are exact excerpts with incomplete coverage. Do not infer omitted content or use excerpts as complete evidence.";
+
+        for (var maxScalars = 256; maxScalars >= 32; maxScalars /= 2)
+        {
+            var compressed = (ReviewOriginal[])originals.Clone();
+            for (var i = 0; i < excerpts.Length; i++)
+            {
+                if (excerpts[i] is not { } runes || runes.Length <= maxScalars) continue;
+                var original = originals[i];
+                compressed[i] = original with
+                {
+                    Text = string.Concat(runes.Take(maxScalars).Select(r => r.ToString())),
+                    Coverage = original.Coverage with { IncludedScalars = maxScalars },
+                    IsSummary = true
+                };
+            }
+
+            var binding = BuildBinding(effectiveRules, input, compressed, targets, outputLimit);
+            var data = BuildUserJson(schema, binding, input, compressed, targets);
+            var request = ChatRequest.CreateAgent(input.Scope.ServantId, "understanding-review",
+                [new(ModelMessageRole.System, effectiveRules, []), new(ModelMessageRole.User, data, [])],
+                metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "understanding_review" }, maxOutputTokens: outputLimit);
+            var measurement = meter.Measure(route, request);
+            if (measurement.InputTokens >= 1 && measurement.InputTokens <= inputLimit)
+                return (compressed, request, binding, measurement);
+        }
+
+        return null;
+    }
+
+    private static bool IsKeyCorrection(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var keywords = new[] { "更正", "修正", "等等", "不是", "错了", "其实是", "改成", "换成", "反悔", "取消" };
+        return keywords.Any(k => text.Contains(k, StringComparison.Ordinal));
+    }
+
+    private static string BuildBinding(string effectiveRules, ReviewModelInput input, ReviewOriginal[] originals, UnderstandingEntry[] targets, int outputLimit)
+    {
+        return Hash(JsonSerializer.Serialize(new {
+            Rules = effectiveRules,
+            operation = Hash(input.OperationId),
+            scope = input.Scope.Key,
+            originals,
+            targets,
+            input.ExternallySuppliedContext,
+            OutputLimit = outputLimit
+        }, Json));
+    }
+
+    private static string BuildUserJson(int schema, string binding, ReviewModelInput input, ReviewOriginal[] originals, UnderstandingEntry[] targets)
+    {
+        return JsonSerializer.Serialize(new {
+            schema,
+            request = binding,
+            scope = Hash(input.Scope.Key),
+            externallySuppliedContext = input.ExternallySuppliedContext,
+            sources = originals.Select((m, i) => new {
+                alias = "s" + (i + 1),
+                conversationGroup = SemanticFormationContract.ConversationGroup(m.Source.Scope.ConversationId),
+                speaker = m.Source.Kind.ToString(),
+                m.Source.SourceLabel,
+                m.Source.Author,
+                atUtc = m.Source.OccurredAtUtc,
+                version = m.Source.Fingerprint,
+                startScalar = m.Coverage.StartScalar,
+                includedScalars = m.Coverage.IncludedScalars,
+                totalScalars = m.Coverage.TotalScalars,
+                text = m.Text,
+                isSummary = m.IsSummary
+            }),
+            targets = targets.Select((t, i) => new {
+                alias = "t" + (i + 1),
+                referenceKind = "derived_target",
+                domain = t.Domain.ToString(),
+                kind = t.Kind.ToString(),
+                subject = t.Subject,
+                content = t.Content,
+                conditions = t.Conditions,
+                correction = t.Correction,
+                basis = t.BasisKind,
+                review = t.Review.ToString(),
+                effect = t.Effect.ToString(),
+                life = t.Life.ToString(),
+                origin = t.Origin?.ToString(),
+                status = t.Status?.ToString(),
+                observedAtUtc = t.ObservedAt,
+                activeUntilUtc = t.ActiveUntil,
+                lastReviewedAtUtc = t.LastReviewedAt,
+                proposedOperation = t.ProposedOperation?.ToString(),
+                expressions = t.Expressions?.Select(e => new { speaker = e.Source.Kind.ToString(), atUtc = e.Source.OccurredAtUtc, version = e.Source.Fingerprint, quote = e.Quote }),
+                conflicts = t.Conflicts?.Select(s => new { speaker = s.Kind.ToString(), atUtc = s.OccurredAtUtc, version = s.Fingerprint }),
+                sources = t.Sources.Select(s => new { speaker = s.Kind.ToString(), atUtc = s.OccurredAtUtc, version = s.Fingerprint })
+            })
+        }, Json);
+    }
+
+    private async Task<ModelStepResponse> ReadAsync(ChatRequest request, Action<CancellationToken> ensureCurrent, CancellationToken token)
+        => await ReadStreamAsync(provider, request, ensureCurrent, token).ConfigureAwait(false);
+
+    internal static async Task<ModelStepResponse> ReadStreamAsync(IChatProvider provider, ChatRequest request, Action<CancellationToken> ensureCurrent, CancellationToken token)
     {
         var aggregate = new ModelStepAggregator(new ModelToolNameMap([]));
         ensureCurrent(token);
@@ -161,8 +298,6 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
                 token.ThrowIfCancellationRequested();
                 aggregate.Add(chunks.Current);
                 finishObserved |= chunks.Current.FinishReason == "stop";
-                // HTTP usage can accompany finish_reason or follow it before [DONE].
-                // An earlier progress sample alone cannot certify the completed response.
                 if ((finishObserved || chunks.Current.IsComplete) && chunks.Current.Usage is { } completedUsage)
                     terminalUsage = completedUsage;
             }
@@ -179,8 +314,7 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
     private static void Validate(ReviewModelInput input, IReadOnlyList<ReviewOriginal> originals, IReadOnlyList<UnderstandingEntry> targets)
     {
         if (input.ExternallySuppliedContext is { Length: > 32000 }) throw InvalidMaterial();
-        if (originals.Count is < 1 or > 8 || originals.Any(m => m?.Source is null || m.Text is null || m.Coverage is null) ||
-            originals.Sum(m => (long)m.Text.EnumerateRunes().Count()) > 6000 ||
+        if (originals.Count < 1 || originals.Any(m => m?.Source is null || m.Text is null || m.Coverage is null) ||
             originals.Select(m => (m.Source.Scope.ConversationId, m.Source.MessageId)).Distinct().Count() != originals.Count ||
             targets.Count > 8 || targets.Any(t => t is null || t.Scope != input.Scope || t.Life == UnderstandingLife.Retracted) ||
             targets.Select(t => t.Id).Distinct(StringComparer.Ordinal).Count() != targets.Count) throw InvalidMaterial();
@@ -190,13 +324,14 @@ public sealed class UnderstandingReviewModel(IChatProvider provider, ModelRouteK
             if (source.Scope.RoleId != input.Scope.ServantId || source.Scope.ProjectId != input.Scope.ProjectId ||
                 !Enum.IsDefined(source.Kind) || source.OccurredAtUtc == DateTimeOffset.MinValue ||
                 source.Fingerprint.Length != 64 || source.Fingerprint.Any(c => !char.IsAsciiHexDigit(c)) ||
-                coverage.Source != source || coverage.StartScalar < 0 || coverage.TotalScalars is < 1 or > 12000 ||
+                coverage.Source != source || coverage.StartScalar < 0 || coverage.TotalScalars is < 1 or > 36000 ||
                 coverage.IncludedScalars < 1 || coverage.IncludedScalars != original.Text.EnumerateRunes().Count() ||
                 (long)coverage.StartScalar + coverage.IncludedScalars > coverage.TotalScalars) throw InvalidMaterial();
-            if(source.Kind==ConversationSourceKind.External&&(source.SourceRevision<=0||string.IsNullOrWhiteSpace(source.SourceLabel)||source.SourceLabel.Length>128||
-                string.IsNullOrWhiteSpace(source.Author)||source.Author.Length>160))throw InvalidMaterial();
+            if (source.Kind == ConversationSourceKind.External && (source.SourceRevision <= 0 || string.IsNullOrWhiteSpace(source.SourceLabel) || source.SourceLabel.Length > 128 ||
+                string.IsNullOrWhiteSpace(source.Author) || source.Author.Length > 160)) throw InvalidMaterial();
         }
     }
+
     private static AgentProtocolException InvalidMaterial() => new("UNDERSTANDING_REVIEW_INVALID_MATERIAL");
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }

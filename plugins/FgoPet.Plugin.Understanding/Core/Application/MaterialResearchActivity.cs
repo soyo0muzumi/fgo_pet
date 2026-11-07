@@ -10,15 +10,30 @@ namespace FgoPet.Understanding;
 /// <summary>One topic, one search and at most one short-lived material; never a World writer.</summary>
 public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnderstandingReader understanding,
     ITopicMaterialStore store, IMaterialResearchModel model, IMaterialResearchSource source,
-    IDialogueContextLifetime lifetime, TimeProvider clock, Action<MaterialResearchDiagnostic>? diagnostics = null)
+    IDialogueContextLifetime lifetime, TimeProvider clock, Action<MaterialResearchDiagnostic>? diagnostics = null,
+    IShortTermTopicSource? topicSource = null)
 {
+    private sealed record ResearchTopicTarget(
+        string Id,
+        int Revision,
+        string Content,
+        string? Correction,
+        TopicMaterialScope Kind,
+        DateTimeOffset ObservedAt,
+        bool FromUnderstanding);
+
     internal const int QueryOutputTokens = 384;
     internal const int SummaryOutputTokens = 768;
     private readonly SemaphoreSlim _serial = new(1, 1);
     private static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
     public string? LastCode { get; private set; }
 
-    public async Task RunOnceAsync(CancellationToken token = default)
+    public Task RunOnceAsync(CancellationToken token = default) => RunCoreAsync(null, null, token);
+
+    public Task RunManualAsync(ConversationScope? targetScope = null, string? targetTopicId = null, CancellationToken token = default)
+        => RunCoreAsync(targetScope, targetTopicId, token);
+
+    private async Task RunCoreAsync(ConversationScope? targetScope, string? targetTopicId, CancellationToken token)
     {
         if (!await _serial.WaitAsync(0, token).ConfigureAwait(false)) return;
         var activityId = Guid.NewGuid().ToString("N");
@@ -28,12 +43,57 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             Log("received");
             var configuration = host.Capture();
             if (configuration is null) return;
-            var scope = new ConversationScope(configuration.Scope.RoleId, configuration.Scope.ProjectId);
+            var scope = targetScope ?? new ConversationScope(configuration.Scope.RoleId, configuration.Scope.ProjectId);
+
+            var now = clock.GetUtcNow();
+            var candidates = new List<ResearchTopicTarget>();
             var projection = understanding.Query(scope, "");
-            if (projection.Code is not null) return;
-            var topic = projection.Items.Where(Eligible).OrderBy(e => e.Kind == UnderstandingKind.OpenQuestion ? 0 : 1)
-                .ThenByDescending(e => e.ObservedAt).ThenBy(e => e.Id, StringComparer.Ordinal)
-                .FirstOrDefault(e => store.CanResearch(scope, e.Id, clock.GetUtcNow(), RefreshAfter, configuration.DailyLimit));
+            if (projection.Code is null)
+            {
+                foreach (var e in projection.Items.Where(e => EligibleUnderstanding(e, now)))
+                {
+                    if (store.CanResearch(scope, e.Id, now, RefreshAfter, configuration.DailyLimit))
+                    {
+                        candidates.Add(new(
+                            e.Id,
+                            e.Revision,
+                            e.Content,
+                            e.Correction,
+                            e.Kind == UnderstandingKind.OpenQuestion ? TopicMaterialScope.OpenQuestion : TopicMaterialScope.Interest,
+                            e.ObservedAt,
+                            FromUnderstanding: true));
+                    }
+                }
+            }
+
+            if (topicSource is not null)
+            {
+                foreach (var t in topicSource.GetActiveTopics(scope))
+                {
+                    if (t.ResearchCandidate && t.Tense != "concluded" && t.ActiveUntil > now)
+                    {
+                        if (store.CanResearch(scope, t.Id, now, RefreshAfter, configuration.DailyLimit))
+                        {
+                            candidates.Add(new(
+                                t.Id,
+                                t.Revision,
+                                t.Topic,
+                                t.Correction,
+                                t.ScopeKind,
+                                t.ObservedAt,
+                                FromUnderstanding: false));
+                        }
+                    }
+                }
+            }
+
+            var topic = candidates
+                .Where(c => targetTopicId is null || c.Id == targetTopicId)
+                .OrderBy(c => c.Kind == TopicMaterialScope.OpenQuestion ? 0 : 1)
+                .ThenByDescending(c => c.ObservedAt)
+                .ThenBy(c => c.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+
             if (topic is null) return;
             Log("queued");
             using var lease = lifetime.TryAcquireBackground(token);
@@ -42,8 +102,7 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             using var work = CancellationTokenSource.CreateLinkedTokenSource(token, lease.Token, timeout.Token);
             var cancellation = work.Token;
             var request = new MaterialResearchRequest(activityId, configuration.Scope, configuration.Connection,
-                topic.Id, topic.Revision, topic.Correction ?? topic.Content,
-                topic.Kind == UnderstandingKind.OpenQuestion ? TopicMaterialScope.OpenQuestion : TopicMaterialScope.Interest);
+                topic.Id, topic.Revision, topic.Correction ?? topic.Content, topic.Kind);
             var phase = 1;
             var calls = 0;
             var charged = false;
@@ -96,7 +155,7 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             if (draft.SourceIndex < 0 || draft.SourceIndex >= results.Length)
                 throw new InvalidOperationException("MATERIAL_SOURCE_INVALID");
             var selected = results[draft.SourceIndex];
-            var now = clock.GetUtcNow();
+            now = clock.GetUtcNow();
             var material = new TopicMaterial(Guid.NewGuid().ToString("N"), topic.Id, topic.Revision, request.Kind,
                 draft.Summary, draft.RelevanceReason, selected.Title, selected.Url, now, now.AddDays(2));
             if (!lease.Commit(() => host.TryCommit(configuration, () =>
@@ -105,18 +164,31 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             }))) throw new OperationCanceledException(cancellation);
             LastCode = null; Log("saved");
 
-            bool Eligible(UnderstandingEntry entry) => entry.Scope == scope && entry.Life == UnderstandingLife.Active
-                && entry.ActiveUntil > clock.GetUtcNow() && entry.Review != UnderstandingReview.Rejected
+            bool EligibleUnderstanding(UnderstandingEntry entry, DateTimeOffset now) => entry.Scope == scope && entry.Life == UnderstandingLife.Active
+                && entry.ActiveUntil > now && entry.Review != UnderstandingReview.Rejected
                 && entry.Effect != UnderstandingEffect.Pending
                 && entry.Kind is UnderstandingKind.CurrentInterest or UnderstandingKind.OpenQuestion;
+
             void EnsureTopicCurrent()
             {
-                var current = understanding.Query(scope, "");
-                if (current.Code is not null || current.Revision != projection.Revision
-                    || !current.Items.Any(e => Eligible(e) && e.Id == topic.Id && e.Revision == topic.Revision
-                        && e.Content == topic.Content && e.Correction == topic.Correction))
-                    throw new OperationCanceledException("MATERIAL_TOPIC_CHANGED", cancellation);
+                if (topic.FromUnderstanding)
+                {
+                    var current = understanding.Query(scope, "");
+                    if (current.Code is not null || current.Revision != projection.Revision
+                        || !current.Items.Any(e => EligibleUnderstanding(e, clock.GetUtcNow()) && e.Id == topic.Id && e.Revision == topic.Revision
+                            && e.Content == topic.Content && e.Correction == topic.Correction))
+                        throw new OperationCanceledException("MATERIAL_TOPIC_CHANGED", cancellation);
+                }
+                else if (topicSource is not null)
+                {
+                    var active = topicSource.GetActiveTopics(scope);
+                    if (!active.Any(t => t.Id == topic.Id && t.Revision == topic.Revision
+                        && t.Topic == topic.Content && t.Correction == topic.Correction
+                        && t.Tense != "concluded" && t.ActiveUntil > clock.GetUtcNow()))
+                        throw new OperationCanceledException("MATERIAL_TOPIC_CHANGED", cancellation);
+                }
             }
+
             void EnsureCurrent(CancellationToken currentToken)
             {
                 currentToken.ThrowIfCancellationRequested(); cancellation.ThrowIfCancellationRequested(); lease.CheckCurrent();
@@ -141,8 +213,10 @@ public sealed class MaterialResearchActivity(IMaterialResearchHost host, IUnders
             catch { /* Diagnostics cannot authorize or interrupt work. */ }
         }
     }
+
     private static bool SafeCode(string code) => code.StartsWith("MATERIAL_", StringComparison.Ordinal) && code.Length <= 96
         && code.All(c => char.IsAsciiLetterUpper(c) || c == '_' || char.IsAsciiDigit(c));
+
     private sealed class DispatchGate(Func<ChatRequest, ModelRouteKey, Func<object?>, CancellationToken, object?> dispatch) : IChatDispatchGate
     {
         public T Dispatch<T>(ChatRequest chat, ModelRouteKey route, Func<T> start, CancellationToken token)

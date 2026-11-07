@@ -10,11 +10,14 @@ namespace FgoPet.Understanding;
 public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProvider, IAgentContextProvider, IPostTurnObserver, IDisposable
 {
     private sealed record Offer(string MaterialId, string TopicKey, int TopicRevision, string UserFingerprint, long Order);
+    private sealed record ActiveTopic(string Id, int Revision, TopicMaterialScope Scope);
+
     private readonly ITopicMaterialStore _store;
     private readonly IUnderstandingReader _reader;
     private readonly Func<ToolScope, bool> _activeScope;
     private readonly IAgentQueryResolver _resolver;
     private readonly TimeProvider _clock;
+    private readonly IShortTermTopicSource? _topicSource;
     private readonly object _gate = new();
     private readonly Dictionary<ToolScope, Offer> _offers = [];
     private CancellationToken _stopping;
@@ -23,18 +26,21 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
     private int _stopped;
 
     public TopicMaterialPlugin(ITopicMaterialStore store, IUnderstandingReader reader, Func<ToolScope, bool> activeScope,
-        IAgentQueryResolver resolver, TimeProvider? clock = null)
+        IAgentQueryResolver resolver, TimeProvider? clock = null, IShortTermTopicSource? topicSource = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         _activeScope = activeScope ?? throw new ArgumentNullException(nameof(activeScope));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _clock = clock ?? TimeProvider.System;
+        _topicSource = topicSource;
     }
+
     public PluginManifest Manifest { get; } = new("firstparty.topic-material", "1.0.0", 1, []);
     public string Id => "topic-material";
     public bool ProvidesTrustedInstructions => false;
     public PluginContributions Contributions => PluginContributions.Empty with { Prompts = [this], AgentContexts = [this], PostTurnObservers = [this] };
+
     public ValueTask StartAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -42,12 +48,15 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
         _stopping = token; Volatile.Write(ref _started, 1);
         return ValueTask.CompletedTask;
     }
+
     public ValueTask StopAsync(CancellationToken token) { Dispose(); return ValueTask.CompletedTask; }
+
     public IReadOnlyList<ConversationPromptBlock> BuildPrompt(ToolScope scope, string userMessage, bool toolsAvailable)
     {
         var material = Select(scope, userMessage);
         return material is null ? [] : [new("topic-material", Format(material), Whole: true)];
     }
+
     public async ValueTask<IReadOnlyList<AgentContextBlock>> BuildAsync(AgentContextRequest request, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -61,6 +70,7 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
         token.ThrowIfCancellationRequested();
         return material is null ? [] : [new("material", AgentContextKind.Data, Format(material), 30, Whole: true)];
     }
+
     public void Observe(ConversationCompletedTurn turn)
     {
         turn.CancellationToken.ThrowIfCancellationRequested();
@@ -78,6 +88,7 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
         // This is only a weak offered-candidate signal: it does not claim the model used the material.
         _store.MarkUsed(semanticScope, current.Id, _clock.GetUtcNow());
     }
+
     public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     public void Dispose()
     {
@@ -88,16 +99,40 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
     private bool Allowed(ToolScope scope) => Volatile.Read(ref _started) != 0 && Volatile.Read(ref _stopped) == 0
         && !_stopping.IsCancellationRequested && _activeScope(scope);
 
-    private UnderstandingEntry[] ReadTopics(ToolScope scope)
+    private ActiveTopic[] ReadTopics(ToolScope scope)
     {
         if (!Allowed(scope)) return [];
-        var projection = _reader.Query(new(scope.RoleId, scope.ProjectId), "");
-        if (projection.Code is not null || !Allowed(scope)) return [];
         var now = _clock.GetUtcNow();
-        return projection.Items.Where(entry => entry.Scope.ServantId == scope.RoleId && entry.Scope.ProjectId == scope.ProjectId
-            && entry.Review != UnderstandingReview.Rejected && entry.Effect != UnderstandingEffect.Pending
-            && entry.Life == UnderstandingLife.Active && entry.ActiveUntil > now
-            && entry.Kind is UnderstandingKind.CurrentInterest or UnderstandingKind.OpenQuestion).ToArray();
+        var list = new List<ActiveTopic>();
+
+        var projection = _reader.Query(new(scope.RoleId, scope.ProjectId), "");
+        if (projection.Code is null && Allowed(scope))
+        {
+            foreach (var entry in projection.Items)
+            {
+                if (entry.Scope.ServantId == scope.RoleId && entry.Scope.ProjectId == scope.ProjectId
+                    && entry.Review != UnderstandingReview.Rejected && entry.Effect != UnderstandingEffect.Pending
+                    && entry.Life == UnderstandingLife.Active && entry.ActiveUntil > now
+                    && entry.Kind is UnderstandingKind.CurrentInterest or UnderstandingKind.OpenQuestion)
+                {
+                    list.Add(new(entry.Id, entry.Revision, entry.Kind == UnderstandingKind.OpenQuestion ? TopicMaterialScope.OpenQuestion : TopicMaterialScope.Interest));
+                }
+            }
+        }
+
+        if (_topicSource is not null && Allowed(scope))
+        {
+            var shortTerms = _topicSource.GetActiveTopics(new(scope.RoleId, scope.ProjectId), scope.ConversationId);
+            foreach (var topic in shortTerms)
+            {
+                if (topic.ActiveUntil > now && topic.Tense != "concluded")
+                {
+                    list.Add(new(topic.Id, topic.Revision, topic.ScopeKind));
+                }
+            }
+        }
+
+        return list.ToArray();
     }
 
     private TopicMaterial? Select(ToolScope scope, string userMessage)
@@ -123,15 +158,18 @@ public sealed class TopicMaterialPlugin : IFgoPetPlugin, IConversationPromptProv
     }
 
     private void ForgetOffer(ToolScope scope) { lock (_gate) _offers.Remove(scope); }
-    private static bool Matches(UnderstandingEntry entry, TopicMaterial material) => entry.Id == material.TopicKey
+
+    private static bool Matches(ActiveTopic entry, TopicMaterial material) => entry.Id == material.TopicKey
         && entry.Revision == material.TopicRevision && material.Scope switch
         {
-            TopicMaterialScope.Interest => entry.Kind == UnderstandingKind.CurrentInterest,
-            TopicMaterialScope.OpenQuestion => entry.Kind == UnderstandingKind.OpenQuestion,
+            TopicMaterialScope.Interest => entry.Scope == TopicMaterialScope.Interest,
+            TopicMaterialScope.OpenQuestion => entry.Scope == TopicMaterialScope.OpenQuestion,
             TopicMaterialScope.External => true,
             _ => false
         };
+
     private static string Fingerprint(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
     private static string Format(TopicMaterial material) =>
         $"Potential conversational material (optional external search snippet, not a verified World fact):\n{material.Summary}\n\n"
         + $"Why it may be relevant: {material.RelevanceReason}\nSource: {material.SourceTitle}\n{material.SourceUrl}\n"

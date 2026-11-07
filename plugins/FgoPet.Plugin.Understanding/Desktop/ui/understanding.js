@@ -111,16 +111,16 @@ const operations = new Map();
 const domains = { user: "关于你", relationship: "我们之间", self: "她自己", world: "外面的事" };
 const kinds = { currentInterest: "在意的", currentStance: "看法", openQuestion: "还在想的",
   selfReflection: "相处方式", externalObservation: "观察", interpretation: "想法",
-  userFact: "关于你", stableIdentity: "Identity", permission: "Permission",
-  uncertainty: "Uncertainty", interactionTendency: "Interaction tendency", selfObservation: "Self observation", interactionPattern: "Interaction pattern" };
+  userFact: "关于你", stableIdentity: "身份认知", permission: "协作边界",
+  uncertainty: "尚不确定", interactionTendency: "互动倾向", selfObservation: "自我观察", interactionPattern: "互动习惯" };
 
 const activityStates = new Map([
-  ["disabled", "Background thought is off."], ["waiting_for_change", "Waiting for a meaningful change in approved context."],
-  ["started", "Preparing a background thought."], ["dispatched", "A background thought is in progress."],
-  ["completed", "The latest background thought is ready to inform conversation."], ["no_change", "The last check found nothing useful to add."],
-  ["cancelled", "The last background thought stopped because its context changed."], ["timed_out", "The last background thought timed out."],
-  ["storage_unavailable", "Background thought is paused because its saved settings are unavailable."],
-  ["COMPANION_ACTIVITY_BUDGET_UNAVAILABLE", "Background thought is paused because its request allowance is unavailable or used up."]
+  ["disabled", "后台思考已关闭。"], ["waiting_for_change", "等待已授权上下文中出现有意义的变化。"],
+  ["started", "正在准备后台思考。"], ["dispatched", "后台思考正在进行中。"],
+  ["completed", "后台思考已就绪。"], ["no_change", "上次检查未发现需要补充的内容。"],
+  ["cancelled", "因上下文发生变化，上次后台思考已停止。"], ["timed_out", "上次后台思考超时。"],
+  ["storage_unavailable", "因保存的设置不可用，后台思考已暂停。"],
+  ["COMPANION_ACTIVITY_BUDGET_UNAVAILABLE", "因请求额度不可用或已用尽，后台思考已暂停。"]
 ]);
 
 export async function mount(container, context) {
@@ -130,7 +130,7 @@ export async function mount(container, context) {
     <button type="button" class="thought-attention" data-pending-attention hidden><span>✉</span><span><strong>她有 <span data-pending-total>0</span> 件事想问问你</strong><small>这些想法还没有用于聊天，想先听听你的意思</small></span><span>看看 ›</span></button>
     <header class="understanding-intro">
       <div class="understanding-context"><p class="understanding-eyebrow">${icon("brain")}<span data-scope>当前角色</span></p>
-        <button type="button" class="understanding-refresh understanding-quiet" data-refresh>${icon("refresh")}Refresh</button></div>
+        <button type="button" class="understanding-refresh understanding-quiet" data-refresh>${icon("refresh")}刷新</button></div>
     </header>
     <p class="understanding-feedback" role="alert" data-error hidden></p>
     <p class="understanding-feedback" role="status" aria-live="polite" data-status>正在读取她的想法…</p>
@@ -161,7 +161,7 @@ export async function mount(container, context) {
       <p data-permission-note></p>
       <div class="understanding-actions" data-policy-actions></div>
       <div class="understanding-confirm" data-policy-confirm hidden></div></section>
-      <details class="understanding-settings-section" data-awareness-settings><summary>${icon("monitor")}Activity & background</summary><section class="understanding-awareness" aria-label="Activity and background" data-awareness></section></details>
+      <details class="understanding-settings-section" data-awareness-settings><summary>${icon("monitor")}后台思考与活跃度</summary><section class="understanding-awareness" aria-label="后台思考与活跃度" data-awareness></section></details>
     </div></aside></section>`;
   const root = container.querySelector(".understanding-page");
   const find = selector => root.querySelector(selector);
@@ -521,8 +521,8 @@ export async function mount(container, context) {
     // The request allowance is owned by the host, not this simplified form.
     draft.options.dailyRequestLimit = savedLimit;
     const recipient = add(card, "div", null, "understanding-recipient");
-    add(recipient, "p", `Model recipient: ${status.modelRecipient || "No model configured"}.`, "understanding-awareness-recipient");
-    if (!available) add(card, "p", "Ambient awareness is unavailable for the current context. Refresh to check this companion and scope.", "understanding-caption");
+    add(recipient, "p", `接收模型：${status.modelRecipient || "未配置模型"}。`, "understanding-awareness-recipient");
+    if (!available) add(card, "p", "当前上下文无法使用环境感知。请刷新以检查当前角色和范围。", "understanding-caption");
     function choice(parent, name, title, description) {
       const label = add(parent, "label", null, "understanding-awareness-option");
       const text = add(label, "span"); add(text, "strong", title); add(text, "span", description, "understanding-caption");
@@ -531,17 +531,17 @@ export async function mount(container, context) {
       const toggle = add(label, "span", null, "understanding-switch"); toggle.setAttribute("aria-hidden", "true");
       input.addEventListener("change", () => { draft.options[name] = input.checked; });
     }
-    const sources = add(card, "section", null, "understanding-settings-group"); add(sources, "h4", "Information sources");
-    choice(sources, "activityContextEnabled", "Use activity context", "Focus, reminders, and the local task book shared across companions and projects.");
-    choice(sources, "applicationsEnabled", "Use application overview", "Application names, the app in front, and window counts. Window titles and content need separate permission.");
-    const windows = add(sources, "section", null, "understanding-awareness-windows"); add(windows, "h4", "Window access");
+    const sources = add(card, "section", null, "understanding-settings-group"); add(sources, "h4", "信息来源");
+    choice(sources, "activityContextEnabled", "使用活动上下文", "专注、提醒以及跨角色和项目共享的本地任务记录。");
+    choice(sources, "applicationsEnabled", "使用应用概览", "应用名称、前台应用以及窗口数量。窗口标题和具体内容需要单独授权。");
+    const windows = add(sources, "section", null, "understanding-awareness-windows"); add(windows, "h4", "窗口访问");
     for (const allowed of status.windows || []) {
       const row = add(windows, "div", null, "understanding-awareness-window");
       add(row, "p", allowed.title || "Untitled window"); add(row, "p", allowed.application || "Unknown application", "understanding-caption");
     }
-    if (!status.windows?.length) add(windows, "p", "No windows allowed. Choose a window to share its title and visible text.", "understanding-caption");
+    if (!status.windows?.length) add(windows, "p", "未允许访问任何窗口。可选择一个窗口以分享其标题与可见文本。", "understanding-caption");
     const windowActions = add(windows, "div", null, "understanding-actions");
-    const choose = button(windowActions, "Allow a window", () => {
+    const choose = button(windowActions, "允许一个窗口", () => {
       const binding = { contextToken: status.contextToken, revision: status.revision };
       windowChoices = null; renderAwareness();
       void send("understanding.awareness.windows", { contextToken: binding.contextToken }, "Choose one window to allow background reading.", next => {
@@ -551,48 +551,48 @@ export async function mount(container, context) {
       });
     });
     choose.disabled = !available || !status.modelApprovalCurrent;
-    if (available && !status.modelApprovalCurrent) add(windows, "p", "Save the choices for this model before allowing a window.", "understanding-caption");
+    if (available && !status.modelApprovalCurrent) add(windows, "p", "在允许窗口访问前，请先保存当前模型的选项。", "understanding-caption");
     if (status.windows?.length) {
-      const clear = button(windowActions, "Clear window access", () => void send("understanding.awareness.clearWindows", {
+      const clear = button(windowActions, "清除窗口访问", () => void send("understanding.awareness.clearWindows", {
         contextToken: status.contextToken, revision: status.revision
       }, "Window access cleared. Background window reading stopped."));
       clear.disabled = !available;
     }
     if (windowChoices) {
       const choices = add(windows, "div", null, "understanding-awareness-choices");
-      add(choices, "p", "Allowing a window lets your companion repeatedly read its title and visible text, and use them with the model shown above. Access ends when its title changes, it closes, the scope or model changes, or you clear access. A new selection replaces the previous one.");
-      if (!windowChoices.windows.length) add(choices, "p", "No eligible windows are available.");
+      add(choices, "p", "允许窗口后，角色可在后台重复读取其标题和可见文本，并与上述模型配合使用。窗口标题变更、窗口关闭、范围或模型变化或清除访问时，访问权限即终止。新的选择会覆盖先前的选择。");
+      if (!windowChoices.windows.length) add(choices, "p", "没有符合条件的可用窗口。");
       const binding = windowChoices;
       for (const candidate of binding.windows) {
         const row = add(choices, "div", null, "understanding-awareness-window");
         add(row, "p", candidate.title || "Untitled window"); add(row, "p", candidate.application || "Unknown application", "understanding-caption");
-        const allow = button(row, "Allow this window", () => void send("understanding.awareness.allowWindow", {
+        const allow = button(row, "允许此窗口", () => void send("understanding.awareness.allowWindow", {
           contextToken: binding.contextToken, revision: binding.revision, candidateToken: candidate.token
         }, "Window allowed for background reading in the current scope."));
         allow.disabled = !available || !status.modelApprovalCurrent;
       }
-      button(choices, "Close window choices", () => { windowChoices = null; renderAwareness(); });
+      button(choices, "关闭窗口选择", () => { windowChoices = null; renderAwareness(); });
     }
     const background = add(card, "section", null, "understanding-settings-group");
-    choice(background, "backgroundEnabled", "Background thought", "Use approved context for extra model requests between conversations.");
-    const budget = add(background, "p", validLimit ? `Up to ${savedLimit} extra model requests in any 24 hours. Your saved allowance is kept.`
-      : "The saved request allowance is unavailable. Refresh before saving.", "understanding-caption understanding-background-status");
+    choice(background, "backgroundEnabled", "后台思考", "在对话间隔中使用已授权的上下文发起额外模型请求。");
+    const budget = add(background, "p", validLimit ? `每 24 小时最多可发起 ${savedLimit} 次额外模型请求。已保留已保存的配额。`
+      : "保存的请求额度不可用。请刷新后再保存。", "understanding-caption understanding-background-status");
     budget.dataset.awarenessBudget = "";
-    add(background, "p", !status.options?.backgroundEnabled ? "Background thought is off." : !status.modelApprovalCurrent
-      ? "Background thought is paused until you approve the current model."
-      : activityStates.get(status.activityStatus) || "Background thought is currently unavailable. Refresh to check its state.", "understanding-caption");
+    add(background, "p", !status.options?.backgroundEnabled ? "后台思考已关闭。" : !status.modelApprovalCurrent
+      ? "后台思考已暂停，等待你批准当前模型。"
+      : activityStates.get(status.activityStatus) || "后台思考暂不可用。刷新以检查其状态。", "understanding-caption");
     const saveBar = add(card, "div", null, "understanding-save-bar");
     const copy = add(saveBar, "div");
     const dirty = add(copy, "p", "", "understanding-draft-state"); dirty.setAttribute("role", "status");
-    add(copy, "p", "Saving allows these sources for this companion, scope and model. A model change requires approval again.", "understanding-caption");
-    const save = button(saveBar, "Save", () => void send("understanding.awareness.configure", {
+    add(copy, "p", "保存后将对当前角色、范围和模型允许这些来源。更换模型需要重新批准。", "understanding-caption");
+    const save = button(saveBar, "保存", () => void send("understanding.awareness.configure", {
       contextToken: draft.contextToken, revision: draft.revision, options: { ...draft.options, dailyRequestLimit: savedLimit }
     }, "Ambient awareness choices saved for the current model."), "understanding-primary", "check");
     save.setAttribute("aria-label", "Save & approve awareness");
     function validateChoices() {
       save.disabled = !available || !validLimit;
       const changed = Object.keys(draft.options).some(key => draft.options[key] !== status.options?.[key]);
-      dirty.textContent = !validLimit ? "Refresh to check the saved allowance." : changed ? "You have unsaved choices." : !status.modelApprovalCurrent ? "Approval needed for this model." : "Your choices are saved.";
+      dirty.textContent = !validLimit ? "请刷新以核对已保存的配额。" : changed ? "有尚未保存的选择。" : !status.modelApprovalCurrent ? "需要对此模型进行批准。" : "选择已保存。";
     }
     for (const input of card.querySelectorAll("[data-awareness-option]")) input.addEventListener("change", validateChoices);
     validateChoices();

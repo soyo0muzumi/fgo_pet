@@ -101,9 +101,14 @@ internal static class TopicMaterialRegistration
         .AddSingleton(p => new TopicMaterialStore(p.GetRequiredService<RuntimeDatabase>(), p.GetRequiredService<TimeProvider>()))
         .AddSingleton<ITopicMaterialStore>(p => p.GetRequiredService<TopicMaterialStore>())
         .AddSingleton<IDerivedConversationData>(p => p.GetRequiredService<TopicMaterialStore>())
+        .AddSingleton(p => new ConversationTopicStore(p.GetRequiredService<RuntimeDatabase>(), p.GetRequiredService<TimeProvider>()))
+        .AddSingleton<IShortTermTopicStore>(p => p.GetRequiredService<ConversationTopicStore>())
+        .AddSingleton<IShortTermTopicSource>(p => p.GetRequiredService<ConversationTopicStore>())
+        .AddSingleton<IDerivedConversationData>(p => p.GetRequiredService<ConversationTopicStore>())
         .AddSingleton<IFgoPetPlugin>(p => new TopicMaterialPlugin(p.GetRequiredService<ITopicMaterialStore>(),
             p.GetRequiredService<IUnderstandingReader>(), p.GetRequiredService<IConversationScopeAuthority>().IsActive,
-            p.GetRequiredService<IAgentQueryResolver>(), p.GetRequiredService<TimeProvider>()))
+            p.GetRequiredService<IAgentQueryResolver>(), p.GetRequiredService<TimeProvider>(),
+            p.GetRequiredService<IShortTermTopicSource>()))
         .AddSingleton<IMaterialResearchHost>(p => new ConfiguredMaterialResearchHost(
             () => LoadGrant(Path.Combine(p.GetRequiredService<AppPaths>().StorageRoot, "topic-material-research.json")),
             () => p.GetRequiredService<IConversationScopeAuthority>().ActiveConversation,
@@ -118,7 +123,8 @@ internal static class TopicMaterialRegistration
             p.GetRequiredService<IMaterialResearchModel>(), p.GetRequiredService<IMaterialResearchSource>(),
             p.GetRequiredService<IDialogueContextLifetime>(), p.GetRequiredService<TimeProvider>(),
             d => p.GetRequiredService<ILogger<MaterialResearchActivity>>().LogInformation(
-                "Material research {At} {Correlation} {Stage} {Code}", d.At, d.Correlation, d.Stage, d.Code)))
+                "Material research {At} {Correlation} {Stage} {Code}", d.At, d.Correlation, d.Stage, d.Code),
+            p.GetRequiredService<IShortTermTopicSource>()))
         .AddSingleton<IFgoPetPlugin>(p => new MaterialResearchScheduler(p.GetRequiredService<MaterialResearchActivity>()));
 
     private static MaterialResearchGrant LoadGrant(string path)

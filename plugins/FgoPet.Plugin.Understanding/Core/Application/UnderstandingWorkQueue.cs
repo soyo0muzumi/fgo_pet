@@ -98,6 +98,8 @@ public sealed partial class UnderstandingService
                 {
                     var head=JsonSerializer.Deserialize<ExperienceSourceHead>(r.GetString(1))!;
                     if(head.Source.SourceRevision<=state.AutoSince)continue;
+                    if (items.Count > 0 && head.Source.Scope.ConversationId != items[0].Head.Source.Scope.ConversationId)
+                        break;
                     var start=r.GetInt32(2);var take=Math.Min(remaining,head.TotalScalars-start);
                     items.Add(new(r.GetString(0),head,start,take));remaining-=take;if(items.Count==8||remaining==0)break;
                 }

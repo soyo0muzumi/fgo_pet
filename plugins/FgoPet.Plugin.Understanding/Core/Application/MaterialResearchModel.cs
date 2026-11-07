@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Kernel.Agent;
@@ -62,11 +63,23 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
         if (sources.Length is < 1 or > 8 || sources.Any(source => source is null || source.Title is null
             || source.Url is null || source.Snippet is null || source.Title.Length > 1000
             || source.Url.Length > 2048 || source.Snippet.Length > 4000)) throw Failure("INVALID_INPUT");
-        var data = JsonSerializer.Serialize(new { topic = request.Topic,
-            results = sources.Select((source, index) => new { sourceIndex = index,
+        var supplied = sources.ToList();
+        string Data() => JsonSerializer.Serialize(new { topic = request.Topic,
+            results = supplied.Select((source, index) => new { sourceIndex = index,
                 title = source.Title, url = source.Url, snippet = source.Snippet }) });
-        var text = await CallAsync(request, SummaryRules, data, MaterialResearchActivity.SummaryOutputTokens,
-            dispatch, ensureCurrent, token).ConfigureAwait(false);
+        string? Reduce()
+        {
+            if (supplied.Count > 1) supplied.RemoveAt(supplied.Count - 1);
+            else
+            {
+                var runes = supplied[0].Snippet.EnumerateRunes().ToArray();
+                if (runes.Length < 2) return null;
+                supplied[0] = supplied[0] with { Snippet = string.Concat(runes.Take(runes.Length / 2).Select(r => r.ToString())) };
+            }
+            return Data();
+        }
+        var text = await CallAsync(request, SummaryRules, Data(), MaterialResearchActivity.SummaryOutputTokens,
+            dispatch, ensureCurrent, token, Reduce).ConfigureAwait(false);
         try
         {
             using var document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 8 });
@@ -74,7 +87,7 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
             if (root.ValueKind == JsonValueKind.Null) { ensureCurrent(token); token.ThrowIfCancellationRequested(); return null; }
             RequireFields(root, "sourceIndex", "summary", "relevanceReason");
             if (root.GetProperty("sourceIndex").ValueKind != JsonValueKind.Number
-                || !root.GetProperty("sourceIndex").TryGetInt32(out var index) || index < 0 || index >= sources.Length)
+                || !root.GetProperty("sourceIndex").TryGetInt32(out var index) || index < 0 || index >= supplied.Count)
                 throw Failure("INVALID_RESULT");
             var draft = new MaterialResearchDraft(index, ReadText(root.GetProperty("summary"), 1000),
                 ReadText(root.GetProperty("relevanceReason"), 500));
@@ -85,7 +98,8 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
     }
 
     private async Task<string> CallAsync(MaterialResearchRequest request, string rules, string data, int outputCeiling,
-        IChatDispatchGate dispatch, Action<CancellationToken> ensureCurrent, CancellationToken token)
+        IChatDispatchGate dispatch, Action<CancellationToken> ensureCurrent, CancellationToken token,
+        Func<string?>? reduceData = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(dispatch);
@@ -101,13 +115,23 @@ public sealed class MaterialResearchModel(IChatProviderResolver providers, IRequ
         var output = Math.Min(outputCeiling, request.Connection.MaxOutputTokens);
         if (capacity.MaxOutputTokens is { } providerOutput) output = Math.Min(output, providerOutput);
         if (output <= 0) throw Failure("OUTPUT_LIMIT");
-        var chat = ChatRequest.CreateAgent(request.Scope.RoleId, request.Scope.ConversationId,
+        ChatRequest Compose() => ChatRequest.CreateAgent(request.Scope.RoleId, request.Scope.ConversationId,
             [new(ModelMessageRole.System, CommonRules + "\n" + rules, []),
                 new(ModelMessageRole.System, PromptInjectionGuard.Wrap("topic_material_research", data), [])],
             metadata: new Dictionary<string, string> { ["fgo_auxiliary"] = "topic_material_research",
                 ["fgo_activity_id"] = request.ActivityId }, maxOutputTokens: output);
+        var chat = Compose();
         var input = meter.Measure(route, chat).InputTokens;
         Check();
+        while (input > 4096 || (long)input + output > capacity.WindowTokens)
+        {
+            var reduced = reduceData?.Invoke();
+            if (reduced is null) throw Failure("INPUT_LIMIT");
+            data = reduced;
+            chat = Compose();
+            input = meter.Measure(route, chat).InputTokens;
+            Check();
+        }
         if (input <= 0 || input > 4096 || (long)input + output > capacity.WindowTokens) throw Failure("INPUT_LIMIT");
         var provider = providers.Resolve(request.Connection, dispatch);
         Check();

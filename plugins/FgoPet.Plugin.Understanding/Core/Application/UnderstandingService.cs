@@ -362,7 +362,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
     {
         if (!ValidId(p.Id) || !Enum.IsDefined(p.Domain) || !Enum.IsDefined(p.Kind) ||
             string.IsNullOrWhiteSpace(p.Subject) || p.Subject.Length > 128 || string.IsNullOrWhiteSpace(p.Content) || p.Content.Length > 2000 ||
-            string.IsNullOrWhiteSpace(p.Conditions) || p.Conditions.Length > 1000 || p.Sources is null || p.Sources.Count == 0 ||
+            string.IsNullOrWhiteSpace(p.Conditions) || p.Conditions.Length > 1000 || p.Sources is null || p.Sources.Count is < 1 or > 32 ||
             p.Sources.Any(s => !ticket.Sources.Contains(s))) return "UNDERSTANDING_INVALID_PROPOSAL";
         if (p.Kind == UnderstandingKind.UserFact) return "UNDERSTANDING_MEMORY_OWNER_REQUIRED";
         if (p.Kind is UnderstandingKind.StableIdentity or UnderstandingKind.Permission) return "UNDERSTANDING_DEFINITION_FLOW_REQUIRED";
@@ -379,7 +379,7 @@ public sealed partial class UnderstandingService(RuntimeDatabase database, IConv
     }
     private string? CheckSources(ConversationScope scope, IReadOnlyList<ConversationSourceSnapshot>? roots, string? correlation = null)
     {
-        if (roots is null || roots.Count is < 1 or > 32) return "UNDERSTANDING_SOURCE_INVALID";
+        if (roots is null || roots.Count == 0) return "UNDERSTANDING_SOURCE_INVALID";
         if (roots.Any(s => s?.Scope is null || s.Scope.RoleId != scope.ServantId || s.Scope.ProjectId != scope.ProjectId ||
             !ValidId(s.Scope.ConversationId) || !ValidId(s.MessageId) || !Enum.IsDefined(s.Kind) ||
             s.SourceRevision < 0 || s.Fingerprint is not { Length: 64 } || !s.Fingerprint.All(Uri.IsHexDigit))) return "UNDERSTANDING_SCOPE_DENIED";

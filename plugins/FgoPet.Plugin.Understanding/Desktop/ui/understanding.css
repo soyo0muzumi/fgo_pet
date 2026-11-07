@@ -11,9 +11,9 @@
 .understanding-page [hidden] { display:none!important; }
 .understanding-page p,.understanding-page h2,.understanding-page h3,.understanding-page h4 { margin:0; overflow-wrap:anywhere; }
 /* The module supplies the single introduction for both supported settings shells. */
-body:has(.understanding-page) .page-description { display:none; }
-body:has(.understanding-page) .page-content { margin-top:16px; }
-body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:400 34px/1.2 "DM Serif Display",Georgia,var(--voice,serif); letter-spacing:-.5px; }
+body:not([data-relationship=true]):has(.understanding-page) .page-description { display:none; }
+body:not([data-relationship=true]):has(.understanding-page) .page-content { margin-top:16px; }
+body:not([data-relationship=true]):has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:400 34px/1.2 "DM Serif Display",Georgia,var(--voice,serif); letter-spacing:-.5px; }
 .understanding-intro { display:grid; gap:2px; }
 .understanding-context { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
 .understanding-eyebrow { display:flex; align-items:center; gap:8px; min-width:0; color:var(--muted,#716b63); font-size:11.5px; }
@@ -28,7 +28,7 @@ body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:
   transition:background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease;
 }
 .understanding-page button:hover:not(:disabled) { background:var(--paper-sunk,#f3f0eb); border-color:var(--u-accent); }
-.understanding-page button:active:not(:disabled) { transform:scale(.98); }
+.understanding-page :is(.understanding-primary,.understanding-secondary):active:not(:disabled) { transform:scale(.98); }
 .understanding-page button:disabled { opacity:.5; cursor:default; }
 .understanding-page :is(button,summary,textarea,input,select):focus-visible { outline:2px solid var(--u-accent); outline-offset:3px; }
 .understanding-page .understanding-primary { color:#fff; background:var(--u-primary); border-color:var(--u-primary); }
@@ -182,11 +182,12 @@ body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:
 .understanding-confirm select,.understanding-confirm input[type=number] { max-width:100%; min-width:0; color:var(--ink); background:var(--paper); border:1px solid var(--rule-2); padding:6px; border-radius:4px; }
 
 /* Final v2 presentation over the existing owner controls. */
-.thought-toolbar { display:flex; align-items:center; gap:6px; min-width:0; }
-.thought-groups { display:flex; padding:3px; border:1px solid var(--rule); border-radius:9px; background:var(--paper-sunk); margin-right:auto; min-width:0; }
-.understanding-page .thought-groups button { border:0; background:transparent; padding:5px 13px; min-height:30px; font-size:13.5px; white-space:nowrap; }
-.understanding-page .thought-groups button[aria-pressed=true] { background:var(--paper); color:var(--ink); box-shadow:0 1px 2px #00000012; font-weight:600; }
-.understanding-page .thought-attention { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:12px 14px; border:1px solid var(--accent-line); border-radius:10px; background:color-mix(in srgb,var(--accent) 6%,var(--page)); text-align:left; }
+.thought-toolbar { display:flex; align-items:center; gap:8px; min-width:0; }
+.thought-groups { display:flex; padding:4px; border:1px solid var(--rule); border-radius:10px; background:var(--paper-sunk); margin-right:auto; min-width:0; }
+.understanding-page .thought-groups button { border:0; background:transparent; padding:6px 14px; min-height:32px; border-radius:7px; font-size:13.5px; white-space:nowrap; }
+.understanding-page .thought-groups button[aria-pressed=true] { background:var(--paper); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,0.08); font-weight:600; }
+.understanding-page .thought-attention { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; padding:14px 18px; border:1px solid var(--accent-line); border-radius:12px; background:color-mix(in srgb,var(--accent) 8%,var(--page)); box-shadow:0 2px 8px rgba(162,103,128,0.06); text-align:left; transition:transform .15s ease,box-shadow .15s ease; }
+.understanding-page .thought-attention:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(162,103,128,0.12); }
 .thought-attention>span:nth-child(2) { flex:1; }
 .thought-attention strong { display:block; font-size:13.5px; }
 .thought-attention small { display:block; color:var(--muted); font-size:12px; }
@@ -198,7 +199,8 @@ body:has(.understanding-page) .page-heading h1 { color:var(--ink,#26211d); font:
 .thought-age { color:var(--faint); font-size:11.5px; }
 .understanding-page .understanding-list { padding:0; border:0; background:transparent; box-shadow:none; gap:14px; }
 .understanding-page .understanding-entries { gap:10px; }
-.understanding-page .understanding-card { padding:16px 20px 11px; border:1px solid var(--rule); border-radius:11px; background:var(--paper); gap:10px; }
+.understanding-page .understanding-card { padding:18px 22px 14px; border:1px solid var(--rule); border-radius:12px; background:var(--paper); gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.02); transition:border-color .15s ease,box-shadow .15s ease; }
+.understanding-page .understanding-card:hover { border-color:var(--accent-line,var(--rule-2)); box-shadow:0 2px 8px rgba(0,0,0,0.04); }
 .understanding-page .understanding-body { font-size:15.5px; line-height:1.78; }
 .understanding-page .understanding-entry-footer { gap:6px 12px; }
 .understanding-entry-footer>.understanding-state { margin-right:auto; }
@@ -222,6 +224,8 @@ body[data-relationship=true]:has(.understanding-page) .page-content { margin-top
 .understanding-page .understanding-tabs { padding:0; border:0; background:transparent; }
 .understanding-page [data-view=accumulated] { background:transparent; color:var(--muted); box-shadow:none; }
 .understanding-page [data-view=accumulated] [data-count] { display:none; }
+.understanding-page [data-view=pending] { color:var(--accent-deep,var(--accent)); font-weight:500; }
+.understanding-page [data-view=pending] [data-count] { min-width:20px; height:18px; padding:0 5px; border-radius:9px; background:var(--accent); color:var(--on-accent,#fff); font-weight:600; font-size:11px; }
 .understanding-page .understanding-browser-tools:has(.understanding-tabs button:not([hidden])) { margin-bottom:0; }
 .understanding-page .understanding-search-tools>summary { display:none; }
 .understanding-page .understanding-search-row { grid-template-columns:minmax(0,1fr); }
