@@ -72,8 +72,10 @@ public sealed class ConversationControlTests
         var context = Context("这是当前请求") with { ResponseIntent = intent };
         Assert.Equal(("Stop", "Observe"), Control(context));
         var hint = MashExpressionV02.Build(context, true)!;
-        Assert.Contains("ConversationControl:", hint);
-        Assert.Contains("本轮不主动索取新的聊天信息", hint);
+        Assert.DoesNotContain("ConversationControl:", hint);
+        Assert.Contains("日常默认以陈述回应", hint);
+        Assert.Contains("act=answer", hint);
+        Assert.Equal(hint, MashExpressionV02.Build(context, false));
         Assert.DoesNotContain("ConversationControl:", MashExpressionV02.Build(context, false)!);
     }
 
@@ -137,12 +139,12 @@ public sealed class ConversationControlTests
         => Assert.NotEqual("close", MashExpressionV02.Select(Context(text)).Intent.Act);
 
     [Fact]
-    public void Full_hint_serializes_three_axes_and_unifies_question_permission()
+    public void Full_hint_omits_legacy_control_and_keeps_static_boundaries()
     {
         var hint = MashExpressionV02.Build(Context("你好"), true)!;
-        using var json = System.Text.Json.JsonDocument.Parse(hint.Split("\nConversationControl: ")[1].Split('\n')[0]);
-        Assert.Equal(new[] { "momentum", "contribution", "questionPolicy" }, json.RootElement.EnumerateObject().Select(p => p.Name));
-        Assert.Equal("none", json.RootElement.GetProperty("questionPolicy").GetString());
+        Assert.DoesNotContain("ConversationControl:", hint);
+        Assert.DoesNotContain("QuestionPolicy", hint);
+        Assert.Contains("单点澄清关键缺口，不猜答", hint);
         Assert.DoesNotContain("不表示任务已完成", hint);
         Assert.Contains("不主动恢复旧任务", hint);
         Assert.DoesNotContain("否则可以问一个", MashExpressionV02.Build(Context("来聊聊天吧"), true)!);
@@ -162,4 +164,13 @@ public sealed class ConversationControlTests
         Assert.Equal(baseline.Messages, result.Messages);
         Assert.DoesNotContain(result.Messages, m => m.Text.Contains("ConversationControl:", StringComparison.Ordinal));
     }
+    [Theory]
+    [InlineData("分析这个架构", "Hold", "Observe")]
+    [InlineData("讨论认知积累系统的取舍", "Hold", "Observe")]
+    [InlineData("接口代码怎么实现", "Hold", "Observe")]
+    [InlineData("目前证据不够，还不能确定", "Hold", "Observe")]
+    [InlineData("我怀疑是垃圾回收卡顿", "Hold", "Observe")]
+    [InlineData("这只是假说，还没确凿定论", "Hold", "Observe")]
+    public void Sustained_technical_and_uncertainty_discussions_reach_hold_momentum(string text, string momentum, string move)
+        => Assert.Equal((momentum, move), Control(Context(text)));
 }

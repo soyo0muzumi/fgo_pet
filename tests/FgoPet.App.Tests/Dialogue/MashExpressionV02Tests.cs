@@ -17,12 +17,11 @@ public sealed class MashExpressionV02Tests
     [InlineData(true)]
     public void Agency_allows_a_response_without_manufacturing_a_contribution(bool full)
     {
-        // Current agency wording: contributing is allowed and encouraged, but observation must not
-        // be fabricated and optional questions stay subject to the shared QuestionPolicy.
+        // Static guidance permits a contribution without requiring a new point on every turn.
         var hint = MashExpressionV02.Build(Context("确实"), full)!;
         Assert.Contains("日常交谈也可贡献自己的观察、联想和判断", hint);
-        Assert.Contains("follow_up=continue_thread 时，回应后补一点新内容", hint);
-        Assert.Contains("可选提问权限由 QuestionPolicy 统一决定", hint);
+        Assert.Contains("也不强加新切面", hint);
+        Assert.Contains("单点澄清关键缺口，不猜答", hint);
         Assert.Contains("不要使用“需要我帮你……吗”", hint);
         Assert.DoesNotContain("需要我帮你查吗", hint);
     }
@@ -224,7 +223,7 @@ public sealed class MashExpressionV02Tests
     }
 
     [Fact]
-    public void Base_and_full_are_independent_modes_and_default_remains_off()
+    public void Base_and_full_share_static_policy_and_default_remains_off()
     {
         var c = Context("今天沿河散步，风景很好");
         var a = new PromptComposer().Compose(c, Route, Budget);
@@ -237,7 +236,7 @@ public sealed class MashExpressionV02Tests
         Assert.Contains(MashExpressionV02.BasePolicy, bh.Text);
         Assert.Contains(MashExpressionV02.SemanticBoundary, bh.Text);
         Assert.DoesNotContain("ResponseIntent:", bh.Text);
-        Assert.Contains("ResponseIntent:", ch.Text);
+        Assert.Equal(bh.Text, ch.Text);
         Assert.Empty(MashExpressionV02.Select(c).Patterns);
     }
 
@@ -348,12 +347,12 @@ public sealed class MashExpressionV02Tests
         Assert.DoesNotContain("follow_up_question", plan.Intent.Avoid);
         Assert.Contains(plan.Patterns, p => p.Id == "initiative-relevant");
         var hint = MashExpressionV02.Build(Context(user), true)!;
-        Assert.Contains("Response Intent / Open Conversation", hint);
+        Assert.DoesNotContain("Response Intent / Open Conversation", hint);
         Assert.Contains("先带出一个具体话题", hint);
         Assert.Contains("最近读过", hint);
         Assert.Contains("不要求为了找话题而搜索", hint);
-        Assert.Contains("不需要为了给话题增加来历而编造近期持续关注、反复思考或生活经历", hint);
-        Assert.Contains("不问打算出门还是在家", hint);
+        Assert.Contains("不编造最近读过什么或持续关注的经历", hint);
+        Assert.Contains("不用“是 A 还是 B”二选一盘问", hint);
     }
 
     [Theory]
