@@ -1047,7 +1047,8 @@ public sealed partial class NativeConversationIntegrationTests
             IRequestTokenMeter? tokenMeter, IAgentContextProvider? context, ILogger<ConversationOrchestrator>? logger, bool questions, TimeProvider? time,
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator,
             IConversationContentResolver? contentResolver, bool useNative, bool skills, IReadOnlyList<IToolProvider>? extraTools, IFgoPetPlugin? approvalPlugin,
-            Action<ContextBudgetDiagnostic>? contextDiagnostics, PromptComposer? composer, IStickerCatalogSource? stickerCatalog)
+            Action<ContextBudgetDiagnostic>? contextDiagnostics, PromptComposer? composer, IStickerCatalogSource? stickerCatalog,
+            IConversationRecall? recall)
         {
             Directory.CreateDirectory(directory);
             Database = new(Path.Combine(directory, "runtime.db"), pooling: false);
@@ -1077,7 +1078,7 @@ public sealed partial class NativeConversationIntegrationTests
                 : new ConversationSummaryService(ContextStore, summarizer, tokenMeter ?? new RequestTokenMeter(), TimeProvider.System);
             Orchestrator = new(new TestProviderResolver(provider), contentResolver ?? new TestContentResolver(), Conversations,
                 composer ?? new PromptComposer(tokenMeter), clock, Settings, summaries, capabilities,
-                tokenMeter: tokenMeter, contextStore: ContextStore, nativeRuntime: useNative ? nativeRuntime : null,
+                tokenMeter: tokenMeter, recall: recall, contextStore: ContextStore, nativeRuntime: useNative ? nativeRuntime : null,
                 agentRuns: Runs, finalDeliveries: deliveryDecorator?.Invoke(Deliveries) ?? Deliveries, logger: logger);
         }
 
@@ -1105,9 +1106,10 @@ public sealed partial class NativeConversationIntegrationTests
             Func<IAgentFinalDeliveryStore, IAgentFinalDeliveryStore>? deliveryDecorator = null,
             IConversationContentResolver? contentResolver = null, bool useNative = true, bool skills = false,
             IReadOnlyList<IToolProvider>? extraTools = null, IFgoPetPlugin? approvalPlugin = null,
-            Action<ContextBudgetDiagnostic>? contextDiagnostics = null, PromptComposer? composer = null, IStickerCatalogSource? stickerCatalog = null)
+            Action<ContextBudgetDiagnostic>? contextDiagnostics = null, PromptComposer? composer = null,
+            IStickerCatalogSource? stickerCatalog = null, IConversationRecall? recall = null)
         {
-            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, approvalPlugin, contextDiagnostics, composer, stickerCatalog));
+            return Task.FromResult(new TestHost(provider, tool, observer, settings, enableSummary, summarizer, tokenMeter, context, logger, questions, time, deliveryDecorator, contentResolver, useNative, skills, extraTools, approvalPlugin, contextDiagnostics, composer, stickerCatalog, recall));
         }
 
         public long CountRows(string table)

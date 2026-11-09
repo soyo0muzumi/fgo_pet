@@ -456,6 +456,37 @@ public sealed class RuntimeDatabaseMigrator
               updated_at_utc TEXT NOT NULL);
             INSERT INTO conversation_contexts SELECT * FROM conversation_contexts_backup;
             DROP TABLE conversation_contexts_backup;
+            """),
+        new(17, """
+            -- memories has a text primary key. Use a stable integer key for the FTS index
+            -- because VACUUM (including backup VACUUM INTO) can renumber implicit rowids.
+            CREATE TABLE memory_search_keys(
+              search_id INTEGER PRIMARY KEY,
+              memory_id TEXT NOT NULL UNIQUE REFERENCES memories(memory_id) ON DELETE CASCADE);
+            INSERT INTO memory_search_keys(memory_id) SELECT memory_id FROM memories;
+            CREATE VIEW memory_search_content AS
+              SELECT k.search_id AS rowid,m.memory_text FROM memory_search_keys k
+              JOIN memories m ON m.memory_id=k.memory_id WHERE m.is_enabled=1;
+            CREATE VIRTUAL TABLE memory_search USING fts5(memory_text,
+              content='memory_search_content',content_rowid='rowid',tokenize='trigram');
+            INSERT INTO memory_search(memory_search) VALUES('rebuild');
+
+            CREATE TRIGGER memory_search_insert AFTER INSERT ON memories BEGIN
+              INSERT INTO memory_search_keys(memory_id) VALUES(new.memory_id);
+              INSERT INTO memory_search(rowid,memory_text)
+                SELECT search_id,new.memory_text FROM memory_search_keys WHERE memory_id=new.memory_id AND new.is_enabled=1;
+            END;
+            CREATE TRIGGER memory_search_update AFTER UPDATE OF memory_text,is_enabled ON memories
+            WHEN old.memory_text IS NOT new.memory_text OR old.is_enabled<>new.is_enabled BEGIN
+              INSERT INTO memory_search(memory_search,rowid,memory_text)
+                SELECT 'delete',search_id,old.memory_text FROM memory_search_keys WHERE memory_id=old.memory_id AND old.is_enabled=1;
+              INSERT INTO memory_search(rowid,memory_text)
+                SELECT search_id,new.memory_text FROM memory_search_keys WHERE memory_id=new.memory_id AND new.is_enabled=1;
+            END;
+            CREATE TRIGGER memory_search_delete BEFORE DELETE ON memories WHEN old.is_enabled=1 BEGIN
+              INSERT INTO memory_search(memory_search,rowid,memory_text)
+                SELECT 'delete',search_id,old.memory_text FROM memory_search_keys WHERE memory_id=old.memory_id;
+            END;
             """)
     };
 

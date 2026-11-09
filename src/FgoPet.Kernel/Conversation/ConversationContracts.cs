@@ -5,6 +5,13 @@ using FgoPet.Kernel.Agent;
 
 namespace FgoPet.Core.Dialogue;
 
+/// <summary>Local presentation signal raised after new memory candidates are committed for review.</summary>
+public interface IConversationMemoryReviewNotices
+{
+    // Runs on the staging caller's thread and carries no memory or conversation text.
+    event Action<ToolScope>? CandidatesStaged;
+}
+
 /// <summary>Metadata only. Opening a conversation is a separate full-message query.</summary>
 public interface IConversationHistoryQuery
 {

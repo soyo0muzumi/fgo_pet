@@ -51,7 +51,8 @@ public sealed partial class ConversationOrchestrator
             ? connection with { ToolsSupported = true } : null))));
 
     private async Task<ConversationSendResult> SendNativeAsync(ContentBinding binding, ChatMessage user,
-        ToolScope scope, ConversationRequestContext? context, Action<ConversationUpdate> publish, CancellationToken token)
+        ToolScope scope, IReadOnlyList<ChatMessage> existing, ConversationRequestContext? context,
+        Action<ConversationUpdate> publish, CancellationToken token)
     {
         void Publish(ConversationUpdate update) => publish(update);
         var sourceReader = new ConversationSourceReader(_conversations);
@@ -79,7 +80,7 @@ public sealed partial class ConversationOrchestrator
         CheckCurrent();
         var semanticScope = new ConversationScope(scope.RoleId, scope.ProjectId);
         var recalled = _recall is null ? new ConversationRecallResult(RecallStatus.Empty, [])
-            : await _recall.RetrieveAsync(semanticScope, scope.ConversationId, user.Text, preparationLease.Token);
+            : await RecallWithContext(_recall, semanticScope, scope.ConversationId, user.Text, existing, preparationLease.Token);
         preparationLease.CheckCurrent(); CheckCurrent();
         if (recalled.Status == RecallStatus.Ambiguous)
             return preparationLease.Commit(() => PersistLocalReply(scope.ConversationId, scope.RoleId, binding.Context,

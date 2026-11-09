@@ -10,6 +10,16 @@ public interface IConversationMemory : IMemoryRecall
     MemoryRecallSnapshot IMemoryRecall.Query(MemoryScope scope, string query, int maxItems, int maxChars) =>
         new(0, ListEnabledMemories(scope.ServantId).Where(m => m.ProjectId is null || m.ProjectId == scope.ProjectId)
             .Take(Math.Min(maxItems, 8)).ToArray());
+
+    /// <summary>
+    /// This adapter has no query matching at all, so it cannot offer a strict path distinct
+    /// from Query. It deliberately keeps the same projection rather than returning nothing:
+    /// an implementation that never matched would otherwise appear to satisfy "no match",
+    /// hiding the fact that this legacy adapter is not a matcher and must not be used where
+    /// match-conditioned recall is required.
+    /// </summary>
+    MemoryRecallSnapshot IMemoryRecall.QueryStrict(MemoryScope scope, string query, int maxItems, int maxChars) =>
+        ((IMemoryRecall)this).Query(scope, query, maxItems, maxChars);
 }
 
 public enum MemoryCandidateStatus

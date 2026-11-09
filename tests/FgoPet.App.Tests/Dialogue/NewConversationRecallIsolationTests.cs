@@ -14,9 +14,11 @@ namespace FgoPet.App.Tests.Dialogue;
 public sealed class NewConversationRecallIsolationTests
 {
     [Theory]
-    [InlineData("今天好累呀")]
-    [InlineData("你好")]
-    public async Task Repeated_self_contained_message_in_new_conversation_does_not_resend_old_transcript(string text)
+    [InlineData("今天好累呀", null)]
+    [InlineData("你好", null)]
+    [InlineData("今天好累呀", "记得把植物搬到窗边")]
+    public async Task Repeated_self_contained_message_in_new_conversation_does_not_resend_old_transcript(
+        string text, string? unrelatedTurn)
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"fgo-new-chat-{Guid.NewGuid():N}.db");
         try
@@ -39,12 +41,21 @@ public sealed class NewConversationRecallIsolationTests
             Assert.Equal(ConversationSendStatus.Completed, first.Status);
             orchestrator.StartNewConversation("fixture-role");
             Assert.Null(repository.ReadState("LastActiveConversationId:fixture-role"));
+            if (unrelatedTurn is not null)
+            {
+                provider.Reply = "CURRENT_CONTEXT_SENTINEL";
+                var opening = await orchestrator.SendAsync("fixture-role", unrelatedTurn, default);
+                Assert.Equal(ConversationSendStatus.Completed, opening.Status);
+            }
             var second = await orchestrator.SendAsync("fixture-role", text, default);
 
             Assert.Equal(ConversationSendStatus.Completed, second.Status);
             Assert.NotEqual(first.ConversationId, second.ConversationId);
-            Assert.Equal(2, repository.LoadMessages(second.ConversationId, "fixture-role").Count);
+            Assert.Equal(unrelatedTurn is null ? 2 : 4,
+                repository.LoadMessages(second.ConversationId, "fixture-role").Count);
             Assert.DoesNotContain(provider.Request!.Messages, message => message.Text.Contains("OLD_CONTEXT_SENTINEL"));
+            if (unrelatedTurn is not null)
+                Assert.Contains(provider.Request.Messages, message => message.Text.Contains("CURRENT_CONTEXT_SENTINEL"));
             Assert.Contains(text, provider.Request.Messages[^1].Text);
             Assert.Equal(0, provider.AuxiliaryCalls);
         }
@@ -74,6 +85,7 @@ public sealed class NewConversationRecallIsolationTests
     {
         public string ProviderId => "test";
         public string ModelId => "test";
+        public string Reply { get; set; } = "OLD_CONTEXT_SENTINEL";
         public ChatRequest? Request { get; private set; }
         public int AuxiliaryCalls { get; private set; }
         public Task<IReadOnlyList<ProviderModel>> ListModelsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -83,7 +95,8 @@ public sealed class NewConversationRecallIsolationTests
             if (request.Metadata.ContainsKey("fgo_auxiliary")) AuxiliaryCalls++;
             Request = request;
             await Task.Yield();
-            yield return new("""{"text":"OLD_CONTEXT_SENTINEL","emotion":"neutral"}""", IsComplete: true, FinishReason: "stop");
+            yield return new(System.Text.Json.JsonSerializer.Serialize(new { text = Reply, emotion = "neutral" }),
+                IsComplete: true, FinishReason: "stop");
         }
     }
 }

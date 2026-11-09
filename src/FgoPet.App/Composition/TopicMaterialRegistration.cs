@@ -100,12 +100,14 @@ internal static class TopicMaterialRegistration
     internal static IServiceCollection AddTopicMaterialResearch(this IServiceCollection services) => services
         .AddSingleton(p => new TopicMaterialStore(p.GetRequiredService<RuntimeDatabase>(), p.GetRequiredService<TimeProvider>()))
         .AddSingleton<ITopicMaterialStore>(p => p.GetRequiredService<TopicMaterialStore>())
+        .AddSingleton<ITopicMaterialEvidence>(p => p.GetRequiredService<TopicMaterialStore>())
         .AddSingleton<IDerivedConversationData>(p => p.GetRequiredService<TopicMaterialStore>())
         .AddSingleton(p => new ConversationTopicStore(p.GetRequiredService<RuntimeDatabase>(), p.GetRequiredService<TimeProvider>()))
         .AddSingleton<IShortTermTopicStore>(p => p.GetRequiredService<ConversationTopicStore>())
         .AddSingleton<IShortTermTopicSource>(p => p.GetRequiredService<ConversationTopicStore>())
         .AddSingleton<IDerivedConversationData>(p => p.GetRequiredService<ConversationTopicStore>())
-        .AddSingleton<IFgoPetPlugin>(p => new TopicMaterialPlugin(p.GetRequiredService<ITopicMaterialStore>(),
+        .AddSingleton<IFgoPetPlugin>(p => new TopicMaterialPlugin(p.GetRequiredService<ITopicMaterialEvidence>(),
+            p.GetRequiredService<ITopicMaterialStore>().MarkUsed,
             p.GetRequiredService<IUnderstandingReader>(), p.GetRequiredService<IConversationScopeAuthority>().IsActive,
             p.GetRequiredService<IAgentQueryResolver>(), p.GetRequiredService<TimeProvider>(),
             p.GetRequiredService<IShortTermTopicSource>()))
@@ -125,7 +127,9 @@ internal static class TopicMaterialRegistration
             d => p.GetRequiredService<ILogger<MaterialResearchActivity>>().LogInformation(
                 "Material research {At} {Correlation} {Stage} {Code}", d.At, d.Correlation, d.Stage, d.Code),
             p.GetRequiredService<IShortTermTopicSource>()))
-        .AddSingleton<IFgoPetPlugin>(p => new MaterialResearchScheduler(p.GetRequiredService<MaterialResearchActivity>()));
+        .AddSingleton<IFgoPetPlugin>(p => new MaterialResearchScheduler(p.GetRequiredService<MaterialResearchActivity>(),
+            p.GetRequiredService<TopicMaterialStore>(), p.GetRequiredService<IDialogueContextLifetime>(),
+            p.GetRequiredService<ILogger<MaterialResearchScheduler>>()));
 
     private static MaterialResearchGrant LoadGrant(string path)
     {
@@ -136,7 +140,9 @@ internal static class TopicMaterialRegistration
         }
         catch { return new(); }
     }
-    private sealed class MaterialResearchScheduler(MaterialResearchActivity activity) : IFgoPetPlugin, IApplicationReadyObserver, IDisposable
+    private sealed class MaterialResearchScheduler(MaterialResearchActivity activity, TopicMaterialStore store,
+        IDialogueContextLifetime lifetime, ILogger<MaterialResearchScheduler> logger)
+        : IFgoPetPlugin, IApplicationReadyObserver, IDisposable
     {
         private CancellationTokenSource? _stop;
         private Task? _loop;
@@ -168,8 +174,28 @@ internal static class TopicMaterialRegistration
         private async Task RunAsync(CancellationToken token)
         {
             using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-            try { while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false)) await activity.RunOnceAsync(token).ConfigureAwait(false); }
+            try
+            {
+                while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
+                {
+                    PruneExpired(token);
+                    await activity.RunOnceAsync(token).ConfigureAwait(false);
+                }
+            }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        }
+        private void PruneExpired(CancellationToken token)
+        {
+            try
+            {
+                using var lease = lifetime.TryAcquireBackground(token);
+                lease?.Commit(() => { store.PruneExpired(); return true; });
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                logger.LogWarning("Material maintenance failed with {Code}", "TOPIC_MATERIAL_PRUNE_UNAVAILABLE");
+            }
         }
         public ValueTask StopAsync(CancellationToken token) => new(Shutdown());
         private Task Shutdown()

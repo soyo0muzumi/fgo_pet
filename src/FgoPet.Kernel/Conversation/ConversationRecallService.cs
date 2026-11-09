@@ -11,6 +11,137 @@ namespace FgoPet.App.Dialogue;
 public sealed class ConversationRecallService(IConversationRecallRepository repository, IChatProviderResolver providers,
     IDialogueSettingsStore settings, IModelContextResolver contexts, IRequestTokenMeter meter) : IConversationRecall
 {
+    /// <summary>
+    /// Require a scoped hit corroborated by recent turns in the current conversation.
+    /// Matching the current utterance alone can turn a repeated opener into a history request.
+    /// </summary>
+    private static IReadOnlyList<HistoryHit> FindContinuationCandidates(string userMessage, IReadOnlyList<string> recentTurns,
+        Func<string, IReadOnlyList<HistoryHit>> discover)
+    {
+        if (recentTurns is not { Count: > 0 }) return [];
+        var utteranceGrams = CueGrams(userMessage).ToHashSet(StringComparer.Ordinal);
+        var recentGrams = recentTurns.SelectMany(CueGrams).ToHashSet(StringComparer.Ordinal);
+        recentGrams.ExceptWith(utteranceGrams);
+        // A recent-only Han bigram adds context. Punctuation differences in a repeated
+        // utterance can create new trigrams but do not supply this evidence.
+        if (!recentGrams.Any(gram => gram.Length == 2)) return [];
+
+        var hits = discover(userMessage);
+        if (hits.Count == 0 || hits.Any(hit => hit.Anchor.ConversationId != hits[0].Anchor.ConversationId))
+            return [];
+
+        bool Matches(string gram) => hits.Any(hit => hit.Excerpt?.Contains(gram, StringComparison.Ordinal) == true);
+        var sharedRecent = recentGrams.Where(Matches).ToArray();
+        if (!sharedRecent.Any(gram => gram.Length == 2)) return [];
+        var shared = sharedRecent.Concat(utteranceGrams.Where(Matches)).ToArray();
+        return HasIndependentGrams(shared) ? hits : [];
+    }
+
+    /// <summary>
+    /// Count evidence grams that represent genuinely separate findings.
+    ///
+    /// Two distinct inflation problems were found by testing against real data:
+    ///
+    ///  1) NESTED n-grams. 中午好 emits 中午好, 中午 and 午好 from the single word 中午. Containment
+    ///     merging collapses those to one.
+    ///  2) STAGGERED n-grams. 今天好累呀 emits 今天好, 天好累, 好累呀 -- none contains another, yet
+    ///     they are adjacent slices of ONE clause. Containment alone cannot see this, so a single
+    ///     sentence still looked like three independent pieces of evidence and a self-contained
+    ///     opener such as 今天好累呀 passed the gate.
+    ///
+    /// A gram is counted when it shares fewer than two consecutive characters with each
+    /// previously counted gram. This is a lexical overlap check, not a clause boundary.
+    /// </summary>
+    private static bool HasIndependentGrams(IReadOnlyCollection<string> grams)
+    {
+        if (grams.Count < 2) return false;
+        var longest = grams.MaxBy(gram => gram.Length)!;
+        return grams.Any(gram => Overlap(longest, gram) < 2);
+    }
+
+    /// <summary>Length of the longest common substring between two short grams.</summary>
+    private static int Overlap(string left, string right)
+    {
+        var best = 0;
+        for (var i = 0; i < left.Length; i++)
+        {
+            for (var j = 0; j < right.Length; j++)
+            {
+                var k = 0;
+                while (i + k < left.Length && j + k < right.Length && left[i + k] == right[j + k]) k++;
+                if (k > best) best = k;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Cue grams: every Han-bearing trigram plus every Han bigram. The trigram half mirrors the
+    /// FTS5 tokenizer used by <c>chat_message_search</c>; the bigram half keeps two-rune Chinese
+    /// fragments locatable, which the trigram tokenizer alone cannot do.
+    ///
+    /// Latin-only input yields NO grams, on purpose. Real-data testing found that a bare "test"
+    /// produced a grammatical-looking "continuation": it emitted the trigrams tes/est, those
+    /// shared a single conversation, and that satisfied the evidence bar. But an ASCII token
+    /// carries no Chinese continuation signal and matched only because an unrelated message
+    /// happened to contain those letters. Requiring every cue gram to contain Han keeps the cue
+    /// Chinese-anchored, which matches what this product's conversations actually contain.
+    /// </summary>
+    private static List<string> CueGrams(string? text)
+    {
+        var grams = new List<string>();
+        if (string.IsNullOrWhiteSpace(text)) return grams;
+        for (var i = 0; i + 3 <= text.Length; i++)
+        {
+            var gram = text.Substring(i, 3);
+            if (gram.Any(c => c is >= '\u3400' and <= '\u9fff')) grams.Add(gram);
+        }
+        for (var i = 0; i + 1 < text.Length; i++)
+        {
+            if (text[i] is >= '\u3400' and <= '\u9fff' && text[i + 1] is >= '\u3400' and <= '\u9fff')
+                grams.Add(text.Substring(i, 2));
+        }
+        return grams;
+    }
+
+    /// <summary>
+    /// Design stage 0 / E1 entry point: continuation-aware recall.
+    ///
+    /// Gating order matters. The explicit-history path is unchanged and runs first, so behaviour
+    /// for turns that already named the past is untouched. Only turns that would previously have
+    /// returned Empty are considered, and they are additionally gated by
+    /// <see cref="FindContinuationCandidates"/>.
+    ///
+    /// What this deliberately does NOT do:
+    /// - it does not inject anything; sources returned here reach PromptComposer only through the
+    ///   existing RecalledHistory path, which design stage 0 leaves alone (E3);
+    /// - it does not widen the retrieval query with recent turns (that is E2);
+    /// - it performs no additional database read: the same Discover call is reused for both the
+    ///   cue decision and the result.
+    /// </summary>
+    public async Task<ConversationRecallResult> RetrieveAsync(ConversationScope scope, string currentConversationId,
+        string userMessage, IReadOnlyList<string> recentTurns, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!HasExplicitHistoryReference(userMessage))
+            {
+                var candidates = FindContinuationCandidates(userMessage, recentTurns, query =>
+                    repository.Discover(scope, currentConversationId, query));
+                return candidates.Count == 0 ? new(RecallStatus.Empty, [])
+                    : ReadSources(scope, candidates, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception error) when (error is ProviderRequestException or JsonException or ArgumentException or
+                                      InvalidOperationException or KeyNotFoundException or System.Data.Common.DbException or PromptBudgetException or RegexMatchTimeoutException)
+        {
+            return new(RecallStatus.Unavailable, []);
+        }
+        return await RetrieveAsync(scope, currentConversationId, userMessage, cancellationToken);
+    }
+
     public async Task<ConversationRecallResult> RetrieveAsync(ConversationScope scope, string currentConversationId,
         string userMessage, CancellationToken cancellationToken)
     {

@@ -59,10 +59,7 @@ public sealed class SqliteExperienceSourceReader(RuntimeDatabase database) : IEx
             var text = reader.GetString(3);
             if (text.Length is < 1 or > MaxTextUnits) return new(ExperienceSourceStatus.Changed);
             // Match ConversationSourceReader's authoritative original-message fingerprint convention.
-            var version = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                MessageId = anchor.MessageId, Role = role, Text = text, CreatedAtUtc = occurredAt
-            })));
+            var version = Fingerprint(anchor.MessageId, role, text, occurredAt);
             cancellationToken.ThrowIfCancellationRequested();
             return new(ExperienceSourceStatus.Available, new(scope, anchor,
                 role == ChatMessageRole.User ? ConversationSourceKind.User : ConversationSourceKind.Assistant, text, version));
@@ -75,6 +72,12 @@ public sealed class SqliteExperienceSourceReader(RuntimeDatabase database) : IEx
             return new(ExperienceSourceStatus.Unavailable);
         }
     }
+
+    internal static string Fingerprint(string id, ChatMessageRole role, string text, DateTimeOffset occurredAt) =>
+        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            MessageId = id, Role = role, Text = text, CreatedAtUtc = occurredAt
+        })));
 
     private static bool ValidId(string? value) => value is { Length: > 0 and <= 128 }
         && !value.Any(char.IsWhiteSpace) && !value.Any(char.IsControl);

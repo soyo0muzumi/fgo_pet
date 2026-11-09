@@ -6,6 +6,7 @@ using FgoPet.Core.Dialogue;
 using FgoPet.Core.Packs;
 using FgoPet.Core.Portraits;
 using FgoPet.Core.Settings;
+using FgoPet.Dialogue;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Providers;
@@ -42,6 +43,7 @@ public sealed partial class ConversationOrchestrator
     private readonly DialogueContextLifetime _lifetime;
     private readonly IConversationRecall? _recall;
     private readonly IConversationContextStore? _contextStore;
+    private readonly Action<ToolScope, CancellationToken>? _conversationEnded;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _conversationIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _activeCancellation;
@@ -65,7 +67,8 @@ public sealed partial class ConversationOrchestrator
         NativeConversationRuntime? nativeRuntime = null,
         FgoPet.Kernel.Agent.IAgentRunStore? agentRuns = null,
         IAgentFinalDeliveryStore? finalDeliveries = null,
-        Func<ToolScope, bool>? nativeScopeCurrent = null, string sessionNamespace = "")
+        Func<ToolScope, bool>? nativeScopeCurrent = null, string sessionNamespace = "",
+        Action<ToolScope, CancellationToken>? conversationEnded = null)
     {
         _providerResolver = providerResolver ?? throw new ArgumentNullException(nameof(providerResolver));
         _contentResolver = contentResolver ?? throw new ArgumentNullException(nameof(contentResolver));
@@ -85,11 +88,36 @@ public sealed partial class ConversationOrchestrator
         _agentRuns = agentRuns;
         _finalDeliveries = finalDeliveries;
         _nativeScopeCurrent = nativeScopeCurrent;
+        _conversationEnded = conversationEnded;
         if (sessionNamespace.Length > 64 || sessionNamespace.Any(c => !char.IsAsciiLetterOrDigit(c)))
             throw new ArgumentException("Invalid session namespace.", nameof(sessionNamespace));
         _sessionNamespace = sessionNamespace;
         if (nativeRuntime is not null && (agentRuns is null || finalDeliveries is null))
             throw new ArgumentException("Native runtime requires durable run and final delivery owners.");
+    }
+
+    /// <summary>
+    /// Design stage 0 / E1 wiring: hand the ALREADY LOADED completed turns to recall so the
+    /// continuation gate can judge whether this turn is continuing something. No extra read is
+    /// performed here — <paramref name="existing"/> is the array the orchestrator already built.
+    ///
+    /// When disabled, use the original overload. A Found result reaches the prompt through the
+    /// existing RecalledHistory path.
+    /// </summary>
+    private static Task<ConversationRecallResult> RecallWithContext(IConversationRecall recall,
+        ConversationScope scope, string conversationId, string userText,
+        IReadOnlyList<ChatMessage> existing, CancellationToken token)
+    {
+        if (!ConversationRecallContinuationGate.Enabled)
+            return recall.RetrieveAsync(scope, conversationId, userText, token);
+        // Newest-first bounded view of completed user turns; the gate only needs recent cue text.
+        var recent = existing
+            .Where(message => message.Role == ChatMessageRole.User && message.Status == ChatMessageStatus.Completed)
+            .Reverse()
+            .Take(ConversationRecallContinuationGate.MaxRecentTurns)
+            .Select(message => message.Text)
+            .ToArray();
+        return recall.RetrieveAsync(scope, conversationId, userText, recent, token);
     }
 
     public event Action<ConversationUpdate>? Updated;
@@ -193,14 +221,15 @@ public sealed partial class ConversationOrchestrator
             if (_nativeRuntime is not null)
             {
                 stage = "执行原生任务";
-                return await SendNativeAsync(binding, userMessage, capabilityScope, requestContext, Publish, requestCancellation.Token);
+                return await SendNativeAsync(binding, userMessage, capabilityScope, existing, requestContext, Publish,
+                    requestCancellation.Token);
             }
             var persona = binding.Persona ?? FallbackPersona(binding.Context);
             stage = "组装提示词";
             var session = await ConversationModelTurn.CreateAsync(_providerResolver, _settings, _contextResolver, _tokenMeter,
                 _capabilities, Publish, CancelCurrent, requestCancellation.Token, logger: _logger);
-            var recalled = _recall is null ? new ConversationRecallResult(RecallStatus.Empty, []) :
-                await _recall.RetrieveAsync(scope, conversationId, userText, requestCancellation.Token);
+            var recalled = _recall is null ? new ConversationRecallResult(RecallStatus.Empty, [])
+                : await RecallWithContext(_recall, scope, conversationId, userText, existing, requestCancellation.Token);
             lease.CheckCurrent();
             session.EnsureCurrent(requestCancellation.Token);
             if (recalled.Status == RecallStatus.Ambiguous)
@@ -541,10 +570,13 @@ public sealed partial class ConversationOrchestrator
         return new ConversationSendResult(ConversationSendStatus.Completed, conversationId, messageId);
     }
 
-    public void StartNewConversation(string servantId)
+    public void StartNewConversation(string servantId) => StartNewConversation(servantId, notifyEnded: false);
+
+    public void StartNewConversation(string servantId, bool notifyEnded)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(servantId);
         CancelCurrent();
+        ToolScope? ended = null;
         lock (_gate)
         {
             var key = ActiveConversationStateKey(servantId);
@@ -552,8 +584,19 @@ public sealed partial class ConversationOrchestrator
             _conversationIds.Remove(servantId);
             _conversations.DeleteState(key);
             if (previous is not null && _conversations.GetConversation(previous, servantId) is { } conversation)
-                _capabilities?.RemoveConversation(new(previous, servantId, conversation.ProjectId));
+            {
+                ended = new(previous, servantId, conversation.ProjectId);
+                _capabilities?.RemoveConversation(ended);
+            }
         }
+        if (!notifyEnded || ended is null || _conversationEnded is null) return;
+        try
+        {
+            using var lease = _lifetime.Acquire(default);
+            lease.Commit(() => _conversationEnded(ended, lease.Token));
+        }
+        catch (OperationCanceledException) { _logger?.LogDebug("Experience consolidation cancelled"); }
+        catch (Exception) { _logger?.LogWarning("Experience consolidation failed with {Code}", "EXPERIENCE_CONSOLIDATION_UNAVAILABLE"); }
     }
 
     private static string GetStageError(string stage) => stage switch

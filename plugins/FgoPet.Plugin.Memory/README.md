@@ -18,9 +18,13 @@
 
 仅 `Contracts/` 下的类型可被其他模块引用。跨模块调用遵循当前 `tests/architecture/policy.json`；精确遗留例外只允许减少。
 
-`IMemoryRecall.Query` 每请求读取最新 revision，按角色通用/当前项目范围及查询词裁选完整条目。`IMemoryCandidateSink.Begin/Stage/Abandon` 提供带 generation、revision 和原文来源的候选写入端口，不提供审批、修改或删除能力。`IConversationMemory` 仅保留兼容读取适配，不再暴露候选写入。管理操作统一由 `MemoryCandidateService` 处理。
+`IMemoryRecall.QueryStrict` 每次读取同一数据库快照中的最新 revision 和命中条目。普通聊天、Native 上下文和 `memory.search` 使用此路径，无匹配时返回空。`Query` 供记忆提取使用，无匹配时可返回最多三条角色通用已确认记忆。匹配优先考虑精确条目 ID，其次按 FTS5 相关性排序，短词使用字面匹配，结果保留原有整条记录与数量、字符上限。`IMemoryCandidateSink.Begin/Stage/Abandon` 提供带 generation、revision 和原文来源的候选写入端口，不提供审批、修改或删除能力。`IConversationMemory` 仅保留兼容读取适配，不再暴露候选写入。管理操作统一由 `MemoryCandidateService` 处理。
 
-候选只落 Pending；审批更正必须匹配准确 ID、同一 scope 和 expected version。来源与规范化正文分别去重；删除回执阻止同源重建。每角色 200 条 / 40,000 字符含停用记录，旧数据超额时仍保留。`IMemoryWriteLifetime.StartSession` 在启动恢复和数据库迁移后旋转代次，旧 pending 作业不恢复执行。Memory 本身不发模型请求，也不反向引用 Dialogue。
+候选只落 Pending；审批更正必须匹配准确 ID、同一 scope 和 expected version。`IConversationMemoryReviewNotices` 在新增待审核候选提交后通知聊天，仅携带范围和会话标识。来源与规范化正文分别去重；删除回执阻止同源重建。每角色 200 条 / 40,000 字符含停用记录，旧数据超额时仍保留。`IMemoryWriteLifetime.StartSession` 在启动恢复和数据库迁移后旋转代次，旧 pending 作业不恢复执行。Memory 本身不发模型请求，也不反向引用 Dialogue。
+
+自动写入待审核候选时，后续已排队的提取仍可依据同一记忆版本完成。提交时在同一事务内重新检查去重、容量和更正目标。已确认记忆发生变化或写入代次失效时，旧提取结果会被拒绝。Debug 日志记录暂存结果、来源哈希及候选数量。
+
+候选提取可用时，「帮我记住」等明确请求会得到固定的审核流程指引。Native 正文阶段与普通聊天共用同一条指引。用户原话只用于判定是否适用，候选是否实际生成以应用提示为准。
 
 ## Dependencies
 
@@ -32,6 +36,8 @@
 ## 表所有权（Q2=b：状态拥有者 = SQL 执行者）
 
 `memory_candidates` `memories` `memory_write_state` `memory_ingestions`
+
+`memory_search` 是已启用记忆的派生 FTS5 索引，`memory_search_keys` 为外部内容视图提供跨备份压缩的稳定编号。数据库升级会回填索引，确认、编辑、停用、重新启用和删除在原写入事务中同步更新。`memories` 提供原文和来源元数据。
 
 仓储只写本模块的表。来源所属角色、项目、原文版本由 Dialogue 验证；Memory 的来源存在性查询仅用于 FK/归属完整性复核和“来源已删除”状态，不读取或检索历史正文。项目名称保存在来源快照中，管理页不从 Dialogue 查询会话列表。
 

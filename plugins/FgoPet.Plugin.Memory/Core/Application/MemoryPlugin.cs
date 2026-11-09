@@ -13,6 +13,7 @@ public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader
     private bool _started;
     private CancellationToken _stopping;
     private bool Enabled => _started && !_stopping.IsCancellationRequested && Volatile.Read(ref _closed) == 0 && (enabled?.Invoke() ?? true);
+    private bool CanExtract => candidates is not null && extractions is not null;
     public PluginManifest Manifest { get; } = new("firstparty.memory", "1.0.0", 1, []);
     public PluginContributions Contributions => PluginContributions.Empty with
     {
@@ -21,7 +22,9 @@ public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader
         PostTurnObservers = [this],
         AgentContexts = queryResolver is null
             ? []
-            : [new NativeMemoryContext(recall, queryResolver, () => Enabled)]
+            : CanExtract
+                ? [new NativeMemoryContext(recall, queryResolver, () => Enabled), new MemoryReviewGuidance(queryResolver, () => Enabled)]
+                : [new NativeMemoryContext(recall, queryResolver, () => Enabled)]
     };
     public ValueTask StartAsync(CancellationToken stoppingToken)
     {
@@ -31,8 +34,14 @@ public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader
         _started = true;
         return ValueTask.CompletedTask;
     }
-    public IReadOnlyList<ConversationPromptBlock> BuildPrompt(ToolScope scope, string userMessage, bool toolsAvailable) =>
-        Enabled ? BuildBlocks(recall.Query(new(scope.RoleId, scope.ProjectId), userMessage).Items, scope) : [];
+    public IReadOnlyList<ConversationPromptBlock> BuildPrompt(ToolScope scope, string userMessage, bool toolsAvailable)
+    {
+        if (!Enabled) return [];
+        var memories = BuildBlocks(recall.QueryStrict(new(scope.RoleId, scope.ProjectId), userMessage).Items, scope);
+        return CanExtract && MemoryReviewGuidance.Matches(userMessage)
+            ? [.. memories, new(MemoryReviewGuidance.Source, MemoryReviewGuidance.Instruction, ConversationPromptBlockKind.Instruction)]
+            : memories;
+    }
 
     public static IReadOnlyList<ConversationPromptBlock> BuildBlocks(IEnumerable<StoredMemory> memories, ToolScope scope) =>
         memories.Where(memory => memory.IsEnabled && memory.ServantId == scope.RoleId &&

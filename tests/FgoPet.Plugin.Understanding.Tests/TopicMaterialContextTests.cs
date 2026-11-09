@@ -15,7 +15,7 @@ public sealed class TopicMaterialContextTests
     {
         var clock = new Clock(); var store = new Store(); var reader = new Reader(clock);
         store.Items.Add(Material(clock));
-        using var plugin = new TopicMaterialPlugin(store, reader, _ => true, new Resolver(), clock);
+        using var plugin = new TopicMaterialPlugin(store, store.MarkUsed, reader, _ => true, new Resolver(), clock);
         await plugin.StartAsync(default);
         var ordinary = Assert.Single(plugin.BuildPrompt(Scope, "question", false));
         var native = Assert.Single(await plugin.BuildAsync(Request(), default));
@@ -28,6 +28,8 @@ public sealed class TopicMaterialContextTests
         Assert.False(plugin.ProvidesTrustedInstructions);
         Assert.Contains("Selective forgetting suppresses weak associations.", ordinary.Text);
         Assert.Contains("https://example.org/memory", ordinary.Text);
+        Assert.Contains("source_kind: external_material", ordinary.Text);
+        Assert.Contains("Expires at:", ordinary.Text);
         Assert.Contains("Connects to the current memory experiment.", ordinary.Text);
         Assert.Contains("optional", ordinary.Text);
         Assert.Contains("search snippet", ordinary.Text);

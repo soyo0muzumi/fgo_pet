@@ -61,7 +61,7 @@ public static class NativeMemoryTools
 
                 if (!IsEnabled())
                     return ValueTask.FromResult(Failure("MEMORY_UNAVAILABLE"));
-                var snapshot = recall.Query(scope, arguments.Query, arguments.MaxItems, arguments.MaxChars);
+                var snapshot = recall.QueryStrict(scope, arguments.Query, arguments.MaxItems, arguments.MaxChars);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!IsEnabled())
                     return ValueTask.FromResult(Failure("MEMORY_UNAVAILABLE"));

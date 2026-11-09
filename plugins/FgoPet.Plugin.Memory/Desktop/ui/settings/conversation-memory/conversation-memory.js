@@ -533,9 +533,16 @@ export async function mount(container, context) {
     for (const control of page.querySelectorAll("button, input, textarea")) control.disabled = true;
     page.dataset.state = "disposed";
   }
-  dispose.getState = () => ({ view, settingsOpen: !page.querySelector("[data-memory-settings-panel]").hidden, scope: draftScope, memoryEditorId, edits: [...editDrafts], editBases: [...editBases], dirty: editDrafts.size > 0 });
+  dispose.getState = () => ({ view, settingsOpen: !page.querySelector("[data-memory-settings-panel]").hidden, scope: draftScope, memoryEditorId, selectedCandidateId: snapshot?.selectedCandidateId, edits: [...editDrafts], editBases: [...editBases], dirty: editDrafts.size > 0 });
 
   renderView();
-  await send("memory.get", {}, t("memory.unavailable"));
+  const fresh = await send("memory.refresh", {}, t("memory.unavailable"));
+  if (!disposed && fresh && view === "candidates" && fresh.candidates.length && !fresh.selectedCandidateId) {
+    const previous = fresh.scope === context.state?.scope && fresh.candidates.find(item => item.id === context.state.selectedCandidateId);
+    await send("memory.selectCandidate", { candidateId: previous?.id ?? fresh.candidates[0].id });
+  } else if (!disposed && fresh && fresh.scope === context.state?.scope && memoryEditorId && !fresh.selectedMemoryId &&
+      fresh.storedMemories.some(item => item.id === memoryEditorId)) {
+    await send("memory.selectMemory", { memoryId: memoryEditorId });
+  }
   return dispose;
 }

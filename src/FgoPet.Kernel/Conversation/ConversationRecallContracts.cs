@@ -31,4 +31,16 @@ public sealed record ConversationRecallResult(RecallStatus Status, IReadOnlyList
 public interface IConversationRecall
 {
     Task<ConversationRecallResult> RetrieveAsync(ConversationScope scope, string currentConversationId, string userMessage, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Continuation-aware retrieval (design stage 0 / E1). <paramref name="recentTurns"/> is a
+    /// bounded view of the completed turns the orchestrator has ALREADY loaded for this
+    /// conversation; supplying it must not require an extra read.
+    ///
+    /// The default implementation ignores the context and delegates to the 4-argument overload,
+    /// so existing implementations and test doubles keep their behaviour unchanged.
+    /// </summary>
+    Task<ConversationRecallResult> RetrieveAsync(ConversationScope scope, string currentConversationId,
+        string userMessage, IReadOnlyList<string> recentTurns, CancellationToken cancellationToken)
+        => RetrieveAsync(scope, currentConversationId, userMessage, cancellationToken);
 }

@@ -2,10 +2,12 @@ using System.Text.Json;
 using System.IO;
 using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
+using FgoPet.Core.Memory;
 using FgoPet.Core.Packs;
 using FgoPet.Dialogue.Contracts;
 using FgoPet.Dialogue.Settings;
 using FgoPet.Infrastructure.Dialogue;
+using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Packs;
 using FgoPet.Infrastructure.Persistence;
 using FgoPet.Infrastructure.Providers;
@@ -16,6 +18,35 @@ namespace FgoPet.App.Tests.Dialogue;
 
 public sealed class ChatWebSessionTests : IDisposable
 {
+    [Fact]
+    public async Task Chat_reports_a_staged_candidate_only_in_its_source_conversation()
+    {
+        var repository = new SqliteMemoryRepository(TestRuntimeDatabase.Create(_databasePath));
+        var provider = new DelayedProvider();
+        provider.Release.TrySetResult(true);
+        using var conversation = CreateConversation(provider, repository);
+        conversation.SetActiveServant("800100");
+        using var session = new ChatWebSession(conversation, new RecordingChatHostActions());
+        conversation.InputText = "请记住我的长期偏好是无糖茶。";
+        await conversation.SendCommand.ExecuteAsync(null);
+        var initial = session.ReadSnapshot();
+        Assert.False(initial.Conversation.HasStagedMemoryCandidate);
+        var userMessage = Assert.Single(initial.Conversation.Turns.Where(turn => turn.Role == "user"));
+        var scope = new MemoryScope(initial.Identity.ServantId, null);
+        var ticket = repository.Begin(new(scope, initial.Identity.ConversationId, userMessage.Id,
+            "fixture-fingerprint", DateTimeOffset.UtcNow, MemoryEvidenceKind.UserStatement));
+
+        Assert.Single(repository.Stage(ticket, [new("长期偏好无糖茶")]).CandidateIds);
+        Assert.True(session.ReadSnapshot().Conversation.HasStagedMemoryCandidate);
+
+        conversation.NewConversationCommand.Execute(null);
+        Assert.False(session.ReadSnapshot().Conversation.HasStagedMemoryCandidate);
+        var lateTicket = repository.Begin(new(scope, initial.Identity.ConversationId, userMessage.Id,
+            "another-fixture-fingerprint", DateTimeOffset.UtcNow, MemoryEvidenceKind.UserStatement));
+        Assert.Single(repository.Stage(lateTicket, [new("长期偏好纸质书")]).CandidateIds);
+        Assert.False(session.ReadSnapshot().Conversation.HasStagedMemoryCandidate);
+    }
+
     [Fact]
     public async Task Image_chunks_need_current_identity_and_completion_and_cannot_send_partial_pixels()
     {
@@ -364,7 +395,7 @@ public sealed class ChatWebSessionTests : IDisposable
         finally { provider.Release.TrySetResult(true); }
     }
 
-    private ConversationViewModel CreateConversation(DelayedProvider provider)
+    private ConversationViewModel CreateConversation(DelayedProvider provider, IConversationMemoryReviewNotices? memoryNotifications = null)
     {
         var database = TestRuntimeDatabase.Create(_databasePath);
         new RuntimeDatabaseMigrator(database).Migrate();
@@ -380,7 +411,7 @@ public sealed class ChatWebSessionTests : IDisposable
             new PromptComposer(),
             TimeProvider.System,
             settings);
-        return new ConversationViewModel(orchestrator, settings);
+        return new ConversationViewModel(orchestrator, settings, memoryNotifications: memoryNotifications);
     }
 
     private static WebSurfaceMessage Message(string type, string payload)

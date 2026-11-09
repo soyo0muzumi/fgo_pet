@@ -3,6 +3,7 @@ using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Extensibility;
 using FgoPet.Kernel.Agent;
+using FgoPet.Plugin.Memory;
 using Xunit;
 
 namespace FgoPet.App.Tests.Dialogue;
@@ -70,6 +71,40 @@ public sealed partial class NativeConversationIntegrationTests
         Assert.Equal(withRead ? 1 : 0, tool.Invocations.Count);
         Assert.Equal("answer", Assert.Single(observer.Turns).AssistantText);
         Assert.Equal(expectedRequests, (await host.Runs.LoadAsync(result.RunId!, default))!.Snapshot.ModelRequests);
+    }
+
+    [Fact]
+    public async Task Explicit_memory_review_guidance_reaches_the_final_reply_after_tool_selection()
+    {
+        const string query = "帮我记住：我偏好铜枝方格本。";
+        var provider = new ScriptedProvider(ProviderTurn.Call("fixture.read", "read-once", "{}"),
+            ProviderTurn.Call(FinalizeTool, "finish", "{}"), ProviderTurn.Final("{\"text\":\"answer\",\"emotion\":\"neutral\"}"))
+        { RawFinalResponses = true, AutoFinalize = false };
+        var guidance = new MemoryReviewGuidance(new MemoryReviewQuery(query), () => true);
+        var tool = new RecordingTool(ToolEffect.ReadOnly);
+        await using var host = await TestHost.CreateAsync(provider, tool, new RecordingObserver(), context: guidance);
+
+        var result = await host.Orchestrator.SendAsync(RoleId, query, default, new(ProjectId));
+
+        Assert.Equal(ConversationSendStatus.Completed, result.Status);
+        Assert.Single(tool.Invocations);
+        Assert.Equal(3, provider.Requests.Count);
+        var final = provider.Requests[^1];
+        AssertFinalRequest(final);
+        var instruction = Assert.Single(final.ModelMessages, message => message.Role == ModelMessageRole.System &&
+            message.Content.StartsWith("可信指导来源：fixture.native-conversation:memory-review-guidance:", StringComparison.Ordinal));
+        Assert.Contains("在回复后生成待审核的记忆候选", instruction.Content);
+        Assert.Contains("以应用提示为准", instruction.Content);
+        Assert.DoesNotContain("铜枝方格本", instruction.Content);
+    }
+
+    private sealed class MemoryReviewQuery(string query) : IAgentQueryResolver
+    {
+        public ValueTask<string?> ResolveAsync(ToolScope scope, ProtectedQueryReference reference, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<string?>(query);
+        }
     }
 
     [Fact]

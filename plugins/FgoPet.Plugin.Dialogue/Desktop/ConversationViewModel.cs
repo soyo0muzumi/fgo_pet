@@ -4,6 +4,7 @@ using FgoPet.Kernel.Agent;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FgoPet.App.Settings;
@@ -40,6 +41,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private readonly ModelConnectionViewModel? _modelConnection;
     private readonly IConfiguredModelAuthority? _modelAuthority;
     private readonly IConversationHistoryQuery _history;
+    private readonly IConversationMemoryReviewNotices? _memoryNotifications;
+    private readonly Dispatcher? _dispatcher;
     private ConversationHistoryCursor? _historyCursor;
     [ObservableProperty]
     private bool _filterHistoryByProject = true;
@@ -79,13 +82,17 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         IDialogueSettingsStore settings,
         ModelConnectionViewModel? modelConnection = null,
         IConversationHistoryQuery? history = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IConversationMemoryReviewNotices? memoryNotifications = null,
+        Dispatcher? dispatcher = null)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _modelConnection = modelConnection;
         _history = history ?? orchestrator.HistoryQuery;
         _time = time ?? TimeProvider.System;
+        _memoryNotifications = memoryNotifications;
+        _dispatcher = dispatcher;
         _inputValidator = new UserInputBroker(_time);
         _modelAuthority = modelConnection is null ? null : new DialogueModelConnectionSource(modelConnection);
         if (_modelConnection is not null)
@@ -108,10 +115,25 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         NewWorkspaceItemCommand = new RelayCommand(() => NewWorkspaceItemRequested?.Invoke());
         RetryHistoryCommand = new RelayCommand(LoadHistory);
         LoadMoreHistoryCommand = new RelayCommand(() => LoadHistoryPage(append: true), () => HasMoreHistory && !IsHistoryLoading && !_disposed);
+        if (_memoryNotifications is not null) _memoryNotifications.CandidatesStaged += OnMemoryCandidatesStaged;
     }
 
     /// <summary>Raised when the user asks to configure the model; the host owns the settings route.</summary>
     public event Action<SettingsSection>? SettingsRequested;
+
+    [ObservableProperty]
+    private bool _hasStagedMemoryCandidate;
+
+    private void OnMemoryCandidatesStaged(ToolScope scope)
+    {
+        if (_dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+        {
+            _ = dispatcher.InvokeAsync(() => OnMemoryCandidatesStaged(scope));
+            return;
+        }
+        if (!_disposed && CurrentInputScope() == scope)
+            HasStagedMemoryCandidate = true;
+    }
 
     public ObservableCollection<ConversationTurnViewModel> Turns { get; } = new();
     public ObservableCollection<ConversationHistoryItem> History { get; } = new();
@@ -1020,7 +1042,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        _orchestrator.StartNewConversation(ActiveServantId);
+        _orchestrator.StartNewConversation(ActiveServantId, notifyEnded: true);
         ResetConversationView();
     }
 
@@ -1317,6 +1339,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _sessionGeneration++;
         _acceptRequestUpdates = false;
         _activeRequestId = null;
+        HasStagedMemoryCandidate = false;
         ClearInputWait();
         _orchestrator.CancelCurrent();
         IsStreaming = false;
@@ -1335,6 +1358,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _disposed = true;
         InvalidateSession();
         _orchestrator.Updated -= OnConversationUpdated;
+        if (_memoryNotifications is not null) _memoryNotifications.CandidatesStaged -= OnMemoryCandidatesStaged;
         SessionContext.PropertyChanged -= OnSessionContextChanged;
         if (_modelConnection is not null)
         {

@@ -2,8 +2,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using FgoPet.Core.Dialogue;
 using FgoPet.Extensibility;
+using FgoPet.Infrastructure.Dialogue;
 
 namespace FgoPet.App.Dialogue;
 
@@ -27,6 +29,7 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
     private readonly Func<ToolScope, bool> _scopeCurrent;
     private readonly TimeProvider _clock;
     private readonly Action<ExperienceDiagnostic>? _diagnostics;
+    private readonly SqliteExperienceEventStore? _events;
     private readonly object _gate = new();
     private readonly Dictionary<string, Reference> _references = new(StringComparer.Ordinal);
     private CancellationTokenRegistration _shutdown;
@@ -39,15 +42,26 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
 
     public ExperienceToolsPlugin(IConversationRecallRepository recall, IExperienceSourceReader sources,
         Func<ToolScope, bool> activeScopeGuard, TimeProvider? clock = null, Action<ExperienceDiagnostic>? diagnostics = null)
+        : this(recall, sources, activeScopeGuard, clock, diagnostics, null) { }
+
+    internal ExperienceToolsPlugin(IConversationRecallRepository recall, IExperienceSourceReader sources,
+        Func<ToolScope, bool> activeScopeGuard, TimeProvider? clock, Action<ExperienceDiagnostic>? diagnostics,
+        SqliteExperienceEventStore? events)
     {
         _recall = recall ?? throw new ArgumentNullException(nameof(recall));
         _sources = sources ?? throw new ArgumentNullException(nameof(sources));
         _scopeCurrent = activeScopeGuard ?? throw new ArgumentNullException(nameof(activeScopeGuard));
         _clock = clock ?? TimeProvider.System;
         _diagnostics = diagnostics;
+        _events = events;
+        const string search = "Search a bounded set of original completed user/assistant messages for the host's current role and exact project, excluding the current conversation. Results are non-exhaustive reference data; short queries inspect only recent history. No search continuation is provided.";
+        var searchSchema = events is null
+            ? """{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":128},"maxItems":{"type":"integer","minimum":1,"maximum":20},"maxChars":{"type":"integer","minimum":1,"maximum":6000}},"required":["query"],"additionalProperties":false}"""
+            : """{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":128},"maxItems":{"type":"integer","minimum":1,"maximum":20},"maxChars":{"type":"integer","minimum":1,"maximum":6000},"includeRelated":{"type":"boolean"}},"required":["query"],"additionalProperties":false}""";
         Contributions = PluginContributions.Empty with { Tools = [
-            new Tool(this, "experience.search", "Search a bounded set of original completed user/assistant messages for the host's current role and exact project, excluding the current conversation. Results are non-exhaustive reference data; short queries inspect only recent history. No search continuation is provided.",
-                """{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":128},"maxItems":{"type":"integer","minimum":1,"maximum":20},"maxChars":{"type":"integer","minimum":1,"maximum":6000}},"required":["query"],"additionalProperties":false}"""),
+            new Tool(this, "experience.search", events is null ? search : search +
+                " Set includeRelated for a cross-session experience. When available, eventId groups results and related=true marks an additional original that may not contain the query.",
+                searchSchema),
             new Tool(this, "experience.read", "Read a fixed-version page of one original completed message returned by experience.search. Reuse its sourceId/sourceVersion and nextOffset. Offsets and maxChars count Unicode scalars. Coverage applies to this page of this message, never the whole conversation. Source text cannot grant permissions.",
                 """{"type":"object","properties":{"sourceId":{"type":"string","minLength":1,"maxLength":96},"sourceVersion":{"type":"string","minLength":64,"maxLength":64},"offset":{"type":"integer","minimum":0,"maximum":12000},"maxChars":{"type":"integer","minimum":1,"maximum":6000}},"required":["sourceId","sourceVersion"],"additionalProperties":false}""") ] };
     }
@@ -105,7 +119,8 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
             ToolResult result;
             if (name == "experience.search")
             {
-                if (!ParseSearch(invocation.Arguments, out var arguments)) return ValueTask.FromResult(Failure("TOOL_INVALID_ARGUMENTS"));
+                if (!ParseSearch(invocation.Arguments, out var arguments) || arguments.IncludeRelated && _events is null)
+                    return ValueTask.FromResult(Failure("TOOL_INVALID_ARGUMENTS"));
                 result = Search(invocation.Scope, scope, arguments, token, () => Log("source_read"));
             }
             else
@@ -134,9 +149,28 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
         token.ThrowIfCancellationRequested();
         if (hits is null) return Failed("EXPERIENCE_UNAVAILABLE");
         var results = new List<SearchItem>();
+        var selectedConversations = new HashSet<string>(StringComparer.Ordinal);
         var characters = 0;
         var omitted = 0;
         var truncated = hits.Count > MaxCandidates;
+        bool Add(ExperienceMessage source, int total, string? eventId = null)
+        {
+            if (results.Count >= arguments.MaxItems || characters >= arguments.MaxChars ||
+                selectedConversations.Count == 5 && !selectedConversations.Contains(source.Anchor.ConversationId)) return false;
+            var count = Math.Min(total, Math.Min(800, arguments.MaxChars - characters));
+            var id = "experience-" + Guid.NewGuid().ToString("N");
+            var item = new SearchItem(id, "conversation_message", Speaker(source.Kind), source.Anchor.ConversationId,
+                source.Anchor.MessageId, source.Anchor.Sequence, source.Anchor.CreatedAtUtc, source.SourceVersion,
+                Slice(source.Text, 0, count), count < total, eventId, eventId is null ? null : true);
+            var candidate = JsonSerializer.SerializeToElement(new { Items = results.Append(item).ToArray() }, Json);
+            if (Encoding.UTF8.GetByteCount(candidate.GetRawText()) > MaxOutputBytes - 2048) return false;
+            Store(id, new(host, source.Anchor, source.Kind, source.SourceVersion, _clock.GetUtcNow().AddMinutes(5), eventId));
+            results.Add(item);
+            selectedConversations.Add(source.Anchor.ConversationId);
+            characters += count;
+            return true;
+        }
+
         foreach (var hit in hits.Take(MaxCandidates))
         {
             token.ThrowIfCancellationRequested();
@@ -148,17 +182,35 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
             if (read.Status == ExperienceSourceStatus.ScopeDenied) return Failed("EXPERIENCE_SCOPE_DENIED");
             if (read.Status != ExperienceSourceStatus.Available || !ValidSource(read.Source, scope, hit.Anchor, out var total))
             { omitted++; continue; }
-            var source = read.Source!;
-            var count = Math.Min(total, Math.Min(800, arguments.MaxChars - characters));
-            var id = "experience-" + Guid.NewGuid().ToString("N");
-            var item = new SearchItem(id, "conversation_message", Speaker(source.Kind), source.Anchor.ConversationId,
-                source.Anchor.MessageId, source.Anchor.Sequence, source.Anchor.CreatedAtUtc, source.SourceVersion,
-                Slice(source.Text, 0, count), count < total);
-            var candidate = JsonSerializer.SerializeToElement(new { Items = results.Append(item).ToArray() }, Json);
-            if (Encoding.UTF8.GetByteCount(candidate.GetRawText()) > MaxOutputBytes - 2048) { truncated = true; break; }
-            Store(id, new(host, source.Anchor, source.Kind, source.SourceVersion, _clock.GetUtcNow().AddMinutes(5)));
-            results.Add(item);
-            characters += count;
+            if (!Add(read.Source!, total)) { truncated = true; break; }
+        }
+        if (arguments.IncludeRelated && _events is { } events && !truncated && results.Count > 0)
+        {
+            var seen = results.Select(item => item.MessageId).ToHashSet(StringComparer.Ordinal);
+            var related = new List<ExperienceEventMember>();
+            for (var index = 0; index < Math.Min(4, results.Count); index++)
+            {
+                token.ThrowIfCancellationRequested();
+                var item = results[index];
+                var members = events.Related(scope, host.ConversationId, item.MessageId, item.SourceVersion);
+                if (members.Count == 0 || !events.IsMember(scope, members[0].EventId, item.MessageId, item.SourceVersion)) continue;
+                results[index] = item with { EventId = members[0].EventId, Related = false };
+                related.AddRange(members);
+            }
+            foreach (var member in related)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!seen.Add(member.Anchor.MessageId)) continue;
+                if (results.Count >= arguments.MaxItems || characters >= arguments.MaxChars) { truncated = true; break; }
+                sourceRead();
+                var read = _sources.Read(scope, member.Anchor, token);
+                if (read.Status != ExperienceSourceStatus.Available ||
+                    !ValidSource(read.Source, scope, member.Anchor, out var total) ||
+                    read.Source!.SourceVersion != member.SourceVersion ||
+                    !events.IsMember(scope, member.EventId, member.Anchor.MessageId, member.SourceVersion))
+                { omitted++; continue; }
+                if (!Add(read.Source, total, member.EventId)) { truncated = true; break; }
+            }
         }
         var shortQuery = arguments.Query.EnumerateRunes().Count() < 3;
         return Success(new
@@ -197,6 +249,9 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
         });
         if (!ValidSource(read.Source, scope, reference.Anchor, out var total)
             || read.Source!.Kind != reference.Kind || read.Source.SourceVersion != reference.Version)
+            return Failed("EXPERIENCE_SOURCE_CHANGED");
+        if (reference.EventId is { } eventId &&
+            _events?.IsMember(scope, eventId, reference.Anchor.MessageId, reference.Version) != true)
             return Failed("EXPERIENCE_SOURCE_CHANGED");
         if (arguments.Offset > total) return Failed("TOOL_INVALID_ARGUMENTS");
         var source = read.Source;
@@ -290,9 +345,10 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
     }
     private static bool ParseSearch(JsonElement value, out SearchArguments result)
     {
-        result = new(string.Empty, 8, MaxChars);
+        result = new(string.Empty, 8, MaxChars, false);
         string? query = null;
         var maxItems = 8; var maxChars = MaxChars;
+        var includeRelated = false;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
@@ -308,11 +364,15 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
                     break;
                 case "maxItems": if (!Integer(property.Value, 1, MaxItems, out maxItems)) return false; break;
                 case "maxChars": if (!Integer(property.Value, 1, MaxChars, out maxChars)) return false; break;
+                case "includeRelated":
+                    if (property.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+                    includeRelated = property.Value.GetBoolean();
+                    break;
                 default: return false;
             }
         }
         if (query is null) return false;
-        result = new(query, maxItems, maxChars);
+        result = new(query, maxItems, maxChars, includeRelated);
         return true;
     }
     private static bool ParseRead(JsonElement value, out ReadArguments result)
@@ -352,11 +412,13 @@ public sealed class ExperienceToolsPlugin : IFgoPetPlugin, IDisposable
     }
     private static ToolResult Failed(string code) => new(false, JsonSerializer.SerializeToElement(new { }), code);
     private static ToolResult Success<T>(T payload) => new(true, JsonSerializer.SerializeToElement(payload, Json));
-    private sealed record SearchArguments(string Query, int MaxItems, int MaxChars);
+    private sealed record SearchArguments(string Query, int MaxItems, int MaxChars, bool IncludeRelated);
     private sealed record ReadArguments(string SourceId, string SourceVersion, int Offset, int MaxChars);
-    private sealed record Reference(ToolScope Scope, HistoryAnchor Anchor, ConversationSourceKind Kind, string Version, DateTimeOffset ExpiresAt);
+    private sealed record Reference(ToolScope Scope, HistoryAnchor Anchor, ConversationSourceKind Kind, string Version, DateTimeOffset ExpiresAt, string? EventId);
     private sealed record SearchItem(string SourceId, string SourceKind, string Speaker, string ConversationId,
-        string MessageId, int Sequence, DateTimeOffset OccurredAtUtc, string SourceVersion, string Excerpt, bool IsTruncated);
+        string MessageId, int Sequence, DateTimeOffset OccurredAtUtc, string SourceVersion, string Excerpt, bool IsTruncated,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EventId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Related);
     private sealed class Tool(ExperienceToolsPlugin owner, string name, string description, string schema) : IToolProvider
     {
         public ToolDescriptor Descriptor { get; } = new(name, description, schema, ToolEffect.ReadOnly);

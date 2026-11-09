@@ -1,14 +1,19 @@
 using System.Globalization;
+using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
+using FgoPet.Extensibility;
 using FgoPet.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Memory;
 
 /// <summary>Receipt, review, quota and version checks share a SQLite write transaction.</summary>
-public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandidateSink, IMemoryWriteLifetime, IMemorySnapshotReader
+public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandidateSink, IMemoryWriteLifetime, IMemorySearchReader,
+    IConversationMemoryReviewNotices
 {
+    private const string EnabledScope = "memories.is_enabled=1 AND (memories.project_id IS NULL OR memories.project_id=$project)";
     private readonly RuntimeDatabase _database;
+    public event Action<ToolScope>? CandidatesStaged;
     public SqliteMemoryRepository(RuntimeDatabase database) => _database = database;
     public void StartSession() => InvalidateWrites();
     public void InvalidateWrites()
@@ -100,8 +105,18 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
             ids.Add(candidate.CandidateId);
         }
         Receipt(db, tx, s.Key, "staged");
-        if (ids.Count > 0) Bump(db, tx);
+        // Automatic staging only adds pending candidates. The confirmed snapshot used by
+        // other queued extractions stays current, and candidate deduplication runs above in this transaction.
         tx.Commit();
+        if (ids.Count > 0 && CandidatesStaged is { } listeners)
+        {
+            var scope = new ToolScope(s.ConversationId, s.Scope.ServantId, s.Scope.ProjectId);
+            foreach (Action<ToolScope> listener in listeners.GetInvocationList())
+            {
+                try { listener(scope); }
+                catch (Exception) { /* A presentation listener cannot fail a committed write. */ }
+            }
+        }
         return new(ids.Count == 0 && proposals.Count > 0 ? MemoryStageStatus.Duplicate : MemoryStageStatus.Staged, ids);
     }
 
@@ -153,11 +168,36 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
     {
         using var db = _database.Open();
         using var tx = db.BeginTransaction(deferred: true);
-        var result = new MemoryRecallSnapshot(State(db, tx).Revision, Memories(db, tx, scope.ServantId)
-            .Where(m => m.IsEnabled && (m.ProjectId is null || m.ProjectId == scope.ProjectId)).ToArray());
+        var result = ScopedSnapshot(db, tx, scope);
         tx.Commit();
         return result;
     }
+
+    (MemoryRecallSnapshot Snapshot, IReadOnlyDictionary<string, double> Ranks) IMemorySearchReader.ReadSearchSnapshot(
+        MemoryScope scope, IReadOnlyList<string> indexTerms)
+    {
+        using var db = _database.Open();
+        using var tx = db.BeginTransaction(deferred: true);
+        var snapshot = ScopedSnapshot(db, tx, scope);
+        var ranks = new Dictionary<string, double>(StringComparer.Ordinal);
+        if (indexTerms.Count > 0 && snapshot.Items.Count > 0)
+        {
+            var match = string.Join(" OR ", indexTerms.Select(term => "\"" + term.Replace("\"", "\"\"") + "\""));
+            using var cmd = Command(db, tx, $"""
+                SELECT memories.memory_id,bm25(memory_search)
+                FROM memory_search JOIN memory_search_keys k ON k.search_id=memory_search.rowid
+                JOIN memories ON memories.memory_id=k.memory_id
+                WHERE memory_search MATCH $match AND memories.servant_id=$servant AND {EnabledScope}
+                """, ("$match", match), ("$servant", scope.ServantId), ("$project", scope.ProjectId));
+            using var rows = cmd.ExecuteReader();
+            while (rows.Read()) ranks.Add(rows.GetString(0), rows.GetDouble(1));
+        }
+        tx.Commit();
+        return (snapshot, ranks);
+    }
+
+    private static MemoryRecallSnapshot ScopedSnapshot(SqliteConnection db, SqliteTransaction tx, MemoryScope scope) =>
+        new(State(db, tx).Revision, Memories(db, tx, scope.ServantId, scope));
     public void SetReplacement(string candidateId, string servantId, string memoryId, int expectedVersion)
     {
         using var db = _database.Open();
@@ -288,14 +328,14 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         }
         return items;
     }
-    private static IReadOnlyList<StoredMemory> Memories(SqliteConnection db, SqliteTransaction? tx, string servant)
+    private static IReadOnlyList<StoredMemory> Memories(SqliteConnection db, SqliteTransaction? tx, string servant, MemoryScope? scope = null)
     {
-        using var cmd = Command(db, tx, """
+        using var cmd = Command(db, tx, $"""
             SELECT memory_id,memory_text,is_enabled,created_at_utc,updated_at_utc,source_candidate_id,project_id,version,
               origin_conversation_id,origin_message_id,source_fingerprint,origin_at_utc,evidence_kind,
               EXISTS(SELECT 1 FROM chat_messages m WHERE m.message_id=memories.origin_message_id AND m.conversation_id=memories.origin_conversation_id AND m.servant_id=memories.servant_id),origin_project_label
-            FROM memories WHERE servant_id=$servant ORDER BY updated_at_utc DESC,memory_id
-            """, ("$servant", servant));
+            FROM memories WHERE servant_id=$servant AND ($scoped=0 OR ({EnabledScope})) ORDER BY updated_at_utc DESC,memory_id
+            """, ("$servant", servant), ("$scoped", scope is null ? 0 : 1), ("$project", scope?.ProjectId));
         using var r = cmd.ExecuteReader();
         var items = new List<StoredMemory>();
         while (r.Read())

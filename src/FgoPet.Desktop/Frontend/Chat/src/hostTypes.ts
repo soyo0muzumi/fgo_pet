@@ -115,6 +115,7 @@ export type ChatConversation = {
   canRetryCapability: boolean;
   showReasoning: boolean;
   capabilityNotice: { text: string; kind: string };
+  hasStagedMemoryCandidate?: boolean;
   project: { id: string; label: string };
   contextChips: Array<{ id: string; label: string }>;
   recalledSources: Array<{ id: string; title: string; detail: string }>;

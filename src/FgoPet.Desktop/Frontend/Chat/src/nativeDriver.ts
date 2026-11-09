@@ -308,6 +308,7 @@ export function createNativeDriver(bridge: NativeBridge): ChatDriver {
         ? c.capabilityNotice
         : undefined,
       canRetryCapability: c.canRetryCapability,
+      hasStagedMemoryCandidate: c.hasStagedMemoryCandidate === true,
       configurationRequired: c.configurationRequired,
       providerStatus: c.providerStatusText,
       projectsLoading: p.isProjectsLoading,

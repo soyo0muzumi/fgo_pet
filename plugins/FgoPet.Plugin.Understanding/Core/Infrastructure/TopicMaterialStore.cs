@@ -70,27 +70,69 @@ public sealed class TopicMaterialStore : ITopicMaterialStore, IDerivedConversati
             EnsureSchema();
             using var db = _database.Open(); using var tx = db.BeginTransaction(deferred: false);
             var now = _clock.GetUtcNow(); Prune(db, tx, now);
-            using var command = Command(db, tx, """
-                SELECT material_json FROM topic_materials WHERE scope=$scope AND expires_at>$now
-                ORDER BY fetched_at DESC,id DESC LIMIT $capacity
-                """, ("$scope", scope.Key), ("$now", now.UtcTicks), ("$capacity", _capacity));
-            var result = new List<TopicMaterial>();
-            using (var reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    TopicMaterial? material;
-                    try { material = JsonSerializer.Deserialize<TopicMaterial>(reader.GetString(0)); }
-                    catch (JsonException) { throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID"); }
-                    if (material is null) throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID");
-                    try { Validate(material, now, adding: false); }
-                    catch (ArgumentException) { throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID"); }
-                    if (material.FetchedAt <= now && material.ExpiresAt > now) result.Add(material);
-                }
-            }
+            var result = ReadActive(db, tx, scope, now);
             tx.Commit();
             return result;
         }
+    }
+
+    public IReadOnlyList<TopicMaterial> ReadEvidence(ConversationScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        if (!File.Exists(_database.DatabasePath)) return [];
+        using var db = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = _database.DatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Cache = SqliteCacheMode.Private,
+            Pooling = false,
+            DefaultTimeout = 5
+        }.ToString());
+        db.Open();
+        using var tx = db.BeginTransaction(deferred: true);
+        if (!HasMaterialSchema(db, tx)) return [];
+        return ReadActive(db, tx, scope, _clock.GetUtcNow());
+    }
+
+    public void PruneExpired()
+    {
+        if (!File.Exists(_database.DatabasePath)) return;
+        lock (_gate)
+        {
+            using var db = _database.Open(); using var tx = db.BeginTransaction(deferred: false);
+            if (!HasMaterialSchema(db, tx)) return;
+            Prune(db, tx, _clock.GetUtcNow());
+            tx.Commit();
+        }
+    }
+
+    private static bool HasMaterialSchema(SqliteConnection db, SqliteTransaction tx)
+    {
+        using var schema = Command(db, tx, """
+            SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='topic_materials')
+            """);
+        return (long)schema.ExecuteScalar()! == 1;
+    }
+
+    private IReadOnlyList<TopicMaterial> ReadActive(SqliteConnection db, SqliteTransaction tx, ConversationScope scope, DateTimeOffset now)
+    {
+        using var command = Command(db, tx, """
+            SELECT material_json FROM topic_materials WHERE scope=$scope AND expires_at>$now AND fetched_at<=$now
+            ORDER BY fetched_at DESC,id DESC LIMIT $capacity
+            """, ("$scope", scope.Key), ("$now", now.UtcTicks), ("$capacity", _capacity));
+        var result = new List<TopicMaterial>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            TopicMaterial? material;
+            try { material = JsonSerializer.Deserialize<TopicMaterial>(reader.GetString(0)); }
+            catch (JsonException) { throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID"); }
+            if (material is null) throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID");
+            try { Validate(material, now, adding: false); }
+            catch (ArgumentException) { throw new InvalidOperationException("TOPIC_MATERIAL_STORAGE_INVALID"); }
+            if (material.FetchedAt <= now && material.ExpiresAt > now) result.Add(material);
+        }
+        return result;
     }
 
     public void MarkUsed(ConversationScope scope, string materialId, DateTimeOffset usedAt)

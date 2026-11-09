@@ -79,11 +79,13 @@ public sealed class MemoryExtractionQueue : IAsyncDisposable, IDisposable
                 if (!_isCurrent(work.Connection) || !_isSourceCurrent(work.Ticket.Source)) return;
                 // WaitAsync detaches a provider that ignores cancellation; its result has no write continuation.
                 var proposals = await _extractor.ExtractAsync(work, lease.Token).WaitAsync(lease.Token).ConfigureAwait(false);
-                lease.Commit(() =>
-                {
-                    if (Volatile.Read(ref _closed) == 0 && _isCurrent(work.Connection) && _isSourceCurrent(work.Ticket.Source))
-                        _sink.Stage(work.Ticket, proposals);
-                });
+                var result = lease.Commit(() => Volatile.Read(ref _closed) == 0 &&
+                    _isCurrent(work.Connection) && _isSourceCurrent(work.Ticket.Source)
+                    ? _sink.Stage(work.Ticket, proposals)
+                    : null);
+                if (result is not null && _logger?.IsEnabled(LogLevel.Debug) == true)
+                    _logger.LogDebug("Memory extraction staging {Status} for {SourceHash}. Proposals {ProposalCount}, candidates {CandidateCount}.",
+                        result.Status, work.Ticket.Source.Key[..12], proposals.Count, result.CandidateIds.Count);
             }
             catch (OperationCanceledException) { }
             catch (Exception) { _logger?.LogWarning("Memory extraction failed; no approved memory written"); }

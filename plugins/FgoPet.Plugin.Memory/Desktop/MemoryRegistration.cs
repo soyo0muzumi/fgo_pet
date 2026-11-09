@@ -27,6 +27,7 @@ public static class MemoryRegistration
         // Preserve privacy/backup access to stored data even when conversation contributions are absent.
         services.AddSingleton<SqliteMemoryRepository>()
             .AddSingleton<IMemoryCandidateSink>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
+            .AddSingleton<IConversationMemoryReviewNotices>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
             .AddSingleton<IMemoryWriteLifetime>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
             .AddSingleton<IMemorySnapshotReader>(provider => provider.GetRequiredService<SqliteMemoryRepository>())
             .AddSingleton<IMemoryRecall, MemoryRecallService>()

@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using FgoPet.App.Dialogue;
+using FgoPet.App.Memory;
+using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Extensibility;
 using FgoPet.Plugin.Memory;
@@ -36,6 +39,39 @@ public sealed class MemoryPluginTests
     }
 
     [Fact]
+    public async Task Explicit_memory_request_gets_review_guidance_only_when_candidate_extraction_is_enabled()
+    {
+        const string explicitRequest = "帮我记住：我偏好铜枝方格本。";
+        var resolver = new QueryResolver(explicitRequest);
+        var sink = new Sink();
+        var enabled = true;
+        var queue = new MemoryExtractionQueue(new EmptyExtractor(), sink, sink, new DialogueContextLifetime(), _ => true);
+        await using var plugin = new MemoryPlugin(new Recall(), new Sources(), sink, queue, () => enabled, resolver);
+        await plugin.StartAsync(default);
+
+        var request = new AgentContextRequest(Scope, "run", 2, new("user", "fingerprint"), 4000,
+            ImmutableArray<ToolDescriptor>.Empty);
+        var guidance = Assert.Single(plugin.Contributions.AgentContexts.Where(context => context.ProvidesTrustedInstructions));
+        var instruction = Assert.Single(await guidance.BuildAsync(request, default));
+        Assert.Equal(AgentContextKind.Instruction, instruction.Kind);
+        Assert.Contains("候选", instruction.Content);
+        Assert.Contains("确认", instruction.Content);
+        Assert.DoesNotContain("铜枝方格本", instruction.Content);
+        Assert.Contains(plugin.BuildPrompt(Scope, explicitRequest, false), block => block.Kind == ConversationPromptBlockKind.Instruction);
+
+        foreach (var casual in new[] { "我还记得铜枝方格本。", "请不要记住这件事。", "她说‘帮我记住’是什么意思？" })
+        {
+            resolver.Query = casual;
+            Assert.Empty(await guidance.BuildAsync(request, default));
+            Assert.DoesNotContain(plugin.BuildPrompt(Scope, casual, false), block => block.Kind == ConversationPromptBlockKind.Instruction);
+        }
+        resolver.Query = explicitRequest;
+        enabled = false;
+        Assert.Empty(await guidance.BuildAsync(request, default));
+        Assert.Empty(plugin.BuildPrompt(Scope, explicitRequest, false));
+    }
+
+    [Fact]
     public async Task A_staging_failure_still_abandons_the_exact_source_ticket()
     {
         var sink = new Sink { FailStage = true };
@@ -64,6 +100,26 @@ public sealed class MemoryPluginTests
         Assert.Contains("来源信息不完整", second.Text);
         await plugin.StopAsync(default);
         Assert.Empty(plugin.BuildPrompt(Scope, "query", false));
+    }
+
+    [Fact]
+    public async Task Unmatched_turns_use_no_confirmed_memory_on_any_reply_path()
+    {
+        var recall = new MemoryRecallService(new BackgroundReader());
+        const string query = "几何绘图";
+        Assert.Single(recall.Query(new(Scope.RoleId, Scope.ProjectId), query).Items);
+        await using var plugin = new MemoryPlugin(recall, new Sources(), queryResolver: new QueryResolver(query));
+        await plugin.StartAsync(default);
+
+        Assert.Empty(plugin.BuildPrompt(Scope, query, false));
+        var contributions = plugin.Contributions;
+        var request = new AgentContextRequest(Scope, "run", 1, new("user", "fingerprint"), 4000,
+            ImmutableArray<ToolDescriptor>.Empty);
+        Assert.Empty(await Assert.Single(contributions.AgentContexts).BuildAsync(request, default));
+        var search = await Assert.Single(contributions.Tools).InvokeAsync(
+            new ToolInvocation(Scope, JsonSerializer.SerializeToElement(new { query })), default);
+        Assert.True(search.Success);
+        Assert.Empty(search.Payload.GetProperty("items").EnumerateArray());
     }
 
     [Fact]
@@ -122,6 +178,12 @@ public sealed class MemoryPluginTests
         Assert.Equal(1, resolver.Calls);
     }
 
+    private sealed class BackgroundReader : IMemorySnapshotReader
+    {
+        public MemoryRecallSnapshot ReadSnapshot(MemoryScope scope) =>
+            new(1, [new("general", Scope.RoleId, "避开花生", true, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch)]);
+    }
+
     private sealed class Recall : IMemoryRecall
     {
         public int Reads { get; private set; }
@@ -143,16 +205,22 @@ public sealed class MemoryPluginTests
     }
     private sealed class QueryResolver(string? query) : IAgentQueryResolver
     {
+        public string? Query { get; set; } = query;
         public int Calls { get; private set; }
         public ValueTask<string?> ResolveAsync(ToolScope scope, ProtectedQueryReference reference,
             CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
             Calls++;
-            return ValueTask.FromResult(query);
+            return ValueTask.FromResult(Query);
         }
     }
-    private sealed class Sink : IMemoryCandidateSink
+    private sealed class EmptyExtractor : IMemoryCandidateExtractor
+    {
+        public Task<IReadOnlyList<MemoryProposal>> ExtractAsync(MemoryExtractionWork work, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<MemoryProposal>>([]);
+    }
+    private sealed class Sink : IMemoryCandidateSink, IMemoryWriteLifetime
     {
         public bool FailStage;
         public int Begun;
@@ -169,5 +237,7 @@ public sealed class MemoryPluginTests
             return new(MemoryStageStatus.Staged, ["candidate"]);
         }
         public void Abandon(MemoryWriteTicket ticket) => Abandoned = ticket;
+        public void StartSession() { }
+        public void InvalidateWrites() { }
     }
 }

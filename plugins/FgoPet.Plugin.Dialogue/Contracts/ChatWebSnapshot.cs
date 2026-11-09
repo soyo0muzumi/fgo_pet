@@ -71,6 +71,7 @@ public sealed record ChatWebConversationSnapshot(
     public ChatWebUserInput? PendingInput { get; init; }
     public ChatWebApproval? PendingApproval { get; init; }
     public bool HasPendingRun { get; init; }
+    public bool HasStagedMemoryCandidate { get; init; }
 }
 
 public sealed record ChatWebHistoryItem(

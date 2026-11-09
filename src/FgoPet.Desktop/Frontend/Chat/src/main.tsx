@@ -760,6 +760,11 @@ export function App({ driver }: { driver: ChatDriver }) {
                     </div>
                   )}
                   <footer className="chat-footer" inert={!!panel || modelMenuOpen && view === "conversation"}>
+                    {state.hasStagedMemoryCandidate && (
+                      <p className="capability-note" role="status">
+                        本次对话已生成记忆候选。可在设置 → 关系与成长 → 她记得的里查看和确认。
+                      </p>
+                    )}
                     {modelMenuOpen && view === "composer" && <ModelMenu
                       id="chat-model-menu" models={state.models} triggerRef={modelTrigger}
                       canManage={!native || state.availableActions?.openModelSettings === true}

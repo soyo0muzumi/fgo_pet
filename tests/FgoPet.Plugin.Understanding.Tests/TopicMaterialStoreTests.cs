@@ -32,6 +32,32 @@ public sealed class TopicMaterialStoreTests : IDisposable
     }
 
     [Fact]
+    public void Evidence_reads_provenance_without_creating_or_pruning_storage()
+    {
+        var store = new TopicMaterialStore(_database, _clock);
+        ITopicMaterialEvidence evidence = store;
+        Assert.Empty(evidence.ReadEvidence(_scope));
+        Assert.False(File.Exists(_database.DatabasePath));
+
+        var material = Material();
+        store.Add(_scope, material);
+        var active = Assert.Single(evidence.ReadEvidence(_scope));
+        Assert.Equal("external_material", active.SourceKind);
+        Assert.Equal(material.SourceUrl, active.SourceUrl);
+        Assert.Equal(material.ExpiresAt, active.ExpiresAt);
+        Assert.Empty(evidence.ReadEvidence(new("mash", "project-b")));
+
+        _clock.Now = material.ExpiresAt;
+        Assert.Empty(evidence.ReadEvidence(_scope));
+        using var db = _database.Open();
+        using var count = db.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM topic_materials";
+        Assert.Equal(1L, count.ExecuteScalar());
+        store.PruneExpired();
+        Assert.Equal(0L, count.ExecuteScalar());
+    }
+
+    [Fact]
     public void Expiration_and_capacity_prune_oldest_material_without_touching_other_scopes()
     {
         var store = new TopicMaterialStore(_database, _clock, capacity: 2);

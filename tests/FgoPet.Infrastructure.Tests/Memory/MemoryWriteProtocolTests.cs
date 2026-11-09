@@ -1,5 +1,6 @@
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
+using FgoPet.Extensibility;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
@@ -22,10 +23,10 @@ public sealed class MemoryWriteProtocolTests : IDisposable
         _repository = new(_database);
         _repository.StartSession();
     }
-    private MemoryWriteTicket Ticket(string id, string? project = null)
+    private MemoryWriteTicket Ticket(string id, string? project = null, string text = "我喜欢茶")
     {
         _conversations.CreateConversation(id, "mash", Key, DateTimeOffset.UtcNow, project, project);
-        _conversations.Append(new(id + "-user", id, "mash", ChatMessageRole.User, "我喜欢茶", ChatMessageStatus.Completed, DateTimeOffset.UtcNow, Key, 1));
+        _conversations.Append(new(id + "-user", id, "mash", ChatMessageRole.User, text, ChatMessageStatus.Completed, DateTimeOffset.UtcNow, Key, 1));
         return _repository.Begin(new(new("mash", project), id, id + "-user", "fingerprint-" + id, DateTimeOffset.UtcNow, MemoryEvidenceKind.UserStatement));
     }
     private StoredMemory Approve(MemoryWriteTicket ticket, string text)
@@ -57,6 +58,49 @@ public sealed class MemoryWriteProtocolTests : IDisposable
         Assert.Single(_repository.ListMemories("mash"));
         Assert.Equal(MemoryStageStatus.Duplicate, _repository.Stage(Ticket("d"), [new(" 每次   25 分钟 ")]).Status);
         Assert.Single(_repository.ListCandidates("mash"));
+    }
+
+    [Fact]
+    public void Candidate_notice_only_follows_a_committed_nonempty_stage()
+    {
+        var ticket = Ticket("notice", "fixture-project");
+        var notices = new List<ToolScope>();
+        _repository.CandidatesStaged += scope =>
+        {
+            if (_repository.ListCandidates(scope.RoleId).Any(c => c.ConversationId == scope.ConversationId && c.Status == MemoryCandidateStatus.Pending))
+                notices.Add(scope);
+        };
+
+        _repository.Stage(Ticket("empty"), []);
+        _repository.Stage(ticket, [new("我偏好无糖茶")]);
+        _repository.Stage(ticket, [new("我偏好无糖茶")]);
+
+        Assert.Equal(new ToolScope("notice", "mash", "fixture-project"), Assert.Single(notices));
+        Assert.Empty(_repository.ListEnabledMemories("mash"));
+    }
+
+    [Fact]
+    public void Staging_a_pending_candidate_does_not_discard_another_turn_already_queued()
+    {
+        var first = Ticket("first");
+        var second = Ticket("second", text: "我偏好纸质笔记");
+        var duplicate = Ticket("duplicate");
+
+        Assert.Equal(MemoryStageStatus.Staged, _repository.Stage(first, [new("我喜欢茶")]).Status);
+        Assert.Equal(MemoryStageStatus.Staged, _repository.Stage(second, [new("我偏好纸质笔记")]).Status);
+        Assert.Equal(MemoryStageStatus.Duplicate, _repository.Stage(duplicate, [new("我喜欢茶")]).Status);
+        Assert.Equal(2, _repository.ListCandidates("mash").Count);
+        Assert.Empty(_repository.ListEnabledMemories("mash"));
+    }
+
+    [Fact]
+    public void Approving_a_candidate_still_invalidates_extraction_against_the_old_confirmed_snapshot()
+    {
+        var first = _repository.Stage(Ticket("first"), [new("我喜欢茶")]);
+        var queued = Ticket("queued", text: "我偏好纸质笔记");
+        _repository.ReviewCandidate(Assert.Single(first.CandidateIds), "mash", MemoryReviewAction.Approve, null, DateTimeOffset.UtcNow);
+
+        Assert.Equal(MemoryStageStatus.Stale, _repository.Stage(queued, [new("我偏好纸质笔记")]).Status);
     }
     [Theory]
     [InlineData("session")]

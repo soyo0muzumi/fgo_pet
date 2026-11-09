@@ -14,6 +14,8 @@ using FgoPet.Kernel.Agent;
 using FgoPet.Platform.Secrets;
 using System.IO;
 using FgoPet.Infrastructure.Persistence;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace FgoPet.App.Dialogue;
 
@@ -21,6 +23,7 @@ public static class ModelConnectionRegistration
 {
     public static IServiceCollection AddDialogueRuntime(this IServiceCollection services, string? diagnosticLogPath = null)
     {
+        var consolidateExperiences = Environment.GetEnvironmentVariable("FGO_PET_EXPERIENCE_CONSOLIDATION") == "1";
         if (diagnosticLogPath is not null) services.AddSingleton(new NativeRunDiagnosticLog(diagnosticLogPath));
         return services
         .AddSingleton<ExpressionCandidateInbox>()
@@ -108,6 +111,8 @@ public static class ModelConnectionRegistration
         .AddSingleton<IConversationRecallRepository, SqliteConversationRecallRepository>()
         .AddSingleton<IExperienceSourceReader, SqliteExperienceSourceReader>()
         .AddSingleton<IExperienceTimeline, SqliteExperienceTimeline>()
+        .AddSingleton<SqliteExperienceEventStore>()
+        .AddSingleton<IDerivedConversationData>(provider => provider.GetRequiredService<SqliteExperienceEventStore>())
         .AddSingleton<IConversationScopeAuthority>(provider => new ConversationScopeAuthority(
             () => provider.GetRequiredService<ConversationViewModel>(), provider.GetRequiredService<FgoPet.App.Runtime.AppRuntime>(),
             provider.GetRequiredService<SqliteConversationRepository>(), provider.GetRequiredService<IndependentConversationScope>()))
@@ -124,7 +129,8 @@ public static class ModelConnectionRegistration
             }, provider.GetRequiredService<TimeProvider>(),
             notification => provider.GetRequiredService<ILogger<ExperienceToolsPlugin>>().LogInformation(
                 "Experience read {Timestamp} {Correlation} {Stage} {ErrorCode}", notification.TimestampUtc,
-                notification.Correlation, notification.Stage, notification.ErrorCode)))
+                notification.Correlation, notification.Stage, notification.ErrorCode),
+            consolidateExperiences ? provider.GetRequiredService<SqliteExperienceEventStore>() : null))
         .AddSingleton<IConversationRecall, ConversationRecallService>()
         .AddSingleton<IConversationContextStore, SqliteConversationContextStore>()
         .AddSingleton<IConversationSummarizer, ProviderConversationSummarizer>()
@@ -148,12 +154,26 @@ public static class ModelConnectionRegistration
             provider.GetRequiredService<IConversationContextStore>(),
             provider.GetRequiredService<NativeConversationRuntime>(), provider.GetRequiredService<IAgentRunStore>(),
             provider.GetRequiredService<IAgentFinalDeliveryStore>(),
-            scope => provider.GetService<FgoPet.App.Runtime.AppRuntime>()?.ActiveRole?.ServantId == scope.RoleId))
+            scope => provider.GetService<FgoPet.App.Runtime.AppRuntime>()?.ActiveRole?.ServantId == scope.RoleId,
+            conversationEnded: consolidateExperiences ? (scope, token) => ConsolidateExperience(provider, scope, token) : null))
         .AddSingleton(provider => new ConversationViewModel(
             provider.GetRequiredService<ConversationOrchestrator>(),
             provider.GetRequiredService<IDialogueSettingsStore>(),
             provider.GetRequiredService<ModelConnectionViewModel>(),
-            provider.GetRequiredService<IConversationHistoryQuery>(), provider.GetRequiredService<TimeProvider>()));
+            provider.GetRequiredService<IConversationHistoryQuery>(), provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<IConversationMemoryReviewNotices>(), System.Windows.Application.Current?.Dispatcher));
+    }
+
+    private static void ConsolidateExperience(IServiceProvider provider, ToolScope scope, CancellationToken token)
+    {
+        var clock = provider.GetRequiredService<TimeProvider>();
+        var logger = provider.GetRequiredService<ILogger<SqliteExperienceEventStore>>();
+        var correlation = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scope.ConversationId)))[..16];
+        logger.LogInformation("Experience consolidation {Timestamp} {Correlation} {Stage} {Result}",
+            clock.GetUtcNow(), correlation, "started", "pending");
+        var result = provider.GetRequiredService<SqliteExperienceEventStore>().Consolidate(scope, clock.GetUtcNow(), token);
+        logger.LogInformation("Experience consolidation {Timestamp} {Correlation} {Stage} {Result}",
+            clock.GetUtcNow(), correlation, "completed", result);
     }
 
     // Session-only experimental opt-in. Ordinary launches and unknown values remain off;

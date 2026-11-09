@@ -36,6 +36,7 @@ public sealed class MarginMemoryDataWebTests
                 await Capture(web, prefix + "-normal");
                 if (prefix == "cm")
                 {
+                    Assert.Equal("memory.refresh", Assert.Single(owner.Calls));
                     Assert.Equal("0", await Script(web, "document.querySelectorAll('[data-candidates] img').length"));
                     Assert.Contains("<img", await Text(web, "document.querySelector('[data-candidates]').textContent"));
                     await Click(web, "[data-memory-view=candidates]");
@@ -170,7 +171,7 @@ public sealed class MarginMemoryDataWebTests
         public string ModulePath => pageId == "Privacy" ? "pages/privacy.js" : "pages/conversation-memory.js";
         public IReadOnlyList<string> Commands => pageId == "Privacy"
             ? ["privacy.get", "privacy.export", "privacy.createBackup", "privacy.restoreBackup", "privacy.deleteAll"]
-            : ["memory.get", "memory.selectMemory", "memory.selectCandidate", "memory.approveCandidate", "memory.deleteAll"];
+            : ["memory.get", "memory.refresh", "memory.selectMemory", "memory.selectCandidate", "memory.approveCandidate", "memory.deleteAll"];
         public List<string> Calls { get; } = [];
         public bool FailReads { get; init; }
         public ValueTask<WebSurfaceCommandResult> HandleCommandAsync(WebSurfaceMessage message, CancellationToken cancellationToken)

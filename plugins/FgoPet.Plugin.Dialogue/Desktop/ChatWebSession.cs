@@ -446,6 +446,7 @@ internal sealed class ChatWebSession : IChatWebSession
             sources)
         {
             HasPendingRun = _conversation.HasPendingRun,
+            HasStagedMemoryCandidate = _conversation.HasStagedMemoryCandidate,
             PendingApproval = _conversation.ReadApproval(),
             PendingInput = _conversation.PendingInput is { } input ? new ChatWebUserInput(
                 input.Binding.Identity.RunId, input.Binding.RequestId, input.Binding.WaitingRevision, input.Binding.ExpiresAt,

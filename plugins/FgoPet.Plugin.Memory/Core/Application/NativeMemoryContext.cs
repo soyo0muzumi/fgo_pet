@@ -73,7 +73,7 @@ public sealed class NativeMemoryContext : IAgentContextProvider
         MemoryRecallSnapshot? snapshot;
         try
         {
-            snapshot = _recall.Query(scope, originalUserQuery, MaxItems, MaxChars);
+            snapshot = _recall.QueryStrict(scope, originalUserQuery, MaxItems, MaxChars);
         }
         catch (OperationCanceledException)
         {

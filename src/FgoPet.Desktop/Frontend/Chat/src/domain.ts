@@ -138,6 +138,7 @@ export type UiState = {
   contextChips: ContextChip[];
   recalledSources?: Array<{ id: string; title: string; detail: string }>;
   capabilityNotice?: { text: string; kind: string };
+  hasStagedMemoryCandidate?: boolean;
   canRetryCapability?: boolean;
   configurationRequired?: boolean;
   providerStatus?: string;

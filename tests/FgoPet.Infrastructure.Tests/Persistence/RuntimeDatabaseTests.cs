@@ -41,7 +41,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
                      "focus_presets", "focus_sessions", "runtime_events",
                      "timeline_entries", "servant_bonds", "bond_ledger",
                      "conversations", "chat_messages", "conversation_summaries",
-                     "memory_candidates", "memories", "content_bindings",
+                     "memory_candidates", "memories", "memory_search", "content_bindings",
                      "todo_items", "agent_executions", "agent_event_receipts",
                      "todo_steps",
                      "agent_connections", "agent_project_targets", "work_archives", "work_archive_items",
@@ -51,6 +51,42 @@ public sealed class RuntimeDatabaseTests : IDisposable
             Assert.Equal(1L, Scalar<long>(connection,
                 $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{table}'"));
         }
+    }
+
+    [Fact]
+    public void Memory_search_migration_rolls_back_and_indexes_enabled_legacy_rows_on_retry()
+    {
+        var database = new RuntimeDatabase(_path);
+        CreateLegacy(database, 16);
+        using (var connection = database.Open())
+        {
+            Execute(connection, """
+                INSERT INTO memories(memory_id,servant_id,memory_text,is_enabled,created_at_utc,updated_at_utc)
+                VALUES('legacy-enabled','fixture','校准模组',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
+                      ('legacy-disabled','fixture','校准模组',0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+                CREATE TRIGGER fail_memory_search_migration BEFORE INSERT ON schema_migrations
+                WHEN new.version=17 BEGIN SELECT RAISE(ABORT,'fixture'); END;
+                """);
+        }
+
+        var migrator = new RuntimeDatabaseMigrator(database);
+        Assert.Throws<SqliteException>(migrator.Migrate);
+        using (var connection = database.Open())
+        {
+            Assert.Equal(16L, RuntimeDatabaseMigrator.ReadVersion(connection));
+            Assert.Equal(0L, Scalar<long>(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE name LIKE 'memory_search%'"));
+            Execute(connection, "DROP TRIGGER fail_memory_search_migration");
+        }
+        migrator.Migrate();
+        migrator.Migrate();
+
+        using var verify = database.Open();
+        Assert.Equal(2L, Scalar<long>(verify, "SELECT COUNT(*) FROM memories WHERE memory_text='校准模组'"));
+        Assert.Equal("legacy-enabled", Scalar<string>(verify, """
+            SELECT memory_id FROM memory_search JOIN memory_search_keys ON search_id=memory_search.rowid
+            WHERE memory_search MATCH '校准模组';
+            """));
+        Assert.Equal(1L, Scalar<long>(verify, "SELECT COUNT(*) FROM memory_search WHERE memory_search MATCH '校准模组'"));
     }
 
     [Fact]
@@ -305,7 +341,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='future_table'"));
     }
 
-    private static void CreateLegacy(RuntimeDatabase database, int version)
+    internal static void CreateLegacy(RuntimeDatabase database, int version)
     {
         // Construct the complete historical schema, not a partial table fixture that
         // incorrectly claims a newer schema version.
@@ -435,7 +471,7 @@ public sealed class RuntimeDatabaseTests : IDisposable
         }
         new RuntimeDatabaseMigrator(database).Migrate();
         using var final = database.Open();
-        Assert.Equal(16L, RuntimeDatabaseMigrator.ReadVersion(final));
+        Assert.Equal(RuntimeDatabaseMigrator.CurrentSchemaVersion, RuntimeDatabaseMigrator.ReadVersion(final));
         Assert.Equal(1L, Scalar<long>(final, "SELECT COUNT(*) FROM conversation_contexts"));
     }
 
