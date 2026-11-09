@@ -24,6 +24,7 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     private readonly Action<string>? _diagnostics;
     private readonly Action<Uri>? _openExternalLink;
     private readonly Func<Uri, CancellationToken, Task<string?>>? _loadImagePreview;
+    private readonly Func<string, CancellationToken, Task<string?>>? _loadLocalImage;
     private int _imageLoads;
     private readonly WebSurfacePolicy? _externalLinkPolicy;
     private readonly string _externalLinkToken = Guid.NewGuid().ToString("N");
@@ -40,7 +41,8 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     public WebView2SurfaceHost(WebSurfacePolicy policy, string assetsDirectory, string profileDirectory,
         Func<WebSurfaceMessage, CancellationToken, ValueTask<WebSurfaceCommandResult>> commandHandler,
         Action<string>? diagnostics = null, Action<Uri>? openExternalLink = null,
-        Func<Uri, CancellationToken, Task<string?>>? loadImagePreview = null)
+        Func<Uri, CancellationToken, Task<string?>>? loadImagePreview = null,
+        Func<string, CancellationToken, Task<string?>>? loadLocalImage = null)
     {
         _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         _assetsDirectory = Path.GetFullPath(assetsDirectory ?? throw new ArgumentNullException(nameof(assetsDirectory)));
@@ -49,8 +51,9 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
         _diagnostics = diagnostics;
         _openExternalLink = openExternalLink;
         _loadImagePreview = loadImagePreview;
-        if (openExternalLink is not null || loadImagePreview is not null)
-            _externalLinkPolicy = new(policy.DocumentUrl, ["web.externalLink", "web.imagePreview"]);
+        _loadLocalImage = loadLocalImage;
+        if (openExternalLink is not null || loadImagePreview is not null || loadLocalImage is not null)
+            _externalLinkPolicy = new(policy.DocumentUrl, ["web.externalLink", "web.imagePreview", "web.localImage"]);
         Children.Add(_webView);
         Children.Add(_fallback);
         Loaded += OnLoaded;
@@ -252,6 +255,19 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
     {
         if (_disposed || State is WebSurfaceState.Failed or WebSurfaceState.Closed) return;
         var link = _externalLinkPolicy?.ValidateMessage(e.Source, _webView.CoreWebView2?.Source, e.WebMessageAsJson);
+        if (link?.Type == "web.localImage")
+        {
+            if (State == WebSurfaceState.Ready && _loadLocalImage is not null
+                && link.Payload.EnumerateObject().Count() == 2
+                && link.Payload.TryGetProperty("assetId", out var localAsset) && localAsset.ValueKind == JsonValueKind.String
+                && localAsset.GetString() is { Length: > 0 and <= 64 } assetId
+                && assetId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-')
+                && link.Payload.TryGetProperty("imageId", out var localImage) && localImage.ValueKind == JsonValueKind.String
+                && localImage.GetString() is { Length: > 0 and <= 64 } localId && link.RequestId == localId
+                && localId.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))
+                _ = LoadLocalImageAsync(assetId, localId);
+            return;
+        }
         if (link?.Type == "web.imagePreview")
         {
             if (State == WebSurfaceState.Ready && _loadImagePreview is not null
@@ -349,6 +365,35 @@ public sealed class WebView2SurfaceHost : Grid, IDisposable
                 _diagnostics?.Invoke("WEB_IMAGE_PREVIEW_FAILED");
                 PostEvent(new { type = "web.imagePreview.result", imageId, errorCode = "IMAGE_PREVIEW_UNAVAILABLE" });
             }
+        }
+        finally { _imageLoads--; }
+    }
+
+    private async Task LoadLocalImageAsync(string assetId, string imageId)
+    {
+        if (_imageLoads >= 2)
+        {
+            PostEvent(new { type = "web.localImage.result", imageId, errorCode = "IMAGE_PREVIEW_BUSY" });
+            return;
+        }
+        _imageLoads++;
+        var requestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(imageId)));
+        System.Diagnostics.Trace.TraceInformation("LocalImage time={0:O} request={1} phase=load result=started", DateTimeOffset.UtcNow, requestHash);
+        try
+        {
+            var dataUrl = await _loadLocalImage!(assetId, _lifetime.Token);
+            if (_disposed || _webView.CoreWebView2?.Source != _policy.DocumentUrl) return;
+            if (dataUrl is not { Length: <= 5_592_432 } || !dataUrl.StartsWith("data:image/png;base64,", StringComparison.Ordinal)) dataUrl = null;
+            PostEvent(new { type = "web.localImage.result", imageId, dataUrl,
+                errorCode = dataUrl is null ? "LOCAL_IMAGE_UNAVAILABLE" : null });
+            System.Diagnostics.Trace.TraceInformation("LocalImage time={0:O} request={1} phase=load result={2}",
+                DateTimeOffset.UtcNow, requestHash, dataUrl is null ? "LOCAL_IMAGE_UNAVAILABLE" : "completed");
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            _diagnostics?.Invoke("LOCAL_IMAGE_UNAVAILABLE");
+            if (!_disposed) PostEvent(new { type = "web.localImage.result", imageId, errorCode = "LOCAL_IMAGE_UNAVAILABLE" });
         }
         finally { _imageLoads--; }
     }

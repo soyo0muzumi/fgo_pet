@@ -1,5 +1,9 @@
 # UI SDK
 
+`ExternalImagePreview.IsAllowedUrl` exposes the existing public-HTTPS syntax/address preflight for bounded native consumers; it grants no permission. The transport still validates DNS addresses when connecting, refuses redirects/cookies and returns only decoded, metadata-free raster pixels. Dialogue's separately authorized collector reuses these pixels at its own persistent-storage boundary.
+
+`WebView2SurfaceHost` supports an optional host-owned `web.localImage` loader alongside external previews. The same exact-document origin policy, bounded request IDs, shared concurrency limit and PNG data-URL bound apply. UI SDK validates the transport; the feature callback owns asset authorization, path validation and decoding. No file URL or arbitrary filesystem path is accepted by this transport.
+
 `MarginVisualResources`, `MarginStrings` and `Resources/Web/` own the frozen Margin v5 paper palette, typography roles, native entry strings and generic select presentation. Chat and Settings consume these through the existing local asset and theme-event paths. Margin uses the frozen light paper palette; other surfaces retain their selected ThemeService palette. The select adapter leaves values, validation and change commands with the page owner.
 
 `Resources/Shell/MarginContextMenu.xaml` supplies explicit native context menu/action styles, including paper hover and keyboard focus. Apply action styles to MenuItem instances; separators have a distinct template. Generic dropdown Escape is consumed by the picker so it does not dismiss the containing feature surface.

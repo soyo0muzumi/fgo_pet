@@ -48,7 +48,7 @@ public sealed class ExternalImagePreview : IDisposable
         { return null; }
     }
 
-    internal static bool IsAllowedUrl(Uri url) => url.IsAbsoluteUri && url.Scheme == "https" && url.IsDefaultPort
+    public static bool IsAllowedUrl(Uri url) => url.IsAbsoluteUri && url.Scheme == "https" && url.IsDefaultPort
         && url.AbsoluteUri.Length <= 2048 && url.UserInfo.Length == 0 && !url.IsLoopback
         && url.Host.Contains('.') && !url.IdnHost.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase)
         && (!IPAddress.TryParse(url.DnsSafeHost.Trim('[', ']'), out var ip) || IsPublicAddress(ip));
