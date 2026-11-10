@@ -1,7 +1,7 @@
 const labels = {
   "memory.feature": "记忆",
   "memory.enabled": "启用记忆",
-  "memory.enabledHint": "开启后，模型可在聊天中建议记忆；只有你确认的记录才会用于后续聊天。关闭后记忆不再用于回复，已保存记录仍保留。",
+  "memory.enabledHint": "开启后，已确认的记忆和有来源的自动记录可用于相关对话。关闭后记忆不再用于回复，已保存记录仍保留。",
   "memory.instant": "更改立即生效。",
   "memory.review": "待你确认",
   "memory.candidates": "记忆候选",
@@ -34,9 +34,9 @@ const t = key => labels[key] || key;
 
 // 统一 Web 设置：对话与记忆页。
 // 命令（经 context.request 调用，pageId 由 root 自动注入）：
-//   memory.get / setEnabled / refresh / selectCandidate / selectMemory /
+//   memory.get / setEnabled / setAutoRecord / refresh / selectCandidate / selectMemory /
 //   approveCandidate / rejectCandidate / editCandidate /
-//   enableMemory / disableMemory / editMemory / deleteMemory /
+//   enableMemory / disableMemory / confirmRecorded / editMemory / deleteMemory /
 //   selectReplacement / deleteAll
 const OWNER = "conversation-memory";
 
@@ -50,6 +50,9 @@ const MARKUP = `
       <label class="cm-switch-row settings-row"><span class="cm-switch-copy settings-row-copy">
         <span class="settings-label">启用记忆</span><span class="settings-help">${t("memory.enabledHint")}</span></span>
         <input type="checkbox" role="switch" id="cm-enabled" data-field="memoryEnabled" /></label>
+      <label class="cm-switch-row settings-row"><span class="cm-switch-copy settings-row-copy">
+        <span class="settings-label">自动记录重要经历</span><span class="settings-help">允许自动保存、关联有原话支持的低风险经历。稳定事实、敏感内容、重要偏好和更正仍待审核。</span></span>
+        <input type="checkbox" role="switch" id="cm-auto-record" /></label>
       <p class="settings-help">${t("memory.instant")}</p>
     </section>
     <nav class="cm-tabs" aria-label="记忆视图">
@@ -99,6 +102,7 @@ const MARKUP = `
           <textarea id="cm-memory-edit" class="cm-input cm-textarea settings-input" data-memory-edit rows="3"></textarea>
           <div class="cm-actions settings-actions">
             <button type="button" class="cm-button settings-secondary" data-edit-memory>${t("memory.save")}</button>
+            <button type="button" class="cm-button settings-secondary" data-confirm-recorded hidden>确认这条记录</button>
             <button type="button" class="cm-button settings-secondary" data-disable-memory>${t("memory.disable")}</button>
             <button type="button" class="cm-button settings-secondary" data-enable-memory>${t("memory.enable")}</button>
             <button type="button" class="cm-button cm-danger settings-secondary settings-danger" data-delete-memory>${t("memory.delete")}</button>
@@ -140,6 +144,7 @@ function normalizeSnapshot(candidate) {
   // Scope is used only to discard drafts when the host changes companion.
   return {
     memoryEnabled: candidate.memoryEnabled,
+    autoRecordEpisodic: candidate.autoRecordEpisodic === true,
     scope: String(candidate.activeServantId ?? ""),
     candidates: candidate.candidates.map(item => ({
       id: String(item?.id ?? ""),
@@ -154,6 +159,7 @@ function normalizeSnapshot(candidate) {
       text: String(item?.text ?? ""),
       isEnabled: item?.isEnabled === true,
       version: Number(item?.version ?? 1),
+      recorded: item?.verification === "Recorded",
     })),
     selectedMemoryId: typeof candidate.selectedMemoryId === "string" ? candidate.selectedMemoryId : "",
     memoryEditText: typeof candidate.memoryEditText === "string" ? candidate.memoryEditText : "",
@@ -178,6 +184,8 @@ export async function mount(container, context) {
   const errorEl = page.querySelector("[data-error]");
   const statusEl = page.querySelector("[data-status]");
   const enabledInput = page.querySelector("#cm-enabled");
+  const autoRecordInput = page.querySelector("#cm-auto-record");
+  const confirmRecorded = page.querySelector("[data-confirm-recorded]");
   const candidatesList = page.querySelector("[data-candidates]");
   const memoriesList = page.querySelector("[data-memories]");
   const candidatesStatus = page.querySelector("[data-candidates-status]");
@@ -263,6 +271,7 @@ export async function mount(container, context) {
     for (const control of page.querySelectorAll("button, input, textarea")) control.disabled = busy;
     // The immediate owner setting is serialized with the page request in flight.
     enabledInput.disabled = busy || snapshot === null;
+    autoRecordInput.disabled = busy || !snapshot || (!snapshot.memoryEnabled && !snapshot.autoRecordEpisodic);
     if (busy || snapshot === null) return;
 
     const hasCandidate = snapshot.selectedCandidateId.length > 0;
@@ -280,8 +289,9 @@ export async function mount(container, context) {
     for (const [kind, id, items] of [["candidate", snapshot.selectedCandidateId, snapshot.candidates], ["memory", snapshot.selectedMemoryId, snapshot.storedMemories]]) {
       const key = `${kind}:${id}`, item = items.find(item => item.id === id);
       const stale = editDrafts.has(key) && editBases.get(key) !== (kind === "memory" ? item?.version : item?.text);
-      page.querySelector(kind === "memory" ? "[data-edit-memory]" : "[data-edit-candidate]").disabled = !id || stale;
+      page.querySelector(kind === "memory" ? "[data-edit-memory]" : "[data-edit-candidate]").disabled = !id || stale || item?.recorded === true;
     }
+    memoryEdit.disabled = snapshot.storedMemories.some(item => item.id === snapshot.selectedMemoryId && item.recorded);
   }
 
   function setBusy(busy) {
@@ -313,7 +323,7 @@ export async function mount(container, context) {
 
       if (item.hasReplacement === true) button.append(badge(t("memory.replacement"), ""));
       if (item.isEnabled === false) button.append(badge(t("memory.disabled"), " cm-badge-muted"));
-      if (Number.isFinite(item.version) && item.isEnabled) button.append(badge("已保存 · 第 " + item.version + " 版", " cm-badge-quiet"));
+      if (Number.isFinite(item.version)) button.append(badge((item.recorded ? "自动记录 · 未确认" : "已确认") + " · 第 " + item.version + " 版", " cm-badge-quiet"));
 
       button.addEventListener("click", () => onActivate(item.id));
       row.append(button);
@@ -370,10 +380,11 @@ export async function mount(container, context) {
       }
     }
     enabledInput.checked = snapshot.memoryEnabled;
+    autoRecordInput.checked = snapshot.autoRecordEpisodic;
     const index = Math.max(0, snapshot.candidates.findIndex(item => item.id === snapshot.selectedCandidateId));
     page.querySelector("[data-candidate-progress]").textContent = snapshot.candidates.length ? `${index + 1} / ${snapshot.candidates.length}` : "没有待确认的候选";
     candidatesStatus.hidden = /^候选 \d+ 条$/.test(snapshot.candidatesStatusText);
-    memoriesStatus.hidden = /^已确认记忆 \d+ 条$/.test(snapshot.storedMemoriesStatusText);
+    memoriesStatus.hidden = /^已保存记忆 \d+ 条$/.test(snapshot.storedMemoriesStatusText);
     statusEl.hidden = snapshot.statusText === `${snapshot.candidatesStatusText} · ${snapshot.storedMemoriesStatusText}` && !/失败|选择角色/.test(snapshot.statusText);
     candidatesStatus.textContent = snapshot.candidatesStatusText;
     memoriesStatus.textContent = snapshot.storedMemoriesStatusText;
@@ -386,6 +397,7 @@ export async function mount(container, context) {
     page.querySelector("[data-memory-editor]").hidden = !snapshot.selectedMemoryId || memoryEditorId !== snapshot.selectedMemoryId;
     page.querySelector("[data-use-replacement]").hidden = !snapshot.selectedCandidateId;
     const replacement = snapshot.storedMemories.find(item => item.id === snapshot.selectedMemoryId);
+    confirmRecorded.hidden = !replacement?.recorded;
     const candidate = snapshot.candidates.find(item => item.id === snapshot.selectedCandidateId);
     page.querySelector("[data-replacement-note]").textContent = candidate?.hasReplacement
       ? "此候选附有更正对象。确认前，请核对原记录与新内容。"
@@ -450,6 +462,13 @@ export async function mount(container, context) {
   });
   enabledInput.addEventListener("change", () => {
     void send("memory.setEnabled", { value: enabledInput.checked });
+  });
+  autoRecordInput.addEventListener("change", () => {
+    void send("memory.setAutoRecord", { value: autoRecordInput.checked });
+  });
+  confirmRecorded.addEventListener("click", () => {
+    const item = snapshot?.storedMemories.find(memory => memory.id === snapshot.selectedMemoryId);
+    if (item?.recorded) void send("memory.confirmRecorded", { memoryId: item.id, version: item.version });
   });
 
   page.querySelector("[data-refresh]").addEventListener("click", () => { void send("memory.refresh"); });

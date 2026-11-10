@@ -90,6 +90,26 @@ public sealed class RuntimeDatabaseTests : IDisposable
     }
 
     [Fact]
+    public void Two_layer_migration_preserves_legacy_confirmation_version_and_enabled_state()
+    {
+        var database = new RuntimeDatabase(_path);
+        CreateLegacy(database, 17);
+        using (var connection = database.Open())
+        {
+            Execute(connection, """
+                INSERT INTO memories(memory_id,servant_id,memory_text,is_enabled,version,created_at_utc,updated_at_utc)
+                VALUES('legacy','fixture','fixture memory',0,3,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+                """);
+        }
+        new RuntimeDatabaseMigrator(database).Migrate();
+        using var migrated = database.Open();
+        Assert.Equal("Confirmed:Semantic:3:0", Scalar<string>(migrated, """
+            SELECT verification || ':' || content_type || ':' || version || ':' || is_enabled
+            FROM memories WHERE memory_id='legacy';
+            """));
+    }
+
+    [Fact]
     public void Migration_11_adds_empty_steps_without_rewriting_legacy_description()
     {
         var database = new RuntimeDatabase(_path);

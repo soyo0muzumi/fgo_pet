@@ -8,7 +8,8 @@ public interface IConversationMemory : IMemoryRecall
 {
     IReadOnlyList<StoredMemory> ListEnabledMemories(string servantId);
     MemoryRecallSnapshot IMemoryRecall.Query(MemoryScope scope, string query, int maxItems, int maxChars) =>
-        new(0, ListEnabledMemories(scope.ServantId).Where(m => m.ProjectId is null || m.ProjectId == scope.ProjectId)
+        new(0, ListEnabledMemories(scope.ServantId).Where(m => m.Verification == MemoryVerification.Confirmed &&
+                (m.ProjectId is null || m.ProjectId == scope.ProjectId))
             .Take(Math.Min(maxItems, 8)).ToArray());
 
     /// <summary>
@@ -36,7 +37,11 @@ public enum MemoryReviewAction
     Edit,
     Disable,
     Delete,
+    Confirm,
 }
+
+public enum MemoryContentType { Semantic, Episodic }
+public enum MemoryVerification { Confirmed, Recorded }
 
 public sealed record MemoryCandidate
 {
@@ -50,7 +55,7 @@ public sealed record MemoryCandidate
         string? appearanceId = null,
         MemoryCandidateStatus status = MemoryCandidateStatus.Pending,
         string? projectId = null, MemorySource? source = null, string? replacesMemoryId = null,
-        int? expectedMemoryVersion = null)
+        int? expectedMemoryVersion = null, MemoryContentType contentType = MemoryContentType.Semantic)
     {
         CandidateId = Phase3Validation.Id(candidateId, nameof(candidateId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
@@ -73,6 +78,8 @@ public sealed record MemoryCandidate
         var proposal = new MemoryProposal(text, replacesMemoryId, expectedMemoryVersion);
         ReplacesMemoryId = proposal.ReplacesMemoryId;
         ExpectedMemoryVersion = proposal.ExpectedMemoryVersion;
+        if (!Enum.IsDefined(contentType)) throw new ArgumentOutOfRangeException(nameof(contentType));
+        ContentType = contentType;
     }
 
     public string CandidateId { get; }
@@ -87,6 +94,7 @@ public sealed record MemoryCandidate
     public MemorySource? Source { get; }
     public string? ReplacesMemoryId { get; }
     public int? ExpectedMemoryVersion { get; }
+    public MemoryContentType ContentType { get; }
 }
 
 public sealed record StoredMemory
@@ -99,7 +107,9 @@ public sealed record StoredMemory
         DateTimeOffset createdAtUtc,
         DateTimeOffset updatedAtUtc,
         string? sourceCandidateId = null, string? projectId = null, int version = 1,
-        MemorySource? source = null, bool sourceAvailable = false)
+        MemorySource? source = null, bool sourceAvailable = false,
+        MemoryContentType contentType = MemoryContentType.Semantic,
+        MemoryVerification verification = MemoryVerification.Confirmed)
     {
         MemoryId = Phase3Validation.Id(memoryId, nameof(memoryId));
         ServantId = Phase3Validation.Id(servantId, nameof(servantId));
@@ -117,6 +127,13 @@ public sealed record StoredMemory
         Version = version;
         Source = source;
         SourceAvailable = sourceAvailable;
+        if (!Enum.IsDefined(contentType)) throw new ArgumentOutOfRangeException(nameof(contentType));
+        if (!Enum.IsDefined(verification)) throw new ArgumentOutOfRangeException(nameof(verification));
+        if (verification == MemoryVerification.Recorded &&
+            (contentType != MemoryContentType.Episodic || source?.Kind != MemoryEvidenceKind.UserStatement))
+            throw new ArgumentException("Recorded memories require an episodic user source.");
+        ContentType = contentType;
+        Verification = verification;
     }
 
     public string MemoryId { get; }
@@ -130,4 +147,9 @@ public sealed record StoredMemory
     public int Version { get; }
     public MemorySource? Source { get; }
     public bool SourceAvailable { get; }
+    public MemoryContentType ContentType { get; }
+    public MemoryVerification Verification { get; }
+    public string? PreviousMemoryId { get; internal init; }
+    public MemoryOperation? Relation { get; internal init; }
+    public bool HasNewerState { get; internal init; }
 }

@@ -20,6 +20,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
     [
         "memory.get",
         "memory.setEnabled",
+        "memory.setAutoRecord",
         "memory.refresh",
         "memory.selectCandidate",
         "memory.selectMemory",
@@ -27,6 +28,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
         "memory.rejectCandidate",
         "memory.editCandidate",
         "memory.enableMemory",
+        "memory.confirmRecorded",
         "memory.disableMemory",
         "memory.editMemory",
         "memory.deleteMemory",
@@ -62,6 +64,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
             {
                 "memory.get" => Get(message.Payload, cancellationToken),
                 "memory.setEnabled" => SetEnabled(message.Payload, cancellationToken),
+                "memory.setAutoRecord" => SetEnabled(message.Payload, cancellationToken, autoRecord: true),
                 "memory.refresh" => await InvokeAsync(message.Payload, _viewModel.RefreshCommand, cancellationToken)
                     .ConfigureAwait(true),
                 "memory.selectCandidate" => SelectCandidate(message.Payload, cancellationToken),
@@ -74,6 +77,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
                     requiresText: true, cancellationToken).ConfigureAwait(true),
                 "memory.enableMemory" => await ReviewMemoryAsync(message.Payload, _viewModel.EnableMemoryCommand,
                     requiresText: false, cancellationToken).ConfigureAwait(true),
+                "memory.confirmRecorded" => await ConfirmRecordedAsync(message.Payload, cancellationToken).ConfigureAwait(true),
                 "memory.disableMemory" => await ReviewMemoryAsync(message.Payload, _viewModel.DisableMemoryCommand,
                     requiresText: false, cancellationToken).ConfigureAwait(true),
                 "memory.deleteMemory" => await ReviewMemoryAsync(message.Payload, _viewModel.DeleteMemoryCommand,
@@ -106,7 +110,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
         return Success(Snapshot());
     }
 
-    private WebSurfaceCommandResult SetEnabled(JsonElement payload, CancellationToken cancellationToken)
+    private WebSurfaceCommandResult SetEnabled(JsonElement payload, CancellationToken cancellationToken, bool autoRecord = false)
     {
         if (!HasOnlyProperties(payload, "pageId", "value")
             || !payload.TryGetProperty("value", out var value)
@@ -114,9 +118,23 @@ public sealed class MemoryWebPage : ISettingsWebPage
             return Failure("SETTINGS_INVALID_INPUT");
 
         cancellationToken.ThrowIfCancellationRequested();
-        // The view model persists this immediately (OnMemoryEnabledChanged), it is not a draft.
-        _viewModel.MemoryEnabled = value.GetBoolean();
+        if (autoRecord)
+        {
+            if (!_viewModel.SetAutoRecordEpisodic(value.GetBoolean())) return Failure("SETTINGS_UNAVAILABLE");
+        }
+        else _viewModel.MemoryEnabled = value.GetBoolean();
         cancellationToken.ThrowIfCancellationRequested();
+        return Success(Snapshot());
+    }
+
+    private async ValueTask<WebSurfaceCommandResult> ConfirmRecordedAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        if (!HasOnlyProperties(payload, "pageId", "memoryId", "version") ||
+            !TryReadId(payload, "memoryId", out var memoryId) ||
+            !payload.TryGetProperty("version", out var value) || value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt32(out var version) || version <= 0 || !TrySelectMemory(memoryId))
+            return Failure("SETTINGS_INVALID_INPUT");
+        await _viewModel.ConfirmRecordedAsync(memoryId, version, cancellationToken).ConfigureAwait(true);
         return Success(Snapshot());
     }
 
@@ -265,6 +283,7 @@ public sealed class MemoryWebPage : ISettingsWebPage
     private object Snapshot() => new
     {
         memoryEnabled = _viewModel.MemoryEnabled,
+        autoRecordEpisodic = _viewModel.AutoRecordEpisodic,
         activeServantId = _viewModel.ActiveServantId,
         hasActiveServant = !string.IsNullOrWhiteSpace(_viewModel.ActiveServantId),
         candidates = _viewModel.Candidates.Select(candidate => new
@@ -282,6 +301,8 @@ public sealed class MemoryWebPage : ISettingsWebPage
             text = memory.Text,
             isEnabled = memory.IsEnabled,
             version = memory.Version,
+            verification = memory.Verification.ToString(),
+            contentType = memory.ContentType.ToString(),
         }).ToArray(),
         selectedMemoryId = _viewModel.SelectedMemory?.MemoryId ?? string.Empty,
         memoryEditText = _viewModel.MemoryEditText,
@@ -316,7 +337,8 @@ public sealed class MemoryWebPage : ISettingsWebPage
         if (payload.ValueKind != JsonValueKind.Object)
             return false;
         var allowed = new HashSet<string>(allowedNames, StringComparer.Ordinal);
-        return payload.EnumerateObject().All(property => allowed.Contains(property.Name))
+        return payload.EnumerateObject().Count() == allowed.Count &&
+            payload.EnumerateObject().All(property => allowed.Contains(property.Name))
             && allowedNames.All(name => payload.TryGetProperty(name, out _));
     }
 

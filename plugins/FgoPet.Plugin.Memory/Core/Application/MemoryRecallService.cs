@@ -10,14 +10,19 @@ public sealed class MemoryRecallService(IMemorySnapshotReader reader) : IMemoryR
         Recall(scope, query, maxItems, maxChars, allowGeneralBackground: true);
 
     /// <summary>
-    /// Matched memories only. Called by prompt injection, native context and the model-facing
-    /// search tool, which must stay empty instead of receiving unrelated background.
+    /// Matched confirmed memories only. Used for ordinary conversation context.
     /// </summary>
     public MemoryRecallSnapshot QueryStrict(MemoryScope scope, string query, int maxItems = 8, int maxChars = 6000) =>
         Recall(scope, query, maxItems, maxChars, allowGeneralBackground: false);
 
+    public MemoryRecallSnapshot QueryHistory(MemoryScope scope, string query, int maxItems = 8, int maxChars = 6000) =>
+        Recall(scope, query, maxItems, maxChars, allowGeneralBackground: false, includeRecorded: true);
+
+    public MemoryRecallSnapshot QueryForExtraction(MemoryScope scope, string query, int maxItems = 8, int maxChars = 4000) =>
+        Recall(scope, query, maxItems, maxChars, allowGeneralBackground: false, includeRecorded: true, forExtraction: true);
+
     private MemoryRecallSnapshot Recall(MemoryScope scope, string query, int maxItems, int maxChars,
-        bool allowGeneralBackground)
+        bool allowGeneralBackground, bool includeRecorded = false, bool forExtraction = false)
     {
         var index = reader as IMemorySearchReader;
         var terms = Regex.Matches(query, @"[\p{L}\p{N}]+", RegexOptions.CultureInvariant)
@@ -28,6 +33,7 @@ public sealed class MemoryRecallService(IMemorySnapshotReader reader) : IMemoryR
             : index.ReadSearchSnapshot(scope, terms.Where(IsIndexTerm).ToArray());
         var literalTerms = index is null ? terms : terms.Where(term => !IsIndexTerm(term)).ToArray();
         var ranked = snapshot.Items.Where(m => m.IsEnabled && m.ServantId == scope.ServantId &&
+                (m.Verification == MemoryVerification.Confirmed || includeRecorded && m.SourceAvailable && m.ProjectId == scope.ProjectId) &&
                 (m.ProjectId is null || m.ProjectId == scope.ProjectId))
             .Select(m => (Memory: m, IdMatch: query.Contains(m.MemoryId, StringComparison.Ordinal),
                 Rank: ranks is not null && ranks.TryGetValue(m.MemoryId, out var rank) ? (double?)rank : null,
@@ -39,22 +45,41 @@ public sealed class MemoryRecallService(IMemorySnapshotReader reader) : IMemoryR
             .ThenBy(pair => pair.Memory.MemoryId).ToArray();
         var matches = ranked.Where(pair => pair.IdMatch || pair.Rank.HasValue || pair.LiteralMatches > 0)
             .Select(pair => pair.Memory).ToArray();
-        // Matched memories always win. The general-background fallback exists only for the
-        // extraction prompt's `confirmed` context, where extra confirmed entries help the model
-        // decide whether the user is correcting an existing memory. Every caller that injects
-        // memories into a conversation uses QueryStrict and stays empty when nothing matches.
-        var selected = matches.Length > 0 || !allowGeneralBackground
-            ? matches
-            : ranked.Where(pair => pair.Memory.ProjectId is null).Take(3).Select(pair => pair.Memory).ToArray();
+        // Extraction may compare against a few recent in-scope memories even with no literal match.
+        // Conversation recall only uses matched memories and their linked newer states.
+        var selected = forExtraction
+            ? matches.Where(m => m.ProjectId == scope.ProjectId)
+                .Concat(ranked.Select(pair => pair.Memory).Where(m => m.ProjectId == scope.ProjectId).Take(3))
+                .DistinctBy(m => m.MemoryId).ToArray()
+            : matches.Length > 0 || !allowGeneralBackground
+                ? matches
+                : ranked.Where(pair => pair.Memory.ProjectId is null).Take(3).Select(pair => pair.Memory).ToArray();
         var result = new List<StoredMemory>();
         var remaining = Math.Clamp(maxChars, 0, 6000);
-        foreach (var item in selected)
+        var successor = ranked.Select(pair => pair.Memory).Where(m => m.Relation == MemoryOperation.Transition && m.PreviousMemoryId is not null)
+            .ToLookup(m => m.PreviousMemoryId);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in includeRecorded ? WithNewerStates(selected, successor) : selected)
         {
             if (result.Count >= Math.Clamp(maxItems, 0, 8)) break;
-            if (item.Text.Length > remaining) continue;
+            if (!seen.Add(item.MemoryId) || item.Text.Length > remaining) continue;
             result.Add(item); remaining -= item.Text.Length;
         }
         return new(snapshot.Revision, result);
+    }
+
+    private static IEnumerable<StoredMemory> WithNewerStates(IEnumerable<StoredMemory> matches,
+        ILookup<string?, StoredMemory> successors)
+    {
+        foreach (var match in matches)
+        {
+            var latest = match;
+            var visited = new HashSet<string>(StringComparer.Ordinal) { latest.MemoryId };
+            while (successors[latest.MemoryId].FirstOrDefault() is { } next && visited.Add(next.MemoryId))
+                latest = next;
+            yield return latest;
+            if (latest != match) yield return match;
+        }
     }
     private static bool IsIndexTerm(string term) => term.EnumerateRunes().Skip(2).Any();
 

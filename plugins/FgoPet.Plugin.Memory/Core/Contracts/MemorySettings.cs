@@ -1,6 +1,6 @@
 namespace FgoPet.Memory.Settings;
 
-public sealed record MemorySettings(bool Enabled)
+public sealed record MemorySettings(bool Enabled, bool AutoRecordEpisodic = false)
 {
     public static MemorySettings Defaults { get; } = new(true);
     public const int MaxItemsPerServant = 200;

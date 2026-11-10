@@ -73,7 +73,7 @@ public sealed class NativeMemoryContext : IAgentContextProvider
         MemoryRecallSnapshot? snapshot;
         try
         {
-            snapshot = _recall.QueryStrict(scope, originalUserQuery, MaxItems, MaxChars);
+            snapshot = _recall.QueryHistory(scope, originalUserQuery, MaxItems, MaxChars);
         }
         catch (OperationCanceledException)
         {
@@ -117,6 +117,7 @@ public sealed class NativeMemoryContext : IAgentContextProvider
                 var memory = snapshot.Items[index];
                 token.ThrowIfCancellationRequested();
                 if (memory is null || !memory.IsEnabled || memory.ServantId != scope.ServantId
+                    || memory.Verification == MemoryVerification.Recorded && (!memory.SourceAvailable || memory.ProjectId != scope.ProjectId)
                     || memory.ProjectId is not null && memory.ProjectId != scope.ProjectId)
                     continue;
 
@@ -135,7 +136,9 @@ public sealed class NativeMemoryContext : IAgentContextProvider
                 var source = memory.Source;
                 var candidate = new MemoryContextItem(memory.MemoryId, memory.Version, memory.Text, memory.ProjectId,
                     (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString(), source?.OccurredAtUtc,
-                    source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable);
+                    source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable,
+                    memory.Verification == MemoryVerification.Recorded ? "UnreviewedPastUserStatement" : "UserReviewed",
+                    memory.ContentType.ToString(), memory.PreviousMemoryId, memory.Relation?.ToString(), memory.HasNewerState);
                 var preview = new MemoryContextPayload(snapshot.Revision, [.. items, candidate], Truncated: true);
                 if (!Fits(preview))
                 {
@@ -176,6 +179,7 @@ public sealed class NativeMemoryContext : IAgentContextProvider
 
     private sealed record MemoryContextItem(string MemoryId, int Version, string Text, string? ProjectId,
         string SourceKind, DateTimeOffset? SourceOccurredAtUtc, string? SourceConversationId, string? SourceMessageId,
-        bool SourceAvailable, string Confirmation = "UserReviewed");
+        bool SourceAvailable, string Confirmation, string ContentType, string? PreviousMemoryId, string? Relation,
+        bool HasNewerState);
     private sealed record MemoryContextPayload(long Revision, IReadOnlyList<MemoryContextItem> Memories, bool Truncated);
 }

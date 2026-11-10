@@ -81,7 +81,7 @@ public static class ServiceRegistration
         .AddMemoryCapability(includeMemory, provider => new ProviderMemoryCandidateExtractor(
             connection => provider.GetRequiredService<IChatProviderResolver>().Resolve(connection),
             provider.GetRequiredService<IModelContextResolver>(), provider.GetRequiredService<IRequestTokenMeter>(),
-            provider.GetRequiredService<IMemoryRecall>()),
+            provider.GetRequiredService<IMemoryRecall>(), provider.GetRequiredService<IConversationReader>()),
             provider => () => provider.GetRequiredService<IDialogueSettingsStore>().Load().ModelConnection)
         .AddUnderstandingCapability((provider, scope) =>
         {

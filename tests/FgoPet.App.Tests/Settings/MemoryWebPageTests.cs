@@ -10,6 +10,9 @@ using FgoPet.Core.Memory;
 using FgoPet.Infrastructure.Dialogue;
 using FgoPet.Infrastructure.Memory;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Memory.Settings;
+using FgoPet.SettingsHost;
+using FgoPet.Platform.Settings;
 using FgoPet.UiSdk;
 using Xunit;
 
@@ -74,6 +77,34 @@ public sealed class MemoryWebPageTests : IDisposable
 
         Assert.False(disabled.GetProperty("memoryEnabled").GetBoolean());
         Assert.False(model.MemoryEnabled);
+    }
+
+    [Fact]
+    public async Task Auto_record_requires_an_explicit_setting_and_round_trips_live_only()
+    {
+        var documents = new MemorySettingsDocument();
+        var coordinator = new ApplicationSettingsCoordinator(documents);
+        var settings = (IMemorySettingsStore)coordinator;
+        using var model = new MemoryViewModel(_memories, settings: settings);
+        var page = new MemoryWebPage(model);
+        Assert.False((await ReadAsync(page, "memory.get")).GetProperty("autoRecordEpisodic").GetBoolean());
+        var enabled = await ReadAsync(page, "memory.setAutoRecord", WithPage("\"value\":true"));
+        Assert.True(enabled.GetProperty("autoRecordEpisodic").GetBoolean());
+        Assert.True(((IMemorySettingsStore)new ApplicationSettingsCoordinator(documents)).Load().AutoRecordEpisodic);
+        using var backup = JsonDocument.Parse(coordinator.Export());
+        Assert.False(backup.RootElement.GetProperty("memory_auto_record_experiences").GetBoolean());
+        var disabled = await ReadAsync(page, "memory.setAutoRecord", WithPage("\"value\":false"));
+        Assert.False(disabled.GetProperty("autoRecordEpisodic").GetBoolean());
+        Assert.False(settings.Load().AutoRecordEpisodic);
+    }
+
+    private sealed class MemorySettingsDocument : ISettingsDocumentStore
+    {
+        private string? _json = """{"schema_version":2,"memory_enabled":true,"memory_auto_record_episodic":true}""";
+        public string Location => "fixture";
+        public string? Read() => _json;
+        public void Write(string document) => _json = document;
+        public void Quarantine() => _json = null;
     }
 
     [Fact]
@@ -200,7 +231,7 @@ public sealed class MemoryWebPageTests : IDisposable
         var snapshot = await ReadAsync(page, "memory.refresh");
 
         Assert.Equal("候选 1 条", snapshot.GetProperty("candidatesStatusText").GetString());
-        Assert.Equal("当前角色暂无已确认记忆。", snapshot.GetProperty("storedMemoriesStatusText").GetString());
+        Assert.Equal("当前角色暂无已保存记忆。", snapshot.GetProperty("storedMemoriesStatusText").GetString());
     }
 
     [Fact]

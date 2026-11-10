@@ -1,8 +1,10 @@
 using System.Globalization;
+using FgoPet.App.Dialogue;
 using FgoPet.Core.Dialogue;
 using FgoPet.Core.Memory;
 using FgoPet.Extensibility;
 using FgoPet.Infrastructure.Persistence;
+using FgoPet.Memory.Settings;
 using Microsoft.Data.Sqlite;
 
 namespace FgoPet.Infrastructure.Memory;
@@ -13,8 +15,19 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
 {
     private const string EnabledScope = "memories.is_enabled=1 AND (memories.project_id IS NULL OR memories.project_id=$project)";
     private readonly RuntimeDatabase _database;
+    private readonly IMemorySettingsStore? _settings;
+    private readonly MemoryExtractionSourceReader? _sources;
     public event Action<ToolScope>? CandidatesStaged;
-    public SqliteMemoryRepository(RuntimeDatabase database) => _database = database;
+    public SqliteMemoryRepository(RuntimeDatabase database, IMemorySettingsStore? settings = null,
+        IConversationSourceReader? sources = null)
+    {
+        _database = database;
+        _settings = settings;
+        _sources = sources is null ? null : new(sources);
+    }
+
+    private bool AutoRecordEnabled() =>
+        _settings?.Load() is { Enabled: true, AutoRecordEpisodic: true };
     public void StartSession() => InvalidateWrites();
     public void InvalidateWrites()
     {
@@ -47,7 +60,10 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         using var cmd = Command(db, tx, "SELECT ticket_id,generation FROM memory_ingestions WHERE source_key=$key", ("$key", source.Key));
         using var r = cmd.ExecuteReader();
         r.Read();
-        var ticket = new MemoryWriteTicket(r.GetString(0), r.GetString(1), state.Revision, source);
+        var ticket = new MemoryWriteTicket(r.GetString(0), r.GetString(1), state.Revision, source)
+        {
+            AutoRecordAuthorized = source.Kind == MemoryEvidenceKind.UserStatement && AutoRecordEnabled(),
+        };
         r.Close();
         tx.Commit();
         return ticket;
@@ -58,6 +74,16 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         Execute(db, null, "UPDATE memory_ingestions SET status='abandoned' WHERE source_key=$key AND ticket_id=$id AND generation=$g AND status='pending'",
             ("$key", ticket.Source.Key), ("$id", ticket.TicketId), ("$g", ticket.Generation));
     }
+    public MemoryWriteTicket? Refresh(MemoryWriteTicket ticket)
+    {
+        using var db = _database.Open();
+        var revision = Scalar(db, null, """
+            SELECT s.revision FROM memory_write_state s JOIN memory_ingestions i ON i.generation=s.generation
+            WHERE s.singleton_id=1 AND i.source_key=$key AND i.ticket_id=$id AND i.generation=$g AND i.status='pending'
+            """, ("$key", ticket.Source.Key), ("$id", ticket.TicketId), ("$g", ticket.Generation));
+        return revision is long current ? ticket with { MemoryRevision = current } : null;
+    }
+
     public MemoryStageResult Stage(MemoryWriteTicket ticket, IReadOnlyList<MemoryProposal> proposals)
     {
         ArgumentNullException.ThrowIfNull(ticket);
@@ -80,33 +106,85 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         if (proposals is null || proposals.Count > 3 || proposals.Any(p => p is null)) return new(MemoryStageStatus.Invalid, []);
         var memories = Memories(db, tx, s.Scope.ServantId);
         var candidates = Candidates(db, tx, s.Scope.ServantId);
-        var pending = new List<MemoryProposal>();
+        var pending = new Dictionary<MemoryProposal, IReadOnlyList<VerifiedEvidence>>();
         var normalized = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var p in proposals)
+        var recorded = false;
+        foreach (var proposal in proposals)
         {
-            if (p.ReplacesMemoryId is { } target && !memories.Any(m => m.MemoryId == target && m.ProjectId == s.Scope.ProjectId && m.Version == p.ExpectedMemoryVersion))
+            var operation = proposal.Lifecycle?.Operation;
+            var target = memories.SingleOrDefault(m => m.MemoryId == proposal.ReplacesMemoryId &&
+                m.ProjectId == s.Scope.ProjectId && m.Version == proposal.ExpectedMemoryVersion);
+            if (proposal.ReplacesMemoryId is not null && target is null)
                 return new(MemoryStageStatus.Invalid, []);
-            var identity = MemoryTextIdentity.Normalize(p.Text);
+
+            var identity = MemoryTextIdentity.Normalize(proposal.Text);
             if (!normalized.Add(identity) ||
-                memories.Any(m => m.ProjectId == s.Scope.ProjectId && MemoryTextIdentity.Normalize(m.Text) == identity) ||
-                candidates.Any(c => c.ProjectId == s.Scope.ProjectId && c.Status == MemoryCandidateStatus.Pending && MemoryTextIdentity.Normalize(c.Text) == identity)) continue;
-            pending.Add(p);
+                (operation != MemoryOperation.Transition && memories.Any(m =>
+                    m.ProjectId == s.Scope.ProjectId && MemoryTextIdentity.Normalize(m.Text) == identity)) ||
+                candidates.Any(c => c.ProjectId == s.Scope.ProjectId && c.Status == MemoryCandidateStatus.Pending &&
+                    MemoryTextIdentity.Normalize(c.Text) == identity))
+                continue;
+
+            var canAutomate = ticket.AutoRecordAuthorized && AutoRecordEnabled() &&
+                proposal.Lifecycle is { SupportsAutomaticWrite: true, ContentType: MemoryContentType.Episodic } &&
+                (operation == MemoryOperation.Create && target is null ||
+                    operation is MemoryOperation.Duplicate or MemoryOperation.Extend or MemoryOperation.Transition &&
+                    target is { IsEnabled: true, SourceAvailable: true, HasNewerState: false });
+            var evidence = proposal.Lifecycle is { } assessment
+                ? VerifyEvidence(db, tx, s, assessment.Evidence) : [];
+            if (proposal.Lifecycle is not null && evidence.Count == 0)
+                return new(MemoryStageStatus.Invalid, []);
+            if (!canAutomate)
+            {
+                pending.Add(proposal, evidence);
+                continue;
+            }
+            if (operation == MemoryOperation.Duplicate) continue;
+
+            var extend = operation == MemoryOperation.Extend && target?.Verification == MemoryVerification.Recorded;
+            if (!FitsCapacity(memories, extend ? 0 : 1, proposal.Text.Length - (extend ? target!.Text.Length : 0)))
+                return new(MemoryStageStatus.CapacityExceeded, []);
+
+            var id = extend ? target!.MemoryId : "memory-" + Guid.NewGuid().ToString("N");
+            var now = DateTimeOffset.UtcNow;
+            if (extend)
+            {
+                Execute(db, tx, """
+                    UPDATE memories SET memory_text=$text,version=version+1,updated_at_utc=$now WHERE memory_id=$id
+                    """, ("$text", proposal.Text), ("$now", now.ToString("O")), ("$id", id));
+            }
+            else
+            {
+                InsertMemory(db, tx, id, s.Scope, proposal.Text, null, now, s,
+                    MemoryContentType.Episodic, MemoryVerification.Recorded);
+                if (target is not null)
+                    Execute(db, tx, "UPDATE memories SET previous_memory_id=$previous,relation=$relation WHERE memory_id=$id",
+                        ("$previous", target.MemoryId), ("$relation", operation!.Value.ToString()), ("$id", id));
+            }
+            InsertEvidence(db, tx, evidence, memoryId: id);
+            recorded = true;
+            memories = Memories(db, tx, s.Scope.ServantId);
         }
-        if (!FitsCapacity(memories, pending.Count(p => p.ReplacesMemoryId is null),
-            pending.Sum(p => p.Text.Length - (memories.FirstOrDefault(m => m.MemoryId == p.ReplacesMemoryId)?.Text.Length ?? 0))))
+        if (!FitsCapacity(memories, pending.Keys.Count(p => p.ReplacesMemoryId is null ||
+                p.Lifecycle?.Operation is MemoryOperation.Duplicate or MemoryOperation.Extend or MemoryOperation.Transition),
+            pending.Keys.Sum(p => p.Text.Length - (p.Lifecycle is null || p.Lifecycle.Operation == MemoryOperation.Correction
+                ? memories.FirstOrDefault(m => m.MemoryId == p.ReplacesMemoryId)?.Text.Length ?? 0 : 0))))
             return new(MemoryStageStatus.CapacityExceeded, []);
         var ids = new List<string>();
-        foreach (var p in pending)
+        foreach (var (p, evidence) in pending)
         {
+            var correction = p.Lifecycle is null || p.Lifecycle.Operation == MemoryOperation.Correction;
             var candidate = new MemoryCandidate("candidate-" + Guid.NewGuid().ToString("N"), s.Scope.ServantId, s.ConversationId,
                 p.Text, DateTimeOffset.UtcNow, s.MessageId, projectId: s.Scope.ProjectId, source: s,
-                replacesMemoryId: p.ReplacesMemoryId, expectedMemoryVersion: p.ExpectedMemoryVersion);
+                replacesMemoryId: correction ? p.ReplacesMemoryId : null,
+                expectedMemoryVersion: correction ? p.ExpectedMemoryVersion : null,
+                contentType: p.Lifecycle?.ContentType ?? MemoryContentType.Semantic);
             InsertCandidate(db, tx, candidate);
+            InsertEvidence(db, tx, evidence, candidateId: candidate.CandidateId);
             ids.Add(candidate.CandidateId);
         }
         Receipt(db, tx, s.Key, "staged");
-        // Automatic staging only adds pending candidates. The confirmed snapshot used by
-        // other queued extractions stays current, and candidate deduplication runs above in this transaction.
+        if (recorded) Bump(db, tx);
         tx.Commit();
         if (ids.Count > 0 && CandidatesStaged is { } listeners)
         {
@@ -117,7 +195,58 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
                 catch (Exception) { /* A presentation listener cannot fail a committed write. */ }
             }
         }
-        return new(ids.Count == 0 && proposals.Count > 0 ? MemoryStageStatus.Duplicate : MemoryStageStatus.Staged, ids);
+        return new(recorded ? MemoryStageStatus.Recorded :
+            ids.Count == 0 && proposals.Count > 0 ? MemoryStageStatus.Duplicate : MemoryStageStatus.Staged, ids);
+    }
+
+    private IReadOnlyList<VerifiedEvidence> VerifyEvidence(
+        SqliteConnection db, SqliteTransaction tx, MemorySource primary, IReadOnlyList<MemoryEvidence> evidence)
+    {
+        if (_sources is null || primary.Kind != MemoryEvidenceKind.UserStatement ||
+            evidence is null || evidence.Count is < 1 or > 3 || evidence.Any(e => e is null) ||
+            !evidence.Any(e => e.MessageId == primary.MessageId) || !_sources.IsCurrent(primary))
+            return [];
+
+        var verified = new List<VerifiedEvidence>();
+        foreach (var citation in evidence)
+        {
+            if (string.IsNullOrWhiteSpace(citation.MessageId) || string.IsNullOrWhiteSpace(citation.Quote) ||
+                citation.Quote.Length is < 2 or > 1600)
+                return [];
+
+            var text = Scalar(db, tx, """
+                SELECT m.text FROM chat_messages m
+                JOIN chat_messages current ON current.message_id=$current
+                WHERE m.message_id=$id AND m.conversation_id=current.conversation_id AND m.servant_id=current.servant_id
+                  AND m.role='user' AND m.status='completed'
+                  AND (m.message_id=$current OR m.sequence=(
+                    SELECT MAX(previous.sequence) FROM chat_messages previous
+                    WHERE previous.conversation_id=current.conversation_id
+                      AND previous.sequence<current.sequence AND previous.role='user' AND previous.status='completed'))
+                """, ("$id", citation.MessageId), ("$current", primary.MessageId)) as string;
+            var offset = text?.IndexOf(citation.Quote, StringComparison.Ordinal) ?? -1;
+            if (offset < 0) return [];
+            var source = citation.MessageId == primary.MessageId ? primary : _sources.Read(
+                new(primary.ConversationId, primary.Scope.ServantId, primary.Scope.ProjectId),
+                citation.MessageId, MemoryEvidenceKind.UserStatement);
+            verified.Add(new(source, offset, citation.Quote.Length));
+        }
+        return verified;
+    }
+
+    private sealed record VerifiedEvidence(MemorySource Source, int Offset, int Length);
+
+    private static void InsertEvidence(SqliteConnection db, SqliteTransaction tx, IReadOnlyList<VerifiedEvidence> evidence,
+        string? memoryId = null, string? candidateId = null)
+    {
+        foreach (var (source, offset, length) in evidence)
+            Execute(db, tx, """
+                INSERT OR IGNORE INTO memory_evidence(memory_id,candidate_id,message_id,conversation_id,source_key,
+                  source_fingerprint,quote_start,quote_length)
+                VALUES($memory,$candidate,$message,$conversation,$key,$fingerprint,$offset,$length)
+                """, ("$memory", memoryId), ("$candidate", candidateId), ("$message", source.MessageId),
+                ("$conversation", source.ConversationId), ("$key", source.Key), ("$fingerprint", source.SourceFingerprint),
+                ("$offset", offset), ("$length", length));
     }
 
     // Trusted local/import compatibility. No model-facing contract exposes this method.
@@ -135,12 +264,26 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
     }
     private static void InsertCandidate(SqliteConnection db, SqliteTransaction tx, MemoryCandidate c) => Execute(db, tx, """
         INSERT INTO memory_candidates(candidate_id,conversation_id,source_message_id,servant_id,appearance_id,candidate_text,status,created_at_utc,
-          project_id,source_fingerprint,evidence_kind,origin_at_utc,replaces_memory_id,expected_memory_version,source_project_label)
-        VALUES($id,$conversation,$message,$servant,$appearance,$text,'pending',$created,$project,$fingerprint,$kind,$origin,$replacement,$version,$label)
+          project_id,source_fingerprint,evidence_kind,origin_at_utc,replaces_memory_id,expected_memory_version,source_project_label,content_type)
+        VALUES($id,$conversation,$message,$servant,$appearance,$text,'pending',$created,$project,$fingerprint,$kind,$origin,$replacement,$version,$label,$type)
         """, ("$id", c.CandidateId), ("$conversation", c.ConversationId), ("$message", c.SourceMessageId), ("$servant", c.ServantId),
         ("$appearance", c.AppearanceId), ("$text", c.Text), ("$created", c.CreatedAtUtc.ToString("O")), ("$project", c.ProjectId),
         ("$fingerprint", c.Source?.SourceFingerprint), ("$kind", (c.Source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString()),
-        ("$origin", c.Source?.OccurredAtUtc.ToString("O")), ("$replacement", c.ReplacesMemoryId), ("$version", c.ExpectedMemoryVersion), ("$label", c.Source?.ProjectLabel));
+        ("$origin", c.Source?.OccurredAtUtc.ToString("O")), ("$replacement", c.ReplacesMemoryId), ("$version", c.ExpectedMemoryVersion), ("$label", c.Source?.ProjectLabel),
+        ("$type", c.ContentType.ToString()));
+
+    private static void InsertMemory(SqliteConnection db, SqliteTransaction tx, string id, MemoryScope scope,
+        string text, string? candidateId, DateTimeOffset now, MemorySource? source,
+        MemoryContentType contentType, MemoryVerification verification) => Execute(db, tx, """
+        INSERT INTO memories(memory_id,servant_id,memory_text,is_enabled,source_candidate_id,created_at_utc,updated_at_utc,project_id,
+          version,source_key,source_fingerprint,origin_conversation_id,origin_message_id,origin_at_utc,evidence_kind,origin_project_label,
+          content_type,verification)
+        VALUES($id,$servant,$text,1,$candidate,$now,$now,$project,1,$key,$fingerprint,$conversation,$message,$origin,$kind,$label,$type,$verification)
+        """, ("$id", id), ("$servant", scope.ServantId), ("$text", text), ("$candidate", candidateId), ("$now", now.ToString("O")),
+        ("$project", scope.ProjectId), ("$key", source?.Key), ("$fingerprint", source?.SourceFingerprint),
+        ("$conversation", source?.ConversationId), ("$message", source?.MessageId), ("$origin", source?.OccurredAtUtc.ToString("O")),
+        ("$kind", (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString()), ("$label", source?.ProjectLabel),
+        ("$type", contentType.ToString()), ("$verification", verification.ToString()));
 
     public IReadOnlyList<MemoryCandidate> ListCandidates(string servantId)
     {
@@ -239,17 +382,18 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
                     ("$now", reviewedAtUtc.ToString("O")), ("$project", candidate.ProjectId), ("$key", source?.Key), ("$fingerprint", source?.SourceFingerprint),
                     ("$conversation", source?.ConversationId), ("$message", source?.MessageId), ("$origin", source?.OccurredAtUtc.ToString("O")),
                     ("$kind", (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString()), ("$version", old?.Version), ("$label", source?.ProjectLabel) };
-                if (old is null) Execute(db, tx, """
-                    INSERT INTO memories(memory_id,servant_id,memory_text,is_enabled,source_candidate_id,created_at_utc,updated_at_utc,project_id,
-                      version,source_key,source_fingerprint,origin_conversation_id,origin_message_id,origin_at_utc,evidence_kind,origin_project_label)
-                    VALUES($id,$servant,$text,1,$candidate,$now,$now,$project,1,$key,$fingerprint,$conversation,$message,$origin,$kind,$label)
-                    """, args);
+                if (old is null)
+                    InsertMemory(db, tx, resultId, new(servantId, candidate.ProjectId), text, candidateId,
+                        reviewedAtUtc, source, candidate.ContentType, MemoryVerification.Confirmed);
                 else if (Execute(db, tx, """
-                    UPDATE memories SET memory_text=$text,version=version+1,updated_at_utc=$now,source_candidate_id=$candidate,
+                    UPDATE memories SET memory_text=$text,version=version+1,updated_at_utc=$now,source_candidate_id=$candidate,verification='Confirmed',
                       source_key=$key,source_fingerprint=$fingerprint,origin_conversation_id=$conversation,origin_message_id=$message,
                       origin_at_utc=$origin,evidence_kind=$kind,origin_project_label=$label
                     WHERE memory_id=$id AND servant_id=$servant AND project_id IS $project AND version=$version
                     """, args) != 1) throw new MemoryReviewException("这条记忆已被修改，请重新确认。");
+                Execute(db, tx, "DELETE FROM memory_evidence WHERE memory_id=$id", ("$id", resultId));
+                Execute(db, tx, "UPDATE memory_evidence SET memory_id=$id,candidate_id=NULL WHERE candidate_id=$candidate",
+                    ("$id", resultId), ("$candidate", candidateId));
                 UpdateCandidate(db, tx, candidateId, "approved", text, reviewedAtUtc);
                 break;
             case MemoryReviewAction.Edit:
@@ -278,17 +422,35 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         using var tx = db.BeginTransaction();
         var memories = Memories(db, tx, servantId);
         var old = memories.SingleOrDefault(m => m.MemoryId == memoryId);
-        if (old is null) return;
+        if (old is null)
+        {
+            if (action == MemoryReviewAction.Confirm)
+                throw new MemoryReviewException("这条自动记录已不存在，请刷新列表。");
+            return;
+        }
         if (expectedVersion is not null && old.Version != expectedVersion) throw new MemoryReviewException("这条记忆已被修改，请重新确认。");
         if (action == MemoryReviewAction.Delete)
         {
             var key = Scalar(db, tx, "SELECT source_key FROM memories WHERE memory_id=$id", ("$id", memoryId)) as string;
             if (key is not null) Receipt(db, tx, key, "deleted");
+            Execute(db, tx, """
+                UPDATE memory_ingestions SET status='deleted' WHERE source_key IN (
+                    SELECT source_key FROM memory_evidence WHERE memory_id=$id)
+                """, ("$id", memoryId));
             Execute(db, tx, "DELETE FROM memories WHERE memory_id=$id", ("$id", memoryId));
             Rotate(db, tx);
         }
+        else if (action == MemoryReviewAction.Confirm)
+        {
+            if (expectedVersion is null || old.Verification != MemoryVerification.Recorded || !old.SourceAvailable)
+                throw new MemoryReviewException("请刷新并核对这条记录及其来源后再确认。");
+            Execute(db, tx, "UPDATE memories SET verification='Confirmed',version=version+1,updated_at_utc=$now WHERE memory_id=$id",
+                ("$now", updatedAtUtc.ToString("O")), ("$id", memoryId));
+        }
         else
         {
+            if (action == MemoryReviewAction.Edit && old.Verification == MemoryVerification.Recorded)
+                throw new MemoryReviewException("请先确认这条自动记录，再编辑正文。");
             var text = action == MemoryReviewAction.Edit ? new MemoryProposal(editedText ?? "").Text : old.Text;
             if (action is not (MemoryReviewAction.Edit or MemoryReviewAction.Approve or MemoryReviewAction.Disable)) throw new ArgumentOutOfRangeException(nameof(action));
             if (!FitsCapacity(memories, 0, text.Length - old.Text.Length)) throw new MemoryReviewException("记忆容量已满，请缩短或合并内容。");
@@ -303,7 +465,8 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         tx.Commit();
     }
     private static bool FitsCapacity(IReadOnlyList<StoredMemory> items, int addedItems, int addedChars) =>
-        (addedItems <= 0 || items.Count + addedItems <= 200) && (addedChars <= 0 || items.Sum(m => m.Text.Length) + addedChars <= 40_000);
+        (addedItems <= 0 || items.Count + addedItems <= MemorySettings.MaxItemsPerServant) &&
+        (addedChars <= 0 || items.Sum(m => m.Text.Length) + addedChars <= MemorySettings.MaxCharsPerServant);
     private static void Bump(SqliteConnection db, SqliteTransaction tx) => Execute(db, tx, "UPDATE memory_write_state SET revision=revision+1 WHERE singleton_id=1");
     private static void Receipt(SqliteConnection db, SqliteTransaction tx, string key, string status) => Execute(db, tx,
         "UPDATE memory_ingestions SET status=$status,updated_at_utc=$now WHERE source_key=$key", ("$status", status), ("$key", key), ("$now", DateTimeOffset.UtcNow.ToString("O")));
@@ -313,7 +476,7 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
     {
         using var cmd = Command(db, tx, """
             SELECT candidate_id,conversation_id,candidate_text,created_at_utc,source_message_id,appearance_id,status,project_id,
-              source_fingerprint,evidence_kind,origin_at_utc,replaces_memory_id,expected_memory_version,source_project_label
+              source_fingerprint,evidence_kind,origin_at_utc,replaces_memory_id,expected_memory_version,source_project_label,content_type
             FROM memory_candidates WHERE servant_id=$servant ORDER BY created_at_utc,candidate_id
             """, ("$servant", servant));
         using var r = cmd.ExecuteReader();
@@ -324,7 +487,8 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
             var source = Optional(r, 8) is { } fingerprint && Optional(r, 4) is { } message && Optional(r, 10) is { } at
                 ? new MemorySource(new(servant, project), r.GetString(1), message, fingerprint, Utc(at), Enum.Parse<MemoryEvidenceKind>(r.GetString(9)), Optional(r, 13)) : null;
             items.Add(new(r.GetString(0), servant, r.GetString(1), r.GetString(2), Utc(r.GetString(3)), Optional(r, 4), Optional(r, 5),
-                Enum.Parse<MemoryCandidateStatus>(r.GetString(6), true), project, source, Optional(r, 11), r.IsDBNull(12) ? null : r.GetInt32(12)));
+                Enum.Parse<MemoryCandidateStatus>(r.GetString(6), true), project, source, Optional(r, 11), r.IsDBNull(12) ? null : r.GetInt32(12),
+                Enum.Parse<MemoryContentType>(r.GetString(14))));
         }
         return items;
     }
@@ -333,7 +497,14 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
         using var cmd = Command(db, tx, $"""
             SELECT memory_id,memory_text,is_enabled,created_at_utc,updated_at_utc,source_candidate_id,project_id,version,
               origin_conversation_id,origin_message_id,source_fingerprint,origin_at_utc,evidence_kind,
-              EXISTS(SELECT 1 FROM chat_messages m WHERE m.message_id=memories.origin_message_id AND m.conversation_id=memories.origin_conversation_id AND m.servant_id=memories.servant_id),origin_project_label
+              EXISTS(SELECT 1 FROM chat_messages m WHERE m.message_id=memories.origin_message_id AND m.conversation_id=memories.origin_conversation_id AND m.servant_id=memories.servant_id)
+                AND NOT EXISTS(SELECT 1 FROM memory_evidence e LEFT JOIN chat_messages m ON m.message_id=e.message_id
+                  AND m.conversation_id=e.conversation_id AND m.servant_id=memories.servant_id AND m.status='completed'
+                  WHERE e.memory_id=memories.memory_id AND m.message_id IS NULL),
+              origin_project_label,content_type,verification,previous_memory_id,relation,
+              EXISTS(SELECT 1 FROM memories next WHERE next.previous_memory_id=memories.memory_id AND next.relation='Transition'
+                AND next.is_enabled=1 AND next.servant_id=memories.servant_id AND next.project_id IS memories.project_id
+                AND (next.verification='Confirmed' OR EXISTS(SELECT 1 FROM chat_messages m WHERE m.message_id=next.origin_message_id)))
             FROM memories WHERE servant_id=$servant AND ($scoped=0 OR ({EnabledScope})) ORDER BY updated_at_utc DESC,memory_id
             """, ("$servant", servant), ("$scoped", scope is null ? 0 : 1), ("$project", scope?.ProjectId));
         using var r = cmd.ExecuteReader();
@@ -343,8 +514,14 @@ public sealed class SqliteMemoryRepository : IConversationMemory, IMemoryCandida
             var project = Optional(r, 6);
             var source = Optional(r, 8) is { } conversation && Optional(r, 9) is { } message && Optional(r, 10) is { } fingerprint && Optional(r, 11) is { } at
                 ? new MemorySource(new(servant, project), conversation, message, fingerprint, Utc(at), Enum.Parse<MemoryEvidenceKind>(r.GetString(12)), Optional(r, 14)) : null;
-            items.Add(new(r.GetString(0), servant, r.GetString(1), r.GetInt32(2) == 1, Utc(r.GetString(3)), Utc(r.GetString(4)),
-                Optional(r, 5), project, r.GetInt32(7), source, r.GetInt32(13) == 1));
+            items.Add(new StoredMemory(r.GetString(0), servant, r.GetString(1), r.GetInt32(2) == 1, Utc(r.GetString(3)), Utc(r.GetString(4)),
+                Optional(r, 5), project, r.GetInt32(7), source, r.GetInt32(13) == 1,
+                Enum.Parse<MemoryContentType>(r.GetString(15)), Enum.Parse<MemoryVerification>(r.GetString(16)))
+            {
+                PreviousMemoryId = Optional(r, 17),
+                Relation = r.IsDBNull(18) ? null : Enum.Parse<MemoryOperation>(r.GetString(18)),
+                HasNewerState = r.GetInt32(19) == 1,
+            });
         }
         return items;
     }

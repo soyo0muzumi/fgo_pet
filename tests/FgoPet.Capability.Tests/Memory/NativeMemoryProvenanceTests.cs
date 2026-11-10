@@ -42,6 +42,30 @@ public sealed class NativeMemoryProvenanceTests
     }
 
     [Fact]
+    public async Task Recorded_items_are_unreviewed_in_conversation_and_history_search()
+    {
+        var source = new MemorySource(new("role", "project"), "origin", "origin-message", "fixture-fingerprint",
+            Occurred, MemoryEvidenceKind.UserStatement);
+        var record = new StoredMemory("recorded", "role", "fixture milestone", true, Occurred, Occurred,
+            projectId: "project", source: source, sourceAvailable: true,
+            contentType: MemoryContentType.Episodic, verification: MemoryVerification.Recorded);
+        var recall = new SnapshotRecall(new(42, [record]));
+        var search = Assert.Single(NativeMemoryTools.Create(recall));
+        Assert.Empty((await Search(search)).GetProperty("items").EnumerateArray());
+        var context = await Context(new NativeMemoryContext(recall, new Resolver()));
+        Assert.Equal("UnreviewedPastUserStatement", context.GetProperty("memories")[0].GetProperty("confirmation").GetString());
+        Assert.Contains("未审核经历", Assert.Single(MemoryPlugin.BuildBlocks([record], Scope)).Text);
+        var result = await search.InvokeAsync(new(Scope,
+            JsonSerializer.SerializeToElement(new { query = "fixture", includeRecorded = true })), default);
+        Assert.True(result.Success);
+        var item = Assert.Single(result.Payload.GetProperty("items").EnumerateArray());
+        Assert.Equal("Recorded", item.GetProperty("verification").GetString());
+        Assert.Equal("Episodic", item.GetProperty("contentType").GetString());
+        Assert.Equal("Unreviewed", item.GetProperty("confirmation").GetString());
+        Assert.Equal("origin-message", item.GetProperty("sourceMessageId").GetString());
+    }
+
+    [Fact]
     public async Task Legacy_memory_explicitly_marks_unknown_source_without_inventing_origin()
     {
         var memory = new StoredMemory("legacy", "role", "fixture legacy", true, Occurred, Occurred,

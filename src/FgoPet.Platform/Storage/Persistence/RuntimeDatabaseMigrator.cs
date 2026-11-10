@@ -487,6 +487,65 @@ public sealed class RuntimeDatabaseMigrator
               INSERT INTO memory_search(memory_search,rowid,memory_text)
                 SELECT 'delete',search_id,old.memory_text FROM memory_search_keys WHERE memory_id=old.memory_id;
             END;
+            """),
+        new(18, """
+            ALTER TABLE memory_candidates ADD COLUMN content_type TEXT NOT NULL DEFAULT 'Semantic'
+              CHECK(content_type IN ('Semantic','Episodic'));
+            ALTER TABLE memories ADD COLUMN content_type TEXT NOT NULL DEFAULT 'Semantic'
+              CHECK(content_type IN ('Semantic','Episodic'));
+            ALTER TABLE memories ADD COLUMN verification TEXT NOT NULL DEFAULT 'Confirmed'
+              CHECK(verification='Confirmed' OR (verification='Recorded' AND content_type='Episodic'
+                AND source_key IS NOT NULL AND source_fingerprint IS NOT NULL AND origin_conversation_id IS NOT NULL
+                AND origin_message_id IS NOT NULL AND origin_at_utc IS NOT NULL AND evidence_kind='UserStatement'));
+
+            CREATE INDEX ix_memory_recorded_source ON memories(origin_message_id) WHERE verification='Recorded';
+            CREATE TRIGGER memory_recorded_source_delete BEFORE DELETE ON chat_messages
+            WHEN EXISTS(SELECT 1 FROM memories WHERE verification='Recorded' AND origin_message_id=old.message_id)
+            BEGIN
+              UPDATE memory_ingestions SET status='deleted' WHERE source_key IN
+                (SELECT source_key FROM memories WHERE verification='Recorded' AND origin_message_id=old.message_id);
+              DELETE FROM memories WHERE verification='Recorded' AND origin_message_id=old.message_id;
+              UPDATE memory_write_state SET revision=revision+1 WHERE singleton_id=1;
+            END;
+            """),
+        new(19, """
+            ALTER TABLE memories ADD COLUMN previous_memory_id TEXT NULL REFERENCES memories(memory_id) ON DELETE SET NULL;
+            ALTER TABLE memories ADD COLUMN relation TEXT NULL CHECK(relation IN ('Extend','Transition'));
+            CREATE INDEX ix_memories_previous ON memories(previous_memory_id);
+
+            CREATE TABLE memory_evidence(
+              memory_id TEXT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
+              candidate_id TEXT NULL REFERENCES memory_candidates(candidate_id) ON DELETE CASCADE,
+              message_id TEXT NOT NULL,
+              conversation_id TEXT NOT NULL,
+              source_key TEXT NOT NULL,
+              source_fingerprint TEXT NOT NULL,
+              quote_start INTEGER NOT NULL CHECK(quote_start>=0),
+              quote_length INTEGER NOT NULL CHECK(quote_length>0),
+              CHECK((memory_id IS NULL) <> (candidate_id IS NULL)),
+              UNIQUE(memory_id,message_id,quote_start,quote_length),
+              UNIQUE(candidate_id,message_id,quote_start,quote_length)
+            );
+            CREATE INDEX ix_memory_evidence_message ON memory_evidence(message_id,memory_id);
+
+            CREATE TRIGGER memory_evidence_source_delete BEFORE DELETE ON chat_messages
+            WHEN EXISTS(SELECT 1 FROM memory_evidence WHERE message_id=old.message_id)
+            BEGIN
+              UPDATE memory_ingestions SET status='deleted' WHERE source_key IN (
+                SELECT m.source_key FROM memories m JOIN memory_evidence e ON e.memory_id=m.memory_id
+                  WHERE e.message_id=old.message_id AND m.verification='Recorded'
+                UNION SELECT source_key FROM memory_evidence WHERE memory_id IN (
+                  SELECT e.memory_id FROM memory_evidence e JOIN memories m ON m.memory_id=e.memory_id
+                  WHERE e.message_id=old.message_id AND m.verification='Recorded')
+                UNION SELECT source_key FROM memory_evidence WHERE candidate_id IN (
+                  SELECT e.candidate_id FROM memory_evidence e JOIN memory_candidates c ON c.candidate_id=e.candidate_id
+                  WHERE e.message_id=old.message_id AND c.status='pending'));
+              DELETE FROM memory_candidates WHERE status='pending' AND candidate_id IN (
+                SELECT candidate_id FROM memory_evidence WHERE message_id=old.message_id);
+              DELETE FROM memories WHERE verification='Recorded' AND memory_id IN (
+                SELECT memory_id FROM memory_evidence WHERE message_id=old.message_id);
+              UPDATE memory_write_state SET revision=revision+1 WHERE singleton_id=1;
+            END;
             """)
     };
 

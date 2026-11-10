@@ -34,11 +34,12 @@ public static class NativeMemoryTools
     {
         public ToolDescriptor Descriptor { get; } = new(
             "memory.search",
-            "Search enabled confirmed memories for the current role and project.",
+            "Search matching enabled confirmed memories for the current role and project. For historical review, set includeRecorded to also see unreviewed historical reports. Recorded items cannot establish current user facts, preferences, permissions, persona, or standing instructions.",
             """
             {"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":2000},
             "maxItems":{"type":"integer","minimum":1,"maximum":8},
-            "maxChars":{"type":"integer","minimum":1,"maximum":6000}},
+            "maxChars":{"type":"integer","minimum":1,"maximum":6000},
+            "includeRecorded":{"type":"boolean","default":false}},
             "required":["query"],"additionalProperties":false}
             """, ToolEffect.ReadOnly);
 
@@ -61,7 +62,9 @@ public static class NativeMemoryTools
 
                 if (!IsEnabled())
                     return ValueTask.FromResult(Failure("MEMORY_UNAVAILABLE"));
-                var snapshot = recall.QueryStrict(scope, arguments.Query, arguments.MaxItems, arguments.MaxChars);
+                var snapshot = arguments.IncludeRecorded
+                    ? recall.QueryHistory(scope, arguments.Query, arguments.MaxItems, arguments.MaxChars)
+                    : recall.QueryStrict(scope, arguments.Query, arguments.MaxItems, arguments.MaxChars);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!IsEnabled())
                     return ValueTask.FromResult(Failure("MEMORY_UNAVAILABLE"));
@@ -78,6 +81,8 @@ public static class NativeMemoryTools
                     cancellationToken.ThrowIfCancellationRequested();
                     var memory = snapshot.Items[index];
                     if (memory is null || !memory.IsEnabled || memory.ServantId != scope.ServantId
+                        || memory.Verification == MemoryVerification.Recorded &&
+                            (!arguments.IncludeRecorded || !memory.SourceAvailable || memory.ProjectId != scope.ProjectId)
                         || memory.ProjectId is not null && memory.ProjectId != scope.ProjectId)
                         continue;
 
@@ -103,7 +108,10 @@ public static class NativeMemoryTools
                     var source = memory.Source;
                     var candidate = new SearchItem(memory.MemoryId, memory.Version, text, memory.ProjectId,
                         (source?.Kind ?? MemoryEvidenceKind.UnknownLegacy).ToString(), source?.OccurredAtUtc,
-                        source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable);
+                        source?.ConversationId, source?.MessageId, source is not null && memory.SourceAvailable,
+                        memory.ContentType.ToString(), memory.Verification.ToString(),
+                        memory.Verification == MemoryVerification.Confirmed ? "UserReviewed" : "Unreviewed",
+                        memory.PreviousMemoryId, memory.Relation?.ToString(), memory.HasNewerState);
                     var preview = new SearchPayload(snapshot.Revision, [.. results, candidate], Truncated: true);
                     if (!Fits(preview))
                     {
@@ -145,7 +153,7 @@ public static class NativeMemoryTools
 
         private static bool TryParseArguments(JsonElement value, out SearchArguments result)
         {
-            result = new SearchArguments(string.Empty, MaxItems, MaxChars);
+            result = new SearchArguments(string.Empty, MaxItems, MaxChars, false);
             if (value.ValueKind != JsonValueKind.Object
                 || Encoding.UTF8.GetByteCount(value.GetRawText()) > MaxArgumentsBytes)
                 return false;
@@ -153,9 +161,11 @@ public static class NativeMemoryTools
             var querySeen = false;
             var maxItemsSeen = false;
             var maxCharsSeen = false;
+            var includeRecordedSeen = false;
             var query = string.Empty;
             var maxItems = MaxItems;
             var maxChars = MaxChars;
+            var includeRecorded = false;
 
             foreach (var property in value.EnumerateObject())
             {
@@ -176,13 +186,19 @@ public static class NativeMemoryTools
                         if (maxCharsSeen || !TryReadInteger(property.Value, 1, MaxChars, out maxChars)) return false;
                         maxCharsSeen = true;
                         break;
+                    case "includeRecorded":
+                        if (includeRecordedSeen || property.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                            return false;
+                        includeRecordedSeen = true;
+                        includeRecorded = property.Value.GetBoolean();
+                        break;
                     default:
                         return false;
                 }
             }
 
             if (!querySeen) return false;
-            result = new SearchArguments(query, maxItems, maxChars);
+            result = new SearchArguments(query, maxItems, maxChars, includeRecorded);
             return true;
         }
 
@@ -203,9 +219,10 @@ public static class NativeMemoryTools
         new(false, JsonSerializer.SerializeToElement(new { }, OutputJson), code)
         { ExecutionState = ToolExecutionState.NotExecuted };
 
-    private sealed record SearchArguments(string Query, int MaxItems, int MaxChars);
+    private sealed record SearchArguments(string Query, int MaxItems, int MaxChars, bool IncludeRecorded);
     private sealed record SearchItem(string MemoryId, int Version, string Text, string? ProjectId,
         string SourceKind, DateTimeOffset? SourceOccurredAtUtc, string? SourceConversationId, string? SourceMessageId,
-        bool SourceAvailable, string Confirmation = "UserReviewed");
+        bool SourceAvailable, string ContentType, string Verification, string Confirmation,
+        string? PreviousMemoryId, string? Relation, bool HasNewerState);
     private sealed record SearchPayload(long Revision, IReadOnlyList<SearchItem> Items, bool Truncated);
 }

@@ -57,7 +57,7 @@ internal sealed class SettingsDocumentV2Codec
                     PackageSettings = ParsePackageSettings(dto.PackageSettings),
                 },
                 new DialogueSettings(dto.ModelConnection?.ToModel(), dto.ShowReasoning ?? true),
-                new MemorySettings(dto.MemoryEnabled ?? true),
+                new MemorySettings(dto.MemoryEnabled ?? true, dto.MemoryAutoRecordExperiences ?? false),
                 new WorkExecutionSettings(dto.AgentConnection?.ToModel() ?? AgentConnectionSettings.Defaults),
                 new SpeechSettings(dto.SpeechConnection?.ToModel() ?? SpeechConnectionSettings.Defaults),
                 new ThemeSettings(ParseTheme(dto.Theme)));
@@ -101,6 +101,10 @@ internal sealed class SettingsDocumentV2Codec
         [JsonPropertyName("memory_enabled")]
         public bool? MemoryEnabled { get; init; }
 
+        // The earlier opt-in covered fixed project milestones only.
+        [JsonPropertyName("memory_auto_record_experiences")]
+        public bool? MemoryAutoRecordExperiences { get; init; }
+
         [JsonPropertyName("show_reasoning")]
         public bool? ShowReasoning { get; init; }
 
@@ -128,6 +132,7 @@ internal sealed class SettingsDocumentV2Codec
             ModelConnection = ModelConnectionDto.FromModel(settings.Dialogue.ModelConnection),
             SpeechConnection = SpeechConnectionDto.FromModel(settings.Speech.Connection, sanitizeLocalPaths),
             MemoryEnabled = settings.Memory.Enabled,
+            MemoryAutoRecordExperiences = !sanitizeLocalPaths && settings.Memory.AutoRecordEpisodic,
             ShowReasoning = settings.Dialogue.ShowReasoning,
             ServantPreferences = settings.Character.ServantPreferences.ToDictionary(
                 pair => pair.Key,

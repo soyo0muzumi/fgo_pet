@@ -104,12 +104,16 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand DeleteMemoryCommand { get; }
     public IAsyncRelayCommand EditMemoryCommand { get; }
     public IAsyncRelayCommand EnableMemoryCommand { get; }
+    public bool AutoRecordEpisodic => _settings?.Load().AutoRecordEpisodic ?? false;
     public IAsyncRelayCommand SelectReplacementCommand { get; }
     public string CandidateDetails => SelectedCandidate is not { } candidate ? "选择候选查看来源与范围。" :
         $"{(candidate.ReplacesMemoryId is null ? "新增记忆" : "更正记忆")} · {_memories.ScopeLabel(candidate.ServantId, candidate.ProjectId)}\n{Evidence(candidate.Source, candidate.Source is not null)}" +
         (candidate.ReplacesMemoryId is null ? "" : $"\n原值：{StoredMemories.FirstOrDefault(m => m.MemoryId == candidate.ReplacesMemoryId)?.Text ?? "目标已删除"}\n新值：{candidate.Text}");
     public string MemoryDetails => SelectedMemory is not { } memory ? "选择记忆查看来源与范围。" :
-        $"{_memories.ScopeLabel(memory.ServantId, memory.ProjectId)} · 第 {memory.Version} 版\n{Evidence(memory.Source, memory.SourceAvailable)}";
+        $"{_memories.ScopeLabel(memory.ServantId, memory.ProjectId)} · 第 {memory.Version} 版 · " +
+        $"{(memory.ContentType == MemoryContentType.Episodic ? "经历" : "信息")} · " +
+        $"{(memory.Verification == MemoryVerification.Confirmed ? "已确认" : "自动记录，未审核")}\n{Evidence(memory.Source, memory.SourceAvailable)}" +
+        (memory.HasNewerState ? "\n已有后续进展，此条记录较早状态。" : "");
 
     private static string Evidence(MemorySource? source, bool available) => source is null ? "旧版数据：来源不完整" :
         $"{source.Kind switch { MemoryEvidenceKind.UserStatement => "用户原话", MemoryEvidenceKind.AssistantSuggestion => "助手建议", MemoryEvidenceKind.ConfirmedDecision => "已明确确认的决定", _ => "来源不完整" }} · {source.OccurredAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}" +
@@ -124,6 +128,29 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
             _settings.Save(_settings.Load() with { Enabled = value });
         }
         if (!value) _memories.InvalidateWrites();
+    }
+
+    public bool SetAutoRecordEpisodic(bool value)
+    {
+        if (_settings is null) return false;
+        var settings = _settings.Load();
+        if (value && !settings.Enabled) return false;
+        if (settings.AutoRecordEpisodic == value) return true;
+        _settings.Save(settings with { AutoRecordEpisodic = value });
+        if (!value) _memories.InvalidateWrites();
+        return true;
+    }
+
+    public async Task ConfirmRecordedAsync(string memoryId, int expectedVersion, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(ActiveServantId)) return;
+        try
+        {
+            await _memories.ReviewMemoryAsync(ActiveServantId, memoryId, MemoryReviewAction.Confirm, null,
+                cancellationToken, expectedVersion);
+            await RefreshAsync();
+        }
+        catch (MemoryReviewException error) { StatusText = error.Message; }
     }
 
     public void SetActiveServant(string? servantId)
@@ -191,7 +218,7 @@ public sealed partial class MemoryViewModel : ObservableObject, IDisposable
                 foreach (var candidate in snapshot.Candidates.Where(candidate => candidate.Status == MemoryCandidateStatus.Pending)) Candidates.Add(candidate);
                 foreach (var memory in snapshot.Memories) StoredMemories.Add(memory);
                 CandidatesStatusText = Candidates.Count == 0 ? "当前角色暂无待审核候选。" : $"候选 {Candidates.Count} 条";
-                StoredMemoriesStatusText = StoredMemories.Count == 0 ? "当前角色暂无已确认记忆。" : $"已确认记忆 {StoredMemories.Count} 条";
+                StoredMemoriesStatusText = StoredMemories.Count == 0 ? "当前角色暂无已保存记忆。" : $"已保存记忆 {StoredMemories.Count} 条";
             }
             catch (OperationCanceledException) when (!IsCurrent()) { }
             catch (Exception)

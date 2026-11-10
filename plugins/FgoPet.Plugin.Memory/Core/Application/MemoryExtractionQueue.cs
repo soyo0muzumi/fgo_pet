@@ -77,6 +77,10 @@ public sealed class MemoryExtractionQueue : IAsyncDisposable, IDisposable
             {
                 lease.CheckCurrent();
                 if (!_isCurrent(work.Connection) || !_isSourceCurrent(work.Ticket.Source)) return;
+                // A preceding queued turn may have committed since admission. Refresh before
+                // extraction so the model uses the latest snapshot, retaining the original consent.
+                if (_sink.Refresh(work.Ticket) is not { } ticket) return;
+                work = work with { Ticket = ticket };
                 // WaitAsync detaches a provider that ignores cancellation; its result has no write continuation.
                 var proposals = await _extractor.ExtractAsync(work, lease.Token).WaitAsync(lease.Token).ConfigureAwait(false);
                 var result = lease.Commit(() => Volatile.Read(ref _closed) == 0 &&
@@ -88,7 +92,7 @@ public sealed class MemoryExtractionQueue : IAsyncDisposable, IDisposable
                         result.Status, work.Ticket.Source.Key[..12], proposals.Count, result.CandidateIds.Count);
             }
             catch (OperationCanceledException) { }
-            catch (Exception) { _logger?.LogWarning("Memory extraction failed; no approved memory written"); }
+            catch (Exception) { _logger?.LogWarning("Memory extraction failed"); }
             finally
             {
                 Abandon(work.Ticket);

@@ -68,12 +68,12 @@ public sealed class UserDataExportService : IUserDataExporter
                 """, cancellationToken),
             ReadRows(connection, """
                 SELECT candidate_id, conversation_id, source_message_id, servant_id, appearance_id,
-                       candidate_text, status, created_at_utc, reviewed_at_utc
+                       candidate_text, status, created_at_utc, reviewed_at_utc, content_type
                 FROM memory_candidates ORDER BY servant_id, created_at_utc, candidate_id
                 """, cancellationToken),
             ReadRows(connection, """
                 SELECT memory_id, servant_id, memory_text, is_enabled, source_candidate_id,
-                       created_at_utc, updated_at_utc
+                       created_at_utc, updated_at_utc, content_type, verification
                 FROM memories ORDER BY servant_id, updated_at_utc, memory_id
                 """, cancellationToken),
             ReadRows(connection, """

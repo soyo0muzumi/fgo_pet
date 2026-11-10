@@ -40,7 +40,16 @@ public sealed record MemorySource
     public string Key => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
         new[] { Scope.ServantId, Scope.ProjectId, ConversationId, MessageId, SourceFingerprint }))));
 }
-public sealed record MemoryWriteTicket(string TicketId, string Generation, long MemoryRevision, MemorySource Source);
+public sealed record MemoryWriteTicket(string TicketId, string Generation, long MemoryRevision, MemorySource Source)
+{
+    public bool AutoRecordAuthorized { get; internal init; }
+}
+
+public enum MemoryOperation { Create, Duplicate, Extend, Transition, Correction }
+public sealed record MemoryEvidence(string MessageId, string Quote);
+public sealed record MemoryLifecycleProposal(MemoryContentType ContentType, MemoryOperation Operation,
+    IReadOnlyList<MemoryEvidence> Evidence, bool SupportsAutomaticWrite);
+
 public sealed record MemoryProposal
 {
     public MemoryProposal(string text, string? replacesMemoryId = null, int? expectedMemoryVersion = null)
@@ -54,12 +63,14 @@ public sealed record MemoryProposal
     public string Text { get; }
     public string? ReplacesMemoryId { get; }
     public int? ExpectedMemoryVersion { get; }
+    public MemoryLifecycleProposal? Lifecycle { get; init; }
 }
-public enum MemoryStageStatus { Staged, Duplicate, Stale, Invalid, CapacityExceeded }
+public enum MemoryStageStatus { Staged, Duplicate, Stale, Invalid, CapacityExceeded, Recorded }
 public sealed record MemoryStageResult(MemoryStageStatus Status, IReadOnlyList<string> CandidateIds);
 public interface IMemoryCandidateSink
 {
     MemoryWriteTicket Begin(MemorySource source);
+    MemoryWriteTicket? Refresh(MemoryWriteTicket ticket) => ticket;
     MemoryStageResult Stage(MemoryWriteTicket ticket, IReadOnlyList<MemoryProposal> proposals);
     void Abandon(MemoryWriteTicket ticket);
 }

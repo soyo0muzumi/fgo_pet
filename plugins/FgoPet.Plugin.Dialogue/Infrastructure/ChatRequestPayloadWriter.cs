@@ -39,18 +39,22 @@ public static class ChatRequestPayloadWriter
         if (route.ProviderId == "custom-openai-compatible" && route.EndpointKey == LocalBuddyEndpoint &&
             route.ModelId == "buddy/deepseek-v4.1-flash" &&
             request.Metadata.TryGetValue("fgo_auxiliary", out var buddyPurpose) &&
-            buddyPurpose is "understanding_review" or "context_summary" or "companion_activity")
+            buddyPurpose is "understanding_review" or "context_summary" or "companion_activity" or "memory_extraction" or "memory_verification")
+        {
             payload["reasoning_effort"] = "low";
+            if (buddyPurpose is "memory_extraction" or "memory_verification")
+                payload["response_format"] = new { type = "json_object" };
+        }
         // DeepSeek defaults to thinking, which can exhaust a bounded auxiliary response
         // before any JSON/summary content is emitted. Primary chats retain provider defaults.
         // Only application-created metadata opts in; never infer purpose from prompt text.
         if (route.ProviderId == "deepseek" && OfficialDeepSeekEndpoints.Contains(route.EndpointKey) &&
             route.ModelId is "deepseek-flash" or "deepseek-v4-pro" &&
             request.Metadata.TryGetValue("fgo_auxiliary", out var purpose) &&
-            purpose is "history_recall" or "context_summary" or "memory_extraction" or "understanding_review" or "companion_activity")
+            purpose is "history_recall" or "context_summary" or "memory_extraction" or "memory_verification" or "understanding_review" or "companion_activity")
         {
             payload["thinking"] = new { type = "disabled" };
-            if (purpose is "history_recall" or "memory_extraction" or "understanding_review" or "companion_activity")
+            if (purpose is "history_recall" or "memory_extraction" or "memory_verification" or "understanding_review" or "companion_activity")
                 payload["response_format"] = new { type = "json_object" };
         }
         return JsonSerializer.Serialize(payload, Options);

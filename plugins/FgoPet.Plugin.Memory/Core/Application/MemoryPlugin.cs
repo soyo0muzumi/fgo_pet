@@ -37,7 +37,7 @@ public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader
     public IReadOnlyList<ConversationPromptBlock> BuildPrompt(ToolScope scope, string userMessage, bool toolsAvailable)
     {
         if (!Enabled) return [];
-        var memories = BuildBlocks(recall.QueryStrict(new(scope.RoleId, scope.ProjectId), userMessage).Items, scope);
+        var memories = BuildBlocks(recall.QueryHistory(new(scope.RoleId, scope.ProjectId), userMessage).Items, scope);
         return CanExtract && MemoryReviewGuidance.Matches(userMessage)
             ? [.. memories, new(MemoryReviewGuidance.Source, MemoryReviewGuidance.Instruction, ConversationPromptBlockKind.Instruction)]
             : memories;
@@ -45,13 +45,18 @@ public sealed class MemoryPlugin(IMemoryRecall recall, IConversationSourceReader
 
     public static IReadOnlyList<ConversationPromptBlock> BuildBlocks(IEnumerable<StoredMemory> memories, ToolScope scope) =>
         memories.Where(memory => memory.IsEnabled && memory.ServantId == scope.RoleId &&
+            (memory.Verification == MemoryVerification.Confirmed || memory.SourceAvailable && memory.ProjectId == scope.ProjectId) &&
             (memory.ProjectId is null || memory.ProjectId == scope.ProjectId)).Select(memory =>
                 new ConversationPromptBlock($"memory:{memory.MemoryId}", memory.Text + "\n适用范围：" +
                     (memory.ProjectId is null ? "当前角色通用" : "当前项目") +
                     (memory.Source is { } source
                         ? $"\n来源：{source.Kind}，{source.OccurredAtUtc:O}，conversation={source.ConversationId}，message={source.MessageId}。" +
-                          (memory.SourceAvailable ? "已由用户审核确认。" : "来源记录已删除，保留已确认记忆。")
-                        : "\n来源：旧版数据，来源信息不完整；已由用户审核确认。"))).ToArray();
+                          (memory.Verification == MemoryVerification.Recorded
+                              ? "这是用户过去陈述的未审核经历。按当时情况理解，当前状态以新的证据为准。"
+                              : memory.SourceAvailable ? "已由用户审核确认。" : "来源记录已删除，保留已确认记忆。")
+                        : "\n来源：旧版数据，来源信息不完整；已由用户审核确认。") +
+                    (memory.ContentType == MemoryContentType.Episodic ? "\n内容类型：历史经历。" : "") +
+                    (memory.HasNewerState ? "\n已有相关后续进展，此条描述较早状态。" : ""))).ToArray();
 
     public void Observe(ConversationCompletedTurn turn)
     {
